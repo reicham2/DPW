@@ -32,9 +32,12 @@ int main() {
                ->end();
         })
 
-        // REST endpoints
+        // REST endpoints — exact match before wildcard
         .get("/activities", [&](auto* res, auto* req) {
             handle_get_activities(res, req, db);
+        })
+        .get("/activities/:id", [&](auto* res, auto* req) {
+            handle_get_activity(res, req, db);
         })
         .post("/activities", [&](auto* res, auto* req) {
             handle_post_activity(res, req, db, wm);
@@ -48,12 +51,12 @@ int main() {
 
         // WebSocket endpoint
         .ws<WsUserData>("/ws", {
-            .compression   = uWS::SHARED_COMPRESSOR,
+            .compression      = uWS::SHARED_COMPRESSOR,
             .maxPayloadLength = 64 * 1024,
-            .idleTimeout   = 120,
-            .open  = [&](auto* ws)                          { wm.on_open(ws);  },
-            .message = [](auto* /*ws*/, std::string_view, uWS::OpCode) { /* read-only clients */ },
-            .close = [&](auto* ws, int, std::string_view)  { wm.on_close(ws); }
+            .idleTimeout      = 120,
+            .open    = [&](auto* ws)                         { wm.on_open(ws);  },
+            .message = [](auto* /*ws*/, std::string_view, uWS::OpCode) { },
+            .close   = [&](auto* ws, int, std::string_view) { wm.on_close(ws); }
         })
 
         .listen(8080, [](auto* token) {

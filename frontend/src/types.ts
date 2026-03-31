@@ -1,6 +1,9 @@
 export interface Activity {
   id: string
   text: string
+  title: string
+  description: string
+  responsible: string
   created_at: string
   updated_at: string
 }

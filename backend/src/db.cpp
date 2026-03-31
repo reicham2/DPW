@@ -26,17 +26,21 @@ void Database::ensure_connected() {
 
 Activity Database::row_to_activity(PGresult* res, int row) {
     Activity a;
-    a.id         = PQgetvalue(res, row, PQfnumber(res, "id"));
-    a.text       = PQgetvalue(res, row, PQfnumber(res, "text"));
-    a.created_at = PQgetvalue(res, row, PQfnumber(res, "created_at"));
-    a.updated_at = PQgetvalue(res, row, PQfnumber(res, "updated_at"));
+    a.id          = PQgetvalue(res, row, PQfnumber(res, "id"));
+    a.text        = PQgetvalue(res, row, PQfnumber(res, "text"));
+    a.title       = PQgetvalue(res, row, PQfnumber(res, "title"));
+    a.description = PQgetvalue(res, row, PQfnumber(res, "description"));
+    a.responsible = PQgetvalue(res, row, PQfnumber(res, "responsible"));
+    a.created_at  = PQgetvalue(res, row, PQfnumber(res, "created_at"));
+    a.updated_at  = PQgetvalue(res, row, PQfnumber(res, "updated_at"));
     return a;
 }
 
 std::vector<Activity> Database::list_activities() {
     ensure_connected();
     PGresult* res = PQexec(conn_,
-        "SELECT id, text, created_at, updated_at FROM activities ORDER BY created_at DESC");
+        "SELECT id, text, title, description, responsible, created_at, updated_at "
+        "FROM activities ORDER BY created_at DESC");
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
         std::string err = PQresultErrorMessage(res);
         PQclear(res);
@@ -51,12 +55,12 @@ std::vector<Activity> Database::list_activities() {
     return out;
 }
 
-std::optional<Activity> Database::create_activity(const std::string& text) {
+std::optional<Activity> Database::get_activity_by_id(const std::string& id) {
     ensure_connected();
-    const char* params[1] = { text.c_str() };
+    const char* params[1] = { id.c_str() };
     PGresult* res = PQexecParams(conn_,
-        "INSERT INTO activities (text) VALUES ($1) "
-        "RETURNING id, text, created_at, updated_at",
+        "SELECT id, text, title, description, responsible, created_at, updated_at "
+        "FROM activities WHERE id = $1",
         1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
         PQclear(res);
@@ -67,13 +71,42 @@ std::optional<Activity> Database::create_activity(const std::string& text) {
     return a;
 }
 
-std::optional<Activity> Database::update_activity(const std::string& id, const std::string& text) {
+std::optional<Activity> Database::create_activity(const ActivityInput& input) {
     ensure_connected();
-    const char* params[2] = { text.c_str(), id.c_str() };
+    const char* params[4] = {
+        input.text.c_str(),
+        input.title.c_str(),
+        input.description.c_str(),
+        input.responsible.c_str()
+    };
     PGresult* res = PQexecParams(conn_,
-        "UPDATE activities SET text = $1 WHERE id = $2 "
-        "RETURNING id, text, created_at, updated_at",
-        2, nullptr, params, nullptr, nullptr, 0);
+        "INSERT INTO activities (text, title, description, responsible) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id, text, title, description, responsible, created_at, updated_at",
+        4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+        PQclear(res);
+        return std::nullopt;
+    }
+    Activity a = row_to_activity(res, 0);
+    PQclear(res);
+    return a;
+}
+
+std::optional<Activity> Database::update_activity(const std::string& id, const ActivityInput& input) {
+    ensure_connected();
+    const char* params[5] = {
+        input.text.c_str(),
+        input.title.c_str(),
+        input.description.c_str(),
+        input.responsible.c_str(),
+        id.c_str()
+    };
+    PGresult* res = PQexecParams(conn_,
+        "UPDATE activities SET text=$1, title=$2, description=$3, responsible=$4 "
+        "WHERE id=$5 "
+        "RETURNING id, text, title, description, responsible, created_at, updated_at",
+        5, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
         PQclear(res);
         return std::nullopt;
