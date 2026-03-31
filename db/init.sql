@@ -1,26 +1,35 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TABLE IF NOT EXISTS activities (
-    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    text        TEXT        NOT NULL DEFAULT '',
-    title       TEXT        NOT NULL DEFAULT '',
-    description TEXT        NOT NULL DEFAULT '',
-    responsible TEXT        NOT NULL DEFAULT '',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TYPE department_enum AS ENUM (
+    'Jungschar', 'Pfadi', 'Rover', 'PTA', 'Leiter', 'Sonstige'
 );
 
--- Idempotenter Migration-Block für bestehende DB-Volumes
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_name='activities' AND column_name='title') THEN
-        ALTER TABLE activities ADD COLUMN title       TEXT NOT NULL DEFAULT '';
-        ALTER TABLE activities ADD COLUMN description TEXT NOT NULL DEFAULT '';
-        ALTER TABLE activities ADD COLUMN responsible TEXT NOT NULL DEFAULT '';
-    END IF;
-END
-$$;
+CREATE TABLE activities (
+    id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    title            TEXT        NOT NULL,
+    date             DATE        NOT NULL,
+    start_time       TEXT        NOT NULL,
+    end_time         TEXT        NOT NULL,
+    goal             TEXT        NOT NULL,
+    location         TEXT        NOT NULL,
+    responsible      TEXT        NOT NULL,
+    department       department_enum,
+    material         TEXT[]      NOT NULL DEFAULT '{}',
+    needs_siko       BOOLEAN     NOT NULL DEFAULT false,
+    siko             BYTEA,
+    bad_weather_info TEXT,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE programs (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    time        TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL,
+    responsible TEXT NOT NULL
+);
 
 CREATE OR REPLACE FUNCTION touch_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -30,9 +39,9 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_activities_updated_at ON activities;
 CREATE TRIGGER trg_activities_updated_at
     BEFORE UPDATE ON activities
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
-CREATE INDEX IF NOT EXISTS idx_activities_created_at ON activities (created_at DESC);
+CREATE INDEX idx_activities_date ON activities (date DESC, start_time);
+CREATE INDEX idx_programs_activity_id ON programs (activity_id);
