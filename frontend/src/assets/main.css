@@ -616,3 +616,219 @@ body {
   text-align: center;
   margin: 32px 0;
 }
+
+/* =============================================================================
+   RESPONSIVE — mobile-first overrides (≤ 599 px)
+   All existing styles target desktop. These rules override for small screens.
+   ============================================================================= */
+@media (max-width: 599px) {
+
+  /* ---- App container ---- */
+  .app {
+    padding: 0 14px 72px;
+  }
+
+  /* ---- Header ---- */
+  /* Pages with a back-button: stack title below the top row */
+  .header {
+    flex-wrap: wrap;
+    padding: 14px 0 14px;
+    margin-bottom: 20px;
+    gap: 6px 10px;
+    align-items: center;
+  }
+
+  /* back button stays left, header-right stays right on row 1 */
+  .btn-back {
+    order: 1;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .header-right {
+    order: 2;
+    margin-left: auto;
+    gap: 8px;
+  }
+
+  /* title drops to its own full-width row below */
+  .header h1 {
+    order: 3;
+    flex: 0 0 100%;
+    font-size: 1.2rem;
+    margin-top: 2px;
+  }
+
+  /* Index page has no back-button: keep title inline on row 1 */
+  .header:not(:has(.btn-back)) h1 {
+    order: 0;
+    flex: 1;
+    font-size: 1.25rem;
+    margin-top: 0;
+  }
+
+  /* ---- Buttons (touch targets ≥ 44 px) ---- */
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+  }
+
+  .btn-toggle {
+    min-height: 44px;
+    padding: 9px 14px;
+    font-size: 0.85rem;
+  }
+
+  .btn-add {
+    min-height: 40px;
+    padding: 9px 14px;
+    font-size: 0.88rem;
+  }
+
+  .btn-remove-sm {
+    width: 36px;
+    height: 44px;
+  }
+
+  /* ---- Form rows: all columns collapse to single column ---- */
+  .form-row,
+  .form-row--3,
+  .form-row--4 {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  /* ---- Form inputs: slightly larger text for readability ---- */
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    font-size: 1rem;
+    padding: 11px 12px;
+  }
+
+  /* ---- Form section spacing ---- */
+  .detail-form {
+    gap: 16px;
+  }
+
+  /* ---- Form actions: wrap on very small screens ---- */
+  .form-actions {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .form-actions-right {
+    margin-left: auto;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ---- Checkbox: bigger tap target ---- */
+  .form-check {
+    min-height: 44px;
+    padding: 8px 0;
+    gap: 12px;
+  }
+
+  .form-check input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  /* ---- Program card: single-column fields ---- */
+  .program-card {
+    padding: 48px 14px 14px;
+  }
+
+  .program-card__fields {
+    grid-template-columns: 1fr;
+    padding-right: 0;
+    gap: 12px;
+  }
+
+  /* ---- Activity card ---- */
+  .activity-card {
+    padding: 14px 16px;
+  }
+
+  .card-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .card-title {
+    font-size: 0.97rem;
+  }
+
+  .card-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  /* ---- Detail view ---- */
+  .detail-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .detail-hero-title {
+    font-size: 1.25rem;
+  }
+
+  .detail-hero-time {
+    font-size: 0.9rem;
+  }
+
+  .detail-section {
+    padding: 14px 0;
+  }
+
+  .detail-grid,
+  .detail-grid--3 {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .detail-meta {
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.75rem;
+  }
+
+  /* ---- Material chips: slightly bigger ---- */
+  .material-chip {
+    font-size: 0.85rem;
+    padding: 5px 12px;
+  }
+
+  /* ---- Program timeline ---- */
+  .program-item {
+    gap: 10px;
+  }
+
+  .program-time {
+    min-width: 40px;
+    font-size: 0.82rem;
+  }
+
+  /* ---- Status / saving badges ---- */
+  .status {
+    font-size: 0.75rem;
+    padding: 4px 9px;
+  }
+
+  /* ---- Error / loading ---- */
+  .error,
+  .loading {
+    font-size: 0.9rem;
+  }
+}
