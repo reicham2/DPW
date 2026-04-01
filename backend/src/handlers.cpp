@@ -23,20 +23,70 @@ void set_cors(HttpRes* res) {
 }
 
 void send_json(HttpRes* res, int status, const std::string& body) {
-    set_cors(res);
     res->writeStatus(status_text(status));
+    set_cors(res);
     res->writeHeader("Content-Type", "application/json");
     res->end(body);
 }
 
-// Helper: extract string field from JSON, fallback to empty string
-static std::string field(const nlohmann::json& j, const char* key) {
-    if (j.contains(key) && j[key].is_string())
-        return j[key].get<std::string>();
-    return "";
+static std::string str_field(const nlohmann::json& j, const char* key, const std::string& def = "") {
+    if (j.contains(key) && j[key].is_string()) return j[key].get<std::string>();
+    return def;
 }
 
-// ---- GET /activities -------------------------------------------------------
+// Parse ActivityInput from JSON body
+static ActivityInput parse_activity_input(const nlohmann::json& j) {
+    ActivityInput input;
+    input.title        = str_field(j, "title");
+    input.date         = str_field(j, "date");
+    input.start_time   = str_field(j, "start_time");
+    input.end_time     = str_field(j, "end_time");
+    input.goal         = str_field(j, "goal");
+    input.location     = str_field(j, "location");
+    input.responsible  = str_field(j, "responsible");
+    input.needs_siko   = j.value("needs_siko", false);
+
+    if (j.contains("department") && j["department"].is_string())
+        input.department = j["department"].get<std::string>();
+
+    if (j.contains("bad_weather_info") && j["bad_weather_info"].is_string()) {
+        std::string bwi = j["bad_weather_info"].get<std::string>();
+        if (!bwi.empty()) input.bad_weather_info = bwi;
+    }
+
+    if (j.contains("siko_base64") && j["siko_base64"].is_string()) {
+        std::string sb = j["siko_base64"].get<std::string>();
+        if (!sb.empty()) input.siko_base64 = sb;
+    }
+
+    if (j.contains("material") && j["material"].is_array()) {
+        for (auto& m : j["material"])
+            if (m.is_string()) input.material.push_back(m.get<std::string>());
+    }
+
+    if (j.contains("programs") && j["programs"].is_array()) {
+        for (auto& p : j["programs"]) {
+            ProgramInput pi;
+            pi.time        = str_field(p, "time");
+            pi.title       = str_field(p, "title");
+            pi.description = str_field(p, "description");
+            pi.responsible = str_field(p, "responsible");
+            input.programs.push_back(pi);
+        }
+    }
+
+    return input;
+}
+
+// ---- GET /departments -------------------------------------------------------
+
+void handle_get_departments(HttpRes* res, HttpReq* /*req*/) {
+    static const std::string body =
+        R"(["Jungschar","Pfadi","Rover","PTA","Leiter","Sonstige"])";
+    send_json(res, 200, body);
+}
+
+// ---- GET /activities --------------------------------------------------------
 
 void handle_get_activities(HttpRes* res, HttpReq* /*req*/, Database& db) {
     try {
@@ -49,7 +99,7 @@ void handle_get_activities(HttpRes* res, HttpReq* /*req*/, Database& db) {
     }
 }
 
-// ---- GET /activities/:id ---------------------------------------------------
+// ---- GET /activities/:id ----------------------------------------------------
 
 void handle_get_activity(HttpRes* res, HttpReq* req, Database& db) {
     std::string id{req->getParameter(0)};
@@ -65,13 +115,33 @@ void handle_get_activity(HttpRes* res, HttpReq* req, Database& db) {
     }
 }
 
-// ---- POST /activities ------------------------------------------------------
+// ---- GET /activities/:id/siko -----------------------------------------------
+
+void handle_get_siko(HttpRes* res, HttpReq* req, Database& db) {
+    std::string id{req->getParameter(0)};
+    try {
+        auto bytes = db.get_siko(id);
+        if (!bytes || bytes->empty()) {
+            send_json(res, 404, R"({"error":"no SiKo file"})");
+            return;
+        }
+        std::string disp = "attachment; filename=\"siko-" + id + ".pdf\"";
+        set_cors(res);
+        res->writeStatus("200 OK");
+        res->writeHeader("Content-Type", "application/pdf");
+        res->writeHeader("Content-Disposition", disp);
+        res->end(std::string_view(
+            reinterpret_cast<const char*>(bytes->data()), bytes->size()));
+    } catch (std::exception& e) {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- POST /activities -------------------------------------------------------
 
 void handle_post_activity(HttpRes* res, HttpReq* /*req*/, Database& db, WebSocketManager& wm) {
     auto buf = std::make_shared<std::string>();
-
     res->onAborted([]{ });
-
     res->onData([res, buf, &db, &wm](std::string_view chunk, bool last) {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -82,13 +152,8 @@ void handle_post_activity(HttpRes* res, HttpReq* /*req*/, Database& db, WebSocke
             return;
         }
 
-        ActivityInput input;
-        input.text        = field(j, "text");
-        input.title       = field(j, "title");
-        input.description = field(j, "description");
-        input.responsible = field(j, "responsible");
-
-        if (input.title.empty() && input.text.empty()) {
+        ActivityInput input = parse_activity_input(j);
+        if (input.title.empty()) {
             send_json(res, 400, R"({"error":"title is required"})");
             return;
         }
@@ -108,14 +173,12 @@ void handle_post_activity(HttpRes* res, HttpReq* /*req*/, Database& db, WebSocke
     });
 }
 
-// ---- PATCH /activities/:id -------------------------------------------------
+// ---- PATCH /activities/:id --------------------------------------------------
 
 void handle_patch_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketManager& wm) {
     std::string id{req->getParameter(0)};
     auto buf = std::make_shared<std::string>();
-
     res->onAborted([]{ });
-
     res->onData([res, buf, id, &db, &wm](std::string_view chunk, bool last) {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -126,11 +189,7 @@ void handle_patch_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketMa
             return;
         }
 
-        ActivityInput input;
-        input.text        = field(j, "text");
-        input.title       = field(j, "title");
-        input.description = field(j, "description");
-        input.responsible = field(j, "responsible");
+        ActivityInput input = parse_activity_input(j);
 
         try {
             auto activity = db.update_activity(id, input);
@@ -147,7 +206,7 @@ void handle_patch_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketMa
     });
 }
 
-// ---- DELETE /activities/:id ------------------------------------------------
+// ---- DELETE /activities/:id -------------------------------------------------
 
 void handle_delete_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketManager& wm) {
     std::string id{req->getParameter(0)};
