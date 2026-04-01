@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onUnmounted, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
 import type { Activity, Department, ProgramInput } from '../types'
@@ -80,7 +80,7 @@ function enterEdit() {
 }
 
 // ---- Material --------------------------------------------------------------
-function addMaterial()            { editMaterial.value.push('') }
+function addMaterial()             { editMaterial.value.push('') }
 function removeMaterial(i: number) { editMaterial.value.splice(i, 1) }
 
 // ---- Programs --------------------------------------------------------------
@@ -101,8 +101,26 @@ async function onSikoFileChange(e: Event) {
   editSikoBase64.value = btoa(binary)
 }
 
-// ---- Save ------------------------------------------------------------------
-async function save() {
+// ---- Auto-save (debounced 1.5 s) -------------------------------------------
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleAutoSave() {
+  if (mode.value !== 'edit') return
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(doSave, 1500)
+}
+
+onUnmounted(() => { if (autoSaveTimer) clearTimeout(autoSaveTimer) })
+
+watch(
+  [editTitle, editDate, editStartTime, editEndTime, editGoal, editLocation,
+   editResponsible, editDepartment, editMaterial, editNeedsSiko, editBadWeather, editPrograms],
+  scheduleAutoSave,
+  { deep: true }
+)
+
+// ---- Core save (used by auto-save and the button) --------------------------
+async function doSave() {
   if (!activity.value) return
   saving.value = true
   error.value  = null
@@ -124,6 +142,12 @@ async function save() {
   })
 
   saving.value = false
+}
+
+// ---- Explicit save button --------------------------------------------------
+async function save() {
+  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
+  await doSave()
   if (!error.value) {
     activity.value = await fetchActivity(id)
     mode.value     = 'view'
@@ -181,7 +205,7 @@ async function doDelete() {
       <!-- Ziel -->
       <div class="detail-section">
         <p class="detail-section-title">Ziel</p>
-        <p class="detail-value detail-value--multiline">{{ activity.goal }}</p>
+        <p class="detail-value detail-value--multiline">{{ activity.goal || '—' }}</p>
       </div>
 
       <!-- Ort / Verantwortlich -->
@@ -189,11 +213,11 @@ async function doDelete() {
         <div class="detail-grid detail-grid--3">
           <div class="detail-field">
             <span class="detail-label">Ort</span>
-            <span class="detail-value">{{ activity.location }}</span>
+            <span class="detail-value">{{ activity.location || '—' }}</span>
           </div>
           <div class="detail-field">
             <span class="detail-label">Verantwortlich</span>
-            <span class="detail-value">{{ activity.responsible }}</span>
+            <span class="detail-value">{{ activity.responsible || '—' }}</span>
           </div>
           <div class="detail-field">
             <span class="detail-label">Abteilung</span>
@@ -268,45 +292,45 @@ async function doDelete() {
 
       <!-- Titel -->
       <div class="form-group">
-        <label for="edit-title">Titel <span class="required">*</span></label>
+        <label for="edit-title">Titel</label>
         <input id="edit-title" v-model="editTitle" type="text"
-          placeholder="Titel der Aktivität" required autofocus />
+          placeholder="Titel der Aktivität" autofocus />
       </div>
 
       <!-- Datum + Zeiten -->
       <div class="form-row form-row--3">
         <div class="form-group">
-          <label for="edit-date">Datum <span class="required">*</span></label>
-          <input id="edit-date" v-model="editDate" type="date" required />
+          <label for="edit-date">Datum</label>
+          <input id="edit-date" v-model="editDate" type="date" />
         </div>
         <div class="form-group">
-          <label for="edit-start">Startzeit <span class="required">*</span></label>
-          <input id="edit-start" v-model="editStartTime" type="time" required />
+          <label for="edit-start">Startzeit</label>
+          <input id="edit-start" v-model="editStartTime" type="time" />
         </div>
         <div class="form-group">
-          <label for="edit-end">Endzeit <span class="required">*</span></label>
-          <input id="edit-end" v-model="editEndTime" type="time" required />
+          <label for="edit-end">Endzeit</label>
+          <input id="edit-end" v-model="editEndTime" type="time" />
         </div>
       </div>
 
       <!-- Ziel -->
       <div class="form-group">
-        <label for="edit-goal">Ziel <span class="required">*</span></label>
+        <label for="edit-goal">Ziel</label>
         <textarea id="edit-goal" v-model="editGoal" rows="3"
-          placeholder="Was soll erreicht werden?" required />
+          placeholder="Was soll erreicht werden?" />
       </div>
 
       <!-- Ort + Verantwortlich + Abteilung -->
       <div class="form-row form-row--3">
         <div class="form-group">
-          <label for="edit-location">Ort <span class="required">*</span></label>
+          <label for="edit-location">Ort</label>
           <input id="edit-location" v-model="editLocation" type="text"
-            placeholder="Veranstaltungsort" required />
+            placeholder="Veranstaltungsort" />
         </div>
         <div class="form-group">
-          <label for="edit-responsible">Verantwortlich <span class="required">*</span></label>
+          <label for="edit-responsible">Verantwortlich</label>
           <input id="edit-responsible" v-model="editResponsible" type="text"
-            placeholder="Name" required />
+            placeholder="Name" />
         </div>
         <div class="form-group">
           <label for="edit-department">Abteilung</label>
@@ -351,7 +375,7 @@ async function doDelete() {
       <div class="form-group">
         <label for="edit-weather">Schlechtwetter-Info</label>
         <textarea id="edit-weather" v-model="editBadWeather" rows="2"
-          placeholder="Was passiert bei schlechtem Wetter? (optional)" />
+          placeholder="Was passiert bei schlechtem Wetter?" />
       </div>
 
       <!-- Programmpunkte -->
@@ -391,10 +415,7 @@ async function doDelete() {
         <button type="button" class="btn-danger" @click="doDelete">Löschen</button>
         <div class="form-actions-right">
           <button type="button" class="btn-secondary" @click="mode = 'view'">Abbrechen</button>
-          <button type="submit" class="btn-primary"
-            :disabled="!editTitle.trim() || !editDate || !editStartTime || !editEndTime
-                       || !editGoal.trim() || !editLocation.trim() || !editResponsible.trim()
-                       || saving">
+          <button type="submit" class="btn-primary" :disabled="saving">
             {{ saving ? 'Wird gespeichert…' : 'Speichern' }}
           </button>
         </div>

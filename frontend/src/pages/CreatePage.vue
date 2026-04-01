@@ -50,7 +50,6 @@ async function onSikoFileChange(e: Event) {
 
 // ---- Submit ----------------------------------------------------------------
 async function submit() {
-  if (!title.value.trim()) return
   submitting.value = true
   error.value = null
 
@@ -86,43 +85,43 @@ async function submit() {
 
       <!-- Titel -->
       <div class="form-group">
-        <label for="title">Titel <span class="required">*</span></label>
+        <label for="title">Titel</label>
         <input id="title" v-model="title" type="text" placeholder="Titel der Aktivität"
-          required autofocus />
+          autofocus />
       </div>
 
       <!-- Datum + Zeiten -->
       <div class="form-row form-row--3">
         <div class="form-group">
-          <label for="date">Datum <span class="required">*</span></label>
-          <input id="date" v-model="date" type="date" required />
+          <label for="date">Datum</label>
+          <input id="date" v-model="date" type="date" />
         </div>
         <div class="form-group">
-          <label for="start_time">Startzeit <span class="required">*</span></label>
-          <input id="start_time" v-model="start_time" type="time" required />
+          <label for="start_time">Startzeit</label>
+          <input id="start_time" v-model="start_time" type="time" />
         </div>
         <div class="form-group">
-          <label for="end_time">Endzeit <span class="required">*</span></label>
-          <input id="end_time" v-model="end_time" type="time" required />
+          <label for="end_time">Endzeit</label>
+          <input id="end_time" v-model="end_time" type="time" />
         </div>
       </div>
 
       <!-- Ziel -->
       <div class="form-group">
-        <label for="goal">Ziel <span class="required">*</span></label>
+        <label for="goal">Ziel</label>
         <textarea id="goal" v-model="goal" rows="3"
-          placeholder="Was soll erreicht werden?" required />
+          placeholder="Was soll erreicht werden?" />
       </div>
 
       <!-- Ort + Verantwortlich + Abteilung -->
       <div class="form-row form-row--3">
         <div class="form-group">
-          <label for="location">Ort <span class="required">*</span></label>
-          <input id="location" v-model="location" type="text" placeholder="Veranstaltungsort" required />
+          <label for="location">Ort</label>
+          <input id="location" v-model="location" type="text" placeholder="Veranstaltungsort" />
         </div>
         <div class="form-group">
-          <label for="responsible">Verantwortlich <span class="required">*</span></label>
-          <input id="responsible" v-model="responsible" type="text" placeholder="Name" required />
+          <label for="responsible">Verantwortlich</label>
+          <input id="responsible" v-model="responsible" type="text" placeholder="Name" />
         </div>
         <div class="form-group">
           <label for="department">Abteilung</label>
@@ -165,7 +164,7 @@ async function submit() {
       <div class="form-group">
         <label for="bad_weather">Schlechtwetter-Info</label>
         <textarea id="bad_weather" v-model="bad_weather" rows="2"
-          placeholder="Was passiert bei schlechtem Wetter? (optional)" />
+          placeholder="Was passiert bei schlechtem Wetter?" />
       </div>
 
       <!-- Programmpunkte -->
@@ -203,8 +202,7 @@ async function submit() {
       <!-- Actions -->
       <div class="form-actions">
         <button type="button" class="btn-secondary" @click="router.push('/')">Abbrechen</button>
-        <button type="submit" class="btn-primary"
-          :disabled="!title.trim() || !date || !start_time || !end_time || !goal.trim() || !location.trim() || !responsible.trim() || submitting">
+        <button type="submit" class="btn-primary" :disabled="submitting">
           {{ submitting ? 'Wird erstellt…' : 'Erstellen' }}
         </button>
       </div>
