@@ -13,10 +13,10 @@ static std::string env(const char* key, const char* def = "") {
 
 int main() {
     std::string conn_str =
-        "host="     + env("POSTGRES_HOST", "db")         +
-        " port="    + env("POSTGRES_PORT", "5432")        +
-        " dbname="  + env("POSTGRES_DB",   "activities")  +
-        " user="    + env("POSTGRES_USER", "postgres")    +
+        "host="     + env("POSTGRES_HOST", "db")        +
+        " port="    + env("POSTGRES_PORT", "5432")       +
+        " dbname="  + env("POSTGRES_DB",   "activities") +
+        " user="    + env("POSTGRES_USER", "postgres")   +
         " password="+ env("POSTGRES_PASSWORD", "");
 
     Database db(conn_str);
@@ -32,12 +32,27 @@ int main() {
                ->end();
         })
 
-        // REST endpoints
+        // Static data
+        .get("/departments", [&](auto* res, auto* req) {
+            handle_get_departments(res, req);
+        })
+
+        // Activities list + create
         .get("/activities", [&](auto* res, auto* req) {
             handle_get_activities(res, req, db);
         })
         .post("/activities", [&](auto* res, auto* req) {
             handle_post_activity(res, req, db, wm);
+        })
+
+        // SiKo download — must be registered BEFORE /activities/:id
+        .get("/activities/:id/siko", [&](auto* res, auto* req) {
+            handle_get_siko(res, req, db);
+        })
+
+        // Single activity CRUD
+        .get("/activities/:id", [&](auto* res, auto* req) {
+            handle_get_activity(res, req, db);
         })
         .patch("/activities/:id", [&](auto* res, auto* req) {
             handle_patch_activity(res, req, db, wm);
@@ -48,12 +63,12 @@ int main() {
 
         // WebSocket endpoint
         .ws<WsUserData>("/ws", {
-            .compression   = uWS::SHARED_COMPRESSOR,
+            .compression      = uWS::SHARED_COMPRESSOR,
             .maxPayloadLength = 64 * 1024,
-            .idleTimeout   = 120,
-            .open  = [&](auto* ws)                          { wm.on_open(ws);  },
-            .message = [](auto* /*ws*/, std::string_view, uWS::OpCode) { /* read-only clients */ },
-            .close = [&](auto* ws, int, std::string_view)  { wm.on_close(ws); }
+            .idleTimeout      = 120,
+            .open    = [&](auto* ws)                         { wm.on_open(ws);  },
+            .message = [](auto* /*ws*/, std::string_view, uWS::OpCode) { },
+            .close   = [&](auto* ws, int, std::string_view) { wm.on_close(ws); }
         })
 
         .listen(8080, [](auto* token) {
