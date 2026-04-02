@@ -144,16 +144,6 @@ async function doSave() {
   saving.value = false
 }
 
-// ---- Explicit save button --------------------------------------------------
-async function save() {
-  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
-  await doSave()
-  if (!error.value) {
-    activity.value = await fetchActivity(id)
-    mode.value     = 'view'
-  }
-}
-
 // ---- Delete ----------------------------------------------------------------
 async function doDelete() {
   if (!confirm(`Aktivität "${activity.value?.title || id}" wirklich löschen?`)) return
@@ -288,7 +278,7 @@ async function doDelete() {
     </div>
 
     <!-- =============================================================== EDIT -->
-    <form v-else class="detail-form" @submit.prevent="save">
+    <div v-else class="detail-form">
 
       <!-- Titel -->
       <div class="form-group">
@@ -413,14 +403,9 @@ async function doDelete() {
       <!-- Actions -->
       <div class="form-actions">
         <button type="button" class="btn-danger" @click="doDelete">Löschen</button>
-        <div class="form-actions-right">
-          <button type="button" class="btn-secondary" @click="mode = 'view'">Abbrechen</button>
-          <button type="submit" class="btn-primary" :disabled="saving">
-            {{ saving ? 'Wird gespeichert…' : 'Speichern' }}
-          </button>
-        </div>
+        <button type="button" class="btn-secondary" @click="mode = 'view'">Schliessen</button>
       </div>
 
-    </form>
+    </div>
   </main>
 </template>
