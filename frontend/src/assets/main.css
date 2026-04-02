@@ -832,3 +832,123 @@ body {
     font-size: 0.9rem;
   }
 }
+
+/* =============================================================================
+   FILTER BAR (IndexPage)
+   ============================================================================= */
+
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+/* Search input */
+.filter-search {
+  position: relative;
+  width: 100%;
+}
+
+.filter-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.95rem;
+  pointer-events: none;
+  user-select: none;
+}
+
+.filter-search-input {
+  width: 100%;
+  padding: 10px 14px 10px 38px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  background: #fff;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.filter-search-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.filter-search-input::placeholder {
+  color: #9ca3af;
+}
+
+/* Department tab pills */
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-tab {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  white-space: nowrap;
+}
+
+.filter-tab:hover {
+  border-color: #6366f1;
+  color: #4f46e5;
+  background: #eef2ff;
+}
+
+.filter-tab--active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+
+.filter-tab--active:hover {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+
+/* Empty state when filters match nothing */
+.filter-empty {
+  text-align: center;
+  color: #6b7280;
+  margin: 48px 0;
+  font-size: 0.95rem;
+}
+
+/* Mobile: filter bar */
+@media (max-width: 599px) {
+  .filter-bar {
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .filter-tabs {
+    gap: 5px;
+  }
+
+  .filter-tab {
+    padding: 7px 12px;
+    font-size: 0.82rem;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+
+  .filter-search-input {
+    font-size: 1rem;
+    padding: 11px 14px 11px 38px;
+  }
+}

@@ -1,7 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TYPE department_enum AS ENUM (
-    'Jungschar', 'Pfadi', 'Rover', 'PTA', 'Leiter', 'Sonstige'
+    'Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber'
 );
 
 CREATE TABLE activities (

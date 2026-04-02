@@ -82,7 +82,7 @@ static ActivityInput parse_activity_input(const nlohmann::json& j) {
 
 void handle_get_departments(HttpRes* res, HttpReq* /*req*/) {
     static const std::string body =
-        R"(["Jungschar","Pfadi","Rover","PTA","Leiter","Sonstige"])";
+        R"(["Leiter","Pio","Pfadi","Wölfe","Biber"])";
     send_json(res, 200, body);
 }
 
