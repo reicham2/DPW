@@ -41,9 +41,9 @@ onMounted(async () => {
   loading.value  = false
 })
 
-// ---- WS live update (view mode only) ---------------------------------------
+// ---- WS live update (always — edit form uses its own refs so it's safe) ----
 watch(lastUpdatedActivity, (updated) => {
-  if (updated && updated.id === id && mode.value === 'view') {
+  if (updated && updated.id === id) {
     activity.value = updated
   }
 })
@@ -99,6 +99,7 @@ async function onSikoFileChange(e: Event) {
   let binary  = ''
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
   editSikoBase64.value = btoa(binary)
+  scheduleAutoSave() // file upload triggers save like any other field change
 }
 
 // ---- Auto-save (debounced 1.5 s) -------------------------------------------
