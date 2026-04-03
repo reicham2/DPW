@@ -234,10 +234,18 @@ async function doDelete() {
         </div>
       </div>
 
-      <!-- Ziel -->
+      <!-- Ziel + Schlechtwetter -->
       <div class="detail-section">
-        <p class="detail-section-title">Ziel</p>
-        <p class="detail-value detail-value--multiline">{{ activity.goal || '—' }}</p>
+        <div class="detail-grid">
+          <div>
+            <p class="detail-section-title">Ziel</p>
+            <p class="detail-value detail-value--multiline">{{ activity.goal || '—' }}</p>
+          </div>
+          <div>
+            <p class="detail-section-title">Schlechtwetter-Info</p>
+            <p class="detail-value detail-value--multiline">{{ activity.bad_weather_info || '—' }}</p>
+          </div>
+        </div>
       </div>
 
       <!-- Ort / Verantwortlich -->
@@ -304,14 +312,6 @@ async function doDelete() {
         </div>
       </div>
 
-      <!-- Schlechtwetter -->
-      <div class="detail-section">
-        <p class="detail-section-title">Schlechtwetter-Info</p>
-        <p class="detail-value detail-value--multiline">
-          {{ activity.bad_weather_info || '—' }}
-        </p>
-      </div>
-
       <!-- Meta -->
       <div class="detail-meta">
         <span>Erstellt: {{ new Date(activity.created_at).toLocaleString('de-DE') }}</span>
@@ -345,11 +345,18 @@ async function doDelete() {
         </div>
       </div>
 
-      <!-- Ziel -->
-      <div class="form-group">
-        <label for="edit-goal">Ziel</label>
-        <textarea id="edit-goal" v-model="editGoal" rows="3"
-          placeholder="Was soll erreicht werden?" />
+      <!-- Ziel + Schlechtwetter -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="edit-goal">Ziel</label>
+          <textarea id="edit-goal" v-model="editGoal" rows="3"
+            placeholder="Was soll erreicht werden?" />
+        </div>
+        <div class="form-group">
+          <label for="edit-weather">Schlechtwetter-Info</label>
+          <textarea id="edit-weather" v-model="editBadWeather" rows="3"
+            placeholder="Was passiert bei schlechtem Wetter?" />
+        </div>
       </div>
 
       <!-- Ort + Verantwortlich + Abteilung -->
@@ -438,13 +445,6 @@ async function doDelete() {
             <span v-if="editSikoFile" class="file-name">{{ editSikoFile.name }}</span>
           </div>
         </div>
-      </div>
-
-      <!-- Schlechtwetter -->
-      <div class="form-group">
-        <label for="edit-weather">Schlechtwetter-Info</label>
-        <textarea id="edit-weather" v-model="editBadWeather" rows="2"
-          placeholder="Was passiert bei schlechtem Wetter?" />
       </div>
 
       <!-- Error -->

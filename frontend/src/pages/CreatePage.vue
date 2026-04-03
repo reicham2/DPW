@@ -116,11 +116,18 @@ async function submit() {
         </div>
       </div>
 
-      <!-- Ziel -->
-      <div class="form-group">
-        <label for="goal">Ziel</label>
-        <textarea id="goal" v-model="goal" rows="3"
-          placeholder="Was soll erreicht werden?" />
+      <!-- Ziel + Schlechtwetter -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="goal">Ziel</label>
+          <textarea id="goal" v-model="goal" rows="3"
+            placeholder="Was soll erreicht werden?" />
+        </div>
+        <div class="form-group">
+          <label for="bad_weather">Schlechtwetter-Info</label>
+          <textarea id="bad_weather" v-model="bad_weather" rows="3"
+            placeholder="Was passiert bei schlechtem Wetter?" />
+        </div>
       </div>
 
       <!-- Ort + Verantwortlich + Abteilung -->
@@ -205,13 +212,6 @@ async function submit() {
             <span v-if="sikoFile" class="file-name">{{ sikoFile.name }}</span>
           </div>
         </div>
-      </div>
-
-      <!-- Schlechtwetter -->
-      <div class="form-group">
-        <label for="bad_weather">Schlechtwetter-Info</label>
-        <textarea id="bad_weather" v-model="bad_weather" rows="2"
-          placeholder="Was passiert bei schlechtem Wetter?" />
       </div>
 
       <!-- Error -->
