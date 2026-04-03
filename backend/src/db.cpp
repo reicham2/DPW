@@ -371,7 +371,8 @@ std::optional<Activity> Database::update_activity(const std::string& id, const A
     try {
         Activity a;
 
-        if (input.siko_base64 && !input.siko_base64->empty()) {
+        // Case 1: new PDF uploaded — store it
+        if (input.needs_siko && input.siko_base64 && !input.siko_base64->empty()) {
             std::string sql =
                 "UPDATE activities SET "
                 "title=$1, date=$2::date, start_time=$3, end_time=$4, "
@@ -396,11 +397,42 @@ std::optional<Activity> Database::update_activity(const std::string& id, const A
             PGresult* r = PQexecParams(conn_, sql.c_str(), 12, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0) {
                 std::string err = PQresultErrorMessage(r); PQclear(r);
-                throw std::runtime_error("update_activity UPDATE: " + err);
+                throw std::runtime_error("update_activity UPDATE (with siko): " + err);
             }
             a = row_to_activity(r, 0); PQclear(r);
+
+        // Case 2: needs_siko turned off — explicitly clear the stored file
+        } else if (!input.needs_siko) {
+            std::string sql =
+                "UPDATE activities SET "
+                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
+                "goal=$5, location=$6, responsible=$7, department=" +
+                (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
+                ", material=array(select jsonb_array_elements_text($8::jsonb)), "
+                "needs_siko=$9, siko=NULL, bad_weather_info=$10 "
+                "WHERE id=$11 "
+                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                "bad_weather_info, created_at, updated_at";
+
+            const char* p[11] = {
+                input.title.c_str(), input.date.c_str(),
+                input.start_time.c_str(), input.end_time.c_str(),
+                input.goal.c_str(), input.location.c_str(),
+                input.responsible.c_str(),
+                mat_json.c_str(), needs_s,
+                bwi_str.c_str(), id.c_str()
+            };
+            PGresult* r = PQexecParams(conn_, sql.c_str(), 11, nullptr, p, nullptr, nullptr, 0);
+            if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0) {
+                std::string err = PQresultErrorMessage(r); PQclear(r);
+                PQexec(conn_, "ROLLBACK");
+                return std::nullopt;
+            }
+            a = row_to_activity(r, 0); PQclear(r);
+
+        // Case 3: needs_siko on but no new file — keep existing siko unchanged
         } else {
-            // Update without changing siko
             std::string sql =
                 "UPDATE activities SET "
                 "title=$1, date=$2::date, start_time=$3, end_time=$4, "
@@ -424,7 +456,6 @@ std::optional<Activity> Database::update_activity(const std::string& id, const A
             PGresult* r = PQexecParams(conn_, sql.c_str(), 11, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0) {
                 std::string err = PQresultErrorMessage(r); PQclear(r);
-                // Could be 404 — check if activity exists
                 PQexec(conn_, "ROLLBACK");
                 return std::nullopt;
             }
