@@ -149,7 +149,7 @@ void Database::attach_programs(std::vector<Activity>& activities) {
 
     PGresult* res = PQexecParams(conn_,
         "SELECT id, activity_id, time, title, description, responsible "
-        "FROM programs WHERE activity_id = ANY($1::uuid[]) ORDER BY time",
+        "FROM programs WHERE activity_id = ANY($1::uuid[]) ORDER BY ctid",
         1, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK) { PQclear(res); return; }
