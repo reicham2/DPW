@@ -42,7 +42,7 @@ function onMaterialBlur(i: number) {
 
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
-  programs.value.push({ time: '', title: '', description: '', responsible: '' })
+  programs.value.push({ time: '', title: '', description: '', responsible: responsible.value })
 }
 function removeProgram(i: number) { programs.value.splice(i, 1) }
 
