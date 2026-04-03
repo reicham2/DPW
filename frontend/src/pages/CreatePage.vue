@@ -142,6 +142,35 @@ async function submit() {
         </div>
       </div>
 
+      <!-- Programmpunkte -->
+      <div class="form-section">
+        <p class="form-section-title">Programmpunkte</p>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div v-for="(prog, i) in programs" :key="i" class="program-card">
+            <button type="button" class="program-card__remove" @click="removeProgram(i)">✕</button>
+            <div class="program-card__fields">
+              <div class="form-group">
+                <label>Dauer (Minuten)</label>
+                <input v-model="prog.time" type="number" min="0" placeholder="z.B. 30" />
+              </div>
+              <div class="form-group">
+                <label>Titel</label>
+                <input v-model="prog.title" type="text" placeholder="Programmpunkt-Titel" />
+              </div>
+              <div class="form-group program-card__full">
+                <label>Beschreibung</label>
+                <textarea v-model="prog.description" rows="2" placeholder="Beschreibung..." />
+              </div>
+              <div class="form-group program-card__full">
+                <label>Verantwortlich</label>
+                <input v-model="prog.responsible" type="text" placeholder="Name" />
+              </div>
+            </div>
+          </div>
+          <button type="button" class="btn-add" @click="addProgram">+ Programmpunkt</button>
+        </div>
+      </div>
+
       <!-- Material -->
       <div class="form-section">
         <p class="form-section-title">Material</p>
@@ -179,35 +208,6 @@ async function submit() {
         <label for="bad_weather">Schlechtwetter-Info</label>
         <textarea id="bad_weather" v-model="bad_weather" rows="2"
           placeholder="Was passiert bei schlechtem Wetter?" />
-      </div>
-
-      <!-- Programmpunkte -->
-      <div class="form-section">
-        <p class="form-section-title">Programmpunkte</p>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div v-for="(prog, i) in programs" :key="i" class="program-card">
-            <button type="button" class="program-card__remove" @click="removeProgram(i)">✕</button>
-            <div class="program-card__fields">
-              <div class="form-group">
-                <label>Zeit</label>
-                <input v-model="prog.time" type="time" />
-              </div>
-              <div class="form-group">
-                <label>Titel</label>
-                <input v-model="prog.title" type="text" placeholder="Programmpunkt-Titel" />
-              </div>
-              <div class="form-group program-card__full">
-                <label>Beschreibung</label>
-                <textarea v-model="prog.description" rows="2" placeholder="Beschreibung..." />
-              </div>
-              <div class="form-group program-card__full">
-                <label>Verantwortlich</label>
-                <input v-model="prog.responsible" type="text" placeholder="Name" />
-              </div>
-            </div>
-          </div>
-          <button type="button" class="btn-add" @click="addProgram">+ Programmpunkt</button>
-        </div>
       </div>
 
       <!-- Error -->
