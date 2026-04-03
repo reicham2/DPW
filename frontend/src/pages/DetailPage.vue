@@ -41,10 +41,33 @@ onMounted(async () => {
   loading.value  = false
 })
 
-// ---- WS live update (always — edit form uses its own refs so it's safe) ----
+// ---- Sync edit fields from an activity (used by enterEdit + WS) ------------
+function syncEditFields(a: typeof activity.value) {
+  if (!a) return
+  editTitle.value       = a.title
+  editDate.value        = a.date
+  editStartTime.value   = a.start_time
+  editEndTime.value     = a.end_time
+  editGoal.value        = a.goal
+  editLocation.value    = a.location
+  editResponsible.value = a.responsible
+  editDepartment.value  = a.department ?? ''
+  editMaterial.value    = [...a.material]
+  editNeedsSiko.value   = a.needs_siko
+  editBadWeather.value  = a.bad_weather_info ?? ''
+  editPrograms.value    = a.programs.map(p => ({
+    time: p.time, title: p.title, description: p.description, responsible: p.responsible
+  }))
+}
+
+// ---- WS live update — always apply; in edit mode sync the form fields too --
+// Skip form sync if the user is currently typing (autoSaveTimer is active)
+// so we never overwrite uncommitted local input.
 watch(lastUpdatedActivity, (updated) => {
-  if (updated && updated.id === id) {
-    activity.value = updated
+  if (!updated || updated.id !== id) return
+  activity.value = updated
+  if (mode.value === 'edit' && !autoSaveTimer) {
+    syncEditFields(updated)
   }
 })
 
@@ -58,23 +81,9 @@ function formatDate(d: string): string {
 // ---- Enter edit mode -------------------------------------------------------
 function enterEdit() {
   if (!activity.value) return
-  const a = activity.value
-  editTitle.value       = a.title
-  editDate.value        = a.date
-  editStartTime.value   = a.start_time
-  editEndTime.value     = a.end_time
-  editGoal.value        = a.goal
-  editLocation.value    = a.location
-  editResponsible.value = a.responsible
-  editDepartment.value  = a.department ?? ''
-  editMaterial.value    = [...a.material]
-  editNeedsSiko.value   = a.needs_siko
-  editSikoFile.value    = null
-  editSikoBase64.value  = null
-  editBadWeather.value  = a.bad_weather_info ?? ''
-  editPrograms.value    = a.programs.map(p => ({
-    time: p.time, title: p.title, description: p.description, responsible: p.responsible
-  }))
+  syncEditFields(activity.value)
+  editSikoFile.value   = null
+  editSikoBase64.value = null
   error.value = null
   mode.value  = 'edit'
 }
