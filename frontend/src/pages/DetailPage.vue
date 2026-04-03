@@ -234,20 +234,6 @@ async function doDelete() {
         </div>
       </div>
 
-      <!-- Ziel + Schlechtwetter -->
-      <div class="detail-section">
-        <div class="detail-grid">
-          <div>
-            <p class="detail-section-title">Ziel</p>
-            <p class="detail-value detail-value--multiline">{{ activity.goal || '—' }}</p>
-          </div>
-          <div>
-            <p class="detail-section-title">Schlechtwetter-Info</p>
-            <p class="detail-value detail-value--multiline">{{ activity.bad_weather_info || '—' }}</p>
-          </div>
-        </div>
-      </div>
-
       <!-- Ort / Verantwortlich -->
       <div class="detail-section">
         <div class="detail-grid detail-grid--3">
@@ -312,6 +298,20 @@ async function doDelete() {
         </div>
       </div>
 
+      <!-- Ziel + Schlechtwetter -->
+      <div class="detail-section">
+        <div class="detail-grid">
+          <div>
+            <p class="detail-section-title">Ziel</p>
+            <p class="detail-value detail-value--multiline">{{ activity.goal || '—' }}</p>
+          </div>
+          <div>
+            <p class="detail-section-title">Schlechtwetter-Info</p>
+            <p class="detail-value detail-value--multiline">{{ activity.bad_weather_info || '—' }}</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Meta -->
       <div class="detail-meta">
         <span>Erstellt: {{ new Date(activity.created_at).toLocaleString('de-DE') }}</span>
@@ -342,20 +342,6 @@ async function doDelete() {
         <div class="form-group">
           <label for="edit-end">Endzeit</label>
           <input id="edit-end" v-model="editEndTime" type="time" />
-        </div>
-      </div>
-
-      <!-- Ziel + Schlechtwetter -->
-      <div class="form-row">
-        <div class="form-group">
-          <label for="edit-goal">Ziel</label>
-          <textarea id="edit-goal" v-model="editGoal" rows="3"
-            placeholder="Was soll erreicht werden?" />
-        </div>
-        <div class="form-group">
-          <label for="edit-weather">Schlechtwetter-Info</label>
-          <textarea id="edit-weather" v-model="editBadWeather" rows="3"
-            placeholder="Was passiert bei schlechtem Wetter?" />
         </div>
       </div>
 
@@ -444,6 +430,20 @@ async function doDelete() {
             <input id="edit-siko" type="file" accept=".pdf" @change="onSikoFileChange" />
             <span v-if="editSikoFile" class="file-name">{{ editSikoFile.name }}</span>
           </div>
+        </div>
+      </div>
+
+      <!-- Ziel + Schlechtwetter -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="edit-goal">Ziel</label>
+          <textarea id="edit-goal" v-model="editGoal" rows="3"
+            placeholder="Was soll erreicht werden?" />
+        </div>
+        <div class="form-group">
+          <label for="edit-weather">Schlechtwetter-Info</label>
+          <textarea id="edit-weather" v-model="editBadWeather" rows="3"
+            placeholder="Was passiert bei schlechtem Wetter?" />
         </div>
       </div>
 
