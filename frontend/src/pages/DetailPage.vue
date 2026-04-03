@@ -107,6 +107,15 @@ function enterEdit() {
   mode.value  = 'edit'
 }
 
+// ---- Copy material list ----------------------------------------------------
+const materialCopied = ref(false)
+async function copyMaterial() {
+  if (!activity.value?.material.length) return
+  await navigator.clipboard.writeText(activity.value.material.join('\n'))
+  materialCopied.value = true
+  setTimeout(() => { materialCopied.value = false }, 2000)
+}
+
 // ---- Material --------------------------------------------------------------
 // Sentinel pattern: array always ends with one empty string.
 // @input  → if user typed in the last (sentinel) field, grow the list
@@ -270,7 +279,16 @@ async function doDelete() {
 
       <!-- Material -->
       <div class="detail-section">
-        <p class="detail-section-title">Material</p>
+        <div class="detail-section-header">
+          <p class="detail-section-title">Material</p>
+          <button
+            v-if="activity.material.length"
+            class="btn-copy"
+            :class="{ 'btn-copy--done': materialCopied }"
+            @click="copyMaterial"
+            :title="materialCopied ? 'Kopiert!' : 'Liste kopieren'"
+          >{{ materialCopied ? '✓' : '⎘' }}</button>
+        </div>
         <div v-if="activity.material.length" class="material-chips">
           <span v-for="(m, i) in activity.material" :key="i" class="material-chip">{{ m }}</span>
         </div>
