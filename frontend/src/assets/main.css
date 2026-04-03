@@ -569,6 +569,7 @@ body {
 .program-desc {
   font-size: 0.88rem;
   color: #6b7280;
+  white-space: pre-wrap;
   margin-top: 2px;
 }
 
