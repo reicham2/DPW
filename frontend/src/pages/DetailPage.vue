@@ -60,14 +60,33 @@ function syncEditFields(a: typeof activity.value) {
   }))
 }
 
-// ---- WS live update — always apply; in edit mode sync the form fields too --
-// Skip form sync if the user is currently typing (autoSaveTimer is active)
-// so we never overwrite uncommitted local input.
+// ---- WS live update — field-level merge in edit mode -----------------------
+// Compare incoming update against last known saved state (prev).
+// Only fields that changed remotely are patched into the edit form,
+// so Tab B's own uncommitted edits in other fields are never overwritten.
 watch(lastUpdatedActivity, (updated) => {
   if (!updated || updated.id !== id) return
-  activity.value = updated
-  if (mode.value === 'edit' && !autoSaveTimer) {
-    syncEditFields(updated)
+
+  const prev = activity.value   // last known saved snapshot
+  activity.value = updated       // always advance source-of-truth
+
+  if (mode.value === 'edit' && prev) {
+    if (updated.title             !== prev.title)             editTitle.value       = updated.title
+    if (updated.date              !== prev.date)              editDate.value        = updated.date
+    if (updated.start_time        !== prev.start_time)        editStartTime.value   = updated.start_time
+    if (updated.end_time          !== prev.end_time)          editEndTime.value     = updated.end_time
+    if (updated.goal              !== prev.goal)              editGoal.value        = updated.goal
+    if (updated.location          !== prev.location)          editLocation.value    = updated.location
+    if (updated.responsible       !== prev.responsible)       editResponsible.value = updated.responsible
+    if (updated.department        !== prev.department)        editDepartment.value  = updated.department ?? ''
+    if (updated.needs_siko        !== prev.needs_siko)        editNeedsSiko.value   = updated.needs_siko
+    if (updated.bad_weather_info  !== prev.bad_weather_info)  editBadWeather.value  = updated.bad_weather_info ?? ''
+    if (JSON.stringify(updated.material) !== JSON.stringify(prev.material))
+      editMaterial.value = [...updated.material]
+    if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs))
+      editPrograms.value = updated.programs.map(p => ({
+        time: p.time, title: p.title, description: p.description, responsible: p.responsible
+      }))
   }
 })
 
