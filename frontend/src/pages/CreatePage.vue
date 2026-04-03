@@ -28,11 +28,14 @@ const submitting     = ref(false)
 
 // ---- Material --------------------------------------------------------------
 function onMaterialInput(i: number) {
-  const val    = material.value[i]
   const isLast = i === material.value.length - 1
-  if (isLast && val !== '') {
+  if (isLast && material.value[i] !== '') {
     material.value.push('')
-  } else if (!isLast && val === '') {
+  }
+}
+function onMaterialBlur(i: number) {
+  const isLast = i === material.value.length - 1
+  if (!isLast && material.value[i] === '') {
     material.value.splice(i, 1)
   }
 }
@@ -150,6 +153,7 @@ async function submit() {
             type="text"
             placeholder="Material…"
             @input="onMaterialInput(i)"
+            @blur="onMaterialBlur(i)"
           />
         </div>
       </div>

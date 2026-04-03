@@ -108,15 +108,18 @@ function enterEdit() {
 }
 
 // ---- Material --------------------------------------------------------------
-// The array always ends with one empty sentinel string.
-// Typing in the sentinel → append a new sentinel at the end.
-// Clearing a non-sentinel field → remove it immediately.
+// Sentinel pattern: array always ends with one empty string.
+// @input  → if user typed in the last (sentinel) field, grow the list
+// @blur   → if a non-sentinel field is empty when leaving, remove it
 function onMaterialInput(i: number) {
-  const val    = editMaterial.value[i]
   const isLast = i === editMaterial.value.length - 1
-  if (isLast && val !== '') {
+  if (isLast && editMaterial.value[i] !== '') {
     editMaterial.value.push('')
-  } else if (!isLast && val === '') {
+  }
+}
+function onMaterialBlur(i: number) {
+  const isLast = i === editMaterial.value.length - 1
+  if (!isLast && editMaterial.value[i] === '') {
     editMaterial.value.splice(i, 1)
   }
 }
@@ -381,6 +384,7 @@ async function doDelete() {
             type="text"
             placeholder="Material…"
             @input="onMaterialInput(i)"
+            @blur="onMaterialBlur(i)"
           />
         </div>
       </div>
