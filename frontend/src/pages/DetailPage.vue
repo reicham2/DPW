@@ -135,7 +135,7 @@ function onMaterialBlur(i: number) {
 
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
-  editPrograms.value.push({ time: '', title: '', description: '', responsible: '' })
+  editPrograms.value.push({ time: '', title: '', description: '', responsible: editResponsible.value })
 }
 function removeProgram(i: number) { editPrograms.value.splice(i, 1) }
 
@@ -206,7 +206,6 @@ async function doDelete() {
 <template>
   <header class="header">
     <button class="btn-back" @click="router.push('/')">← Zurück</button>
-    <h1>{{ activity?.title || 'Aktivität' }}</h1>
     <div class="header-right">
       <span v-if="saving" class="saving-badge">Speichert…</span>
       <button
@@ -231,18 +230,12 @@ async function doDelete() {
       <div class="detail-section">
         <div class="detail-hero">
           <div>
-            <div class="detail-hero-top">
-              <h2 class="detail-hero-title">{{ activity.title }}</h2>
-              <span v-if="activity.responsible" class="detail-hero-responsible">{{ activity.responsible }}</span>
-            </div>
+            <h2 class="detail-hero-title">{{ activity.title }}</h2>
             <p class="detail-hero-time">
               {{ formatDate(activity.date) }} &middot;
               {{ activity.start_time }}–{{ activity.end_time }}
             </p>
           </div>
-          <span v-if="activity.department" class="card-dept-badge">
-            {{ activity.department }}
-          </span>
         </div>
       </div>
 
