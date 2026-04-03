@@ -143,24 +143,24 @@ async function submit() {
             <button type="button" class="program-card__remove" @click="removeProgram(i)">✕</button>
             <div class="program-card__fields">
               <div class="form-group">
-                <label>Dauer (Minuten)</label>
+                <label>Minuten</label>
                 <input
-                  type="number" min="0" placeholder="z.B. 30"
+                  type="number" min="0" placeholder="30"
                   :value="prog.time"
                   @input="prog.time = ($event.target as HTMLInputElement).value"
                 />
               </div>
               <div class="form-group">
                 <label>Titel</label>
-                <input v-model="prog.title" type="text" placeholder="Programmpunkt-Titel" />
+                <input v-model="prog.title" type="text" placeholder="Titel" />
+              </div>
+              <div class="form-group">
+                <label>Verantwortlich</label>
+                <input v-model="prog.responsible" type="text" placeholder="Name" />
               </div>
               <div class="form-group program-card__full">
                 <label>Beschreibung</label>
                 <textarea v-model="prog.description" rows="2" placeholder="Beschreibung..." />
-              </div>
-              <div class="form-group program-card__full">
-                <label>Verantwortlich</label>
-                <input v-model="prog.responsible" type="text" placeholder="Name" />
               </div>
             </div>
           </div>

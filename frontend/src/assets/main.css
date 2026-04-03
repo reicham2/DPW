@@ -417,7 +417,7 @@ body {
 
 .program-card__fields {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: 90px 1fr 1fr;
   gap: 10px;
   padding-right: 40px;
 }
