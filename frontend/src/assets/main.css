@@ -952,3 +952,24 @@ body {
     padding: 11px 14px 11px 38px;
   }
 }
+
+/* =============================================================================
+   MATERIAL GRID — 3 columns, auto-grow sentinel pattern
+   ============================================================================= */
+
+.material-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.material-grid input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 599px) {
+  .material-grid {
+    grid-template-columns: 1fr;
+  }
+}

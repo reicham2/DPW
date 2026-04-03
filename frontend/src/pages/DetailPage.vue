@@ -27,7 +27,7 @@ const editGoal        = ref('')
 const editLocation    = ref('')
 const editResponsible = ref('')
 const editDepartment  = ref<Department | ''>('')
-const editMaterial    = ref<string[]>([])
+const editMaterial    = ref<string[]>([''])
 const editNeedsSiko   = ref(false)
 const editSikoFile    = ref<File | null>(null)
 const editSikoBase64  = ref<string | null>(null)
@@ -52,7 +52,7 @@ function syncEditFields(a: typeof activity.value) {
   editLocation.value    = a.location
   editResponsible.value = a.responsible
   editDepartment.value  = a.department ?? ''
-  editMaterial.value    = [...a.material]
+  editMaterial.value    = [...a.material, '']  // trailing empty = sentinel input
   editNeedsSiko.value   = a.needs_siko
   editBadWeather.value  = a.bad_weather_info ?? ''
   editPrograms.value    = a.programs.map(p => ({
@@ -82,7 +82,7 @@ watch(lastUpdatedActivity, (updated) => {
     if (updated.needs_siko        !== prev.needs_siko)        editNeedsSiko.value   = updated.needs_siko
     if (updated.bad_weather_info  !== prev.bad_weather_info)  editBadWeather.value  = updated.bad_weather_info ?? ''
     if (JSON.stringify(updated.material) !== JSON.stringify(prev.material))
-      editMaterial.value = [...updated.material]
+      editMaterial.value = [...updated.material, '']
     if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs))
       editPrograms.value = updated.programs.map(p => ({
         time: p.time, title: p.title, description: p.description, responsible: p.responsible
@@ -108,8 +108,18 @@ function enterEdit() {
 }
 
 // ---- Material --------------------------------------------------------------
-function addMaterial()             { editMaterial.value.push('') }
-function removeMaterial(i: number) { editMaterial.value.splice(i, 1) }
+// The array always ends with one empty sentinel string.
+// Typing in the sentinel → append a new sentinel at the end.
+// Clearing a non-sentinel field → remove it immediately.
+function onMaterialInput(i: number) {
+  const val    = editMaterial.value[i]
+  const isLast = i === editMaterial.value.length - 1
+  if (isLast && val !== '') {
+    editMaterial.value.push('')
+  } else if (!isLast && val === '') {
+    editMaterial.value.splice(i, 1)
+  }
+}
 
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
@@ -363,12 +373,15 @@ async function doDelete() {
       <!-- Material -->
       <div class="form-section">
         <p class="form-section-title">Material</p>
-        <div class="dynamic-list">
-          <div v-for="(_, i) in editMaterial" :key="i" class="dynamic-list-row">
-            <input v-model="editMaterial[i]" type="text" placeholder="Material" />
-            <button type="button" class="btn-remove-sm" @click="removeMaterial(i)">✕</button>
-          </div>
-          <button type="button" class="btn-add" @click="addMaterial">+ Material</button>
+        <div class="material-grid">
+          <input
+            v-for="(_, i) in editMaterial"
+            :key="i"
+            v-model="editMaterial[i]"
+            type="text"
+            placeholder="Material…"
+            @input="onMaterialInput(i)"
+          />
         </div>
       </div>
 

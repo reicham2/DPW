@@ -18,7 +18,7 @@ const goal           = ref('')
 const location       = ref('')
 const responsible    = ref('')
 const department     = ref<Department | ''>('Pfadi')
-const material       = ref<string[]>([])
+const material       = ref<string[]>([''])
 const needs_siko     = ref(false)
 const sikoFile       = ref<File | null>(null)
 const sikoBase64     = ref<string | null>(null)
@@ -27,8 +27,15 @@ const programs       = ref<ProgramInput[]>([])
 const submitting     = ref(false)
 
 // ---- Material --------------------------------------------------------------
-function addMaterial()           { material.value.push('') }
-function removeMaterial(i: number) { material.value.splice(i, 1) }
+function onMaterialInput(i: number) {
+  const val    = material.value[i]
+  const isLast = i === material.value.length - 1
+  if (isLast && val !== '') {
+    material.value.push('')
+  } else if (!isLast && val === '') {
+    material.value.splice(i, 1)
+  }
+}
 
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
@@ -135,12 +142,15 @@ async function submit() {
       <!-- Material -->
       <div class="form-section">
         <p class="form-section-title">Material</p>
-        <div class="dynamic-list">
-          <div v-for="(_, i) in material" :key="i" class="dynamic-list-row">
-            <input v-model="material[i]" type="text" placeholder="Material" />
-            <button type="button" class="btn-remove-sm" @click="removeMaterial(i)">✕</button>
-          </div>
-          <button type="button" class="btn-add" @click="addMaterial">+ Material</button>
+        <div class="material-grid">
+          <input
+            v-for="(_, i) in material"
+            :key="i"
+            v-model="material[i]"
+            type="text"
+            placeholder="Material…"
+            @input="onMaterialInput(i)"
+          />
         </div>
       </div>
 
