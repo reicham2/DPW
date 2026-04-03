@@ -271,9 +271,11 @@ async function doDelete() {
           <div v-for="prog in activity.programs" :key="prog.id" class="program-item">
             <span class="program-time">{{ prog.time ? prog.time + ' min' : '—' }}</span>
             <div class="program-body">
-              <p class="program-title">{{ prog.title }}</p>
+              <div class="program-header">
+                <p class="program-title">{{ prog.title }}</p>
+                <span v-if="prog.responsible" class="program-resp">{{ prog.responsible }}</span>
+              </div>
               <p v-if="prog.description" class="program-desc">{{ prog.description }}</p>
-              <p v-if="prog.responsible" class="program-resp">{{ prog.responsible }}</p>
             </div>
           </div>
         </div>

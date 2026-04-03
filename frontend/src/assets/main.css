@@ -573,6 +573,13 @@ body {
 
 .program-body {}
 
+.program-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .program-title {
   font-weight: 600;
   font-size: 0.95rem;
