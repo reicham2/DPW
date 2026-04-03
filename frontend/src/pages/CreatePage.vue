@@ -17,8 +17,8 @@ const end_time       = ref('')
 const goal           = ref('')
 const location       = ref('')
 const responsible    = ref('')
-const department     = ref<Department | ''>('')
-const material       = ref<string[]>([])
+const department     = ref<Department | ''>('Pfadi')
+const material       = ref<string[]>([''])
 const needs_siko     = ref(false)
 const sikoFile       = ref<File | null>(null)
 const sikoBase64     = ref<string | null>(null)
@@ -27,8 +27,18 @@ const programs       = ref<ProgramInput[]>([])
 const submitting     = ref(false)
 
 // ---- Material --------------------------------------------------------------
-function addMaterial()           { material.value.push('') }
-function removeMaterial(i: number) { material.value.splice(i, 1) }
+function onMaterialInput(i: number) {
+  const isLast = i === material.value.length - 1
+  if (isLast && material.value[i] !== '') {
+    material.value.push('')
+  }
+}
+function onMaterialBlur(i: number) {
+  const isLast = i === material.value.length - 1
+  if (!isLast && material.value[i] === '') {
+    material.value.splice(i, 1)
+  }
+}
 
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
@@ -106,13 +116,6 @@ async function submit() {
         </div>
       </div>
 
-      <!-- Ziel -->
-      <div class="form-group">
-        <label for="goal">Ziel</label>
-        <textarea id="goal" v-model="goal" rows="3"
-          placeholder="Was soll erreicht werden?" />
-      </div>
-
       <!-- Ort + Verantwortlich + Abteilung -->
       <div class="form-row form-row--3">
         <div class="form-group">
@@ -132,15 +135,52 @@ async function submit() {
         </div>
       </div>
 
+      <!-- Programmpunkte -->
+      <div class="form-section">
+        <p class="form-section-title">Programmpunkte</p>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div v-for="(prog, i) in programs" :key="i" class="program-card">
+            <button type="button" class="program-card__remove" @click="removeProgram(i)">✕</button>
+            <div class="program-card__fields">
+              <div class="form-group">
+                <label>Minuten</label>
+                <input
+                  type="number" min="0" placeholder="30"
+                  :value="prog.time"
+                  @input="prog.time = ($event.target as HTMLInputElement).value"
+                />
+              </div>
+              <div class="form-group">
+                <label>Titel</label>
+                <input v-model="prog.title" type="text" placeholder="Titel" />
+              </div>
+              <div class="form-group">
+                <label>Verantwortlich</label>
+                <input v-model="prog.responsible" type="text" placeholder="Name" />
+              </div>
+              <div class="form-group program-card__full">
+                <label>Beschreibung</label>
+                <textarea v-model="prog.description" rows="2" placeholder="Beschreibung..." />
+              </div>
+            </div>
+          </div>
+          <button type="button" class="btn-add" @click="addProgram">+ Programmpunkt</button>
+        </div>
+      </div>
+
       <!-- Material -->
       <div class="form-section">
         <p class="form-section-title">Material</p>
-        <div class="dynamic-list">
-          <div v-for="(_, i) in material" :key="i" class="dynamic-list-row">
-            <input v-model="material[i]" type="text" placeholder="Material" />
-            <button type="button" class="btn-remove-sm" @click="removeMaterial(i)">✕</button>
-          </div>
-          <button type="button" class="btn-add" @click="addMaterial">+ Material</button>
+        <div class="material-grid">
+          <input
+            v-for="(_, i) in material"
+            :key="i"
+            v-model="material[i]"
+            type="text"
+            placeholder="Material…"
+            @input="onMaterialInput(i)"
+            @blur="onMaterialBlur(i)"
+          />
         </div>
       </div>
 
@@ -160,39 +200,17 @@ async function submit() {
         </div>
       </div>
 
-      <!-- Schlechtwetter -->
-      <div class="form-group">
-        <label for="bad_weather">Schlechtwetter-Info</label>
-        <textarea id="bad_weather" v-model="bad_weather" rows="2"
-          placeholder="Was passiert bei schlechtem Wetter?" />
-      </div>
-
-      <!-- Programmpunkte -->
-      <div class="form-section">
-        <p class="form-section-title">Programmpunkte</p>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <div v-for="(prog, i) in programs" :key="i" class="program-card">
-            <button type="button" class="program-card__remove" @click="removeProgram(i)">✕</button>
-            <div class="program-card__fields">
-              <div class="form-group">
-                <label>Zeit</label>
-                <input v-model="prog.time" type="time" />
-              </div>
-              <div class="form-group">
-                <label>Titel</label>
-                <input v-model="prog.title" type="text" placeholder="Programmpunkt-Titel" />
-              </div>
-              <div class="form-group program-card__full">
-                <label>Beschreibung</label>
-                <textarea v-model="prog.description" rows="2" placeholder="Beschreibung..." />
-              </div>
-              <div class="form-group program-card__full">
-                <label>Verantwortlich</label>
-                <input v-model="prog.responsible" type="text" placeholder="Name" />
-              </div>
-            </div>
-          </div>
-          <button type="button" class="btn-add" @click="addProgram">+ Programmpunkt</button>
+      <!-- Ziel + Schlechtwetter -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="goal">Ziel</label>
+          <textarea id="goal" v-model="goal" rows="3"
+            placeholder="Was soll erreicht werden?" />
+        </div>
+        <div class="form-group">
+          <label for="bad_weather">Schlechtwetter-Info</label>
+          <textarea id="bad_weather" v-model="bad_weather" rows="3"
+            placeholder="Was passiert bei schlechtem Wetter?" />
         </div>
       </div>
 

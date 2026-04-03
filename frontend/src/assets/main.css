@@ -244,7 +244,8 @@ body {
 
 .form-group input,
 .form-group textarea,
-.form-group select {
+.form-group select,
+.material-grid input {
   width: 100%;
   padding: 10px 12px;
   font-size: 1rem;
@@ -254,11 +255,13 @@ body {
   background: #fff;
   transition: border-color 0.15s, box-shadow 0.15s;
   resize: vertical;
+  box-sizing: border-box;
 }
 
 .form-group input:focus,
 .form-group textarea:focus,
-.form-group select:focus {
+.form-group select:focus,
+.material-grid input:focus {
   outline: none;
   border-color: #6366f1;
   box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
@@ -414,7 +417,7 @@ body {
 
 .program-card__fields {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: 90px 1fr 1fr;
   gap: 10px;
   padding-right: 40px;
 }
@@ -502,11 +505,24 @@ body {
   margin-bottom: 6px;
 }
 
+.detail-hero-top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .detail-hero-title {
   font-size: 1.5rem;
   font-weight: 700;
   color: #111;
   line-height: 1.3;
+}
+
+.detail-hero-responsible {
+  font-size: 0.95rem;
+  color: #6b7280;
+  font-weight: 500;
 }
 
 .detail-hero-time {
@@ -557,6 +573,13 @@ body {
 
 .program-body {}
 
+.program-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .program-title {
   font-weight: 600;
   font-size: 0.95rem;
@@ -566,6 +589,7 @@ body {
 .program-desc {
   font-size: 0.88rem;
   color: #6b7280;
+  white-space: pre-wrap;
   margin-top: 2px;
 }
 
@@ -615,4 +639,406 @@ body {
   color: #6b7280;
   text-align: center;
   margin: 32px 0;
+}
+
+/* =============================================================================
+   RESPONSIVE — mobile-first overrides (≤ 599 px)
+   All existing styles target desktop. These rules override for small screens.
+   ============================================================================= */
+@media (max-width: 599px) {
+
+  /* ---- App container ---- */
+  .app {
+    padding: 0 14px 72px;
+  }
+
+  /* ---- Header ---- */
+  /* Pages with a back-button: stack title below the top row */
+  .header {
+    flex-wrap: wrap;
+    padding: 14px 0 14px;
+    margin-bottom: 20px;
+    gap: 6px 10px;
+    align-items: center;
+  }
+
+  /* back button stays left, header-right stays right on row 1 */
+  .btn-back {
+    order: 1;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .header-right {
+    order: 2;
+    margin-left: auto;
+    gap: 8px;
+  }
+
+  /* title drops to its own full-width row below */
+  .header h1 {
+    order: 3;
+    flex: 0 0 100%;
+    font-size: 1.2rem;
+    margin-top: 2px;
+  }
+
+  /* Index page has no back-button: keep title inline on row 1 */
+  .header:not(:has(.btn-back)) h1 {
+    order: 0;
+    flex: 1;
+    font-size: 1.25rem;
+    margin-top: 0;
+  }
+
+  /* ---- Buttons (touch targets ≥ 44 px) ---- */
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+  }
+
+  .btn-toggle {
+    min-height: 44px;
+    padding: 9px 14px;
+    font-size: 0.85rem;
+  }
+
+  .btn-add {
+    min-height: 40px;
+    padding: 9px 14px;
+    font-size: 0.88rem;
+  }
+
+  .btn-remove-sm {
+    width: 36px;
+    height: 44px;
+  }
+
+  /* ---- Form rows: all columns collapse to single column ---- */
+  .form-row,
+  .form-row--3,
+  .form-row--4 {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  /* ---- Form inputs: slightly larger text for readability ---- */
+  .form-group input,
+  .form-group textarea,
+  .form-group select,
+  .material-grid input {
+    font-size: 1rem;
+    padding: 11px 12px;
+  }
+
+  /* ---- Form section spacing ---- */
+  .detail-form {
+    gap: 16px;
+  }
+
+  /* ---- Form actions: wrap on very small screens ---- */
+  .form-actions {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .form-actions-right {
+    margin-left: auto;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ---- Checkbox: bigger tap target ---- */
+  .form-check {
+    min-height: 44px;
+    padding: 8px 0;
+    gap: 12px;
+  }
+
+  .form-check input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  /* ---- Program card: single-column fields ---- */
+  .program-card {
+    padding: 48px 14px 14px;
+  }
+
+  .program-card__fields {
+    grid-template-columns: 1fr;
+    padding-right: 0;
+    gap: 12px;
+  }
+
+  /* ---- Activity card ---- */
+  .activity-card {
+    padding: 14px 16px;
+  }
+
+  .card-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .card-title {
+    font-size: 0.97rem;
+  }
+
+  .card-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  /* ---- Detail view ---- */
+  .detail-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .detail-hero-title {
+    font-size: 1.25rem;
+  }
+
+  .detail-hero-time {
+    font-size: 0.9rem;
+  }
+
+  .detail-section {
+    padding: 14px 0;
+  }
+
+  .detail-grid,
+  .detail-grid--3 {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .detail-meta {
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.75rem;
+  }
+
+  /* ---- Material chips: slightly bigger ---- */
+  .material-chip {
+    font-size: 0.85rem;
+    padding: 5px 12px;
+  }
+
+  /* ---- Program timeline ---- */
+  .program-item {
+    gap: 10px;
+  }
+
+  .program-time {
+    min-width: 40px;
+    font-size: 0.82rem;
+  }
+
+  /* ---- Status / saving badges ---- */
+  .status {
+    font-size: 0.75rem;
+    padding: 4px 9px;
+  }
+
+  /* ---- Error / loading ---- */
+  .error,
+  .loading {
+    font-size: 0.9rem;
+  }
+}
+
+/* =============================================================================
+   FILTER BAR (IndexPage)
+   ============================================================================= */
+
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+/* Search input */
+.filter-search {
+  position: relative;
+  width: 100%;
+}
+
+.filter-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.95rem;
+  pointer-events: none;
+  user-select: none;
+}
+
+.filter-search-input {
+  width: 100%;
+  padding: 10px 14px 10px 38px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  background: #fff;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.filter-search-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.filter-search-input::placeholder {
+  color: #9ca3af;
+}
+
+/* Department tab pills */
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-tab {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  white-space: nowrap;
+}
+
+.filter-tab:hover {
+  border-color: #6366f1;
+  color: #4f46e5;
+  background: #eef2ff;
+}
+
+.filter-tab--active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+
+.filter-tab--active:hover {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+
+/* Empty state when filters match nothing */
+.filter-empty {
+  text-align: center;
+  color: #6b7280;
+  margin: 48px 0;
+  font-size: 0.95rem;
+}
+
+/* Mobile: filter bar */
+@media (max-width: 599px) {
+  .filter-bar {
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .filter-tabs {
+    gap: 5px;
+  }
+
+  .filter-tab {
+    padding: 7px 12px;
+    font-size: 0.82rem;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+
+  .filter-search-input {
+    font-size: 1rem;
+    padding: 11px 14px 11px 38px;
+  }
+}
+
+/* =============================================================================
+   MATERIAL GRID — 3 columns, auto-grow sentinel pattern
+   ============================================================================= */
+
+.material-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.material-grid input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 599px) {
+  .material-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =============================================================================
+   SECTION HEADER with action button (e.g. copy material)
+   ============================================================================= */
+
+.detail-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.detail-section-header .detail-section-title {
+  margin-bottom: 0;
+}
+
+.btn-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #6b7280;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.btn-copy:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+  background: #eef2ff;
+}
+
+.btn-copy--done {
+  border-color: #10b981;
+  color: #10b981;
+  background: #ecfdf5;
 }

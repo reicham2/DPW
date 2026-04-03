@@ -1,4 +1,4 @@
-export type Department = 'Jungschar' | 'Pfadi' | 'Rover' | 'PTA' | 'Leiter' | 'Sonstige'
+export type Department = 'Leiter' | 'Pio' | 'Pfadi' | 'Wölfe' | 'Biber'
 
 export interface Program {
   id: string
