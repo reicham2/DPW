@@ -151,7 +151,11 @@ async function submit() {
             <div class="program-card__fields">
               <div class="form-group">
                 <label>Dauer (Minuten)</label>
-                <input v-model="prog.time" type="number" min="0" placeholder="z.B. 30" />
+                <input
+                  type="number" min="0" placeholder="z.B. 30"
+                  :value="prog.time"
+                  @input="prog.time = ($event.target as HTMLInputElement).value"
+                />
               </div>
               <div class="form-group">
                 <label>Titel</label>

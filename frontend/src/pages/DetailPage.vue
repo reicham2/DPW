@@ -258,6 +258,22 @@ async function doDelete() {
         </div>
       </div>
 
+      <!-- Programmpunkte -->
+      <div class="detail-section">
+        <p class="detail-section-title">Programmpunkte</p>
+        <div v-if="activity.programs.length" class="program-timeline">
+          <div v-for="prog in activity.programs" :key="prog.id" class="program-item">
+            <span class="program-time">{{ prog.time ? prog.time + ' min' : '—' }}</span>
+            <div class="program-body">
+              <p class="program-title">{{ prog.title }}</p>
+              <p v-if="prog.description" class="program-desc">{{ prog.description }}</p>
+              <p v-if="prog.responsible" class="program-resp">{{ prog.responsible }}</p>
+            </div>
+          </div>
+        </div>
+        <span v-else class="detail-value detail-value--muted">—</span>
+      </div>
+
       <!-- Material -->
       <div class="detail-section">
         <p class="detail-section-title">Material</p>
@@ -294,22 +310,6 @@ async function doDelete() {
         <p class="detail-value detail-value--multiline">
           {{ activity.bad_weather_info || '—' }}
         </p>
-      </div>
-
-      <!-- Programmpunkte -->
-      <div class="detail-section">
-        <p class="detail-section-title">Programmpunkte</p>
-        <div v-if="activity.programs.length" class="program-timeline">
-          <div v-for="prog in activity.programs" :key="prog.id" class="program-item">
-            <span class="program-time">{{ prog.time ? prog.time + ' min' : '—' }}</span>
-            <div class="program-body">
-              <p class="program-title">{{ prog.title }}</p>
-              <p v-if="prog.description" class="program-desc">{{ prog.description }}</p>
-              <p v-if="prog.responsible" class="program-resp">{{ prog.responsible }}</p>
-            </div>
-          </div>
-        </div>
-        <span v-else class="detail-value detail-value--muted">—</span>
       </div>
 
       <!-- Meta -->
@@ -382,7 +382,11 @@ async function doDelete() {
             <div class="program-card__fields">
               <div class="form-group">
                 <label>Dauer (Minuten)</label>
-                <input v-model="prog.time" type="number" min="0" placeholder="z.B. 30" />
+                <input
+                  type="number" min="0" placeholder="z.B. 30"
+                  :value="prog.time"
+                  @input="prog.time = ($event.target as HTMLInputElement).value"
+                />
               </div>
               <div class="form-group">
                 <label>Titel</label>
