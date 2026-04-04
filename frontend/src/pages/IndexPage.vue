@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useActivities } from '../composables/useActivities'
+import { user } from '../composables/useAuth'
 import ActivityList from '../components/ActivityList.vue'
 import type { Department } from '../types'
 
@@ -9,7 +10,7 @@ const DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
 const { activities, loading, error, connected, fetchActivities } = useActivities()
 
 const search     = ref('')
-const activedept = ref<Department | 'Alle'>('Alle')
+const activedept = ref<Department | 'Alle'>(user.value?.department ?? 'Alle')
 
 onMounted(fetchActivities)
 

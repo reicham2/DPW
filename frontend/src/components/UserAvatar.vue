@@ -1,12 +1,6 @@
 <template>
   <div class="user-avatar-wrap" ref="wrapRef">
-    <!-- Not logged in -->
-    <button v-if="!user" class="avatar-login-btn" @click="handleLogin" :disabled="loggingIn">
-      {{ loggingIn ? 'Anmelden...' : 'Anmelden' }}
-    </button>
-
-    <!-- Logged in -->
-    <template v-else>
+    <template v-if="user">
       <button class="avatar-circle" @click="open = !open" :title="user.display_name">
         {{ initials }}
       </button>
@@ -72,26 +66,6 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   position: relative;
   display: flex;
   align-items: center;
-}
-
-.avatar-login-btn {
-  padding: 6px 16px;
-  background: #fff;
-  color: #1a56db;
-  border: 1.5px solid #1a56db;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.avatar-login-btn:hover:not(:disabled) {
-  background: #1a56db;
-  color: #fff;
-}
-.avatar-login-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .avatar-circle {

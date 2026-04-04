@@ -5,7 +5,9 @@
         <router-link to="/" class="global-nav-logo">
           <img src="/logo.svg" alt="DPWeb" class="global-nav-logo-img" />
         </router-link>
-        <UserAvatar />
+        <div class="global-nav-user">
+          <UserAvatar />
+        </div>
       </div>
     </nav>
 
@@ -17,7 +19,6 @@
     <!-- Login required overlay -->
     <div v-else-if="!user" class="auth-overlay">
       <div class="auth-box">
-        <img src="/logo.svg" alt="DPWeb" class="auth-logo" />
         <h1 class="auth-title">DPWeb</h1>
         <p class="auth-subtitle">Melde dich mit deinem Microsoft-Konto an.</p>
         <button class="auth-btn" @click="handleLogin" :disabled="loggingIn">
@@ -133,5 +134,11 @@ onMounted(() => initAuth())
   font-size: 0.85rem;
   color: #dc2626;
   text-align: center;
+}
+
+.global-nav-user {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
 }
 </style>

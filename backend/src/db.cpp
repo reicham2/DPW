@@ -520,8 +520,8 @@ std::optional<UserRecord> Database::upsert_user(const std::string& oid,
     ensure_connected();
     const char* params[3] = { oid.c_str(), email.c_str(), display_name.c_str() };
     PGresult* res = PQexecParams(conn_,
-        "INSERT INTO users (microsoft_oid, email, display_name) "
-        "VALUES ($1, $2, $3) "
+        "INSERT INTO users (microsoft_oid, email, display_name, department) "
+        "VALUES ($1, $2, $3, 'Leiter'::department_enum) "
         "ON CONFLICT (microsoft_oid) DO UPDATE SET email = EXCLUDED.email, updated_at = NOW() "
         "RETURNING id, microsoft_oid, email, display_name, department::text, created_at, updated_at",
         3, nullptr, params, nullptr, nullptr, 0);
