@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libuv1-dev \
     libpq-dev \
+    libcurl4-openssl-dev \
     ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g \
     libuv1t64 \
     libpq5 \
+    libcurl4 \
     curl \
+    ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /src/build/server /usr/local/bin/server

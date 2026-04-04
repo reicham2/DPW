@@ -55,3 +55,13 @@ export type WsEvent =
   | { event: 'created'; activity: Activity }
   | { event: 'updated'; activity: Activity }
   | { event: 'deleted'; id: string }
+
+export interface User {
+  id: string
+  microsoft_oid: string
+  email: string
+  display_name: string
+  department: Department | null
+  created_at: string
+  updated_at: string
+}

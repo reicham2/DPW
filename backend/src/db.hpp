@@ -5,6 +5,16 @@
 #include <libpq-fe.h>
 #include "models.hpp"
 
+struct UserRecord {
+    std::string id;
+    std::string microsoft_oid;
+    std::string email;
+    std::string display_name;
+    std::optional<std::string> department;
+    std::string created_at;
+    std::string updated_at;
+};
+
 class Database {
 public:
     explicit Database(const std::string& conn_str);
@@ -23,14 +33,24 @@ public:
     // SiKo raw bytes (binary download)
     std::optional<std::vector<uint8_t>> get_siko(const std::string& activity_id);
 
+    // Users
+    std::optional<UserRecord> upsert_user(const std::string& oid,
+                                          const std::string& email,
+                                          const std::string& display_name);
+    std::optional<UserRecord> get_user_by_oid(const std::string& oid);
+    std::optional<UserRecord> update_user(const std::string& oid,
+                                          const std::string& display_name,
+                                          const std::optional<std::string>& department);
+
 private:
     PGconn* conn_{nullptr};
     void ensure_connected();
 
-    Activity  row_to_activity(PGresult* res, int row);
-    Program   row_to_program(PGresult* res, int row);
-    void      attach_programs(std::vector<Activity>& activities);
-    void      attach_programs_single(Activity& a);
+    Activity   row_to_activity(PGresult* res, int row);
+    Program    row_to_program(PGresult* res, int row);
+    UserRecord row_to_user(PGresult* res, int row);
+    void       attach_programs(std::vector<Activity>& activities);
+    void       attach_programs_single(Activity& a);
 
     static std::vector<std::string> parse_pg_array(const char* raw);
     static std::string format_material_param(const std::vector<std::string>& material);

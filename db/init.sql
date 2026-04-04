@@ -45,3 +45,19 @@ CREATE TRIGGER trg_activities_updated_at
 
 CREATE INDEX idx_activities_date ON activities (date DESC, start_time);
 CREATE INDEX idx_programs_activity_id ON programs (activity_id);
+
+CREATE TABLE users (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    microsoft_oid TEXT        NOT NULL UNIQUE,
+    email         TEXT        NOT NULL,
+    display_name  TEXT        NOT NULL,
+    department    department_enum,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER trg_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX idx_users_microsoft_oid ON users (microsoft_oid);

@@ -1,8 +1,23 @@
 import { ref } from 'vue'
 import type { Activity, ActivityInput, Department, WsEvent } from '../types'
+import { getIdToken } from './useAuth'
 import { useWebSocket } from './useWebSocket'
 
 const BASE = '/api'
+
+async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = await getIdToken()
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers as Record<string, string> ?? {}),
+      Authorization: `Bearer ${token}`,
+      ...(options.body && !(options.body instanceof FormData)
+        ? { 'Content-Type': 'application/json' }
+        : {}),
+    },
+  })
+}
 
 export function useActivities() {
   const activities         = ref<Activity[]>([])
@@ -32,7 +47,7 @@ export function useActivities() {
     loading.value = true
     error.value = null
     try {
-      const res = await fetch(`${BASE}/activities`)
+      const res = await apiFetch(`${BASE}/activities`)
       if (!res.ok) throw new Error(await res.text())
       activities.value = await res.json() as Activity[]
     } catch (e) {
@@ -45,7 +60,7 @@ export function useActivities() {
   async function fetchActivity(id: string): Promise<Activity | null> {
     error.value = null
     try {
-      const res = await fetch(`${BASE}/activities/${id}`)
+      const res = await apiFetch(`${BASE}/activities/${id}`)
       if (res.status === 404) return null
       if (!res.ok) throw new Error(await res.text())
       return await res.json() as Activity
@@ -57,7 +72,7 @@ export function useActivities() {
 
   async function fetchDepartments(): Promise<void> {
     try {
-      const res = await fetch(`${BASE}/departments`)
+      const res = await apiFetch(`${BASE}/departments`)
       if (res.ok) departments.value = await res.json() as Department[]
     } catch { /* non-critical */ }
   }
@@ -67,10 +82,9 @@ export function useActivities() {
     try {
       const body: Record<string, unknown> = { ...input }
       if (!input.siko_base64) delete body.siko_base64
-      const res = await fetch(`${BASE}/activities`, {
+      const res = await apiFetch(`${BASE}/activities`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(await res.text())
     } catch (e) {
@@ -83,10 +97,9 @@ export function useActivities() {
     try {
       const body: Record<string, unknown> = { ...input }
       if (!input.siko_base64) delete body.siko_base64
-      const res = await fetch(`${BASE}/activities/${id}`, {
+      const res = await apiFetch(`${BASE}/activities/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(await res.text())
     } catch (e) {
@@ -98,7 +111,7 @@ export function useActivities() {
     activities.value = activities.value.filter(a => a.id !== id)
     error.value = null
     try {
-      const res = await fetch(`${BASE}/activities/${id}`, { method: 'DELETE' })
+      const res = await apiFetch(`${BASE}/activities/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(await res.text())
     } catch (e) {
       error.value = String(e)

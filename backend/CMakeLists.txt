@@ -6,6 +6,7 @@ set(CMAKE_BUILD_TYPE Release)
 
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(CURL REQUIRED)
 
 include(FetchContent)
 
@@ -33,6 +34,7 @@ add_executable(server
     src/main.cpp
     src/db.cpp
     src/handlers.cpp
+    src/auth.cpp
     src/ws_manager.cpp
     # uSockets C/C++ sources
     ${usockets_SOURCE_DIR}/src/eventing/libuv.c
@@ -67,6 +69,7 @@ target_link_libraries(server PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     ZLIB::ZLIB
+    CURL::libcurl
 )
 
 target_compile_options(server PRIVATE -O2 -Wall -Wextra)

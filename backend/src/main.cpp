@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <string>
 #include <cstdio>
+#include <curl/curl.h>
 
 static std::string env(const char* key, const char* def = "") {
     const char* v = std::getenv(key);
@@ -12,6 +13,8 @@ static std::string env(const char* key, const char* def = "") {
 }
 
 int main() {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+
     std::string conn_str =
         "host="     + env("POSTGRES_HOST", "db")        +
         " port="    + env("POSTGRES_PORT", "5432")       +
@@ -27,9 +30,27 @@ int main() {
         .options("/*", [](auto* res, auto* /*req*/) {
             res->writeHeader("Access-Control-Allow-Origin", "*")
                ->writeHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
-               ->writeHeader("Access-Control-Allow-Headers", "Content-Type")
+               ->writeHeader("Access-Control-Allow-Headers", "Content-Type,Authorization")
                ->writeStatus("204 No Content")
                ->end();
+        })
+
+        // Health check (no auth required — used by Docker healthcheck)
+        .get("/health", [](auto* res, auto* /*req*/) {
+            res->writeHeader("Access-Control-Allow-Origin", "*")
+               ->writeStatus("200 OK")
+               ->end("ok");
+        })
+
+        // Auth + user endpoints
+        .post("/auth/me", [&](auto* res, auto* req) {
+            handle_post_auth_me(res, req, db);
+        })
+        .get("/me", [&](auto* res, auto* req) {
+            handle_get_me(res, req, db);
+        })
+        .patch("/me", [&](auto* res, auto* req) {
+            handle_patch_me(res, req, db);
         })
 
         // Static data
