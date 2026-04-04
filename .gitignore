@@ -39,3 +39,7 @@
 
 # debug information files
 *.dwo
+
+# Node.js dependencies
+node_modules/
+**/node_modules/
