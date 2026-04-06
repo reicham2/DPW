@@ -49,6 +49,9 @@ int main() {
         .get("/me", [&](auto* res, auto* req) {
             handle_get_me(res, req, db);
         })
+        .get("/users", [&](auto* res, auto* req) {
+            handle_get_users(res, req, db);
+        })
         .patch("/me", [&](auto* res, auto* req) {
             handle_patch_me(res, req, db);
         })

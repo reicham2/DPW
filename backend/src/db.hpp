@@ -34,6 +34,7 @@ public:
     std::optional<std::vector<uint8_t>> get_siko(const std::string& activity_id);
 
     // Users
+    std::vector<UserRecord>   list_users();
     std::optional<UserRecord> upsert_user(const std::string& oid,
                                           const std::string& email,
                                           const std::string& display_name);

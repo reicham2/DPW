@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
+import { useUsers } from '../composables/useUsers'
+import { user } from '../composables/useAuth'
 import type { Activity, Department, ProgramInput } from '../types'
 
 const route  = useRoute()
@@ -12,6 +14,7 @@ const {
   fetchActivity, fetchDepartments, updateActivity, deleteActivity,
   error, lastUpdatedActivity, departments
 } = useActivities()
+const { users, fetchUsers } = useUsers()
 
 const activity = ref<Activity | null>(null)
 const loading  = ref(true)
@@ -35,8 +38,13 @@ const editBadWeather  = ref('')
 const editPrograms    = ref<ProgramInput[]>([])
 
 // ---- Load ------------------------------------------------------------------
+const canEdit = computed(() =>
+  !!user.value && !!activity.value &&
+  user.value.display_name === activity.value.responsible
+)
+
 onMounted(async () => {
-  await fetchDepartments()
+  await Promise.all([fetchDepartments(), fetchUsers()])
   activity.value = await fetchActivity(id)
   loading.value  = false
 })
@@ -71,6 +79,7 @@ watch(lastUpdatedActivity, (updated) => {
   activity.value = updated       // always advance source-of-truth
 
   if (mode.value === 'edit' && prev) {
+    applyingRemote = true   // prevent the field watchers from triggering auto-save
     if (updated.title             !== prev.title)             editTitle.value       = updated.title
     if (updated.date              !== prev.date)              editDate.value        = updated.date
     if (updated.start_time        !== prev.start_time)        editStartTime.value   = updated.start_time
@@ -87,6 +96,7 @@ watch(lastUpdatedActivity, (updated) => {
       editPrograms.value = updated.programs.map(p => ({
         time: p.time, title: p.title, description: p.description, responsible: p.responsible
       }))
+    nextTick(() => { applyingRemote = false })   // reset after Vue has flushed all watchers
   }
 })
 
@@ -99,7 +109,7 @@ function formatDate(d: string): string {
 
 // ---- Enter edit mode -------------------------------------------------------
 function enterEdit() {
-  if (!activity.value) return
+  if (!activity.value || !canEdit.value) return
   syncEditFields(activity.value)
   editSikoFile.value   = null
   editSikoBase64.value = null
@@ -154,9 +164,11 @@ async function onSikoFileChange(e: Event) {
 
 // ---- Auto-save (debounced 1.5 s) -------------------------------------------
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+let applyingRemote = false   // plain boolean — set while WS update patches edit fields
 
 function scheduleAutoSave() {
   if (mode.value !== 'edit') return
+  if (applyingRemote) return      // ignore watcher firings caused by remote WS updates
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   autoSaveTimer = setTimeout(doSave, 1500)
 }
@@ -209,7 +221,7 @@ async function doDelete() {
     <div class="header-right">
       <span v-if="saving" class="saving-badge">Speichert…</span>
       <button
-        v-if="activity"
+        v-if="activity && canEdit"
         class="btn-toggle"
         :class="mode === 'edit' ? 'btn-secondary' : 'btn-primary'"
         @click="mode === 'view' ? enterEdit() : (mode = 'view')"
@@ -370,8 +382,10 @@ async function doDelete() {
         </div>
         <div class="form-group">
           <label for="edit-responsible">Verantwortlich</label>
-          <input id="edit-responsible" v-model="editResponsible" type="text"
-            placeholder="Name" />
+          <select id="edit-responsible" v-model="editResponsible">
+            <option value="" disabled>Bitte wählen</option>
+            <option v-for="u in users" :key="u.id" :value="u.display_name">{{ u.display_name }}</option>
+          </select>
         </div>
         <div class="form-group">
           <label for="edit-department">Abteilung</label>
@@ -403,7 +417,10 @@ async function doDelete() {
               </div>
               <div class="form-group">
                 <label>Verantwortlich</label>
-                <input v-model="prog.responsible" type="text" placeholder="Name" />
+                <select v-model="prog.responsible">
+                  <option value="" disabled>Bitte wählen</option>
+                  <option v-for="u in users" :key="u.id" :value="u.display_name">{{ u.display_name }}</option>
+                </select>
               </div>
               <div class="form-group program-card__full">
                 <label>Beschreibung</label>
@@ -468,7 +485,7 @@ async function doDelete() {
 
       <!-- Actions -->
       <div class="form-actions">
-        <button type="button" class="btn-danger" @click="doDelete">Löschen</button>
+        <button type="button" class="btn-danger" v-if="canEdit" @click="doDelete">Löschen</button>
         <button type="button" class="btn-secondary" @click="mode = 'view'">Schliessen</button>
       </div>
 

@@ -512,6 +512,27 @@ UserRecord Database::row_to_user(PGresult* res, int row) {
     return u;
 }
 
+// ---- list_users -------------------------------------------------------------
+
+std::vector<UserRecord> Database::list_users() {
+    ensure_connected();
+    PGresult* res = PQexec(conn_,
+        "SELECT id, microsoft_oid, email, display_name, department::text, created_at, updated_at "
+        "FROM users ORDER BY display_name");
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_users: " + err);
+    }
+    std::vector<UserRecord> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i) out.push_back(row_to_user(res, i));
+    PQclear(res);
+    return out;
+}
+
 // ---- upsert_user ------------------------------------------------------------
 
 std::optional<UserRecord> Database::upsert_user(const std::string& oid,
