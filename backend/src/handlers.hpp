@@ -30,3 +30,4 @@ void handle_delete_activity (HttpRes* res, HttpReq* req, Database& db, WebSocket
 void handle_post_auth_me    (HttpRes* res, HttpReq* req, Database& db);
 void handle_get_me          (HttpRes* res, HttpReq* req, Database& db);
 void handle_patch_me        (HttpRes* res, HttpReq* req, Database& db);
+void handle_get_users       (HttpRes* res, HttpReq* req, Database& db);

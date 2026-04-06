@@ -322,6 +322,21 @@ void handle_get_me(HttpRes* res, HttpReq* req, Database& db) {
     }
 }
 
+// ---- GET /users -------------------------------------------------------------
+
+void handle_get_users(HttpRes* res, HttpReq* req, Database& db) {
+    TokenClaims claims;
+    if (!require_auth(res, req, claims)) return;
+    try {
+        auto users = db.list_users();
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto& u : users) arr.push_back(user_to_json(u));
+        send_json(res, 200, arr.dump());
+    } catch (std::exception& e) {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
 // ---- PATCH /me --------------------------------------------------------------
 
 void handle_patch_me(HttpRes* res, HttpReq* req, Database& db) {

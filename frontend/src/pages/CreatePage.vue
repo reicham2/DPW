@@ -2,12 +2,17 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
+import { useUsers } from '../composables/useUsers'
+import { user } from '../composables/useAuth'
 import type { Department, ProgramInput } from '../types'
 
 const router = useRouter()
 const { createActivity, fetchDepartments, departments, error } = useActivities()
+const { users, fetchUsers } = useUsers()
 
-onMounted(fetchDepartments)
+onMounted(async () => {
+  await Promise.all([fetchDepartments(), fetchUsers()])
+})
 
 // ---- Form state ------------------------------------------------------------
 const title          = ref('')
@@ -16,7 +21,7 @@ const start_time     = ref('')
 const end_time       = ref('')
 const goal           = ref('')
 const location       = ref('')
-const responsible    = ref('')
+const responsible    = ref(user.value?.display_name ?? '')
 const department     = ref<Department | ''>('Pfadi')
 const material       = ref<string[]>([''])
 const needs_siko     = ref(false)
@@ -124,7 +129,10 @@ async function submit() {
         </div>
         <div class="form-group">
           <label for="responsible">Verantwortlich</label>
-          <input id="responsible" v-model="responsible" type="text" placeholder="Name" />
+          <select id="responsible" v-model="responsible" required>
+            <option value="" disabled>Bitte wählen</option>
+            <option v-for="u in users" :key="u.id" :value="u.display_name">{{ u.display_name }}</option>
+          </select>
         </div>
         <div class="form-group">
           <label for="department">Abteilung</label>
@@ -156,7 +164,10 @@ async function submit() {
               </div>
               <div class="form-group">
                 <label>Verantwortlich</label>
-                <input v-model="prog.responsible" type="text" placeholder="Name" />
+                <select v-model="prog.responsible">
+                  <option value="" disabled>Bitte wählen</option>
+                  <option v-for="u in users" :key="u.id" :value="u.display_name">{{ u.display_name }}</option>
+                </select>
               </div>
               <div class="form-group program-card__full">
                 <label>Beschreibung</label>
