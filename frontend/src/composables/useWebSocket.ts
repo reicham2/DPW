@@ -1,50 +1,68 @@
-import { ref, onUnmounted } from 'vue'
-import type { WsEvent } from '../types'
+import { ref, onUnmounted } from 'vue';
+import type { WsEvent } from '../types';
 
 // --- Singleton state (module-scoped, one WS connection for the whole app) ---
-let ws: WebSocket | null = null
-const connected = ref(false)
-const handlers = new Set<(e: WsEvent) => void>()
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let ws: WebSocket | null = null;
+const connected = ref(false);
+const handlers = new Set<(e: WsEvent) => void>();
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingRegister: { display_name: string; oid: string } | null = null;
 
 function connect() {
-  const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
-  ws = new WebSocket(`${protocol}://${location.host}/ws`)
+	const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+	ws = new WebSocket(`${protocol}://${location.host}/ws`);
 
-  ws.onopen = () => {
-    connected.value = true
-  }
+	ws.onopen = () => {
+		connected.value = true;
+		// Re-send registration on reconnect
+		if (pendingRegister) {
+			wsSend({ type: 'register', ...pendingRegister });
+		}
+	};
 
-  ws.onmessage = (e: MessageEvent) => {
-    try {
-      const payload = JSON.parse(e.data as string) as WsEvent
-      handlers.forEach(h => h(payload))
-    } catch {
-      // ignore malformed frames
-    }
-  }
+	ws.onmessage = (e: MessageEvent) => {
+		try {
+			const payload = JSON.parse(e.data as string) as WsEvent;
+			handlers.forEach((h) => h(payload));
+		} catch {
+			// ignore malformed frames
+		}
+	};
 
-  ws.onclose = () => {
-    connected.value = false
-    ws = null
-    reconnectTimer = setTimeout(connect, 3000)
-  }
+	ws.onclose = () => {
+		connected.value = false;
+		ws = null;
+		reconnectTimer = setTimeout(connect, 3000);
+	};
 
-  ws.onerror = () => {
-    ws?.close()
-  }
+	ws.onerror = () => {
+		ws?.close();
+	};
+}
+
+/** Send a JSON message to the WebSocket server */
+export function wsSend(data: Record<string, unknown>) {
+	if (ws && ws.readyState === WebSocket.OPEN) {
+		ws.send(JSON.stringify(data));
+	}
+}
+
+/** Register the current user identity with the WS server */
+export function wsRegister(display_name: string, oid: string) {
+	pendingRegister = { display_name, oid };
+	wsSend({ type: 'register', display_name, oid });
 }
 
 // --- Composable: register / deregister a message handler -------------------
 export function useWebSocket(onMessage: (e: WsEvent) => void) {
-  // Start the singleton connection on first use
-  if (!ws && !reconnectTimer) connect()
+	// Start the singleton connection on first use
+	if (!ws && !reconnectTimer) connect();
 
-  handlers.add(onMessage)
+	handlers.add(onMessage);
 
-  onUnmounted(() => {
-    handlers.delete(onMessage)
-  })
+	onUnmounted(() => {
+		handlers.delete(onMessage);
+	});
 
-  return { connected }
+	return { connected };
 }
