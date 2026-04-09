@@ -680,6 +680,72 @@ body {
 	color: #374151;
 }
 
+/* ---- User multi-select search ---- */
+.user-search-group {
+	position: relative;
+}
+
+.user-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 6px;
+}
+
+.user-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.82rem;
+	padding: 3px 8px 3px 10px;
+	border-radius: 999px;
+	background: #dbeafe;
+	border: 1px solid #93c5fd;
+	color: #1e40af;
+}
+
+.user-chip-remove {
+	background: none;
+	border: none;
+	cursor: pointer;
+	font-size: 0.75rem;
+	color: #6b7280;
+	padding: 0 2px;
+	line-height: 1;
+}
+.user-chip-remove:hover {
+	color: #ef4444;
+}
+
+.user-search-wrapper {
+	position: relative;
+}
+
+.user-dropdown {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	z-index: 50;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-top: none;
+	border-radius: 0 0 8px 8px;
+	max-height: 200px;
+	overflow-y: auto;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.user-dropdown-item {
+	padding: 8px 12px;
+	cursor: pointer;
+	font-size: 0.9rem;
+	color: #374151;
+}
+.user-dropdown-item:hover {
+	background: #f3f4f6;
+}
+
 /* ---- Program timeline (view) ---- */
 .program-timeline {
 	display: flex;

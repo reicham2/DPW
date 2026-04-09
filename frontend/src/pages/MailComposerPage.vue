@@ -40,7 +40,7 @@ function replaceTemplateVars(text: string, act: Activity): string {
     .replace(/\{\{startzeit\}\}/gi,        act.start_time)
     .replace(/\{\{endzeit\}\}/gi,          act.end_time)
     .replace(/\{\{ort\}\}/gi,              act.location)
-    .replace(/\{\{verantwortlich\}\}/gi,   act.responsible)
+    .replace(/\{\{verantwortlich\}\}/gi,   act.responsible.join(', '))
     .replace(/\{\{abteilung\}\}/gi,        act.department ?? '—')
     .replace(/\{\{ziel\}\}/gi,             act.goal)
     .replace(/\{\{material\}\}/gi,         act.material.join(', ') || '—')

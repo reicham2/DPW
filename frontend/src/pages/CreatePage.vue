@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
 import { useUsers } from '../composables/useUsers'
@@ -21,7 +21,7 @@ const start_time     = ref('')
 const end_time       = ref('')
 const goal           = ref('')
 const location       = ref('')
-const responsible    = ref(user.value?.display_name ?? '')
+const responsible    = ref<string[]>(user.value ? [user.value.display_name] : [])
 const department     = ref<Department | ''>('Pfadi')
 const material       = ref<string[]>([''])
 const needs_siko     = ref(false)
@@ -45,9 +45,40 @@ function onMaterialBlur(i: number) {
   }
 }
 
+// ---- Responsible search ----------------------------------------------------
+const responsibleSearch = ref('')
+const showResponsibleDropdown = ref(false)
+
+const filteredResponsibleUsers = computed(() => {
+  const q = responsibleSearch.value.toLowerCase()
+  return users.value.filter(
+    (u) =>
+      !responsible.value.includes(u.display_name) &&
+      (q === '' || u.display_name.toLowerCase().includes(q)),
+  )
+})
+
+function addResponsible(name: string) {
+  if (!responsible.value.includes(name)) {
+    responsible.value.push(name)
+  }
+  responsibleSearch.value = ''
+  showResponsibleDropdown.value = false
+}
+
+function removeResponsible(i: number) {
+  responsible.value.splice(i, 1)
+}
+
+function onResponsibleBlur() {
+  setTimeout(() => {
+    showResponsibleDropdown.value = false
+  }, 200)
+}
+
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
-  programs.value.push({ time: '', title: '', description: '', responsible: responsible.value })
+  programs.value.push({ time: '', title: '', description: '', responsible: responsible.value[0] ?? '' })
 }
 function removeProgram(i: number) { programs.value.splice(i, 1) }
 
@@ -75,7 +106,7 @@ async function submit() {
     end_time:        end_time.value,
     goal:            goal.value.trim(),
     location:        location.value.trim(),
-    responsible:     responsible.value.trim(),
+    responsible:     responsible.value,
     department:      department.value || null,
     material:        material.value.filter(m => m.trim()),
     needs_siko:      needs_siko.value,
@@ -127,12 +158,33 @@ async function submit() {
           <label for="location">Ort</label>
           <input id="location" v-model="location" type="text" placeholder="Veranstaltungsort" />
         </div>
-        <div class="form-group">
-          <label for="responsible">Verantwortlich</label>
-          <select id="responsible" v-model="responsible" required>
-            <option value="" disabled>Bitte wählen</option>
-            <option v-for="u in users" :key="u.id" :value="u.display_name">{{ u.display_name }}</option>
-          </select>
+        <div class="form-group user-search-group">
+          <label>Verantwortlich</label>
+          <div class="user-chips" v-if="responsible.length">
+            <span v-for="(name, i) in responsible" :key="name" class="user-chip">
+              {{ name }}
+              <button type="button" class="user-chip-remove" @click="removeResponsible(i)">✕</button>
+            </span>
+          </div>
+          <div class="user-search-wrapper">
+            <input
+              type="text"
+              v-model="responsibleSearch"
+              placeholder="Person suchen…"
+              @focus="showResponsibleDropdown = true"
+              @blur="onResponsibleBlur"
+            />
+            <div v-if="showResponsibleDropdown && filteredResponsibleUsers.length" class="user-dropdown">
+              <div
+                v-for="u in filteredResponsibleUsers"
+                :key="u.id"
+                class="user-dropdown-item"
+                @mousedown.prevent="addResponsible(u.display_name)"
+              >
+                {{ u.display_name }}
+              </div>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label for="department">Abteilung</label>

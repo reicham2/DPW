@@ -34,7 +34,7 @@ const editStartTime = ref('');
 const editEndTime = ref('');
 const editGoal = ref('');
 const editLocation = ref('');
-const editResponsible = ref('');
+const editResponsible = ref<string[]>([]);
 const editDepartment = ref<Department | ''>('');
 const editMaterial = ref<string[]>(['']);
 const editNeedsSiko = ref(false);
@@ -91,7 +91,7 @@ const canEdit = computed(
 	() =>
 		!!user.value &&
 		!!activity.value &&
-		user.value.display_name === activity.value.responsible,
+		activity.value.responsible.includes(user.value.display_name),
 );
 
 onMounted(async () => {
@@ -121,7 +121,7 @@ function syncEditFields(a: typeof activity.value) {
 	editEndTime.value = a.end_time;
 	editGoal.value = a.goal;
 	editLocation.value = a.location;
-	editResponsible.value = a.responsible;
+	editResponsible.value = [...a.responsible];
 	editDepartment.value = a.department ?? '';
 	editMaterial.value = [...a.material, '']; // trailing empty = sentinel input
 	editNeedsSiko.value = a.needs_siko;
@@ -155,8 +155,8 @@ watch(lastUpdatedActivity, (updated) => {
 		if (updated.goal !== prev.goal) editGoal.value = updated.goal;
 		if (updated.location !== prev.location)
 			editLocation.value = updated.location;
-		if (updated.responsible !== prev.responsible)
-			editResponsible.value = updated.responsible;
+		if (JSON.stringify(updated.responsible) !== JSON.stringify(prev.responsible))
+			editResponsible.value = [...updated.responsible];
 		if (updated.department !== prev.department)
 			editDepartment.value = updated.department ?? '';
 		if (updated.needs_siko !== prev.needs_siko)
@@ -247,13 +247,44 @@ function onMaterialBlur(i: number) {
 	}
 }
 
+// ---- Responsible search ----------------------------------------------------
+const responsibleSearch = ref('');
+const showResponsibleDropdown = ref(false);
+
+const filteredResponsibleUsers = computed(() => {
+	const q = responsibleSearch.value.toLowerCase();
+	return users.value.filter(
+		(u) =>
+			!editResponsible.value.includes(u.display_name) &&
+			(q === '' || u.display_name.toLowerCase().includes(q)),
+	);
+});
+
+function addResponsible(name: string) {
+	if (!editResponsible.value.includes(name)) {
+		editResponsible.value.push(name);
+	}
+	responsibleSearch.value = '';
+	showResponsibleDropdown.value = false;
+}
+
+function removeResponsible(i: number) {
+	editResponsible.value.splice(i, 1);
+}
+
+function onResponsibleBlur() {
+	setTimeout(() => {
+		showResponsibleDropdown.value = false;
+	}, 200);
+}
+
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
 	editPrograms.value.push({
 		time: '',
 		title: '',
 		description: '',
-		responsible: editResponsible.value,
+		responsible: editResponsible.value[0] ?? '',
 	});
 }
 function removeProgram(i: number) {
@@ -323,7 +354,7 @@ async function doSave() {
 		end_time: editEndTime.value,
 		goal: editGoal.value.trim(),
 		location: editLocation.value.trim(),
-		responsible: editResponsible.value.trim(),
+		responsible: editResponsible.value,
 		department: editDepartment.value || null,
 		material: editMaterial.value.filter((m) => m.trim()),
 		needs_siko: editNeedsSiko.value,
@@ -395,7 +426,7 @@ async function doDelete() {
 					</div>
 					<div class="detail-field">
 						<span class="detail-label">Verantwortlich</span>
-						<span class="detail-value">{{ activity.responsible || '—' }}</span>
+						<span class="detail-value">{{ activity.responsible.length ? activity.responsible.join(', ') : '—' }}</span>
 					</div>
 					<div class="detail-field">
 						<span class="detail-label">Abteilung</span>
@@ -567,14 +598,34 @@ async function doDelete() {
 						:disabled="isLockedByOther('location')"
 					/>
 				</div>
-				<div class="form-group">
-					<label for="edit-responsible">Verantwortlich</label>
-					<select id="edit-responsible" v-model="editResponsible" :disabled="isLockedByOther('location')">
-						<option value="" disabled>Bitte wählen</option>
-						<option v-for="u in users" :key="u.id" :value="u.display_name">
-							{{ u.display_name }}
-						</option>
-					</select>
+				<div class="form-group user-search-group">
+					<label>Verantwortlich</label>
+					<div class="user-chips" v-if="editResponsible.length">
+						<span v-for="(name, i) in editResponsible" :key="name" class="user-chip">
+							{{ name }}
+							<button type="button" class="user-chip-remove" @click="removeResponsible(i)" :disabled="isLockedByOther('location')">✕</button>
+						</span>
+					</div>
+					<div class="user-search-wrapper">
+						<input
+							type="text"
+							v-model="responsibleSearch"
+							placeholder="Person suchen…"
+							@focus="showResponsibleDropdown = true"
+							@blur="onResponsibleBlur"
+							:disabled="isLockedByOther('location')"
+						/>
+						<div v-if="showResponsibleDropdown && filteredResponsibleUsers.length" class="user-dropdown">
+							<div
+								v-for="u in filteredResponsibleUsers"
+								:key="u.id"
+								class="user-dropdown-item"
+								@mousedown.prevent="addResponsible(u.display_name)"
+							>
+								{{ u.display_name }}
+							</div>
+						</div>
+					</div>
 				</div>
 				<div class="form-group">
 					<label for="edit-department">Abteilung</label>

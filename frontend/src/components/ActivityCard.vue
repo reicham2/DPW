@@ -25,8 +25,8 @@ function formatDate(d: string): string {
       <span class="card-date">
         {{ formatDate(activity.date) }} &middot; {{ activity.start_time }}–{{ activity.end_time }}
       </span>
-      <span v-if="activity.responsible" class="card-responsible">
-        {{ activity.responsible }}
+      <span v-if="activity.responsible.length" class="card-responsible">
+        {{ activity.responsible.join(', ') }}
       </span>
     </div>
     <p v-if="activity.location" class="card-location">📍 {{ activity.location }}</p>

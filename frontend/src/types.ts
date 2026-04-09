@@ -24,7 +24,7 @@ export interface Activity {
 	end_time: string; // "HH:MM"
 	goal: string;
 	location: string;
-	responsible: string;
+	responsible: string[];
 	department: Department | null;
 	material: string[];
 	needs_siko: boolean;
@@ -42,7 +42,7 @@ export interface ActivityInput {
 	end_time: string;
 	goal: string;
 	location: string;
-	responsible: string;
+	responsible: string[];
 	department?: Department | null;
 	material: string[];
 	needs_siko: boolean;
