@@ -120,7 +120,11 @@ Activity Database::row_to_activity(PGresult *res, int row)
     a.end_time = col("end_time") ? col("end_time") : "";
     a.goal = col("goal") ? col("goal") : "";
     a.location = col("location") ? col("location") : "";
-    a.responsible = col("responsible") ? col("responsible") : "";
+    {
+        const char *resp = col("responsible");
+        if (resp)
+            a.responsible = parse_pg_array(resp);
+    }
     a.created_at = col("created_at") ? col("created_at") : "";
     a.updated_at = col("updated_at") ? col("updated_at") : "";
 
@@ -341,6 +345,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
     ensure_connected();
 
     std::string mat_json = Database::format_material_param(input.material);
+    std::string resp_json = Database::format_material_param(input.responsible);
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
     const char *needs_s = input.needs_siko ? "true" : "false";
@@ -362,7 +367,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
             std::string sql =
                 "INSERT INTO activities "
                 "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, siko) "
-                "VALUES ($1, $2::date, $3, $4, $5, $6, $7, " +
+                "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), " +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
                 ", array(select jsonb_array_elements_text($8::jsonb)), $9, decode($10, 'base64')) "
                 "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
@@ -373,7 +378,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
-                input.responsible.c_str(),
+                resp_json.c_str(),
                 mat_json.c_str(), needs_s,
                 input.siko_base64->c_str()};
             PGresult *r = PQexecParams(conn_, sql.c_str(), 10, nullptr, p2, nullptr, nullptr, 0);
@@ -392,7 +397,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
             std::string sql =
                 "INSERT INTO activities "
                 "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, bad_weather_info) "
-                "VALUES ($1, $2::date, $3, $4, $5, $6, $7, " +
+                "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), " +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
                 ", array(select jsonb_array_elements_text($8::jsonb)), $9, $10) "
                 "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
@@ -403,7 +408,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
-                input.responsible.c_str(),
+                resp_json.c_str(),
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str()};
             PGresult *r = PQexecParams(conn_, sql.c_str(), 10, nullptr, p, nullptr, nullptr, 0);
@@ -436,6 +441,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
     ensure_connected();
 
     std::string mat_json = Database::format_material_param(input.material);
+    std::string resp_json = Database::format_material_param(input.responsible);
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
     const char *needs_s = input.needs_siko ? "true" : "false";
@@ -452,7 +458,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
             std::string sql =
                 "UPDATE activities SET "
                 "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=$7, department=" +
+                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
                 ", material=array(select jsonb_array_elements_text($8::jsonb)), "
                 "needs_siko=$9, siko=decode($10, 'base64'), bad_weather_info=$11 "
@@ -465,7 +471,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
-                input.responsible.c_str(),
+                resp_json.c_str(),
                 mat_json.c_str(), needs_s,
                 input.siko_base64->c_str(),
                 bwi_str.c_str(), id.c_str()};
@@ -486,7 +492,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
             std::string sql =
                 "UPDATE activities SET "
                 "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=$7, department=" +
+                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
                 ", material=array(select jsonb_array_elements_text($8::jsonb)), "
                 "needs_siko=$9, siko=NULL, bad_weather_info=$10 "
@@ -499,7 +505,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
-                input.responsible.c_str(),
+                resp_json.c_str(),
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str(), id.c_str()};
             PGresult *r = PQexecParams(conn_, sql.c_str(), 11, nullptr, p, nullptr, nullptr, 0);
@@ -520,7 +526,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
             std::string sql =
                 "UPDATE activities SET "
                 "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=$7, department=" +
+                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
                 ", material=array(select jsonb_array_elements_text($8::jsonb)), "
                 "needs_siko=$9, bad_weather_info=$10 "
@@ -533,7 +539,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
-                input.responsible.c_str(),
+                resp_json.c_str(),
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str(), id.c_str()};
             PGresult *r = PQexecParams(conn_, sql.c_str(), 11, nullptr, p, nullptr, nullptr, 0);

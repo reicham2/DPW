@@ -90,7 +90,12 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
     input.end_time = str_field(j, "end_time");
     input.goal = str_field(j, "goal");
     input.location = str_field(j, "location");
-    input.responsible = str_field(j, "responsible");
+    if (j.contains("responsible") && j["responsible"].is_array())
+    {
+        for (auto &r : j["responsible"])
+            if (r.is_string())
+                input.responsible.push_back(r.get<std::string>());
+    }
     input.needs_siko = j.value("needs_siko", false);
 
     if (j.contains("department") && j["department"].is_string())
@@ -253,8 +258,8 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
         }
 
         ActivityInput input = parse_activity_input(j);
-        if (input.title.empty()) {
-            send_json(res, 400, R"({"error":"title is required"})");
+        if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
+            send_json(res, 400, R"({"error":"title, date, start_time and end_time are required"})");
             return;
         }
 
@@ -308,6 +313,10 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         }
 
         ActivityInput input = parse_activity_input(j);
+        if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
+            send_json(res, 400, R"({"error":"title, date, start_time and end_time are required"})");
+            return;
+        }
 
         try {
             auto activity = db.update_activity(id, input);

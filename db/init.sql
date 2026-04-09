@@ -12,7 +12,7 @@ CREATE TABLE activities (
     end_time         TEXT        NOT NULL,
     goal             TEXT        NOT NULL,
     location         TEXT        NOT NULL,
-    responsible      TEXT        NOT NULL,
+    responsible      TEXT[]      NOT NULL DEFAULT '{}',
     department       department_enum,
     material         TEXT[]      NOT NULL DEFAULT '{}',
     needs_siko       BOOLEAN     NOT NULL DEFAULT false,
