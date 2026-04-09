@@ -503,6 +503,55 @@ body {
 	grid-column: 1 / -1;
 }
 
+/* ---- Collaborative editing: editors banner ---- */
+.editors-banner {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 14px;
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	color: #1e40af;
+	font-size: 0.875rem;
+	font-weight: 500;
+	margin-bottom: 8px;
+}
+.editors-banner-icon {
+	font-size: 1.1rem;
+}
+
+/* ---- Collaborative editing: section locking ---- */
+.lock-wrapper {
+	position: relative;
+	transition: opacity 0.2s;
+}
+.lock-wrapper.is-locked {
+	opacity: 0.55;
+	pointer-events: none;
+}
+.lock-wrapper.is-locked .lock-badge {
+	pointer-events: auto;
+}
+.lock-badge {
+	position: absolute;
+	top: -6px;
+	right: -4px;
+	z-index: 5;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 10px;
+	background: #fef3c7;
+	border: 1px solid #f59e0b;
+	border-radius: 999px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: #92400e;
+	white-space: nowrap;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
 /* ---- Form actions ---- */
 .form-actions {
 	display: flex;
