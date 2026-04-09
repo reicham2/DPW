@@ -55,7 +55,7 @@ export type EditSection =
 	| 'title'
 	| 'datetime'
 	| 'location'
-	| 'programs'
+	| `program_${number}`
 	| 'material'
 	| 'siko'
 	| 'goal_weather';

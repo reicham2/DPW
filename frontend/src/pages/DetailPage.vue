@@ -639,17 +639,18 @@ async function doDelete() {
 			</div>
 
 			<!-- Programmpunkte -->
-			<div class="form-section lock-wrapper" :class="{ 'is-locked': isLockedByOther('programs') }"
-				@focusin="lockSection('programs')" @focusout="unlockSection('programs', $event)">
-				<div v-if="lockedBy('programs')" class="lock-badge">🔒 {{ lockedBy('programs') }}</div>
+			<div class="form-section">
 				<p class="form-section-title">Programmpunkte</p>
 				<div style="display: flex; flex-direction: column; gap: 10px">
-					<div v-for="(prog, i) in editPrograms" :key="i" class="program-card">
+					<div v-for="(prog, i) in editPrograms" :key="i" class="program-card lock-wrapper"
+						:class="{ 'is-locked': isLockedByOther(`program_${i}`) }"
+						@focusin="lockSection(`program_${i}`)" @focusout="unlockSection(`program_${i}`, $event)">
+						<div v-if="lockedBy(`program_${i}`)" class="lock-badge">🔒 {{ lockedBy(`program_${i}`) }}</div>
 						<button
 							type="button"
 							class="program-card__remove"
 							@click="removeProgram(i)"
-							:disabled="isLockedByOther('programs')"
+							:disabled="isLockedByOther(`program_${i}`)"
 						>
 							✕
 						</button>
@@ -662,16 +663,16 @@ async function doDelete() {
 									placeholder="30"
 									:value="prog.time"
 									@input="prog.time = ($event.target as HTMLInputElement).value"
-									:disabled="isLockedByOther('programs')"
+									:disabled="isLockedByOther(`program_${i}`)"
 								/>
 							</div>
 							<div class="form-group">
 								<label>Titel</label>
-								<input v-model="prog.title" type="text" placeholder="Titel" :disabled="isLockedByOther('programs')" />
+								<input v-model="prog.title" type="text" placeholder="Titel" :disabled="isLockedByOther(`program_${i}`)" />
 							</div>
 							<div class="form-group">
 								<label>Verantwortlich</label>
-								<select v-model="prog.responsible" :disabled="isLockedByOther('programs')">
+								<select v-model="prog.responsible" :disabled="isLockedByOther(`program_${i}`)">
 									<option value="" disabled>Bitte wählen</option>
 									<option
 										v-for="u in users"
@@ -688,12 +689,12 @@ async function doDelete() {
 									v-model="prog.description"
 									rows="2"
 									placeholder="Beschreibung…"
-									:disabled="isLockedByOther('programs')"
+									:disabled="isLockedByOther(`program_${i}`)"
 								/>
 							</div>
 						</div>
 					</div>
-					<button type="button" class="btn-add" @click="addProgram" :disabled="isLockedByOther('programs')">
+					<button type="button" class="btn-add" @click="addProgram">
 						+ Programmpunkt
 					</button>
 				</div>
