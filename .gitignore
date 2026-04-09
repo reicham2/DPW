@@ -1,3 +1,6 @@
+#Bhalt dini Gheimniss für dich XD
+.env
+
 # Prerequisites
 *.d
 
@@ -43,3 +46,4 @@
 # Node.js dependencies
 node_modules/
 **/node_modules/
+
