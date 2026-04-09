@@ -220,6 +220,12 @@ async function doDelete() {
     <button class="btn-back" @click="router.push('/')">← Zurück</button>
     <div class="header-right">
       <span v-if="saving" class="saving-badge">Speichert…</span>
+      <router-link
+        v-if="activity && mode === 'view'"
+        :to="`/activities/${id}/mail`"
+        class="btn-mail"
+        title="Mail senden"
+      >📧 Mail</router-link>
       <button
         v-if="activity && canEdit"
         class="btn-toggle"
