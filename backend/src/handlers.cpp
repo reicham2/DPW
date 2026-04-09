@@ -4,96 +4,126 @@
 #include <string>
 #include <memory>
 
-static const char* status_text(int code) {
-    switch (code) {
-        case 200: return "200 OK";
-        case 201: return "201 Created";
-        case 204: return "204 No Content";
-        case 400: return "400 Bad Request";
-        case 401: return "401 Unauthorized";
-        case 404: return "404 Not Found";
-        case 500: return "500 Internal Server Error";
-        default:  return "200 OK";
+static const char *status_text(int code)
+{
+    switch (code)
+    {
+    case 200:
+        return "200 OK";
+    case 201:
+        return "201 Created";
+    case 204:
+        return "204 No Content";
+    case 400:
+        return "400 Bad Request";
+    case 401:
+        return "401 Unauthorized";
+    case 404:
+        return "404 Not Found";
+    case 500:
+        return "500 Internal Server Error";
+    default:
+        return "200 OK";
     }
 }
 
-void set_cors(HttpRes* res) {
+void set_cors(HttpRes *res)
+{
     res->writeHeader("Access-Control-Allow-Origin", "*");
-    res->writeHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+    res->writeHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res->writeHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
 }
 
-bool require_auth(HttpRes* res, HttpReq* req, TokenClaims& out_claims) {
+bool require_auth(HttpRes *res, HttpReq *req, TokenClaims &out_claims)
+{
     std::string auth_header{req->getHeader("authorization")};
     std::string token = extract_bearer_token(auth_header);
-    if (token.empty()) {
+    if (token.empty())
+    {
         send_json(res, 401, R"({"error":"Unauthorized"})");
         return false;
     }
-    try {
+    try
+    {
         out_claims = validate_microsoft_token(token);
         return true;
-    } catch (std::exception& e) {
+    }
+    catch (std::exception &e)
+    {
         send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
         return false;
     }
 }
 
-std::string auth_token_from_header(HttpRes* res, const std::string& auth_header) {
+std::string auth_token_from_header(HttpRes *res, const std::string &auth_header)
+{
     std::string token = extract_bearer_token(auth_header);
-    if (token.empty()) {
+    if (token.empty())
+    {
         send_json(res, 401, R"({"error":"Unauthorized"})");
     }
     return token;
 }
 
-void send_json(HttpRes* res, int status, const std::string& body) {
+void send_json(HttpRes *res, int status, const std::string &body)
+{
     res->writeStatus(status_text(status));
     set_cors(res);
     res->writeHeader("Content-Type", "application/json");
     res->end(body);
 }
 
-static std::string str_field(const nlohmann::json& j, const char* key, const std::string& def = "") {
-    if (j.contains(key) && j[key].is_string()) return j[key].get<std::string>();
+static std::string str_field(const nlohmann::json &j, const char *key, const std::string &def = "")
+{
+    if (j.contains(key) && j[key].is_string())
+        return j[key].get<std::string>();
     return def;
 }
 
 // Parse ActivityInput from JSON body
-static ActivityInput parse_activity_input(const nlohmann::json& j) {
+static ActivityInput parse_activity_input(const nlohmann::json &j)
+{
     ActivityInput input;
-    input.title        = str_field(j, "title");
-    input.date         = str_field(j, "date");
-    input.start_time   = str_field(j, "start_time");
-    input.end_time     = str_field(j, "end_time");
-    input.goal         = str_field(j, "goal");
-    input.location     = str_field(j, "location");
-    input.responsible  = str_field(j, "responsible");
-    input.needs_siko   = j.value("needs_siko", false);
+    input.title = str_field(j, "title");
+    input.date = str_field(j, "date");
+    input.start_time = str_field(j, "start_time");
+    input.end_time = str_field(j, "end_time");
+    input.goal = str_field(j, "goal");
+    input.location = str_field(j, "location");
+    input.responsible = str_field(j, "responsible");
+    input.needs_siko = j.value("needs_siko", false);
 
     if (j.contains("department") && j["department"].is_string())
         input.department = j["department"].get<std::string>();
 
-    if (j.contains("bad_weather_info") && j["bad_weather_info"].is_string()) {
+    if (j.contains("bad_weather_info") && j["bad_weather_info"].is_string())
+    {
         std::string bwi = j["bad_weather_info"].get<std::string>();
-        if (!bwi.empty()) input.bad_weather_info = bwi;
+        if (!bwi.empty())
+            input.bad_weather_info = bwi;
     }
 
-    if (j.contains("siko_base64") && j["siko_base64"].is_string()) {
+    if (j.contains("siko_base64") && j["siko_base64"].is_string())
+    {
         std::string sb = j["siko_base64"].get<std::string>();
-        if (!sb.empty()) input.siko_base64 = sb;
+        if (!sb.empty())
+            input.siko_base64 = sb;
     }
 
-    if (j.contains("material") && j["material"].is_array()) {
-        for (auto& m : j["material"])
-            if (m.is_string()) input.material.push_back(m.get<std::string>());
+    if (j.contains("material") && j["material"].is_array())
+    {
+        for (auto &m : j["material"])
+            if (m.is_string())
+                input.material.push_back(m.get<std::string>());
     }
 
-    if (j.contains("programs") && j["programs"].is_array()) {
-        for (auto& p : j["programs"]) {
+    if (j.contains("programs") && j["programs"].is_array())
+    {
+        for (auto &p : j["programs"])
+        {
             ProgramInput pi;
-            pi.time        = str_field(p, "time");
-            pi.title       = str_field(p, "title");
+            pi.time = str_field(p, "time");
+            pi.title = str_field(p, "title");
             pi.description = str_field(p, "description");
             pi.responsible = str_field(p, "responsible");
             input.programs.push_back(pi);
@@ -105,7 +135,8 @@ static ActivityInput parse_activity_input(const nlohmann::json& j) {
 
 // ---- GET /departments -------------------------------------------------------
 
-void handle_get_departments(HttpRes* res, HttpReq* /*req*/) {
+void handle_get_departments(HttpRes *res, HttpReq * /*req*/)
+{
     static const std::string body =
         R"(["Leiter","Pio","Pfadi","Wölfe","Biber"])";
     send_json(res, 200, body);
@@ -113,46 +144,62 @@ void handle_get_departments(HttpRes* res, HttpReq* /*req*/) {
 
 // ---- GET /activities --------------------------------------------------------
 
-void handle_get_activities(HttpRes* res, HttpReq* req, Database& db) {
+void handle_get_activities(HttpRes *res, HttpReq *req, Database &db)
+{
     TokenClaims claims;
-    if (!require_auth(res, req, claims)) return;
-    try {
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
         auto activities = db.list_activities();
         nlohmann::json arr = nlohmann::json::array();
-        for (auto& a : activities) arr.push_back(to_json(a));
+        for (auto &a : activities)
+            arr.push_back(to_json(a));
         send_json(res, 200, arr.dump());
-    } catch (std::exception& e) {
+    }
+    catch (std::exception &e)
+    {
         send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
     }
 }
 
 // ---- GET /activities/:id ----------------------------------------------------
 
-void handle_get_activity(HttpRes* res, HttpReq* req, Database& db) {
+void handle_get_activity(HttpRes *res, HttpReq *req, Database &db)
+{
     TokenClaims claims;
-    if (!require_auth(res, req, claims)) return;
+    if (!require_auth(res, req, claims))
+        return;
     std::string id{req->getParameter(0)};
-    try {
+    try
+    {
         auto activity = db.get_activity_by_id(id);
-        if (!activity) {
+        if (!activity)
+        {
             send_json(res, 404, R"({"error":"not found"})");
             return;
         }
         send_json(res, 200, to_json(*activity).dump());
-    } catch (std::exception& e) {
+    }
+    catch (std::exception &e)
+    {
         send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
     }
 }
 
 // ---- GET /activities/:id/siko -----------------------------------------------
 
-void handle_get_siko(HttpRes* res, HttpReq* req, Database& db) {
+void handle_get_siko(HttpRes *res, HttpReq *req, Database &db)
+{
     TokenClaims claims;
-    if (!require_auth(res, req, claims)) return;
+    if (!require_auth(res, req, claims))
+        return;
     std::string id{req->getParameter(0)};
-    try {
+    try
+    {
         auto bytes = db.get_siko(id);
-        if (!bytes || bytes->empty()) {
+        if (!bytes || bytes->empty())
+        {
             send_json(res, 404, R"({"error":"no SiKo file"})");
             return;
         }
@@ -162,25 +209,40 @@ void handle_get_siko(HttpRes* res, HttpReq* req, Database& db) {
         res->writeHeader("Content-Type", "application/pdf");
         res->writeHeader("Content-Disposition", disp);
         res->end(std::string_view(
-            reinterpret_cast<const char*>(bytes->data()), bytes->size()));
-    } catch (std::exception& e) {
+            reinterpret_cast<const char *>(bytes->data()), bytes->size()));
+    }
+    catch (std::exception &e)
+    {
         send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
     }
 }
 
 // ---- POST /activities -------------------------------------------------------
 
-void handle_post_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketManager& wm) {
+void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
     // Read auth header synchronously (req is only valid here, not inside onData)
     std::string auth_header{req->getHeader("authorization")};
     std::string token = extract_bearer_token(auth_header);
-    if (token.empty()) { send_json(res, 401, R"({"error":"Unauthorized"})"); return; }
-    try { validate_microsoft_token(token); }
-    catch (std::exception& e) { send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump()); return; }
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Unauthorized"})");
+        return;
+    }
+    try
+    {
+        validate_microsoft_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
 
     auto buf = std::make_shared<std::string>();
-    res->onAborted([]{ });
-    res->onData([res, buf, &db, &wm](std::string_view chunk, bool last) {
+    res->onAborted([] {});
+    res->onData([res, buf, &db, &wm](std::string_view chunk, bool last)
+                {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
 
@@ -207,23 +269,35 @@ void handle_post_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketMan
             send_json(res, 201, to_json(*activity).dump());
         } catch (std::exception& e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
-        }
-    });
+        } });
 }
 
 // ---- PATCH /activities/:id --------------------------------------------------
 
-void handle_patch_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketManager& wm) {
+void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
     std::string auth_header{req->getHeader("authorization")};
     std::string token = extract_bearer_token(auth_header);
-    if (token.empty()) { send_json(res, 401, R"({"error":"Unauthorized"})"); return; }
-    try { validate_microsoft_token(token); }
-    catch (std::exception& e) { send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump()); return; }
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Unauthorized"})");
+        return;
+    }
+    try
+    {
+        validate_microsoft_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
 
     std::string id{req->getParameter(0)};
     auto buf = std::make_shared<std::string>();
-    res->onAborted([]{ });
-    res->onData([res, buf, id, &db, &wm](std::string_view chunk, bool last) {
+    res->onAborted([] {});
+    res->onData([res, buf, id, &db, &wm](std::string_view chunk, bool last)
+                {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
 
@@ -246,19 +320,22 @@ void handle_patch_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketMa
             send_json(res, 200, to_json(*activity).dump());
         } catch (std::exception& e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
-        }
-    });
+        } });
 }
 
 // ---- DELETE /activities/:id -------------------------------------------------
 
-void handle_delete_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketManager& wm) {
+void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
     TokenClaims claims;
-    if (!require_auth(res, req, claims)) return;
+    if (!require_auth(res, req, claims))
+        return;
     std::string id{req->getParameter(0)};
-    try {
+    try
+    {
         bool ok = db.delete_activity(id);
-        if (!ok) {
+        if (!ok)
+        {
             send_json(res, 404, R"({"error":"not found"})");
             return;
         }
@@ -267,22 +344,25 @@ void handle_delete_activity(HttpRes* res, HttpReq* req, Database& db, WebSocketM
         set_cors(res);
         res->writeStatus("204 No Content");
         res->end();
-    } catch (std::exception& e) {
+    }
+    catch (std::exception &e)
+    {
         send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
     }
 }
 
 // ---- User helpers -----------------------------------------------------------
 
-static nlohmann::json user_to_json(const UserRecord& u) {
+static nlohmann::json user_to_json(const UserRecord &u)
+{
     nlohmann::json j;
-    j["id"]            = u.id;
+    j["id"] = u.id;
     j["microsoft_oid"] = u.microsoft_oid;
-    j["email"]         = u.email;
-    j["display_name"]  = u.display_name;
-    j["department"]    = u.department ? nlohmann::json(*u.department) : nlohmann::json(nullptr);
-    j["created_at"]    = u.created_at;
-    j["updated_at"]    = u.updated_at;
+    j["email"] = u.email;
+    j["display_name"] = u.display_name;
+    j["department"] = u.department ? nlohmann::json(*u.department) : nlohmann::json(nullptr);
+    j["created_at"] = u.created_at;
+    j["updated_at"] = u.updated_at;
     return j;
 }
 
@@ -290,68 +370,99 @@ static nlohmann::json user_to_json(const UserRecord& u) {
 // Called by the frontend immediately after Microsoft login.
 // Validates the token and upserts the user record.
 
-void handle_post_auth_me(HttpRes* res, HttpReq* req, Database& db) {
+void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
+{
     TokenClaims claims;
-    if (!require_auth(res, req, claims)) return;
-    try {
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
         auto user = db.upsert_user(claims.oid, claims.email, claims.display_name);
-        if (!user) {
+        if (!user)
+        {
             send_json(res, 500, R"({"error":"db error"})");
             return;
         }
         send_json(res, 200, user_to_json(*user).dump());
-    } catch (std::exception& e) {
+    }
+    catch (std::exception &e)
+    {
         send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
     }
 }
 
 // ---- GET /me ----------------------------------------------------------------
 
-void handle_get_me(HttpRes* res, HttpReq* req, Database& db) {
+void handle_get_me(HttpRes *res, HttpReq *req, Database &db)
+{
     TokenClaims claims;
-    if (!require_auth(res, req, claims)) return;
-    try {
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
         auto user = db.get_user_by_oid(claims.oid);
-        if (!user) {
+        if (!user)
+        {
             send_json(res, 404, R"({"error":"user not found"})");
             return;
         }
         send_json(res, 200, user_to_json(*user).dump());
-    } catch (std::exception& e) {
+    }
+    catch (std::exception &e)
+    {
         send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
     }
 }
 
 // ---- GET /users -------------------------------------------------------------
 
-void handle_get_users(HttpRes* res, HttpReq* req, Database& db) {
+void handle_get_users(HttpRes *res, HttpReq *req, Database &db)
+{
     TokenClaims claims;
-    if (!require_auth(res, req, claims)) return;
-    try {
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
         auto users = db.list_users();
         nlohmann::json arr = nlohmann::json::array();
-        for (auto& u : users) arr.push_back(user_to_json(u));
+        for (auto &u : users)
+            arr.push_back(user_to_json(u));
         send_json(res, 200, arr.dump());
-    } catch (std::exception& e) {
+    }
+    catch (std::exception &e)
+    {
         send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
     }
 }
 
 // ---- PATCH /me --------------------------------------------------------------
 
-void handle_patch_me(HttpRes* res, HttpReq* req, Database& db) {
+void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
+{
     // Read auth synchronously before onData
     std::string auth_header{req->getHeader("authorization")};
     std::string token = extract_bearer_token(auth_header);
-    if (token.empty()) { send_json(res, 401, R"({"error":"Unauthorized"})"); return; }
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Unauthorized"})");
+        return;
+    }
 
     TokenClaims claims;
-    try { claims = validate_microsoft_token(token); }
-    catch (std::exception& e) { send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump()); return; }
+    try
+    {
+        claims = validate_microsoft_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
 
     auto buf = std::make_shared<std::string>();
-    res->onAborted([]{ });
-    res->onData([res, buf, claims, &db](std::string_view chunk, bool last) {
+    res->onAborted([] {});
+    res->onData([res, buf, claims, &db](std::string_view chunk, bool last)
+                {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
 
@@ -380,6 +491,181 @@ void handle_patch_me(HttpRes* res, HttpReq* req, Database& db) {
             send_json(res, 200, user_to_json(*user).dump());
         } catch (std::exception& e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
+}
+
+// ---- Mail template helpers --------------------------------------------------
+
+static nlohmann::json template_to_json(const MailTemplate &t)
+{
+    return {
+        {"id", t.id},
+        {"department", t.department},
+        {"subject", t.subject},
+        {"body", t.body},
+        {"created_at", t.created_at},
+        {"updated_at", t.updated_at}};
+}
+
+// ---- GET /mail-templates ----------------------------------------------------
+
+void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto templates = db.list_mail_templates();
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto &t : templates)
+            arr.push_back(template_to_json(t));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- GET /mail-templates/:department ----------------------------------------
+
+void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    std::string department{req->getParameter(0)};
+    try
+    {
+        auto tpl = db.get_mail_template_by_department(department);
+        if (!tpl)
+        {
+            send_json(res, 404, R"({"error":"template not found"})");
+            return;
         }
-    });
+        send_json(res, 200, template_to_json(*tpl).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- PUT /mail-templates/:department ----------------------------------------
+
+void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Unauthorized"})");
+        return;
+    }
+    try
+    {
+        validate_microsoft_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    std::string department{req->getParameter(0)};
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, department, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) {
+            send_json(res, 400, R"({"error":"invalid JSON"})");
+            return;
+        }
+
+        std::string subject = j.value("subject", "");
+        std::string body    = j.value("body", "");
+
+        try {
+            auto tpl = db.upsert_mail_template(department, subject, body);
+            if (!tpl) {
+                send_json(res, 500, R"({"error":"db error"})");
+                return;
+            }
+            send_json(res, 200, template_to_json(*tpl).dump());
+        } catch (std::exception& e) {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
+}
+
+// ---- POST /send-mail --------------------------------------------------------
+
+void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Unauthorized"})");
+        return;
+    }
+    try
+    {
+        validate_microsoft_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, token, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) {
+            send_json(res, 400, R"({"error":"invalid JSON"})");
+            return;
+        }
+
+        std::string subject    = j.value("subject", "");
+        std::string body_html  = j.value("body", "");
+        std::string from_email = j.value("from", "");
+        std::string graph_token = j.value("access_token", "");
+
+        if (subject.empty() || body_html.empty() || graph_token.empty()) {
+            send_json(res, 400, R"({"error":"subject, body and access_token are required"})");
+            return;
+        }
+
+        std::vector<std::string> to_emails;
+        if (j.contains("to") && j["to"].is_array()) {
+            for (auto& e : j["to"]) {
+                if (e.is_string() && !e.get<std::string>().empty())
+                    to_emails.push_back(e.get<std::string>());
+            }
+        }
+        if (to_emails.empty()) {
+            send_json(res, 400, R"({"error":"at least one recipient required"})");
+            return;
+        }
+
+        try {
+            bool ok = db.send_mail(graph_token, from_email, to_emails, subject, body_html);
+            if (ok) {
+                send_json(res, 200, R"({"status":"sent"})");
+            } else {
+                send_json(res, 502, R"({"error":"Failed to send mail via Microsoft Graph"})");
+            }
+        } catch (std::exception& e) {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
 }

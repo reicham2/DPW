@@ -61,3 +61,25 @@ CREATE TRIGGER trg_users_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE INDEX idx_users_microsoft_oid ON users (microsoft_oid);
+
+-- Mail templates (one per department)
+CREATE TABLE mail_templates (
+    id          UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+    department  department_enum NOT NULL UNIQUE,
+    subject     TEXT            NOT NULL DEFAULT '',
+    body        TEXT            NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER trg_mail_templates_updated_at
+    BEFORE UPDATE ON mail_templates
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- Seed default (empty) templates for every department
+INSERT INTO mail_templates (department, subject, body) VALUES
+    ('Leiter', '', ''),
+    ('Pio',    '', ''),
+    ('Pfadi',  '', ''),
+    ('Wölfe',  '', ''),
+    ('Biber',  '', '');

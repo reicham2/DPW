@@ -85,6 +85,20 @@ int main() {
             handle_delete_activity(res, req, db, wm);
         })
 
+        // Mail templates + send
+        .get("/mail-templates", [&](auto* res, auto* req) {
+            handle_get_mail_templates(res, req, db);
+        })
+        .get("/mail-templates/:department", [&](auto* res, auto* req) {
+            handle_get_mail_template(res, req, db);
+        })
+        .put("/mail-templates/:department", [&](auto* res, auto* req) {
+            handle_put_mail_template(res, req, db);
+        })
+        .post("/send-mail", [&](auto* res, auto* req) {
+            handle_post_send_mail(res, req, db);
+        })
+
         // WebSocket endpoint
         .ws<WsUserData>("/ws", {
             .compression      = uWS::SHARED_COMPRESSOR,
