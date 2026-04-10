@@ -25,7 +25,26 @@ const { users, fetchUsers } = useUsers();
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
 const mode = ref<'view' | 'edit'>('view');
-const saving = ref(false);
+const dirtyFields = new Set<string>();
+const savedFields = ref<Record<string, number>>({});
+let savedTimer: ReturnType<typeof setTimeout> | null = null;
+let suppressDirtyTracking = true;
+let applyingRemote = false; // plain boolean — set while WS update patches edit fields
+
+function markDirty(...fields: string[]) {
+	if (suppressDirtyTracking || applyingRemote) return;
+	if (mode.value !== 'edit') return;
+	for (const f of fields) dirtyFields.add(f);
+}
+
+function showSavedIndicator() {
+	if (savedTimer) clearTimeout(savedTimer);
+	const snap: Record<string, number> = {};
+	for (const f of dirtyFields) snap[f] = Date.now();
+	dirtyFields.clear();
+	savedFields.value = snap;
+	savedTimer = setTimeout(() => { savedFields.value = {}; }, 2000);
+}
 
 // ---- Edit state ------------------------------------------------------------
 const editTitle = ref('');
@@ -137,6 +156,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
 	if (autoSaveTimer) clearTimeout(autoSaveTimer);
+	if (savedTimer) clearTimeout(savedTimer);
+	stopAutoSaveInterval();
 	// Leave the activity and unlock any held section
 	wsSend({ type: 'leave', activity_id: id });
 });
@@ -241,11 +262,14 @@ function formatDate(d: string): string {
 // ---- Enter edit mode -------------------------------------------------------
 function enterEdit() {
 	if (!activity.value || !canEdit.value) return;
+	suppressDirtyTracking = true;
 	syncEditFields(activity.value);
 	editSikoFile.value = null;
 	editSikoBase64.value = null;
 	error.value = null;
 	mode.value = 'edit';
+	startAutoSaveInterval();
+	nextTick(() => { suppressDirtyTracking = false; dirtyFields.clear(); });
 }
 
 // ---- Material --------------------------------------------------------------
@@ -348,21 +372,54 @@ async function onSikoFileChange(e: Event) {
 	for (let i = 0; i < bytes.length; i++)
 		binary += String.fromCharCode(bytes[i]);
 	editSikoBase64.value = btoa(binary);
+	markDirty('needs_siko');
 	scheduleAutoSave(); // file upload triggers save like any other field change
 }
 
-// ---- Auto-save (debounced 1.5 s) -------------------------------------------
+// ---- Auto-save --------------------------------------------------------------
+const AUTOSAVE_INTERVAL = Number(import.meta.env.VITE_AUTOSAVE_INTERVAL) || 1500;
+const AUTOSAVE_DEBOUNCE = (import.meta.env.VITE_AUTOSAVE_DEBOUNCE ?? 'true') !== 'false';
+
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-let applyingRemote = false; // plain boolean — set while WS update patches edit fields
+let autoSaveInterval: ReturnType<typeof setInterval> | null = null;
+let hasPendingChanges = false;
 
 function scheduleAutoSave() {
 	if (mode.value !== 'edit') return;
 	if (applyingRemote) return; // ignore watcher firings caused by remote WS updates
-	if (autoSaveTimer) clearTimeout(autoSaveTimer);
-	autoSaveTimer = setTimeout(doSave, 1500);
+
+	if (AUTOSAVE_DEBOUNCE) {
+		// Debounce: restart timer on every change, save after idle
+		if (autoSaveTimer) clearTimeout(autoSaveTimer);
+		autoSaveTimer = setTimeout(doSave, AUTOSAVE_INTERVAL);
+	} else {
+		// Interval: just mark dirty, the interval will pick it up
+		hasPendingChanges = true;
+	}
 }
 
-// onUnmounted is handled above (combined with WS leave)
+function startAutoSaveInterval() {
+	if (!AUTOSAVE_DEBOUNCE && !autoSaveInterval) {
+		autoSaveInterval = setInterval(() => {
+			if (hasPendingChanges && mode.value === 'edit') {
+				hasPendingChanges = false;
+				doSave();
+			}
+		}, AUTOSAVE_INTERVAL);
+	}
+}
+
+function stopAutoSaveInterval() {
+	if (autoSaveInterval) {
+		clearInterval(autoSaveInterval);
+		autoSaveInterval = null;
+	}
+	hasPendingChanges = false;
+}
+
+watch(mode, (val) => {
+	if (val !== 'edit') stopAutoSaveInterval();
+});
 
 watch(
 	[
@@ -383,10 +440,21 @@ watch(
 	{ deep: true },
 );
 
+// Per-field dirty tracking
+watch([editTitle], () => markDirty('title'));
+watch([editDate], () => markDirty('date'));
+watch([editStartTime], () => markDirty('start_time'));
+watch([editEndTime], () => markDirty('end_time'));
+watch([editLocation], () => markDirty('location'));
+watch([editResponsible], () => markDirty('responsible'), { deep: true });
+watch([editDepartment], () => markDirty('department'));
+watch([editNeedsSiko], () => markDirty('needs_siko'));
+watch([editGoal], () => markDirty('goal'));
+watch([editBadWeather], () => markDirty('bad_weather'));
+
 // ---- Core save (used by auto-save and the button) --------------------------
 async function doSave() {
 	if (!activity.value) return;
-	saving.value = true;
 	error.value = null;
 
 	await updateActivity(id, {
@@ -405,7 +473,7 @@ async function doSave() {
 		programs: editPrograms.value,
 	});
 
-	saving.value = false;
+	if (!error.value) showSavedIndicator();
 }
 
 // ---- Delete ----------------------------------------------------------------
@@ -421,7 +489,6 @@ async function doDelete() {
 	<header class="header">
 		<button class="btn-back" @click="router.push('/')">← Zurück</button>
 		<div class="header-right">
-			<span v-if="saving" class="saving-badge">Speichert…</span>
 			<router-link
 				v-if="activity && mode === 'view' && canMail"
 				:to="`/activities/${id}/mail`"
@@ -589,14 +656,17 @@ async function doDelete() {
 				@focusin="lockSection('title')" @focusout="unlockSection('title', $event)">
 				<div v-if="lockedBy('title')" class="lock-badge">🔒 {{ lockedBy('title') }}</div>
 				<label for="edit-title">Titel</label>
-				<input
-					id="edit-title"
-					v-model="editTitle"
-					type="text"
-					placeholder="Titel der Aktivität"
-					autofocus
-					:disabled="isLockedByOther('title')"
-				/>
+				<div class="input-save-wrap">
+					<input
+						id="edit-title"
+						v-model="editTitle"
+						type="text"
+						placeholder="Titel der Aktivität"
+						autofocus
+						:disabled="isLockedByOther('title')"
+					/>
+					<span v-if="savedFields['title']" class="field-saved-icon" :key="savedFields['title']">💾</span>
+				</div>
 			</div>
 
 			<!-- Datum + Zeiten -->
@@ -605,15 +675,24 @@ async function doDelete() {
 				<div v-if="lockedBy('datetime')" class="lock-badge">🔒 {{ lockedBy('datetime') }}</div>
 				<div class="form-group">
 					<label for="edit-date">Datum</label>
-					<input id="edit-date" v-model="editDate" type="date" :disabled="isLockedByOther('datetime')" />
+					<div class="input-save-wrap">
+						<input id="edit-date" v-model="editDate" type="date" :disabled="isLockedByOther('datetime')" />
+						<span v-if="savedFields['date']" class="field-saved-icon" :key="savedFields['date']">💾</span>
+					</div>
 				</div>
 				<div class="form-group">
 					<label for="edit-start">Startzeit</label>
-					<input id="edit-start" v-model="editStartTime" type="time" :disabled="isLockedByOther('datetime')" />
+					<div class="input-save-wrap">
+						<input id="edit-start" v-model="editStartTime" type="time" :disabled="isLockedByOther('datetime')" />
+						<span v-if="savedFields['start_time']" class="field-saved-icon" :key="savedFields['start_time']">💾</span>
+					</div>
 				</div>
 				<div class="form-group">
 					<label for="edit-end">Endzeit</label>
-					<input id="edit-end" v-model="editEndTime" type="time" :disabled="isLockedByOther('datetime')" />
+					<div class="input-save-wrap">
+						<input id="edit-end" v-model="editEndTime" type="time" :disabled="isLockedByOther('datetime')" />
+						<span v-if="savedFields['end_time']" class="field-saved-icon" :key="savedFields['end_time']">💾</span>
+					</div>
 				</div>
 			</div>
 
@@ -623,13 +702,16 @@ async function doDelete() {
 				<div v-if="lockedBy('location')" class="lock-badge">🔒 {{ lockedBy('location') }}</div>
 				<div class="form-group">
 					<label for="edit-location">Ort</label>
-					<input
-						id="edit-location"
-						v-model="editLocation"
-						type="text"
-						placeholder="Veranstaltungsort"
-						:disabled="isLockedByOther('location')"
-					/>
+					<div class="input-save-wrap">
+						<input
+							id="edit-location"
+							v-model="editLocation"
+							type="text"
+							placeholder="Veranstaltungsort"
+							:disabled="isLockedByOther('location')"
+						/>
+						<span v-if="savedFields['location']" class="field-saved-icon" :key="savedFields['location']">💾</span>
+					</div>
 				</div>
 				<div class="form-group user-search-group">
 					<label>Verantwortlich</label>
@@ -662,12 +744,15 @@ async function doDelete() {
 				</div>
 				<div class="form-group">
 					<label for="edit-department">Abteilung</label>
-					<select id="edit-department" v-model="editDepartment" :disabled="isLockedByOther('location')">
-						<option value="">Bitte wählen</option>
-						<option v-for="dep in departments" :key="dep" :value="dep">
-							{{ dep }}
-						</option>
-					</select>
+					<div class="input-save-wrap">
+						<select id="edit-department" v-model="editDepartment" :disabled="isLockedByOther('location')">
+							<option value="">Bitte wählen</option>
+							<option v-for="dep in departments" :key="dep" :value="dep">
+								{{ dep }}
+							</option>
+						</select>
+						<span v-if="savedFields['department']" class="field-saved-icon" :key="savedFields['department']">💾</span>
+					</div>
 				</div>
 			</div>
 
@@ -690,40 +775,53 @@ async function doDelete() {
 						<div class="program-card__fields">
 							<div class="form-group">
 								<label>Minuten</label>
-								<input
-									type="number"
-									min="0"
-									placeholder="30"
-									:value="prog.time"
-									@input="prog.time = ($event.target as HTMLInputElement).value"
-									:disabled="isLockedByOther(`program_${i}`)"
-								/>
+								<div class="input-save-wrap">
+									<input
+										type="number"
+										min="0"
+										placeholder="30"
+										:value="prog.time"
+										@input="prog.time = ($event.target as HTMLInputElement).value; markDirty(`prog_${i}_time`)"
+										:disabled="isLockedByOther(`program_${i}`)"
+									/>
+									<span v-if="savedFields[`prog_${i}_time`]" class="field-saved-icon" :key="savedFields[`prog_${i}_time`]">💾</span>
+								</div>
 							</div>
 							<div class="form-group">
 								<label>Titel</label>
-								<input v-model="prog.title" type="text" placeholder="Titel" :disabled="isLockedByOther(`program_${i}`)" />
+								<div class="input-save-wrap">
+									<input v-model="prog.title" type="text" placeholder="Titel" :disabled="isLockedByOther(`program_${i}`)" @input="markDirty(`prog_${i}_title`)" />
+									<span v-if="savedFields[`prog_${i}_title`]" class="field-saved-icon" :key="savedFields[`prog_${i}_title`]">💾</span>
+								</div>
 							</div>
 							<div class="form-group">
 								<label>Verantwortlich</label>
-								<select v-model="prog.responsible" :disabled="isLockedByOther(`program_${i}`)">
-									<option value="" disabled>Bitte wählen</option>
-									<option
-										v-for="u in users"
-										:key="u.id"
-										:value="u.display_name"
-									>
-										{{ u.display_name }}
-									</option>
-								</select>
+								<div class="input-save-wrap">
+									<select v-model="prog.responsible" :disabled="isLockedByOther(`program_${i}`)" @change="markDirty(`prog_${i}_resp`)">
+										<option value="" disabled>Bitte wählen</option>
+										<option
+											v-for="u in users"
+											:key="u.id"
+											:value="u.display_name"
+										>
+											{{ u.display_name }}
+										</option>
+									</select>
+									<span v-if="savedFields[`prog_${i}_resp`]" class="field-saved-icon" :key="savedFields[`prog_${i}_resp`]">💾</span>
+								</div>
 							</div>
 							<div class="form-group program-card__full">
 								<label>Beschreibung</label>
-								<textarea
-									v-model="prog.description"
-									rows="2"
-									placeholder="Beschreibung…"
-									:disabled="isLockedByOther(`program_${i}`)"
-								/>
+								<div class="input-save-wrap">
+									<textarea
+										v-model="prog.description"
+										rows="2"
+										placeholder="Beschreibung…"
+										:disabled="isLockedByOther(`program_${i}`)"
+										@input="markDirty(`prog_${i}_desc`)"
+									/>
+									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]">💾</span>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -741,15 +839,18 @@ async function doDelete() {
 						:class="{ 'is-locked': isLockedByOther(`material_${i}`) }"
 						@focusin="lockSection(`material_${i}`)" @focusout="unlockSection(`material_${i}`, $event)">
 						<div v-if="lockedBy(`material_${i}`)" class="lock-badge">🔒 {{ lockedBy(`material_${i}`) }}</div>
-						<input
-							v-model="editMaterial[i].name"
-							type="text"
-							placeholder="Material…"
-							class="material-row__name"
-							@input="onMaterialInput(i)"
-							@blur="onMaterialBlur(i)"
-							:disabled="isLockedByOther(`material_${i}`)"
-						/>
+						<div class="input-save-wrap">
+							<input
+								v-model="editMaterial[i].name"
+								type="text"
+								placeholder="Material…"
+								class="material-row__name"
+								@input="onMaterialInput(i); markDirty(`mat_${i}`)"
+								@blur="onMaterialBlur(i)"
+								:disabled="isLockedByOther(`material_${i}`)"
+							/>
+							<span v-if="savedFields[`mat_${i}`] && editMaterial[i].name.trim()" class="field-saved-icon" :key="savedFields[`mat_${i}`]">💾</span>
+						</div>
 						<div class="material-row__responsible user-search-wrapper">
 							<template v-if="editMaterial[i].responsible">
 								<span class="material-resp-chip">
@@ -791,6 +892,7 @@ async function doDelete() {
 				<label class="form-check">
 					<input type="checkbox" v-model="editNeedsSiko" :disabled="isLockedByOther('siko')" />
 					<span>Sicherheitskonzept benötigt?</span>
+					<span v-if="savedFields['needs_siko']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['needs_siko']">💾</span>
 				</label>
 				<div v-if="editNeedsSiko" style="margin-top: 12px">
 					<div class="form-group">
@@ -820,23 +922,29 @@ async function doDelete() {
 				<div v-if="lockedBy('goal_weather')" class="lock-badge">🔒 {{ lockedBy('goal_weather') }}</div>
 				<div class="form-group">
 					<label for="edit-goal">Ziel</label>
-					<textarea
-						id="edit-goal"
-						v-model="editGoal"
-						rows="3"
-						placeholder="Was soll erreicht werden?"
-						:disabled="isLockedByOther('goal_weather')"
-					/>
+					<div class="input-save-wrap">
+						<textarea
+							id="edit-goal"
+							v-model="editGoal"
+							rows="3"
+							placeholder="Was soll erreicht werden?"
+							:disabled="isLockedByOther('goal_weather')"
+						/>
+						<span v-if="savedFields['goal']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['goal']">💾</span>
+					</div>
 				</div>
 				<div class="form-group">
 					<label for="edit-weather">Schlechtwetter-Info</label>
-					<textarea
-						id="edit-weather"
-						v-model="editBadWeather"
-						rows="3"
-						placeholder="Was passiert bei schlechtem Wetter?"
-						:disabled="isLockedByOther('goal_weather')"
-					/>
+					<div class="input-save-wrap">
+						<textarea
+							id="edit-weather"
+							v-model="editBadWeather"
+							rows="3"
+							placeholder="Was passiert bei schlechtem Wetter?"
+							:disabled="isLockedByOther('goal_weather')"
+						/>
+						<span v-if="savedFields['bad_weather']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['bad_weather']">💾</span>
+					</div>
 				</div>
 			</div>
 

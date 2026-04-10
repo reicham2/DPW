@@ -110,9 +110,47 @@ body {
 	color: #991b1b;
 }
 
-.saving-badge {
-	font-size: 0.78rem;
-	color: #6b7280;
+/* ---- Per-field save indicator ---- */
+.input-save-wrap {
+	position: relative;
+}
+.input-save-wrap input,
+.input-save-wrap textarea,
+.input-save-wrap select {
+	width: 100%;
+}
+.field-saved-icon {
+	position: absolute;
+	right: 10px;
+	top: 50%;
+	transform: translateY(-50%);
+	font-size: 0.95rem;
+	pointer-events: none;
+	animation: fadeInOut 2s ease forwards;
+	line-height: 1;
+}
+.field-saved-icon--textarea {
+	top: 10px;
+	transform: none;
+}
+.field-saved-icon--inline {
+	position: static;
+	margin-left: 6px;
+	animation: fadeInOut 2s ease forwards;
+}
+@keyframes fadeInOut {
+	0% {
+		opacity: 0;
+	}
+	12% {
+		opacity: 1;
+	}
+	65% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
 }
 
 /* ---- Buttons ---- */

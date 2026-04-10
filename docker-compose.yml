@@ -49,6 +49,8 @@ services:
         VITE_MSAL_CLIENT_ID: "${VITE_MSAL_CLIENT_ID}"
         VITE_MSAL_TENANT_ID: "${VITE_MSAL_TENANT_ID}"
         VITE_DEBUG: "${VITE_DEBUG}"
+        VITE_AUTOSAVE_INTERVAL: "${VITE_AUTOSAVE_INTERVAL:-1500}"
+        VITE_AUTOSAVE_DEBOUNCE: "${VITE_AUTOSAVE_DEBOUNCE:-true}"
     restart: unless-stopped
     ports:
       - "80:80"
