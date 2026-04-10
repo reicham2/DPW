@@ -7,6 +7,11 @@ const connected = ref(false);
 const handlers = new Set<(e: WsEvent) => void>();
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingRegister: { display_name: string; oid: string } | null = null;
+let wsConnectCount = 0;
+let wsDisconnectCount = 0;
+let wsLastError: string | null = null;
+let wsMessageCount = 0;
+let wsLastMessageAt: string | null = null;
 
 function connect() {
 	const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -14,6 +19,7 @@ function connect() {
 
 	ws.onopen = () => {
 		connected.value = true;
+		wsConnectCount++;
 		// Re-send registration on reconnect
 		if (pendingRegister) {
 			wsSend({ type: 'register', ...pendingRegister });
@@ -21,6 +27,8 @@ function connect() {
 	};
 
 	ws.onmessage = (e: MessageEvent) => {
+		wsMessageCount++;
+		wsLastMessageAt = new Date().toISOString();
 		try {
 			const payload = JSON.parse(e.data as string) as WsEvent;
 			handlers.forEach((h) => h(payload));
@@ -31,11 +39,13 @@ function connect() {
 
 	ws.onclose = () => {
 		connected.value = false;
+		wsDisconnectCount++;
 		ws = null;
 		reconnectTimer = setTimeout(connect, 3000);
 	};
 
 	ws.onerror = () => {
+		wsLastError = new Date().toISOString();
 		ws?.close();
 	};
 }
@@ -51,6 +61,20 @@ export function wsSend(data: Record<string, unknown>) {
 export function wsRegister(display_name: string, oid: string) {
 	pendingRegister = { display_name, oid };
 	wsSend({ type: 'register', display_name, oid });
+}
+
+/** Expose WS debug state for bug reports */
+export function getWsDebugState() {
+	return {
+		connected: connected.value,
+		readyState: ws?.readyState ?? null,
+		connectCount: wsConnectCount,
+		disconnectCount: wsDisconnectCount,
+		messageCount: wsMessageCount,
+		lastMessageAt: wsLastMessageAt,
+		lastError: wsLastError,
+		registered: pendingRegister !== null,
+	};
 }
 
 // --- Composable: register / deregister a message handler -------------------

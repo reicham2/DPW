@@ -1164,7 +1164,6 @@ static std::pair<long, std::string> github_post_issue(
     return {status, response};
 }
 
-
 // ─── POST /bug-report ─────────────────────────────────────────────────────────
 
 void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
@@ -1200,7 +1199,7 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
     res->onData([res, buf, github_token, current_user](std::string_view chunk, bool last)
-    {
+                {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
 
@@ -1214,6 +1213,7 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
         std::string description = str_field(j, "description");
         std::string url         = str_field(j, "url");
         std::string user_agent  = str_field(j, "userAgent");
+        auto debug_info         = j.contains("debugInfo") ? j["debugInfo"] : nlohmann::json{};
 
         if (description.empty())
         {
@@ -1243,6 +1243,212 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
             "**Browser:** " + user_agent + "  \n"
             "**Zeitpunkt:** " + ts_buf;
 
+        // ─── Debug info section ──────────────────────────────────────
+        if (!debug_info.is_null() && debug_info.is_object())
+        {
+            body += "\n\n---\n<details>\n<summary>Debug-Informationen</summary>\n\n";
+
+            // Session
+            body += "### Session\n";
+            body += "- **Report Timestamp:** " + debug_info.value("timestamp", "") + "\n";
+            body += "- **Session Start:** " + debug_info.value("sessionStart", "") + "\n";
+            int dur = debug_info.value("sessionDuration", 0);
+            body += "- **Session Duration:** " + std::to_string(dur / 60) + "m " + std::to_string(dur % 60) + "s\n\n";
+
+            // Route
+            if (debug_info.contains("route") && debug_info["route"].is_object())
+            {
+                auto &r = debug_info["route"];
+                body += "### Route\n";
+                body += "- **Path:** `" + r.value("path", "") + "`\n";
+                body += "- **Full Path:** `" + r.value("fullPath", "") + "`\n";
+                if (r.contains("params") && !r["params"].empty())
+                    body += "- **Params:** `" + r["params"].dump() + "`\n";
+                if (r.contains("query") && !r["query"].empty())
+                    body += "- **Query:** `" + r["query"].dump() + "`\n";
+                body += "\n";
+            }
+
+            // User context
+            if (debug_info.contains("user") && debug_info["user"].is_object())
+            {
+                auto &u = debug_info["user"];
+                body += "### User\n";
+                body += "- **ID:** " + u.value("id", "?") + "\n";
+                body += "- **Email:** " + u.value("email", "?") + "\n";
+                body += "- **Role:** " + u.value("role", "?") + "\n";
+                body += "- **Department:** " + u.value("department", "null") + "\n\n";
+            }
+
+            // Viewport
+            if (debug_info.contains("viewport") && debug_info["viewport"].is_object())
+            {
+                auto &v = debug_info["viewport"];
+                body += "### Viewport & Device\n";
+                body += "- **Window:** " + std::to_string(v.value("width", 0)) + " × " + std::to_string(v.value("height", 0)) + "\n";
+                body += "- **Screen:** " + std::to_string(v.value("screenWidth", 0)) + " × " + std::to_string(v.value("screenHeight", 0)) + "\n";
+                body += "- **DPR:** " + std::to_string(v.value("devicePixelRatio", 1.0)) + "\n";
+                body += "- **Orientation:** " + v.value("orientation", "?") + "\n";
+            }
+            if (debug_info.contains("inputCapabilities") && debug_info["inputCapabilities"].is_object())
+            {
+                auto &ic = debug_info["inputCapabilities"];
+                body += "- **Touch Points:** " + std::to_string(ic.value("touchPoints", 0)) + "\n";
+                body += "- **Pointer:** " + ic.value("pointerType", "?") + "\n";
+            }
+            body += "\n";
+
+            // DOM
+            if (debug_info.contains("dom") && debug_info["dom"].is_object())
+            {
+                auto &d = debug_info["dom"];
+                body += "### DOM\n";
+                body += "- **Element Count:** " + std::to_string(d.value("elementCount", 0)) + "\n";
+                body += "- **Body Scroll Height:** " + std::to_string(d.value("bodyScrollHeight", 0)) + " px\n";
+                if (d.contains("activeElement") && d["activeElement"].is_string())
+                    body += "- **Active Element:** `" + d.value("activeElement", "") + "`\n";
+                body += "\n";
+            }
+
+            // WebSocket
+            if (debug_info.contains("webSocket") && debug_info["webSocket"].is_object())
+            {
+                auto &w = debug_info["webSocket"];
+                body += "### WebSocket\n";
+                body += "- **Connected:** " + std::string(w.value("connected", false) ? "ja" : "nein") + "\n";
+                body += "- **Ready State:** " + std::to_string(w.value("readyState", -1)) + "\n";
+                body += "- **Connect Count:** " + std::to_string(w.value("connectCount", 0)) + "\n";
+                body += "- **Disconnect Count:** " + std::to_string(w.value("disconnectCount", 0)) + "\n";
+                body += "- **Messages Received:** " + std::to_string(w.value("messageCount", 0)) + "\n";
+                if (w.contains("lastMessageAt") && w["lastMessageAt"].is_string())
+                    body += "- **Last Message:** " + w.value("lastMessageAt", "") + "\n";
+                if (w.contains("lastError") && w["lastError"].is_string())
+                    body += "- **Last Error:** " + w.value("lastError", "") + "\n";
+                body += "- **Registered:** " + std::string(w.value("registered", false) ? "ja" : "nein") + "\n\n";
+            }
+
+            // Performance
+            if (debug_info.contains("performance") && debug_info["performance"].is_object())
+            {
+                auto &p = debug_info["performance"];
+                body += "### Performance\n";
+                body += "- **DOM Content Loaded:** " + std::to_string(p.value("domContentLoaded", 0)) + " ms\n";
+                body += "- **Load Complete:** " + std::to_string(p.value("loadComplete", 0)) + " ms\n";
+                body += "- **Redirect Count:** " + std::to_string(p.value("redirectCount", 0)) + "\n\n";
+            }
+
+            // Memory
+            if (debug_info.contains("memory") && debug_info["memory"].is_object())
+            {
+                auto &m = debug_info["memory"];
+                body += "### Memory\n";
+                long used = m.value("usedJSHeapSize", 0L);
+                long total = m.value("totalJSHeapSize", 0L);
+                long limit = m.value("jsHeapSizeLimit", 0L);
+                body += "- **Used:** " + std::to_string(used / 1048576) + " MB\n";
+                body += "- **Total:** " + std::to_string(total / 1048576) + " MB\n";
+                body += "- **Limit:** " + std::to_string(limit / 1048576) + " MB\n\n";
+            }
+
+            // Connection
+            if (debug_info.contains("connection") && debug_info["connection"].is_object())
+            {
+                auto &c = debug_info["connection"];
+                body += "### Connection\n";
+                body += "- **Type:** " + c.value("effectiveType", "?") + "\n";
+                body += "- **Downlink:** " + std::to_string(c.value("downlink", 0.0)) + " Mbps\n";
+                body += "- **RTT:** " + std::to_string(c.value("rtt", 0)) + " ms\n";
+                body += "- **Save Data:** " + std::string(c.value("saveData", false) ? "ja" : "nein") + "\n\n";
+            }
+
+            // Misc
+            body += "### Environment\n";
+            body += "- **Language:** " + debug_info.value("language", "?") + "\n";
+            if (debug_info.contains("languages") && debug_info["languages"].is_array())
+                body += "- **Languages:** " + debug_info["languages"].dump() + "\n";
+            body += "- **Platform:** " + debug_info.value("platform", "?") + "\n";
+            body += "- **CPU Cores:** " + std::to_string(debug_info.value("hardwareConcurrency", 0)) + "\n";
+            body += "- **Online:** " + std::string(debug_info.value("online", true) ? "ja" : "nein") + "\n";
+            body += "- **Cookies:** " + std::string(debug_info.value("cookiesEnabled", true) ? "ja" : "nein") + "\n";
+            if (debug_info.contains("referrer") && debug_info["referrer"].is_string())
+                body += "- **Referrer:** " + debug_info.value("referrer", "") + "\n";
+            body += "- **Document Title:** " + debug_info.value("documentTitle", "") + "\n";
+            if (debug_info.contains("localStorage") && debug_info["localStorage"].is_object())
+            {
+                body += "- **localStorage Count:** " + std::to_string(debug_info["localStorage"].value("count", 0)) + "\n";
+                if (debug_info["localStorage"].contains("keys") && debug_info["localStorage"]["keys"].is_array())
+                    body += "- **localStorage Keys:** " + debug_info["localStorage"]["keys"].dump() + "\n";
+            }
+            body += "\n";
+
+            // Breadcrumbs (user interaction trace)
+            if (debug_info.contains("breadcrumbs") && debug_info["breadcrumbs"].is_array() && !debug_info["breadcrumbs"].empty())
+            {
+                body += "### User Interaction Trace\n```\n";
+                for (auto &entry : debug_info["breadcrumbs"])
+                {
+                    body += "[" + entry.value("timestamp", "") + "] "
+                          + entry.value("type", "?") + ": "
+                          + entry.value("message", "") + "\n";
+                }
+                body += "```\n\n";
+            }
+
+            // All API requests
+            if (debug_info.contains("recentApiRequests") && debug_info["recentApiRequests"].is_array() && !debug_info["recentApiRequests"].empty())
+            {
+                body += "### Recent API Requests\n```\n";
+                for (auto &entry : debug_info["recentApiRequests"])
+                {
+                    body += "[" + entry.value("timestamp", "") + "] "
+                          + entry.value("method", "?") + " " + entry.value("url", "?")
+                          + " → " + std::to_string(entry.value("status", 0))
+                          + " (" + std::to_string(entry.value("duration", 0)) + " ms)\n";
+                }
+                body += "```\n\n";
+            }
+
+            // Console errors/warnings
+            if (debug_info.contains("recentConsole") && debug_info["recentConsole"].is_array() && !debug_info["recentConsole"].empty())
+            {
+                body += "### Console Errors/Warnings\n```\n";
+                for (auto &entry : debug_info["recentConsole"])
+                {
+                    body += "[" + entry.value("level", "?") + " " + entry.value("timestamp", "") + "] "
+                          + entry.value("message", "") + "\n";
+                    if (entry.contains("stack") && entry["stack"].is_string() && !entry["stack"].empty())
+                        body += "  Stack: " + entry.value("stack", "") + "\n";
+                }
+                body += "```\n\n";
+            }
+
+            // JS errors
+            if (debug_info.contains("recentJsErrors") && debug_info["recentJsErrors"].is_array() && !debug_info["recentJsErrors"].empty())
+            {
+                body += "### Uncaught JS Errors\n```\n";
+                for (auto &entry : debug_info["recentJsErrors"])
+                {
+                    if (entry.is_string())
+                        body += entry.get<std::string>() + "\n";
+                }
+                body += "```\n\n";
+            }
+
+            // Resource errors
+            if (debug_info.contains("recentResourceErrors") && debug_info["recentResourceErrors"].is_array() && !debug_info["recentResourceErrors"].empty())
+            {
+                body += "### Failed Resources\n```\n";
+                for (auto &entry : debug_info["recentResourceErrors"])
+                {
+                    if (entry.is_string())
+                        body += entry.get<std::string>() + "\n";
+                }
+                body += "```\n\n";
+            }
+
+            body += "</details>";
+        }
+
         nlohmann::json issue_payload = {
             {"title", title},
             {"body", body},
@@ -1268,6 +1474,5 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
         catch (std::exception &e)
         {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
-        }
-    });
+        } });
 }
