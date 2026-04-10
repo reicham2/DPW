@@ -23,6 +23,7 @@ struct MailTemplate
     std::string department;
     std::string subject;
     std::string body;
+    std::vector<std::string> recipients;
     std::string created_at;
     std::string updated_at;
 };
@@ -73,7 +74,8 @@ public:
     std::optional<MailTemplate> get_mail_template_by_department(const std::string &department);
     std::optional<MailTemplate> upsert_mail_template(const std::string &department,
                                                      const std::string &subject,
-                                                     const std::string &body);
+                                                     const std::string &body,
+                                                     const std::vector<std::string> &recipients);
 
     // Send mail via Microsoft Graph
     bool send_mail(const std::string &access_token,

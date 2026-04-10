@@ -73,6 +73,7 @@ CREATE TABLE mail_templates (
     department  department_enum NOT NULL UNIQUE,
     subject     TEXT            NOT NULL DEFAULT '',
     body        TEXT            NOT NULL DEFAULT '',
+    recipients  TEXT[]          NOT NULL DEFAULT '{}',
     created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
@@ -82,9 +83,9 @@ CREATE TRIGGER trg_mail_templates_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- Seed default (empty) templates for every department
-INSERT INTO mail_templates (department, subject, body) VALUES
-    ('Leiter', '', ''),
-    ('Pio',    '', ''),
-    ('Pfadi',  '', ''),
-    ('Wölfe',  '', ''),
-    ('Biber',  '', '');
+INSERT INTO mail_templates (department, subject, body, recipients) VALUES
+    ('Leiter', '', '', '{}'),
+    ('Pio',    '', '', '{}'),
+    ('Pfadi',  '', '', '{}'),
+    ('Wölfe',  '', '', '{}'),
+    ('Biber',  '', '', '{}');
