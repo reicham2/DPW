@@ -334,7 +334,11 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     // Role check: Stufenleiter=own dept; Leiter/Pio=if verantwortlich (Pio also own dept).
     auto current_user = db.get_user_by_oid(claims.oid);
-    if (current_user)
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
     {
         const std::string &role = current_user->role;
         if (role == "Stufenleiter" || role == "Leiter" || role == "Pio")
@@ -426,7 +430,11 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
 
     // admin: always; Stufenleiter: own dept; Leiter+Pio: if verantwortlich (Pio also own dept).
     auto current_user = db.get_user_by_oid(claims.oid);
-    if (current_user)
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
     {
         const std::string &role = current_user->role;
         if (role == "Stufenleiter" || role == "Leiter" || role == "Pio")
