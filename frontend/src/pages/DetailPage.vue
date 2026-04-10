@@ -269,6 +269,7 @@ function enterEdit() {
 	error.value = null;
 	mode.value = 'edit';
 	startAutoSaveInterval();
+	initProgEditors();
 	nextTick(() => { suppressDirtyTracking = false; dirtyFields.clear(); });
 }
 
@@ -355,6 +356,109 @@ function addProgram() {
 }
 function removeProgram(i: number) {
 	editPrograms.value.splice(i, 1);
+}
+
+// ---- Program description rich editor ----------------------------------------
+const progEditorRefs = ref<Record<number, HTMLElement>>({});
+const progToolbar = ref<{ idx: number; bold: boolean; italic: boolean; underline: boolean; ul: boolean; ol: boolean; font: string; size: string; color: string; bgColor: string } | null>(null);
+
+function setProgEditorRef(el: any, i: number) {
+	if (el) progEditorRefs.value[i] = el as HTMLElement;
+	else delete progEditorRefs.value[i];
+}
+
+function onProgDescInput(i: number) {
+	const el = progEditorRefs.value[i];
+	if (el) editPrograms.value[i].description = el.innerHTML;
+	markDirty(`prog_${i}_desc`);
+	updateProgToolbar(i);
+}
+
+function updateProgToolbar(i: number) {
+	const el = progEditorRefs.value[i];
+	const sel = window.getSelection();
+	if (!sel || !sel.rangeCount || !el) return;
+	const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement;
+	if (!node || !el.contains(node)) return;
+	const cs = window.getComputedStyle(node);
+	progToolbar.value = {
+		idx: i,
+		bold: document.queryCommandState('bold'),
+		italic: document.queryCommandState('italic'),
+		underline: document.queryCommandState('underline'),
+		ul: document.queryCommandState('insertUnorderedList'),
+		ol: document.queryCommandState('insertOrderedList'),
+		font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
+		size: parseInt(cs.fontSize).toString() || '12',
+		color: rgbToHex(cs.color) || '#000000',
+		bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
+	};
+}
+
+function rgbToHex(rgb: string): string {
+	const m = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+	if (!m) return rgb;
+	return '#' + [m[1], m[2], m[3]].map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+}
+
+let progSavedSelection: Range | null = null;
+
+function progSaveSelection() {
+	const sel = window.getSelection();
+	const activeIdx = progToolbar.value?.idx;
+	if (activeIdx == null) return;
+	const el = progEditorRefs.value[activeIdx];
+	if (sel?.rangeCount && el?.contains(sel.anchorNode)) {
+		progSavedSelection = sel.getRangeAt(0).cloneRange();
+	}
+}
+
+function progExecCmd(i: number, cmd: string, value?: string) {
+	if (progSavedSelection) {
+		const sel = window.getSelection();
+		if (sel) { sel.removeAllRanges(); sel.addRange(progSavedSelection); }
+		progSavedSelection = null;
+	}
+	document.execCommand(cmd, false, value);
+	progEditorRefs.value[i]?.focus();
+	onProgDescInput(i);
+}
+
+function progSetFontSize(i: number, size: string) {
+	document.execCommand('fontSize', false, '7');
+	const el = progEditorRefs.value[i];
+	const fontEls = el?.querySelectorAll('font[size="7"]');
+	fontEls?.forEach(fe => {
+		const span = document.createElement('span');
+		span.style.fontSize = size + 'px';
+		span.innerHTML = fe.innerHTML;
+		fe.replaceWith(span);
+	});
+	el?.focus();
+	onProgDescInput(i);
+}
+
+function progAdjustFontSize(i: number, delta: number) {
+	const current = parseInt(progToolbar.value?.size ?? '12') || 12;
+	const newSize = Math.max(8, Math.min(72, current + delta));
+	progSetFontSize(i, String(newSize));
+	if (progToolbar.value) progToolbar.value.size = String(newSize);
+}
+
+function onProgEditorFocus(i: number) {
+	progToolbar.value = { idx: i, bold: false, italic: false, underline: false, ul: false, ol: false, font: 'Arial', size: '12', color: '#000000', bgColor: '#ffffff' };
+	updateProgToolbar(i);
+}
+
+function initProgEditors() {
+	nextTick(() => {
+		for (let i = 0; i < editPrograms.value.length; i++) {
+			const el = progEditorRefs.value[i];
+			if (el && el.innerHTML !== editPrograms.value[i].description) {
+				el.innerHTML = editPrograms.value[i].description;
+			}
+		}
+	});
 }
 
 // ---- SiKo file change ------------------------------------------------------
@@ -563,8 +667,7 @@ async function doDelete() {
 									prog.responsible
 								}}</span>
 							</div>
-							<p v-if="prog.description" class="program-desc">
-								{{ prog.description }}
+							<p v-if="prog.description" class="program-desc" v-html="prog.description">
 							</p>
 						</div>
 					</div>
@@ -813,13 +916,47 @@ async function doDelete() {
 							<div class="form-group program-card__full">
 								<label>Beschreibung</label>
 								<div class="input-save-wrap">
-									<textarea
-										v-model="prog.description"
-										rows="2"
-										placeholder="Beschreibung…"
-										:disabled="isLockedByOther(`program_${i}`)"
-										@input="markDirty(`prog_${i}_desc`)"
-									/>
+									<div class="rich-editor-toolbar rich-editor-toolbar--compact" v-if="progToolbar && progToolbar.idx === i">
+										<select class="toolbar-select" :value="progToolbar.font" @change="progExecCmd(i, 'fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
+											<option value="Arial" style="font-family:Arial">Arial</option>
+											<option value="Helvetica" style="font-family:Helvetica">Helvetica</option>
+											<option value="Georgia" style="font-family:Georgia">Georgia</option>
+											<option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
+											<option value="Courier New" style="font-family:'Courier New'">Courier New</option>
+											<option value="Verdana" style="font-family:Verdana">Verdana</option>
+										</select>
+										<input type="text" class="toolbar-select toolbar-select--narrow" :value="progToolbar.size" @change="progSetFontSize(i, ($event.target as HTMLInputElement).value)" @keydown.enter.prevent="progSetFontSize(i, ($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
+										<button type="button" class="toolbar-btn-sm" @click="progAdjustFontSize(i, -2)" title="Kleiner">A−</button>
+										<button type="button" class="toolbar-btn-sm" @click="progAdjustFontSize(i, 2)" title="Grösser">A+</button>
+										<span class="toolbar-sep"></span>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.bold}" @click="progExecCmd(i, 'bold')" title="Fett"><b>B</b></button>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.italic}" @click="progExecCmd(i, 'italic')" title="Kursiv"><i>I</i></button>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.underline}" @click="progExecCmd(i, 'underline')" title="Unterstrichen"><u>U</u></button>
+										<span class="toolbar-sep"></span>
+										<label class="toolbar-color" title="Schriftfarbe" @mousedown="progSaveSelection">
+											A
+											<input type="color" :value="progToolbar.color" @input="progExecCmd(i, 'foreColor', ($event.target as HTMLInputElement).value)" />
+										</label>
+										<label class="toolbar-color toolbar-color--bg" title="Hintergrundfarbe" @mousedown="progSaveSelection">
+											<span class="toolbar-color-icon">A</span>
+											<input type="color" :value="progToolbar.bgColor" @input="progExecCmd(i, 'hiliteColor', ($event.target as HTMLInputElement).value)" />
+										</label>
+										<span class="toolbar-sep"></span>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.ul}" @click="progExecCmd(i, 'insertUnorderedList')" title="Aufzählung">• Liste</button>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.ol}" @click="progExecCmd(i, 'insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
+										<span class="toolbar-sep"></span>
+										<button type="button" @click="progExecCmd(i, 'removeFormat')" title="Formatierung entfernen">✕ Format</button>
+									</div>
+									<div
+										:ref="(el) => setProgEditorRef(el, i)"
+										class="rich-editor rich-editor--compact"
+										:contenteditable="!isLockedByOther(`program_${i}`)"
+										@input="onProgDescInput(i)"
+										@focus="onProgEditorFocus(i)"
+										@mouseup="updateProgToolbar(i)"
+										@keyup="updateProgToolbar(i)"
+										data-placeholder="Beschreibung…"
+									></div>
 									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]">💾</span>
 								</div>
 							</div>
