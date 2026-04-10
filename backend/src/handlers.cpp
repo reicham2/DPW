@@ -118,8 +118,19 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
     if (j.contains("material") && j["material"].is_array())
     {
         for (auto &m : j["material"])
+        {
+            MaterialItem mi;
             if (m.is_string())
-                input.material.push_back(m.get<std::string>());
+            {
+                mi.name = m.get<std::string>();
+            }
+            else if (m.is_object())
+            {
+                mi.name = str_field(m, "name");
+                mi.responsible = str_field(m, "responsible");
+            }
+            input.material.push_back(mi);
+        }
     }
 
     if (j.contains("programs") && j["programs"].is_array())

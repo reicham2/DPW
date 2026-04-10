@@ -24,6 +24,14 @@ struct ProgramInput
     std::string responsible;
 };
 
+// ---- Material ---------------------------------------------------------------
+
+struct MaterialItem
+{
+    std::string name;
+    std::string responsible; // optional — may be empty
+};
+
 // ---- Activity ---------------------------------------------------------------
 
 struct Activity
@@ -37,7 +45,7 @@ struct Activity
     std::string location;
     std::vector<std::string> responsible;
     std::optional<std::string> department;
-    std::vector<std::string> material;
+    std::vector<MaterialItem> material;
     bool needs_siko{false};
     std::vector<uint8_t> siko; // raw bytes — never serialised
     std::optional<std::string> bad_weather_info;
@@ -56,7 +64,7 @@ struct ActivityInput
     std::string location;
     std::vector<std::string> responsible;
     std::optional<std::string> department;
-    std::vector<std::string> material;
+    std::vector<MaterialItem> material;
     bool needs_siko{false};
     std::optional<std::string> siko_base64; // base64 string from frontend
     std::optional<std::string> bad_weather_info;
@@ -79,6 +87,15 @@ inline nlohmann::json program_to_json(const Program &p)
 // Full activity serialiser — includes has_siko flag, NEVER includes raw bytes
 inline nlohmann::json to_json(const Activity &a)
 {
+    nlohmann::json mat = nlohmann::json::array();
+    for (const auto &m : a.material)
+    {
+        nlohmann::json item = {{"name", m.name}};
+        if (!m.responsible.empty())
+            item["responsible"] = m.responsible;
+        mat.push_back(item);
+    }
+
     nlohmann::json j = {
         {"id", a.id},
         {"title", a.title},
@@ -88,7 +105,7 @@ inline nlohmann::json to_json(const Activity &a)
         {"goal", a.goal},
         {"location", a.location},
         {"responsible", a.responsible},
-        {"material", a.material},
+        {"material", mat},
         {"needs_siko", a.needs_siko},
         {"has_siko", !a.siko.empty()},
         {"created_at", a.created_at},

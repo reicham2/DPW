@@ -43,7 +43,7 @@ function replaceTemplateVars(text: string, act: Activity): string {
     .replace(/\{\{verantwortlich\}\}/gi,   act.responsible.join(', '))
     .replace(/\{\{abteilung\}\}/gi,        act.department ?? '—')
     .replace(/\{\{ziel\}\}/gi,             act.goal)
-    .replace(/\{\{material\}\}/gi,         act.material.join(', ') || '—')
+    .replace(/\{\{material\}\}/gi,         act.material.map(m => m.name).join(', ') || '—')
     .replace(/\{\{schlechtwetter\}\}/gi,   act.bad_weather_info ?? '—')
     .replace(/\{\{programm\}\}/gi,         formatPrograms(act))
 }

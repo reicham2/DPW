@@ -14,7 +14,7 @@ CREATE TABLE activities (
     location         TEXT        NOT NULL,
     responsible      TEXT[]      NOT NULL DEFAULT '{}',
     department       department_enum,
-    material         TEXT[]      NOT NULL DEFAULT '{}',
+    material         JSONB       NOT NULL DEFAULT '[]',
     needs_siko       BOOLEAN     NOT NULL DEFAULT false,
     siko             BYTEA,
     bad_weather_info TEXT,

@@ -16,6 +16,11 @@ export interface ProgramInput {
 	responsible: string;
 }
 
+export interface MaterialItem {
+	name: string;
+	responsible?: string;
+}
+
 export interface Activity {
 	id: string;
 	title: string;
@@ -26,7 +31,7 @@ export interface Activity {
 	location: string;
 	responsible: string[];
 	department: Department | null;
-	material: string[];
+	material: MaterialItem[];
 	needs_siko: boolean;
 	has_siko: boolean;
 	bad_weather_info: string | null;
@@ -44,7 +49,7 @@ export interface ActivityInput {
 	location: string;
 	responsible: string[];
 	department?: Department | null;
-	material: string[];
+	material: MaterialItem[];
 	needs_siko: boolean;
 	siko_base64?: string;
 	bad_weather_info?: string | null;
@@ -56,7 +61,7 @@ export type EditSection =
 	| 'datetime'
 	| 'location'
 	| `program_${number}`
-	| 'material'
+	| `material_${number}`
 	| 'siko'
 	| 'goal_weather';
 

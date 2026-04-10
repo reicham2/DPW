@@ -100,6 +100,20 @@ std::string Database::format_material_param(const std::vector<std::string> &mate
     return oss.str();
 }
 
+// Formats vector<MaterialItem> as a JSONB value like [{"name":"a","responsible":"b"},...]
+std::string Database::format_material_items_param(const std::vector<MaterialItem> &items)
+{
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto &m : items)
+    {
+        nlohmann::json obj = {{"name", m.name}};
+        if (!m.responsible.empty())
+            obj["responsible"] = m.responsible;
+        arr.push_back(obj);
+    }
+    return arr.dump();
+}
+
 // ---- Row mappers ------------------------------------------------------------
 
 Activity Database::row_to_activity(PGresult *res, int row)
@@ -151,10 +165,29 @@ Activity Database::row_to_activity(PGresult *res, int row)
         }
     }
 
-    // material
+    // material (JSONB column)
     const char *mat = col("material");
     if (mat)
-        a.material = parse_pg_array(mat);
+    {
+        auto mj = nlohmann::json::parse(mat, nullptr, false);
+        if (mj.is_array())
+        {
+            for (const auto &item : mj)
+            {
+                MaterialItem mi;
+                if (item.is_string())
+                {
+                    mi.name = item.get<std::string>();
+                }
+                else if (item.is_object())
+                {
+                    mi.name = item.value("name", "");
+                    mi.responsible = item.value("responsible", "");
+                }
+                a.material.push_back(mi);
+            }
+        }
+    }
 
     return a;
 }
@@ -344,7 +377,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
 {
     ensure_connected();
 
-    std::string mat_json = Database::format_material_param(input.material);
+    std::string mat_json = Database::format_material_items_param(input.material);
     std::string resp_json = Database::format_material_param(input.responsible);
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
@@ -369,7 +402,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
                 "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, siko) "
                 "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), " +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", array(select jsonb_array_elements_text($8::jsonb)), $9, decode($10, 'base64')) "
+                ", $8::jsonb, $9, decode($10, 'base64')) "
                 "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
                 "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
                 "bad_weather_info, created_at, updated_at";
@@ -399,7 +432,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
                 "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, bad_weather_info) "
                 "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), " +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", array(select jsonb_array_elements_text($8::jsonb)), $9, $10) "
+                ", $8::jsonb, $9, $10) "
                 "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
                 "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
                 "bad_weather_info, created_at, updated_at";
@@ -440,7 +473,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
 {
     ensure_connected();
 
-    std::string mat_json = Database::format_material_param(input.material);
+    std::string mat_json = Database::format_material_items_param(input.material);
     std::string resp_json = Database::format_material_param(input.responsible);
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
@@ -460,7 +493,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 "title=$1, date=$2::date, start_time=$3, end_time=$4, "
                 "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", material=array(select jsonb_array_elements_text($8::jsonb)), "
+                ", material=$8::jsonb, "
                 "needs_siko=$9, siko=decode($10, 'base64'), bad_weather_info=$11 "
                 "WHERE id=$12 "
                 "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
@@ -494,7 +527,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 "title=$1, date=$2::date, start_time=$3, end_time=$4, "
                 "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", material=array(select jsonb_array_elements_text($8::jsonb)), "
+                ", material=$8::jsonb, "
                 "needs_siko=$9, siko=NULL, bad_weather_info=$10 "
                 "WHERE id=$11 "
                 "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
@@ -528,7 +561,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 "title=$1, date=$2::date, start_time=$3, end_time=$4, "
                 "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
                 (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", material=array(select jsonb_array_elements_text($8::jsonb)), "
+                ", material=$8::jsonb, "
                 "needs_siko=$9, bad_weather_info=$10 "
                 "WHERE id=$11 "
                 "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
