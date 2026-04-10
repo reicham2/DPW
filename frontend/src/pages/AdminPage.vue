@@ -121,7 +121,10 @@ function roleBadgeClass(role: UserRole) {
 
   <header class="header">
     <h1>Benutzerverwaltung</h1>
-    <span class="user-count">{{ users.length }} Benutzer</span>
+    <div class="header-right">
+      <span v-if="!isAdmin" class="dept-badge">Abteilung: {{ currentUser?.department ?? '—' }}</span>
+      <span class="user-count">{{ users.length }} Benutzer</span>
+    </div>
   </header>
 
   <main class="main">
@@ -189,10 +192,12 @@ function roleBadgeClass(role: UserRole) {
 
         <div class="form-group">
           <label class="form-label">Abteilung</label>
-          <select v-model="editForm.department" class="form-input">
+          <select v-if="isAdmin" v-model="editForm.department" class="form-input">
             <option value="">Keine Angabe</option>
             <option v-for="d in DEPARTMENTS.filter(Boolean)" :key="d" :value="d">{{ d }}</option>
           </select>
+          <input v-else class="form-input form-input--readonly" type="text"
+            :value="editForm.department || 'Keine Angabe'" readonly />
         </div>
 
         <div v-if="isAdmin" class="form-group">
@@ -228,9 +233,27 @@ function roleBadgeClass(role: UserRole) {
   color: #1a202c;
   margin: 0;
 }
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dept-badge {
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 3px 12px;
+  border-radius: 999px;
+}
 .user-count {
   font-size: 0.85rem;
   color: #6b7280;
+}
+.form-input--readonly {
+  background: #f9fafb;
+  color: #6b7280;
+  cursor: default;
 }
 .main {
   padding: 20px 24px;

@@ -392,7 +392,7 @@ async function doDelete() {
 		<div class="header-right">
 			<span v-if="saving" class="saving-badge">Speichert…</span>
 			<router-link
-				v-if="activity && mode === 'view' && user?.role === 'admin'"
+				v-if="activity && mode === 'view' && (user?.role === 'admin' || (activity.responsible.includes(user?.display_name ?? '')))"
 				:to="`/activities/${id}/mail`"
 				class="btn-mail"
 				title="Mail senden"
