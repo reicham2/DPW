@@ -5,6 +5,7 @@ import DetailPage from '../pages/DetailPage.vue';
 import ProfilePage from '../pages/ProfilePage.vue';
 import MailComposerPage from '../pages/MailComposerPage.vue';
 import MailTemplatePage from '../pages/MailTemplatePage.vue';
+import AdminPage from '../pages/AdminPage.vue';
 import { user, authLoading } from '../composables/useAuth';
 
 export const router = createRouter({
@@ -16,6 +17,7 @@ export const router = createRouter({
 		{ path: '/activities/:id/mail', component: MailComposerPage },
 		{ path: '/mail-templates', component: MailTemplatePage },
 		{ path: '/profile', component: ProfilePage },
+		{ path: '/admin', component: AdminPage },
 	],
 });
 

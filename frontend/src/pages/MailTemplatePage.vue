@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useMailTemplates } from '../composables/useMailTemplates'
+import { user } from '../composables/useAuth'
 import type { Department } from '../types'
 
-const DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
+const ALL_DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
 
 const TEMPLATE_VARIABLES = [
   { var: '{{titel}}',            desc: 'Titel der Aktivität' },
@@ -21,7 +22,25 @@ const TEMPLATE_VARIABLES = [
 
 const { fetchTemplates, saveTemplate, templates, loading, error } = useMailTemplates()
 
-const activeDept = ref<Department>('Pfadi')
+const isAdmin        = computed(() => user.value?.role === 'admin')
+const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
+
+// Stufenleiter sees only own dept; admin sees all
+const visibleDepartments = computed<Department[]>(() => {
+  if (isStufenleiter.value) {
+    const own = user.value?.department as Department | undefined
+    return own ? ALL_DEPARTMENTS.filter(d => d === own) : []
+  }
+  return ALL_DEPARTMENTS
+})
+
+// Default: own dept for Stufenleiter, first dept otherwise
+const activeDept = ref<Department>(
+  isStufenleiter.value && user.value?.department
+    ? user.value.department as Department
+    : 'Pfadi'
+)
+
 const subject = ref('')
 const body = ref('')
 const saving = ref(false)
@@ -59,6 +78,7 @@ async function handleSave() {
   <nav class="page-tabs">
     <router-link to="/" class="page-tab">Aktivitäten</router-link>
     <router-link to="/mail-templates" class="page-tab page-tab--active">Mail-Vorlagen</router-link>
+    <router-link v-if="isAdmin || isStufenleiter" to="/admin" class="page-tab">Admin</router-link>
   </nav>
 
   <header class="header">
@@ -69,7 +89,7 @@ async function handleSave() {
     <!-- Department tabs -->
     <div class="filter-tabs" style="margin-bottom: 24px">
       <button
-        v-for="dept in DEPARTMENTS"
+        v-for="dept in visibleDepartments"
         :key="dept"
         class="filter-tab"
         :class="{ 'filter-tab--active': activeDept === dept }"

@@ -10,6 +10,18 @@ const router = useRouter()
 const { createActivity, fetchDepartments, departments, error } = useActivities()
 const { users, fetchUsers } = useUsers()
 
+const isAdmin = computed(() => user.value?.role === 'admin')
+const isPio   = computed(() => user.value?.role === 'Pio')
+
+// Non-admins can only create for their own department or the Leiter department
+// Pio is locked to own dept only
+const availableDepartments = computed(() => {
+  if (isAdmin.value) return departments.value
+  const own = user.value?.department
+  if (isPio.value) return departments.value.filter(d => d === own)
+  return departments.value.filter(d => d === 'Leiter' || d === own)
+})
+
 onMounted(async () => {
   await Promise.all([fetchDepartments(), fetchUsers()])
 })
@@ -212,9 +224,16 @@ async function submit() {
         </div>
         <div class="form-group">
           <label for="department">Abteilung</label>
-          <select id="department" v-model="department">
+          <input
+            v-if="isPio"
+            class="form-input form-input--readonly"
+            type="text"
+            :value="user?.department || 'Keine Angabe'"
+            readonly
+          />
+          <select v-else id="department" v-model="department">
             <option value="">Bitte wählen</option>
-            <option v-for="dep in departments" :key="dep" :value="dep">{{ dep }}</option>
+            <option v-for="dep in availableDepartments" :key="dep" :value="dep">{{ dep }}</option>
           </select>
         </div>
       </div>
