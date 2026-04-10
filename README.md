@@ -1,5 +1,35 @@
 # DPW
 
+## Schnellstart
+
+```bash
+# 1. .env erstellen
+cp .env.example .env
+# → Azure AD Werte eintragen (oder DEBUG=true für lokales Testen)
+
+# 2. Alles starten
+make up
+
+# 3. (Optional) Testdaten laden
+make db-seed
+```
+
+### Nützliche Befehle
+
+| Befehl                  | Beschreibung                               |
+| ----------------------- | ------------------------------------------ |
+| `make up`               | Alle Container starten                     |
+| `make down`             | Alle Container stoppen                     |
+| `make rebuild`          | Alles neu bauen und starten                |
+| `make rebuild-backend`  | Nur Backend neu bauen                      |
+| `make rebuild-frontend` | Nur Frontend neu bauen                     |
+| `make logs`             | Alle Logs anzeigen                         |
+| `make logs-backend`     | Nur Backend-Logs                           |
+| `make db-seed`          | DB zurücksetzen und Testdaten laden        |
+| `make db-shell`         | PostgreSQL Shell öffnen                    |
+| `make ps`               | Container-Status anzeigen                  |
+| `make clean`            | Alles entfernen (inkl. Volumes und Images) |
+
 ## Role Permissions
 
 | Permission               | admin              | Stufenleiter                    | Leiter               | Pio                             |

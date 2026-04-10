@@ -1,0 +1,74 @@
+name: CI – Build & Smoke Test
+
+on:
+    pull_request:
+        branches: [main]
+    push:
+        branches: [main]
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Create .env from example
+              run: |
+                  cp .env.example .env
+
+            - name: Build all containers
+              run: docker compose build
+
+            - name: Start services
+              run: docker compose up -d
+
+            - name: Wait for backend health
+              run: |
+                  echo "⏳ Warte auf Backend …"
+                  for i in $(seq 1 30); do
+                    if docker compose exec -T backend curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+                      echo "✅ Backend healthy"
+                      exit 0
+                    fi
+                    echo "  Versuch $i/30 …"
+                    sleep 2
+                  done
+                  echo "❌ Backend nicht erreichbar"
+                  docker compose logs backend
+                  exit 1
+
+            - name: Wait for frontend health
+              run: |
+                  echo "⏳ Warte auf Frontend …"
+                  for i in $(seq 1 15); do
+                    if docker compose exec -T frontend curl -sf http://localhost:80 > /dev/null 2>&1; then
+                      echo "✅ Frontend healthy"
+                      exit 0
+                    fi
+                    echo "  Versuch $i/15 …"
+                    sleep 2
+                  done
+                  echo "❌ Frontend nicht erreichbar"
+                  docker compose logs frontend
+                  exit 1
+
+            - name: Verify DB schema loaded
+              run: |
+                  docker compose exec -T db psql -U activities_user -d activities \
+                    -c "\dt" | grep -q activities
+                  echo "✅ DB-Schema vorhanden"
+
+            - name: Print container status
+              if: always()
+              run: docker compose ps
+
+            - name: Collect logs on failure
+              if: failure()
+              run: docker compose logs --tail=100
+
+            - name: Tear down
+              if: always()
+              run: docker compose down -v

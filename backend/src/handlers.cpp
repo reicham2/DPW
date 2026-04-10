@@ -38,6 +38,32 @@ void set_cors(HttpRes *res)
     res->writeHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
 }
 
+// ── Debug token support ─────────────────────────────────────────────────────
+// In debug mode, accepts "debug:<user_id>" as a token. Returns TokenClaims
+// with oid = user_id so that get_user_by_oid-based lookups still work.
+// Falls back to real Microsoft token validation otherwise.
+static TokenClaims validate_token(const std::string &token)
+{
+    const char *dbg = std::getenv("DEBUG");
+    bool debug_mode = dbg && (std::string(dbg) == "true" || std::string(dbg) == "1");
+
+    if (debug_mode && token.rfind("debug:", 0) == 0)
+    {
+        std::string user_id = token.substr(6);
+        if (user_id.empty())
+            throw std::runtime_error("debug token: user_id missing");
+        // Use user_id as OID so downstream get_user_by_oid won't find anything,
+        // but we also store it for get_user_by_id lookups.
+        TokenClaims c;
+        c.oid = "debug:" + user_id;
+        c.email = "debug@local";
+        c.display_name = "Debug";
+        c.tid = "debug";
+        return c;
+    }
+    return validate_microsoft_token(token);
+}
+
 bool require_auth(HttpRes *res, HttpReq *req, TokenClaims &out_claims)
 {
     std::string auth_header{req->getHeader("authorization")};
@@ -49,7 +75,7 @@ bool require_auth(HttpRes *res, HttpReq *req, TokenClaims &out_claims)
     }
     try
     {
-        out_claims = validate_microsoft_token(token);
+        out_claims = validate_token(token);
         return true;
     }
     catch (std::exception &e)
@@ -67,6 +93,14 @@ std::string auth_token_from_header(HttpRes *res, const std::string &auth_header)
         send_json(res, 401, R"({"error":"Unauthorized"})");
     }
     return token;
+}
+
+// Resolve a user from TokenClaims — supports debug tokens (oid = "debug:<user_id>").
+static std::optional<UserRecord> resolve_user(Database &db, const TokenClaims &claims)
+{
+    if (claims.oid.rfind("debug:", 0) == 0)
+        return db.get_user_by_id(claims.oid.substr(6));
+    return db.get_user_by_oid(claims.oid);
 }
 
 void send_json(HttpRes *res, int status, const std::string &body)
@@ -172,7 +206,7 @@ void handle_get_activities(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
-        auto current_user = db.get_user_by_oid(claims.oid);
+        auto current_user = resolve_user(db, claims);
         auto activities = db.list_activities();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &a : activities)
@@ -263,7 +297,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
     TokenClaims claims;
     try
     {
-        claims = validate_microsoft_token(token);
+        claims = validate_token(token);
     }
     catch (std::exception &e)
     {
@@ -272,7 +306,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
     }
 
     // All authenticated users can create (Pio restricted to own dept — enforced in onData)
-    auto current_user = db.get_user_by_oid(claims.oid);
+    auto current_user = resolve_user(db, claims);
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
@@ -334,7 +368,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
     TokenClaims claims;
     try
     {
-        claims = validate_microsoft_token(token);
+        claims = validate_token(token);
     }
     catch (std::exception &e)
     {
@@ -345,7 +379,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
     std::string id{req->getParameter(0)};
 
     // Role check: Stufenleiter=own dept; Leiter/Pio=if verantwortlich (Pio also own dept).
-    auto current_user = db.get_user_by_oid(claims.oid);
+    auto current_user = resolve_user(db, claims);
     if (!current_user)
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -389,7 +423,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                 }
                 // Pio: additionally must be in own department
                 if (role == "Pio" && (!current_user->department || !activity->department ||
-                    *activity->department != *current_user->department))
+                                      *activity->department != *current_user->department))
                 {
                     send_json(res, 403, R"({"error":"Keine Berechtigung"})");
                     return;
@@ -441,7 +475,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
     std::string id{req->getParameter(0)};
 
     // admin: always; Stufenleiter: own dept; Leiter+Pio: if verantwortlich (Pio also own dept).
-    auto current_user = db.get_user_by_oid(claims.oid);
+    auto current_user = resolve_user(db, claims);
     if (!current_user)
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -484,7 +518,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
                 }
                 // Pio: additionally must be in own department
                 if (role == "Pio" && (!current_user->department || !activity->department ||
-                    *activity->department != *current_user->department))
+                                      *activity->department != *current_user->department))
                 {
                     send_json(res, 403, R"({"error":"Keine Berechtigung"})");
                     return;
@@ -583,7 +617,7 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
             else
             {
                 // Only check group membership for potentially new users.
-                auto existing = db.get_user_by_oid(claims.oid);
+                auto existing = resolve_user(db, claims);
                 if (!existing)
                 {
                     // New user: check if they are in "Pfadi Hü allgemein" group.
@@ -623,7 +657,7 @@ void handle_get_me(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
-        auto user = db.get_user_by_oid(claims.oid);
+        auto user = resolve_user(db, claims);
         if (!user)
         {
             send_json(res, 404, R"({"error":"user not found"})");
@@ -658,6 +692,82 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db)
     }
 }
 
+// ---- Debug-only endpoints ---------------------------------------------------
+
+static bool is_debug_mode()
+{
+    const char *dbg = std::getenv("DEBUG");
+    return dbg && (std::string(dbg) == "true" || std::string(dbg) == "1");
+}
+
+// GET /debug/users — list all users without auth (debug mode only)
+void handle_debug_get_users(HttpRes *res, HttpReq * /*req*/, Database &db)
+{
+    if (!is_debug_mode())
+    {
+        send_json(res, 404, R"({"error":"not found"})");
+        return;
+    }
+    try
+    {
+        auto users = db.list_users();
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto &u : users)
+            arr.push_back(user_to_json(u));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// POST /auth/debug-login — login as any existing user by ID (debug mode only)
+void handle_debug_login(HttpRes *res, HttpReq * /*req*/, Database &db)
+{
+    if (!is_debug_mode())
+    {
+        send_json(res, 404, R"({"error":"not found"})");
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        try
+        {
+            auto j = nlohmann::json::parse(*buf, nullptr, false);
+            if (j.is_discarded())
+            {
+                send_json(res, 400, R"({"error":"invalid JSON"})");
+                return;
+            }
+            std::string user_id;
+            if (j.contains("user_id") && j["user_id"].is_string())
+                user_id = j["user_id"].get<std::string>();
+            if (user_id.empty())
+            {
+                send_json(res, 400, R"({"error":"user_id required"})");
+                return;
+            }
+            auto user = db.get_user_by_id(user_id);
+            if (!user)
+            {
+                send_json(res, 404, R"({"error":"user not found"})");
+                return;
+            }
+            send_json(res, 200, user_to_json(*user).dump());
+        }
+        catch (std::exception &e)
+        {
+            send_json(res, 400, nlohmann::json{{"error", e.what()}}.dump());
+        } });
+}
+
 // ---- PATCH /admin/users/:id -------------------------------------------------
 
 void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
@@ -672,7 +782,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
     TokenClaims claims;
     try
     {
-        claims = validate_microsoft_token(token);
+        claims = validate_token(token);
     }
     catch (std::exception &e)
     {
@@ -681,7 +791,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
     }
 
     // Admin or Stufenleiter (own dept users only, no role change)
-    auto current_user = db.get_user_by_oid(claims.oid);
+    auto current_user = resolve_user(db, claims);
     if (!current_user || (current_user->role != "admin" && current_user->role != "Stufenleiter"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -752,7 +862,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
     TokenClaims claims;
     try
     {
-        claims = validate_microsoft_token(token);
+        claims = validate_token(token);
     }
     catch (std::exception &e)
     {
@@ -780,7 +890,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
         }
 
         // Fetch current user to check role before allowing department change.
-        auto current_user = db.get_user_by_oid(claims.oid);
+        auto current_user = resolve_user(db, claims);
         std::optional<std::string> department;
         if (j.contains("department") && j["department"].is_string()) {
             std::string new_dept = j["department"].get<std::string>();
@@ -802,7 +912,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
         }
 
         try {
-            auto user = db.update_user(claims.oid, display_name, department);
+            auto user = db.update_user(current_user->microsoft_oid, display_name, department);
             if (!user) {
                 send_json(res, 404, R"({"error":"user not found"})");
                 return;
@@ -885,7 +995,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db)
     TokenClaims claims;
     try
     {
-        claims = validate_microsoft_token(token);
+        claims = validate_token(token);
     }
     catch (std::exception &e)
     {
@@ -896,7 +1006,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db)
     std::string department{req->getParameter(0)};
 
     // Role check: admin may edit any; Stufenleiter only their own department.
-    auto current_user = db.get_user_by_oid(claims.oid);
+    auto current_user = resolve_user(db, claims);
     if (current_user)
     {
         const std::string &role = current_user->role;
@@ -951,7 +1061,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
     }
     try
     {
-        validate_microsoft_token(token);
+        validate_token(token);
     }
     catch (std::exception &e)
     {

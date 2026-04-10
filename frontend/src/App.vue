@@ -30,6 +30,28 @@
           </svg>
           {{ loggingIn ? 'Anmelden...' : 'Mit Microsoft anmelden' }}
         </button>
+
+        <!-- Debug login -->
+        <template v-if="isDebug">
+          <div class="auth-divider"><span>Debug Login</span></div>
+          <div v-if="debugUsersLoading" class="auth-debug-loading">Benutzer laden…</div>
+          <template v-else>
+            <select v-model="debugSelectedUser" class="auth-debug-select">
+              <option value="" disabled>Benutzer wählen…</option>
+              <option v-for="u in debugUsers" :key="u.id" :value="u.id">
+                {{ u.display_name }} ({{ u.role }}{{ u.department ? ', ' + u.department : '' }})
+              </option>
+            </select>
+            <button
+              class="auth-btn auth-btn-debug"
+              @click="handleDebugLogin"
+              :disabled="!debugSelectedUser || loggingIn"
+            >
+              {{ loggingIn ? 'Anmelden...' : 'Als Benutzer anmelden' }}
+            </button>
+          </template>
+        </template>
+
         <p v-if="loginError" class="auth-error">{{ loginError }}</p>
       </div>
     </div>
@@ -44,16 +66,40 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import UserAvatar from './components/UserAvatar.vue'
-import { user, authLoading, loginError, initAuth, login } from './composables/useAuth'
+import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
+import type { User } from './types'
 
 const loggingIn = ref(false)
+const debugUsers = ref<User[]>([])
+const debugSelectedUser = ref('')
+const debugUsersLoading = ref(false)
 
 async function handleLogin() {
   loggingIn.value = true
   try { await login() } finally { loggingIn.value = false }
 }
 
-onMounted(() => initAuth())
+async function handleDebugLogin() {
+  if (!debugSelectedUser.value) return
+  loggingIn.value = true
+  try { await debugLogin(debugSelectedUser.value) } finally { loggingIn.value = false }
+}
+
+async function loadDebugUsers() {
+  if (!isDebug) return
+  debugUsersLoading.value = true
+  try {
+    const res = await fetch('/api/debug/users')
+    if (res.ok) debugUsers.value = await res.json()
+  } finally {
+    debugUsersLoading.value = false
+  }
+}
+
+onMounted(() => {
+  initAuth()
+  loadDebugUsers()
+})
 </script>
 
 <style scoped>
@@ -134,6 +180,41 @@ onMounted(() => initAuth())
   font-size: 0.85rem;
   color: #dc2626;
   text-align: center;
+}
+
+.auth-divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 0;
+  color: #9ca3af;
+  font-size: 0.82rem;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+.auth-debug-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+  color: #1a202c;
+  cursor: pointer;
+}
+.auth-btn-debug {
+  background: #6b7280;
+}
+.auth-btn-debug:hover:not(:disabled) { background: #4b5563; }
+.auth-debug-loading {
+  font-size: 0.85rem;
+  color: #9ca3af;
 }
 
 .global-nav-user {
