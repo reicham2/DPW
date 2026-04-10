@@ -307,7 +307,7 @@ body {
 .form-group input,
 .form-group textarea,
 .form-group select,
-.material-grid input {
+.material-list input {
 	width: 100%;
 	padding: 10px 12px;
 	font-size: 1rem;
@@ -325,7 +325,7 @@ body {
 .form-group input:focus,
 .form-group textarea:focus,
 .form-group select:focus,
-.material-grid input:focus {
+.material-list input:focus {
 	outline: none;
 	border-color: #0080ff;
 	box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.15);
@@ -664,20 +664,36 @@ body {
 	margin-top: 4px;
 }
 
-/* ---- Material chips (view) ---- */
-.material-chips {
+/* ---- Material list (view) ---- */
+.material-list-view {
+	list-style: none;
+	padding: 0;
+	margin: 0;
 	display: flex;
-	flex-wrap: wrap;
+	flex-direction: column;
 	gap: 6px;
 }
 
-.material-chip {
-	font-size: 0.82rem;
-	padding: 3px 10px;
-	border-radius: 999px;
-	background: #f3f4f6;
+.material-list-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 12px;
+	background: #f9fafb;
 	border: 1px solid #e5e7eb;
-	color: #374151;
+	border-radius: 8px;
+}
+
+.material-list-name {
+	font-size: 0.9rem;
+	color: #222;
+}
+
+.material-list-resp {
+	font-size: 0.8rem;
+	color: #6b7280;
+	white-space: nowrap;
 }
 
 /* ---- User multi-select search ---- */
@@ -931,7 +947,7 @@ body {
 	.form-group input,
 	.form-group textarea,
 	.form-group select,
-	.material-grid input {
+	.material-list input {
 		font-size: 1rem;
 		padding: 11px 12px;
 	}
@@ -1028,10 +1044,9 @@ body {
 		font-size: 0.75rem;
 	}
 
-	/* ---- Material chips: slightly bigger ---- */
-	.material-chip {
-		font-size: 0.85rem;
-		padding: 5px 12px;
+	/* ---- Material list: slightly bigger ---- */
+	.material-list-item {
+		padding: 10px 14px;
 	}
 
 	/* ---- Program timeline ---- */
@@ -1183,71 +1198,58 @@ body {
 }
 
 /* =============================================================================
-   MATERIAL GRID — 3 columns, auto-grow sentinel pattern
+   MATERIAL LIST — edit rows with name + optional responsible
    ============================================================================= */
 
-.material-grid {
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
+.material-list {
+	display: flex;
+	flex-direction: column;
 	gap: 8px;
 }
 
-.material-grid input {
+.material-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 12px;
+	align-items: start;
+}
+
+.material-row__name {
 	width: 100%;
 	box-sizing: border-box;
 }
 
-@media (max-width: 599px) {
-	.material-grid {
-		grid-template-columns: 1fr;
-	}
+.material-row__responsible {
+	width: 200px;
+	min-width: 160px;
+	box-sizing: border-box;
+	position: relative;
+	text-align: right;
 }
 
-/* =============================================================================
-   SECTION HEADER with action button (e.g. copy material)
-   ============================================================================= */
-
-.detail-section-header {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 8px;
-}
-
-.detail-section-header .detail-section-title {
-	margin-bottom: 0;
-}
-
-.btn-copy {
+.material-resp-chip {
 	display: inline-flex;
 	align-items: center;
-	justify-content: center;
-	width: 26px;
-	height: 26px;
-	border: 1.5px solid #d1d5db;
-	border-radius: 6px;
-	background: #fff;
-	color: #6b7280;
-	font-size: 0.95rem;
-	cursor: pointer;
-	transition:
-		border-color 0.15s,
-		color 0.15s,
-		background 0.15s;
-	padding: 0;
-	line-height: 1;
+	gap: 4px;
+	font-size: 0.85rem;
+	padding: 7px 10px;
+	border-radius: 8px;
+	background: #dbeafe;
+	border: 1px solid #93c5fd;
+	color: #1e40af;
+	width: 100%;
+	box-sizing: border-box;
+	justify-content: flex-end;
 }
 
-.btn-copy:hover {
-	border-color: #0080ff;
-	color: #0080ff;
-	background: #e6f2ff;
-}
-
-.btn-copy--done {
-	border-color: #10b981;
-	color: #10b981;
-	background: #ecfdf5;
+@media (max-width: 599px) {
+	.material-row {
+		grid-template-columns: 1fr;
+	}
+	.material-row__responsible {
+		width: 100%;
+		text-align: left;
+	}
 }
 
 /* =============================================================================

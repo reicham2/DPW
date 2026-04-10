@@ -5,7 +5,7 @@ import { useActivities } from '../composables/useActivities';
 import { useUsers } from '../composables/useUsers';
 import { user } from '../composables/useAuth';
 import { wsSend, wsRegister } from '../composables/useWebSocket';
-import type { Activity, Department, ProgramInput, EditSection, SectionLock } from '../types';
+import type { Activity, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -36,7 +36,7 @@ const editGoal = ref('');
 const editLocation = ref('');
 const editResponsible = ref<string[]>([]);
 const editDepartment = ref<Department | ''>('');
-const editMaterial = ref<string[]>(['']);
+const editMaterial = ref<MaterialItem[]>([{ name: '', responsible: '' }]);
 const editNeedsSiko = ref(false);
 const editSikoFile = ref<File | null>(null);
 const editSikoBase64 = ref<string | null>(null);
@@ -152,7 +152,7 @@ function syncEditFields(a: typeof activity.value) {
 	editLocation.value = a.location;
 	editResponsible.value = [...a.responsible];
 	editDepartment.value = a.department ?? '';
-	editMaterial.value = [...a.material, '']; // trailing empty = sentinel input
+	editMaterial.value = [...a.material.map(m => ({ name: m.name, responsible: m.responsible ?? '' })), { name: '', responsible: '' }]; // trailing empty = sentinel input
 	editNeedsSiko.value = a.needs_siko;
 	editBadWeather.value = a.bad_weather_info ?? '';
 	editPrograms.value = a.programs.map((p) => ({
@@ -193,7 +193,7 @@ watch(lastUpdatedActivity, (updated) => {
 		if (updated.bad_weather_info !== prev.bad_weather_info)
 			editBadWeather.value = updated.bad_weather_info ?? '';
 		if (JSON.stringify(updated.material) !== JSON.stringify(prev.material))
-			editMaterial.value = [...updated.material, ''];
+			editMaterial.value = [...updated.material.map(m => ({ name: m.name, responsible: m.responsible ?? '' })), { name: '', responsible: '' }];
 		if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs))
 			editPrograms.value = updated.programs.map((p) => ({
 				time: p.time,
@@ -248,32 +248,44 @@ function enterEdit() {
 	mode.value = 'edit';
 }
 
-// ---- Copy material list ----------------------------------------------------
-const materialCopied = ref(false);
-async function copyMaterial() {
-	if (!activity.value?.material.length) return;
-	await navigator.clipboard.writeText(activity.value.material.join('\n'));
-	materialCopied.value = true;
-	setTimeout(() => {
-		materialCopied.value = false;
-	}, 2000);
-}
-
 // ---- Material --------------------------------------------------------------
 // Sentinel pattern: array always ends with one empty string.
 // @input  → if user typed in the last (sentinel) field, grow the list
 // @blur   → if a non-sentinel field is empty when leaving, remove it
 function onMaterialInput(i: number) {
 	const isLast = i === editMaterial.value.length - 1;
-	if (isLast && editMaterial.value[i] !== '') {
-		editMaterial.value.push('');
+	if (isLast && editMaterial.value[i].name !== '') {
+		editMaterial.value.push({ name: '', responsible: '' });
 	}
 }
 function onMaterialBlur(i: number) {
 	const isLast = i === editMaterial.value.length - 1;
-	if (!isLast && editMaterial.value[i] === '') {
+	if (!isLast && editMaterial.value[i].name === '') {
 		editMaterial.value.splice(i, 1);
 	}
+}
+
+// ---- Material responsible search -------------------------------------------
+const materialRespSearch = ref<Record<number, string>>({});
+const materialRespDropdown = ref<number | null>(null);
+
+function materialRespFiltered(i: number) {
+	const q = (materialRespSearch.value[i] ?? '').toLowerCase();
+	return users.value.filter(u => q === '' || u.display_name.toLowerCase().includes(q));
+}
+function setMaterialResp(i: number, name: string) {
+	editMaterial.value[i].responsible = name;
+	materialRespSearch.value[i] = '';
+	materialRespDropdown.value = null;
+}
+function clearMaterialResp(i: number) {
+	editMaterial.value[i].responsible = '';
+}
+function onMaterialRespBlur(i: number) {
+	setTimeout(() => {
+		materialRespDropdown.value = null;
+		delete materialRespSearch.value[i];
+	}, 200);
 }
 
 // ---- Responsible search ----------------------------------------------------
@@ -304,6 +316,7 @@ function removeResponsible(i: number) {
 function onResponsibleBlur() {
 	setTimeout(() => {
 		showResponsibleDropdown.value = false;
+		responsibleSearch.value = '';
 	}, 200);
 }
 
@@ -385,7 +398,7 @@ async function doSave() {
 		location: editLocation.value.trim(),
 		responsible: editResponsible.value,
 		department: editDepartment.value || null,
-		material: editMaterial.value.filter((m) => m.trim()),
+		material: editMaterial.value.filter((m) => m.name.trim()).map(m => ({ name: m.name.trim(), ...(m.responsible?.trim() ? { responsible: m.responsible.trim() } : {}) })),
 		needs_siko: editNeedsSiko.value,
 		siko_base64: editSikoBase64.value ?? undefined,
 		bad_weather_info: editBadWeather.value.trim() || null,
@@ -494,26 +507,17 @@ async function doDelete() {
 
 			<!-- Material -->
 			<div class="detail-section">
-				<div class="detail-section-header">
-					<p class="detail-section-title">Material</p>
-					<button
-						v-if="activity.material.length"
-						class="btn-copy"
-						:class="{ 'btn-copy--done': materialCopied }"
-						@click="copyMaterial"
-						:title="materialCopied ? 'Kopiert!' : 'Liste kopieren'"
-					>
-						{{ materialCopied ? '✓' : '⎘' }}
-					</button>
-				</div>
-				<div v-if="activity.material.length" class="material-chips">
-					<span
+				<p class="detail-section-title">Material</p>
+				<ul v-if="activity.material.length" class="material-list-view">
+					<li
 						v-for="(m, i) in activity.material"
 						:key="i"
-						class="material-chip"
-						>{{ m }}</span
+						class="material-list-item"
 					>
-				</div>
+						<span class="material-list-name">{{ m.name }}</span>
+						<span v-if="m.responsible" class="material-list-resp">{{ m.responsible }}</span>
+					</li>
+				</ul>
 				<span v-else class="detail-value detail-value--muted">—</span>
 			</div>
 
@@ -730,21 +734,52 @@ async function doDelete() {
 			</div>
 
 			<!-- Material -->
-			<div class="form-section lock-wrapper" :class="{ 'is-locked': isLockedByOther('material') }"
-				@focusin="lockSection('material')" @focusout="unlockSection('material', $event)">
-				<div v-if="lockedBy('material')" class="lock-badge">🔒 {{ lockedBy('material') }}</div>
+			<div class="form-section">
 				<p class="form-section-title">Material</p>
-				<div class="material-grid">
-					<input
-						v-for="(_, i) in editMaterial"
-						:key="i"
-						v-model="editMaterial[i]"
-						type="text"
-						placeholder="Material…"
-						@input="onMaterialInput(i)"
-						@blur="onMaterialBlur(i)"
-						:disabled="isLockedByOther('material')"
-					/>
+				<div class="material-list">
+					<div v-for="(_, i) in editMaterial" :key="i" class="material-row lock-wrapper"
+						:class="{ 'is-locked': isLockedByOther(`material_${i}`) }"
+						@focusin="lockSection(`material_${i}`)" @focusout="unlockSection(`material_${i}`, $event)">
+						<div v-if="lockedBy(`material_${i}`)" class="lock-badge">🔒 {{ lockedBy(`material_${i}`) }}</div>
+						<input
+							v-model="editMaterial[i].name"
+							type="text"
+							placeholder="Material…"
+							class="material-row__name"
+							@input="onMaterialInput(i)"
+							@blur="onMaterialBlur(i)"
+							:disabled="isLockedByOther(`material_${i}`)"
+						/>
+						<div class="material-row__responsible user-search-wrapper">
+							<template v-if="editMaterial[i].responsible">
+								<span class="material-resp-chip">
+									{{ editMaterial[i].responsible }}
+									<button type="button" class="user-chip-remove" @click="clearMaterialResp(i)" :disabled="isLockedByOther(`material_${i}`)">✕</button>
+								</span>
+							</template>
+							<template v-else>
+								<input
+									type="text"
+									:value="materialRespSearch[i] ?? ''"
+									@input="materialRespSearch[i] = ($event.target as HTMLInputElement).value"
+									placeholder="Verantwortlich (optional)"
+									@focus="materialRespDropdown = i"
+									@blur="onMaterialRespBlur(i)"
+									:disabled="isLockedByOther(`material_${i}`)"
+								/>
+								<div v-if="materialRespDropdown === i && materialRespFiltered(i).length" class="user-dropdown">
+									<div
+										v-for="u in materialRespFiltered(i)"
+										:key="u.id"
+										class="user-dropdown-item"
+										@mousedown.prevent="setMaterialResp(i, u.display_name)"
+									>
+										{{ u.display_name }}
+									</div>
+								</div>
+							</template>
+						</div>
+					</div>
 				</div>
 			</div>
 

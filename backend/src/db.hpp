@@ -95,4 +95,5 @@ private:
 
     static std::vector<std::string> parse_pg_array(const char *raw);
     static std::string format_material_param(const std::vector<std::string> &material);
+    static std::string format_material_items_param(const std::vector<MaterialItem> &items);
 };
