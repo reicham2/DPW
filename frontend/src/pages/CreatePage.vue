@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
 import { useUsers } from '../composables/useUsers'
 import { user } from '../composables/useAuth'
-import type { Department, ProgramInput } from '../types'
+import type { Department, ProgramInput, MaterialItem } from '../types'
 
 const router = useRouter()
 const { createActivity, fetchDepartments, departments, error } = useActivities()
@@ -23,7 +23,7 @@ const goal           = ref('')
 const location       = ref('')
 const responsible    = ref<string[]>(user.value ? [user.value.display_name] : [])
 const department     = ref<Department | ''>('Pfadi')
-const material       = ref<string[]>([''])
+const material       = ref<MaterialItem[]>([{ name: '', responsible: '' }])
 const needs_siko     = ref(false)
 const sikoFile       = ref<File | null>(null)
 const sikoBase64     = ref<string | null>(null)
@@ -34,15 +34,38 @@ const submitting     = ref(false)
 // ---- Material --------------------------------------------------------------
 function onMaterialInput(i: number) {
   const isLast = i === material.value.length - 1
-  if (isLast && material.value[i] !== '') {
-    material.value.push('')
+  if (isLast && material.value[i].name !== '') {
+    material.value.push({ name: '', responsible: '' })
   }
 }
 function onMaterialBlur(i: number) {
   const isLast = i === material.value.length - 1
-  if (!isLast && material.value[i] === '') {
+  if (!isLast && material.value[i].name === '') {
     material.value.splice(i, 1)
   }
+}
+
+// ---- Material responsible search -------------------------------------------
+const materialRespSearch = ref<Record<number, string>>({})
+const materialRespDropdown = ref<number | null>(null)
+
+function materialRespFiltered(i: number) {
+  const q = (materialRespSearch.value[i] ?? '').toLowerCase()
+  return users.value.filter(u => q === '' || u.display_name.toLowerCase().includes(q))
+}
+function setMaterialResp(i: number, name: string) {
+  material.value[i].responsible = name
+  materialRespSearch.value[i] = ''
+  materialRespDropdown.value = null
+}
+function clearMaterialResp(i: number) {
+  material.value[i].responsible = ''
+}
+function onMaterialRespBlur(i: number) {
+  setTimeout(() => {
+    materialRespDropdown.value = null
+    delete materialRespSearch.value[i]
+  }, 200)
 }
 
 // ---- Responsible search ----------------------------------------------------
@@ -73,6 +96,7 @@ function removeResponsible(i: number) {
 function onResponsibleBlur() {
   setTimeout(() => {
     showResponsibleDropdown.value = false
+    responsibleSearch.value = ''
   }, 200)
 }
 
@@ -108,7 +132,7 @@ async function submit() {
     location:        location.value.trim(),
     responsible:     responsible.value,
     department:      department.value || null,
-    material:        material.value.filter(m => m.trim()),
+    material:        material.value.filter(m => m.name.trim()).map(m => ({ name: m.name.trim(), ...(m.responsible?.trim() ? { responsible: m.responsible.trim() } : {}) })),
     needs_siko:      needs_siko.value,
     siko_base64:     sikoBase64.value ?? undefined,
     bad_weather_info: bad_weather.value.trim() || null,
@@ -234,16 +258,45 @@ async function submit() {
       <!-- Material -->
       <div class="form-section">
         <p class="form-section-title">Material</p>
-        <div class="material-grid">
-          <input
-            v-for="(_, i) in material"
-            :key="i"
-            v-model="material[i]"
-            type="text"
-            placeholder="Material…"
-            @input="onMaterialInput(i)"
-            @blur="onMaterialBlur(i)"
-          />
+        <div class="material-list">
+          <div v-for="(_, i) in material" :key="i" class="material-row">
+            <input
+              v-model="material[i].name"
+              type="text"
+              placeholder="Material…"
+              class="material-row__name"
+              @input="onMaterialInput(i)"
+              @blur="onMaterialBlur(i)"
+            />
+            <div class="material-row__responsible user-search-wrapper">
+              <template v-if="material[i].responsible">
+                <span class="material-resp-chip">
+                  {{ material[i].responsible }}
+                  <button type="button" class="user-chip-remove" @click="clearMaterialResp(i)">✕</button>
+                </span>
+              </template>
+              <template v-else>
+                <input
+                  type="text"
+                  :value="materialRespSearch[i] ?? ''"
+                  @input="materialRespSearch[i] = ($event.target as HTMLInputElement).value"
+                  placeholder="Verantwortlich (optional)"
+                  @focus="materialRespDropdown = i"
+                  @blur="onMaterialRespBlur(i)"
+                />
+                <div v-if="materialRespDropdown === i && materialRespFiltered(i).length" class="user-dropdown">
+                  <div
+                    v-for="u in materialRespFiltered(i)"
+                    :key="u.id"
+                    class="user-dropdown-item"
+                    @mousedown.prevent="setMaterialResp(i, u.display_name)"
+                  >
+                    {{ u.display_name }}
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
         </div>
       </div>
 
