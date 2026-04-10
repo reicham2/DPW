@@ -701,6 +701,27 @@ std::optional<UserRecord> Database::get_user_by_oid(const std::string &oid)
     return u;
 }
 
+// ---- get_user_by_id ---------------------------------------------------------
+
+std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at "
+                                 "FROM users WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    UserRecord u = row_to_user(res, 0);
+    PQclear(res);
+    return u;
+}
+
 // ---- update_user ------------------------------------------------------------
 
 std::optional<UserRecord> Database::update_user(const std::string &oid,

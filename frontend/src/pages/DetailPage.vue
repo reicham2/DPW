@@ -91,11 +91,8 @@ const canEdit = computed(() => {
 	if (!user.value || !activity.value) return false;
 	const role = user.value.role;
 	if (role === 'admin') return true;
-	if (role === 'Pio') return false;
-	if (role === 'Stufenleiter') {
-		return !!user.value.department && activity.value.department === user.value.department;
-	}
-	// Leiter: only if in responsible list
+	if (role === 'Stufenleiter') return !!user.value.department && activity.value.department === user.value.department;
+	// Leiter and Pio: only if verantwortlich (Pio also limited to own dept — enforced by backend)
 	return activity.value.responsible.includes(user.value.display_name);
 });
 
@@ -103,10 +100,9 @@ const canDelete = computed(() => {
 	if (!user.value || !activity.value) return false;
 	const role = user.value.role;
 	if (role === 'admin') return true;
-	if (role === 'Stufenleiter') {
-		return !!user.value.department && activity.value.department === user.value.department;
-	}
-	return false;
+	if (role === 'Stufenleiter') return !!user.value.department && activity.value.department === user.value.department;
+	// Leiter and Pio: only if verantwortlich
+	return activity.value.responsible.includes(user.value.display_name);
 });
 
 onMounted(async () => {

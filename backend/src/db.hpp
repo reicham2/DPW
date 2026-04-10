@@ -57,6 +57,7 @@ public:
                                           const std::string &initial_dept = "Leiter",
                                           bool force_role = false);
     std::optional<UserRecord> get_user_by_oid(const std::string &oid);
+    std::optional<UserRecord> get_user_by_id(const std::string &id);
     // Update own profile (display_name only; department blocked by role on handler level).
     std::optional<UserRecord> update_user(const std::string &oid,
                                           const std::string &display_name,

@@ -9,6 +9,8 @@ const router = useRouter()
 const DEPARTMENTS: (Department | '')[] = ['', 'Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
 const ROLES: UserRole[] = ['admin', 'Stufenleiter', 'Leiter', 'Pio']
 
+const isAdmin = computed(() => currentUser.value?.role === 'admin')
+
 const users = ref<User[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -18,10 +20,16 @@ const editForm = ref({ display_name: '', department: '' as Department | '', role
 const saving = ref(false)
 const saveError = ref<string | null>(null)
 
-const filterDept = ref<Department | 'Alle'>('Alle')
+// Admin sees all depts; Stufenleiter is locked to own dept
+const filterDept = ref<Department | 'Alle'>(
+  currentUser.value?.role === 'Stufenleiter'
+    ? (currentUser.value?.department ?? 'Alle') as any
+    : 'Alle'
+)
 
 onMounted(async () => {
-  if (!currentUser.value || currentUser.value.role !== 'admin') {
+  const role = currentUser.value?.role
+  if (!currentUser.value || (role !== 'admin' && role !== 'Stufenleiter')) {
     router.replace('/')
     return
   }
@@ -120,8 +128,8 @@ function roleBadgeClass(role: UserRole) {
     <div v-if="loading" class="loading">Lade Benutzer...</div>
     <div v-else-if="error" class="error-msg">{{ error }}</div>
     <template v-else>
-      <!-- Department filter -->
-      <div class="filter-bar">
+      <!-- Department filter (admin only; Stufenleiter is locked to own dept) -->
+      <div v-if="isAdmin" class="filter-bar">
         <label class="filter-label">Abteilung:</label>
         <div class="dept-pills">
           <button
@@ -187,7 +195,7 @@ function roleBadgeClass(role: UserRole) {
           </select>
         </div>
 
-        <div class="form-group">
+        <div v-if="isAdmin" class="form-group">
           <label class="form-label">Rolle</label>
           <select v-model="editForm.role" class="form-input">
             <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
@@ -421,28 +429,4 @@ function roleBadgeClass(role: UserRole) {
 .btn-primary:hover:not(:disabled) { background: #1648c0; }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 
-/* Tabs */
-.page-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 2px solid #e5e7eb;
-  padding: 0 24px;
-  background: #fff;
-}
-.page-tab {
-  padding: 14px 20px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #6b7280;
-  text-decoration: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  transition: color 0.15s, border-color 0.15s;
-}
-.page-tab:hover { color: #1a202c; }
-.page-tab--active {
-  color: #1a56db;
-  border-bottom-color: #1a56db;
-  font-weight: 600;
-}
 </style>

@@ -259,17 +259,12 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
         return;
     }
 
-    // Pio cannot create activities
+    // All authenticated users can create (Pio restricted to own dept — enforced in onData)
     auto current_user = db.get_user_by_oid(claims.oid);
-    if (current_user && current_user->role == "Pio")
-    {
-        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-        return;
-    }
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, &db, &wm](std::string_view chunk, bool last)
+    res->onData([res, buf, &db, &wm, current_user](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -284,6 +279,19 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
         if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
             send_json(res, 400, R"({"error":"title, date, start_time and end_time are required"})");
             return;
+        }
+
+        // Non-admin: can only create for own department or Leiter
+        if (current_user && current_user->role != "admin") {
+            if (input.department) {
+                const std::string &dept = *input.department;
+                if (dept != "Leiter") {
+                    if (!current_user->department || *current_user->department != dept) {
+                        send_json(res, 403, R"({"error":"Nur eigene Abteilung oder Leiter erlaubt"})");
+                        return;
+                    }
+                }
+            }
         }
 
         try {
@@ -324,17 +332,12 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     std::string id{req->getParameter(0)};
 
-    // Role check: Pio cannot edit; Leiter only if responsible; Stufenleiter only own dept.
+    // Role check: Stufenleiter=own dept; Leiter/Pio=if verantwortlich (Pio also own dept).
     auto current_user = db.get_user_by_oid(claims.oid);
     if (current_user)
     {
         const std::string &role = current_user->role;
-        if (role == "Pio")
-        {
-            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-            return;
-        }
-        if (role == "Leiter" || role == "Stufenleiter")
+        if (role == "Stufenleiter" || role == "Leiter" || role == "Pio")
         {
             auto activity = db.get_activity_by_id(id);
             if (!activity)
@@ -344,7 +347,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
             }
             if (role == "Stufenleiter")
             {
-                // Must match department
+                // Stufenleiter: must match department
                 if (!current_user->department || !activity->department ||
                     *current_user->department != *activity->department)
                 {
@@ -352,7 +355,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                     return;
                 }
             }
-            else // Leiter: must be in responsible list
+            else // Leiter and Pio: must be in responsible list
             {
                 bool is_responsible = false;
                 for (auto &r : activity->responsible)
@@ -364,6 +367,13 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                     }
                 }
                 if (!is_responsible)
+                {
+                    send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                    return;
+                }
+                // Pio: additionally must be in own department
+                if (role == "Pio" && (!current_user->department || !activity->department ||
+                    *activity->department != *current_user->department))
                 {
                     send_json(res, 403, R"({"error":"Keine Berechtigung"})");
                     return;
@@ -414,17 +424,12 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
         return;
     std::string id{req->getParameter(0)};
 
-    // Role check: only admin and Stufenleiter (own dept) may delete.
+    // admin: always; Stufenleiter: own dept; Leiter+Pio: if verantwortlich (Pio also own dept).
     auto current_user = db.get_user_by_oid(claims.oid);
     if (current_user)
     {
         const std::string &role = current_user->role;
-        if (role == "Pio" || role == "Leiter")
-        {
-            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-            return;
-        }
-        if (role == "Stufenleiter")
+        if (role == "Stufenleiter" || role == "Leiter" || role == "Pio")
         {
             auto activity = db.get_activity_by_id(id);
             if (!activity)
@@ -432,11 +437,38 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
                 send_json(res, 404, R"({"error":"not found"})");
                 return;
             }
-            if (!current_user->department || !activity->department ||
-                *current_user->department != *activity->department)
+            if (role == "Stufenleiter")
             {
-                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-                return;
+                if (!current_user->department || !activity->department ||
+                    *current_user->department != *activity->department)
+                {
+                    send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                    return;
+                }
+            }
+            else // Leiter and Pio: must be verantwortlich
+            {
+                bool is_responsible = false;
+                for (auto &r : activity->responsible)
+                {
+                    if (r == current_user->display_name || r == claims.email)
+                    {
+                        is_responsible = true;
+                        break;
+                    }
+                }
+                if (!is_responsible)
+                {
+                    send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                    return;
+                }
+                // Pio: additionally must be in own department
+                if (role == "Pio" && (!current_user->department || !activity->department ||
+                    *activity->department != *current_user->department))
+                {
+                    send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                    return;
+                }
             }
         }
     }
@@ -628,9 +660,9 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
 
-    // Admin only
+    // Admin or Stufenleiter (own dept users only, no role change)
     auto current_user = db.get_user_by_oid(claims.oid);
-    if (!current_user || current_user->role != "admin")
+    if (!current_user || (current_user->role != "admin" && current_user->role != "Stufenleiter"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -639,7 +671,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
     std::string target_id{req->getParameter(0)};
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, target_id, &db](std::string_view chunk, bool last)
+    res->onData([res, buf, target_id, current_user, &db](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -655,7 +687,18 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 400, R"({"error":"display_name is required"})");
             return;
         }
+
+        // Stufenleiter: verify target is in own dept; keep existing role
         std::string role = j.value("role", "Leiter");
+        if (current_user && current_user->role == "Stufenleiter") {
+            auto target = db.get_user_by_id(target_id);
+            if (!target || !current_user->department || !target->department ||
+                *target->department != *current_user->department) {
+                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                return;
+            }
+            role = target->role; // Stufenleiter cannot change role
+        }
 
         std::optional<std::string> department;
         if (j.contains("department") && j["department"].is_string())

@@ -9,10 +9,9 @@ const DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
 
 const { activities, loading, error, connected, fetchActivities } = useActivities()
 
-const isAdmin = computed(() => user.value?.role === 'admin')
-const isPio   = computed(() => user.value?.role === 'Pio')
-// Pio can't create activities
-const canCreate = computed(() => !isPio.value)
+const isAdmin        = computed(() => user.value?.role === 'admin')
+const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
+const isPio          = computed(() => user.value?.role === 'Pio')
 
 const search = ref('')
 // Pio is locked to their own department; others default to own dept or 'Alle'
@@ -46,7 +45,7 @@ const filtered = computed(() => {
 <template>
   <nav class="page-tabs">
     <router-link to="/" class="page-tab page-tab--active">Aktivitäten</router-link>
-    <template v-if="isAdmin">
+    <template v-if="isAdmin || isStufenleiter">
       <router-link to="/mail-templates" class="page-tab">Mail-Vorlagen</router-link>
       <router-link to="/admin" class="page-tab">Admin</router-link>
     </template>
@@ -58,7 +57,7 @@ const filtered = computed(() => {
       <span class="status" :class="connected ? 'status--live' : 'status--off'">
         {{ connected ? 'Live' : 'Verbinde...' }}
       </span>
-      <router-link v-if="canCreate" to="/activities/new" class="btn-primary">+ Neue Aktivität</router-link>
+      <router-link to="/activities/new" class="btn-primary">+ Neue Aktivität</router-link>
     </div>
   </header>
 
