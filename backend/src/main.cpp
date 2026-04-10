@@ -92,6 +92,10 @@ int main()
          .post("/send-mail", [&](auto *res, auto *req)
                { handle_post_send_mail(res, req, db); })
 
+         // Bug report — creates a GitHub issue
+         .post("/bug-report", [&](auto *res, auto *req)
+               { handle_post_bug_report(res, req, db); })
+
          // WebSocket endpoint
          .ws<WsUserData>("/ws", {.compression = uWS::SHARED_COMPRESSOR,
                                  .maxPayloadLength = 64 * 1024,

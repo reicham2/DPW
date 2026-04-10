@@ -31,6 +31,7 @@ services:
       AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET}"
       DEBUG: "${DEBUG}"
       DEBUG_ADMIN_EMAIL: "${DEBUG_ADMIN_EMAIL}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
     depends_on:
       db:
         condition: service_healthy
