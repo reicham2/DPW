@@ -96,6 +96,7 @@ export interface MailTemplate {
 	department: Department;
 	subject: string;
 	body: string;
+	recipients: string[];
 	created_at: string;
 	updated_at: string;
 }

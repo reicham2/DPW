@@ -25,13 +25,6 @@
 				>
 					Profil bearbeiten
 				</router-link>
-				<router-link
-					class="avatar-dropdown-item"
-					to="/mail-templates"
-					@click="open = false"
-				>
-					Mail-Vorlagen
-				</router-link>
 				<button
 					class="avatar-dropdown-item avatar-dropdown-logout"
 					@click="handleLogout"

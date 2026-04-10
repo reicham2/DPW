@@ -932,6 +932,7 @@ static nlohmann::json template_to_json(const MailTemplate &t)
         {"department", t.department},
         {"subject", t.subject},
         {"body", t.body},
+        {"recipients", t.recipients},
         {"created_at", t.created_at},
         {"updated_at", t.updated_at}};
 }
@@ -1036,8 +1037,16 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db)
         std::string subject = j.value("subject", "");
         std::string body    = j.value("body", "");
 
+        std::vector<std::string> recipients;
+        if (j.contains("recipients") && j["recipients"].is_array()) {
+            for (auto& e : j["recipients"]) {
+                if (e.is_string() && !e.get<std::string>().empty())
+                    recipients.push_back(e.get<std::string>());
+            }
+        }
+
         try {
-            auto tpl = db.upsert_mail_template(department, subject, body);
+            auto tpl = db.upsert_mail_template(department, subject, body, recipients);
             if (!tpl) {
                 send_json(res, 500, R"({"error":"db error"})");
                 return;

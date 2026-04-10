@@ -60,6 +60,7 @@ export function useMailTemplates() {
 		department: Department,
 		subject: string,
 		body: string,
+		recipients: string[] = [],
 	): Promise<MailTemplate | null> {
 		error.value = null;
 		try {
@@ -67,7 +68,7 @@ export function useMailTemplates() {
 				`${BASE}/mail-templates/${encodeURIComponent(department)}`,
 				{
 					method: 'PUT',
-					body: JSON.stringify({ subject, body }),
+					body: JSON.stringify({ subject, body, recipients }),
 				},
 			);
 			if (!res.ok) throw new Error(await res.text());
