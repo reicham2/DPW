@@ -1118,7 +1118,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
         } });
 }
 
-// ─── GitHub API helper ────────────────────────────────────────────────────────
+// ─── GitHub API helpers ───────────────────────────────────────────────────────
 
 static size_t github_write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
@@ -1163,6 +1163,7 @@ static std::pair<long, std::string> github_post_issue(
 
     return {status, response};
 }
+
 
 // ─── POST /bug-report ─────────────────────────────────────────────────────────
 
@@ -1213,7 +1214,6 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
         std::string description = str_field(j, "description");
         std::string url         = str_field(j, "url");
         std::string user_agent  = str_field(j, "userAgent");
-        std::string screenshot  = str_field(j, "screenshot");
 
         if (description.empty())
         {
@@ -1235,7 +1235,6 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
         char ts_buf[32];
         std::strftime(ts_buf, sizeof(ts_buf), "%Y-%m-%d %H:%M UTC", std::gmtime(&now));
 
-        // Issue body
         std::string body =
             "## Beschreibung\n\n" + description +
             "\n\n---\n"
@@ -1244,13 +1243,7 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
             "**Browser:** " + user_agent + "  \n"
             "**Zeitpunkt:** " + ts_buf;
 
-        if (!screenshot.empty())
-        {
-            body += "\n\n<details>\n<summary>Screenshot (Base64 JPEG)</summary>\n\n"
-                    "```\n" + screenshot + "\n```\n</details>";
-        }
-
-        nlohmann::json issue_body = {
+        nlohmann::json issue_payload = {
             {"title", title},
             {"body", body},
             {"labels", nlohmann::json::array({"User-Bug"})}
@@ -1258,20 +1251,19 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
 
         try
         {
-            auto [status, resp] = github_post_issue(github_token, issue_body.dump());
+            auto [create_status, create_resp] = github_post_issue(github_token, issue_payload.dump());
 
-            if (status == 201)
-            {
-                auto resp_j = nlohmann::json::parse(resp, nullptr, false);
-                std::string issue_url = resp_j.value("html_url", "");
-                send_json(res, 200, nlohmann::json{{"issue_url", issue_url}}.dump());
-            }
-            else
+            if (create_status != 201)
             {
                 send_json(res, 502, nlohmann::json{
-                    {"error", "GitHub API Fehler: " + std::to_string(status)}
+                    {"error", "GitHub API Fehler: " + std::to_string(create_status)}
                 }.dump());
+                return;
             }
+
+            auto resp_j = nlohmann::json::parse(create_resp, nullptr, false);
+            std::string issue_url = resp_j.value("html_url", "");
+            send_json(res, 200, nlohmann::json{{"issue_url", issue_url}}.dump());
         }
         catch (std::exception &e)
         {

@@ -17,29 +17,13 @@
 
         <!-- Form -->
         <div v-if="!success" class="bug-modal-body">
-          <div class="bug-screenshot-row">
-            <button class="bug-btn-secondary" @click="captureScreenshot" :disabled="isCapturing">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="3.5" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-                <circle cx="8" cy="8.5" r="2" stroke="currentColor" stroke-width="1.5"/>
-                <path d="M5.5 3.5L6.5 2h3l1 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              {{ isCapturing ? 'Aufnehmen...' : 'Screenshot erstellen' }}
-            </button>
-            <span v-if="screenshotDataUrl" class="bug-screenshot-badge">✓ Screenshot bereit</span>
-          </div>
-
-          <div v-if="screenshotDataUrl" class="bug-screenshot-preview-wrapper">
-            <img :src="screenshotDataUrl" class="bug-screenshot-preview" alt="Screenshot" />
-          </div>
-
           <label class="bug-label" for="bug-description">Beschreibung *</label>
           <textarea
             id="bug-description"
             v-model="description"
             class="bug-textarea"
             placeholder="Beschreibe das Problem so genau wie möglich..."
-            rows="5"
+            rows="6"
           />
 
           <p v-if="error" class="bug-error">{{ error }}</p>
@@ -73,16 +57,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import html2canvas from 'html2canvas'
+import { ref } from 'vue'
 import { getIdToken } from '../composables/useAuth'
 
 const isOpen = ref(false)
-const isCapturing = ref(false)
 const isSubmitting = ref(false)
 const description = ref('')
-const screenshotDataUrl = ref<string | null>(null)
-const screenshotBase64 = ref<string | null>(null)
 const error = ref('')
 const success = ref(false)
 const issueUrl = ref('')
@@ -100,41 +80,9 @@ function closeModal() {
 function closeAndReset() {
   isOpen.value = false
   description.value = ''
-  screenshotDataUrl.value = null
-  screenshotBase64.value = null
   error.value = ''
   success.value = false
   issueUrl.value = ''
-}
-
-async function captureScreenshot() {
-  isCapturing.value = true
-  isOpen.value = false
-  await nextTick()
-  // Short pause so the modal fully disappears before capture
-  await new Promise(r => setTimeout(r, 120))
-
-  try {
-    const canvas = await html2canvas(document.body, { useCORS: true, logging: false })
-
-    // Resize to max 800px width to keep base64 size manageable
-    const maxWidth = 800
-    const ratio = Math.min(maxWidth / canvas.width, 1)
-    const tmpCanvas = document.createElement('canvas')
-    tmpCanvas.width = Math.round(canvas.width * ratio)
-    tmpCanvas.height = Math.round(canvas.height * ratio)
-    const ctx = tmpCanvas.getContext('2d')!
-    ctx.drawImage(canvas, 0, 0, tmpCanvas.width, tmpCanvas.height)
-
-    const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.5)
-    screenshotDataUrl.value = dataUrl
-    screenshotBase64.value = dataUrl.split(',')[1]
-  } catch (e) {
-    console.error('Screenshot failed:', e)
-  } finally {
-    isCapturing.value = false
-    isOpen.value = true
-  }
 }
 
 async function submitReport() {
@@ -154,7 +102,6 @@ async function submitReport() {
         description: description.value,
         url: window.location.href,
         userAgent: navigator.userAgent,
-        screenshot: screenshotBase64.value ?? '',
       }),
     })
 
@@ -216,8 +163,6 @@ async function submitReport() {
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
   width: 100%;
   max-width: 520px;
-  max-height: 90vh;
-  overflow-y: auto;
 }
 
 .bug-modal-header {
@@ -254,34 +199,6 @@ async function submitReport() {
   gap: 12px;
 }
 
-/* ─── Screenshot ─── */
-.bug-screenshot-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.bug-screenshot-badge {
-  font-size: 0.82rem;
-  color: #16a34a;
-  font-weight: 600;
-}
-
-.bug-screenshot-preview-wrapper {
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-}
-
-.bug-screenshot-preview {
-  display: block;
-  width: 100%;
-  max-height: 180px;
-  object-fit: cover;
-  object-position: top;
-}
-
 /* ─── Form ─── */
 .bug-label {
   font-size: 0.875rem;
@@ -297,7 +214,7 @@ async function submitReport() {
   font-size: 0.9rem;
   font-family: inherit;
   resize: vertical;
-  min-height: 100px;
+  min-height: 120px;
   color: #1a202c;
   box-sizing: border-box;
   transition: border-color 0.15s;
@@ -337,9 +254,6 @@ async function submitReport() {
 .bug-btn-primary:disabled { opacity: 0.55; cursor: default; }
 
 .bug-btn-secondary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   padding: 9px 16px;
   background: #f3f4f6;
   color: #374151;
@@ -350,8 +264,7 @@ async function submitReport() {
   cursor: pointer;
   transition: background 0.15s;
 }
-.bug-btn-secondary:hover:not(:disabled) { background: #e5e7eb; }
-.bug-btn-secondary:disabled { opacity: 0.55; cursor: default; }
+.bug-btn-secondary:hover { background: #e5e7eb; }
 
 /* ─── Success ─── */
 .bug-success-body {
