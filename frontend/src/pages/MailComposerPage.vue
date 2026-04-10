@@ -3,15 +3,16 @@ import { ref, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useActivities } from '../composables/useActivities';
 import { useMailTemplates } from '../composables/useMailTemplates';
+import { useContactSearch } from '../composables/useContactSearch';
 import { user } from '../composables/useAuth';
-import type { Activity, Department } from '../types';
+import type { Activity, Department, SentMail } from '../types';
 
 const route = useRoute()
 const router = useRouter()
 const activityId = route.params.id as string
 
 const { fetchActivity } = useActivities()
-const { fetchTemplate, sendMail, sending, error } = useMailTemplates()
+const { fetchTemplate, sendMail, sending, error, fetchSentMails } = useMailTemplates()
 
 const activity = ref<Activity | null>(null)
 const subject = ref('')
@@ -30,6 +31,12 @@ const curUl = ref(false)
 const curOl = ref(false)
 const curBgColor = ref('#ffffff')
 let savedSelection: Range | null = null
+
+// Sent mail state
+const sentMails = ref<SentMail[]>([])
+const showWarning = ref(false)
+const warningConfirmed = ref(false)
+const viewingMail = ref<SentMail | null>(null)
 
 function formatDateLong(d: string): string {
   return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
@@ -94,6 +101,12 @@ onMounted(async () => {
     return
   }
   activity.value = act
+
+  // Load sent mails for this activity
+  sentMails.value = await fetchSentMails(activityId)
+  if (sentMails.value.length > 0) {
+    showWarning.value = true
+  }
 
   if (act.department) {
     const tpl = await fetchTemplate(act.department as Department)
@@ -245,12 +258,47 @@ function adjustFontSize(delta: number) {
   curSize.value = String(newSize)
 }
 
-function addRecipient() {
-	recipients.value.push('');
+function addRecipient(email: string) {
+	if (!recipients.value.includes(email)) {
+		if (recipients.value.length === 1 && recipients.value[0] === '') {
+			recipients.value[0] = email;
+		} else {
+			recipients.value.push(email);
+		}
+	}
+	recipientSearch.value = '';
+	showRecipientDropdown.value = false;
+	clearContactSearch();
 }
 
 function removeRecipient(index: number) {
 	recipients.value.splice(index, 1);
+	if (recipients.value.length === 0) recipients.value = [''];
+}
+
+// ---- Contact search ---------------------------------------------------------
+const { results: contactResults, searching: contactSearching, search: searchContacts, clear: clearContactSearch } = useContactSearch()
+const recipientSearch = ref('')
+const showRecipientDropdown = ref(false)
+
+function onRecipientSearchInput() {
+	searchContacts(recipientSearch.value)
+}
+
+function onRecipientBlur() {
+	setTimeout(() => {
+		showRecipientDropdown.value = false
+	}, 200)
+}
+
+function onRecipientKeydown(e: KeyboardEvent) {
+	if (e.key === 'Enter') {
+		e.preventDefault()
+		const val = recipientSearch.value.trim()
+		if (val && val.includes('@')) {
+			addRecipient(val)
+		}
+	}
 }
 
 async function handleSend() {
@@ -261,8 +309,26 @@ async function handleSend() {
 	const fromEmail = user.value?.email ?? '';
 	const bodyHtml = body.value;
 
-	const ok = await sendMail(validTo, subject.value, bodyHtml, fromEmail);
+	const ok = await sendMail(validTo, subject.value, bodyHtml, fromEmail, activityId);
 	if (ok) sent.value = true;
+}
+
+function confirmWarning() {
+	warningConfirmed.value = true
+	showWarning.value = false
+}
+
+function formatSentDate(iso: string): string {
+	const d = new Date(iso)
+	return d.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function openMailViewer(mail: SentMail) {
+	viewingMail.value = mail
+}
+
+function closeMailViewer() {
+	viewingMail.value = null
 }
 </script>
 
@@ -275,6 +341,22 @@ async function handleSend() {
 	<main class="main">
 		<p v-if="loadError" class="error">{{ loadError }}</p>
 
+		<!-- Warning dialog when mails already sent -->
+		<div v-else-if="showWarning && !warningConfirmed" class="mail-warning-overlay">
+			<div class="mail-warning-box">
+				<div class="mail-warning-icon">⚠️</div>
+				<h2 class="mail-warning-title">Bereits versendete Mails</h2>
+				<p class="mail-warning-text">
+					Für diese Aktivität {{ sentMails.length === 1 ? 'wurde bereits 1 Mail' : `wurden bereits ${sentMails.length} Mails` }} versendet.
+					Möchtest du trotzdem ein weiteres Mail senden?
+				</p>
+				<div class="mail-warning-actions">
+					<button class="btn-secondary" @click="router.back()">Abbrechen</button>
+					<button class="btn-primary" @click="confirmWarning">Trotzdem senden</button>
+				</div>
+			</div>
+		</div>
+
 		<div v-else-if="sent" class="mail-sent">
 			<p class="mail-sent-text">✅ Mail wurde erfolgreich versendet!</p>
 			<button class="btn-primary" @click="router.back()">
@@ -282,7 +364,53 @@ async function handleSend() {
 			</button>
 		</div>
 
-		<form v-else-if="activity" class="detail-form" @submit.prevent="handleSend">
+		<template v-else-if="activity">
+			<!-- Sent mails list -->
+			<div v-if="sentMails.length > 0" class="sent-mails-section">
+				<h2 class="sent-mails-title">Bereits versendete Mails</h2>
+				<div class="sent-mails-list">
+					<button
+						v-for="mail in sentMails"
+						:key="mail.id"
+						class="sent-mail-card"
+						@click="openMailViewer(mail)"
+					>
+						<div class="sent-mail-card-header">
+							<span class="sent-mail-subject">{{ mail.subject }}</span>
+							<span class="sent-mail-date">{{ formatSentDate(mail.sent_at) }}</span>
+						</div>
+						<div class="sent-mail-meta">
+							<span class="sent-mail-from">Von: {{ mail.sender_email }}</span>
+							<span class="sent-mail-to">An: {{ mail.to_emails.join(', ') }}</span>
+						</div>
+					</button>
+				</div>
+			</div>
+
+			<!-- Mail viewer overlay -->
+			<Teleport to="body">
+				<div v-if="viewingMail" class="mail-viewer-overlay" @click.self="closeMailViewer">
+					<div class="mail-viewer-modal">
+						<div class="mail-viewer-header">
+							<h2 class="mail-viewer-title">Versendetes Mail</h2>
+							<button class="bug-close-btn" @click="closeMailViewer" aria-label="Schliessen">×</button>
+						</div>
+						<div class="mail-viewer-meta">
+							<div><strong>Von:</strong> {{ viewingMail.sender_email }}</div>
+							<div><strong>An:</strong> {{ viewingMail.to_emails.join(', ') }}</div>
+							<div><strong>Betreff:</strong> {{ viewingMail.subject }}</div>
+							<div><strong>Gesendet:</strong> {{ formatSentDate(viewingMail.sent_at) }}</div>
+						</div>
+						<div class="mail-viewer-body" v-html="viewingMail.body_html"></div>
+						<div class="mail-viewer-actions">
+							<button class="btn-secondary" @click="closeMailViewer">Schliessen</button>
+						</div>
+					</div>
+				</div>
+			</Teleport>
+
+			<!-- Compose form -->
+			<form class="detail-form" @submit.prevent="handleSend">
 			<!-- Activity info -->
 			<div class="mail-activity-info">
 				<span class="card-dept-badge" v-if="activity.department">{{
@@ -303,28 +431,36 @@ async function handleSend() {
 			</div>
 
 			<!-- Recipients -->
-			<div class="form-group">
+			<div class="form-group user-search-group">
 				<label>Empfänger <span class="required">*</span></label>
-				<div class="mail-recipients">
-					<div v-for="(_, i) in recipients" :key="i" class="mail-recipient-row">
-						<input
-							v-model="recipients[i]"
-							type="email"
-							placeholder="email@example.com"
-							required
-						/>
-						<button
-							v-if="recipients.length > 1"
-							type="button"
-							class="btn-remove-sm"
-							@click="removeRecipient(i)"
+				<div class="user-chips" v-if="recipients.filter(r => r).length">
+					<span v-for="(email, i) in recipients" :key="email || i" class="user-chip" v-show="email">
+						{{ email }}
+						<button type="button" class="user-chip-remove" @click="removeRecipient(i)">✕</button>
+					</span>
+				</div>
+				<div class="user-search-wrapper">
+					<input
+						type="text"
+						v-model="recipientSearch"
+						placeholder="Kontakt suchen…"
+						@input="onRecipientSearchInput"
+						@focus="showRecipientDropdown = true"
+						@blur="onRecipientBlur"
+						@keydown="onRecipientKeydown"
+					/>
+					<div v-if="showRecipientDropdown && (contactResults.length || contactSearching)" class="user-dropdown">
+						<div v-if="contactSearching" class="user-dropdown-item user-dropdown-item--loading">Suchen…</div>
+						<div
+							v-for="c in contactResults"
+							:key="c.email"
+							class="user-dropdown-item"
+							@mousedown.prevent="addRecipient(c.email)"
 						>
-							×
-						</button>
+							<span class="contact-name">{{ c.displayName }}</span>
+							<span class="contact-email">{{ c.email }}</span>
+						</div>
 					</div>
-					<button type="button" class="btn-add" @click="addRecipient">
-						+ Empfänger
-					</button>
 				</div>
 			</div>
 
@@ -392,6 +528,7 @@ async function handleSend() {
 				</button>
 			</div>
 		</form>
+		</template>
 
 		<p v-else class="loading">Laden...</p>
 	</main>

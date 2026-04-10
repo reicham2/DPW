@@ -64,7 +64,10 @@ export type EditSection =
 	| `program_${number}`
 	| `material_${number}`
 	| 'siko'
-	| 'goal_weather';
+	| 'goal_weather'
+	| 'tpl_recipients'
+	| 'tpl_subject'
+	| 'tpl_body';
 
 export interface SectionLock {
 	section: EditSection;
@@ -75,6 +78,7 @@ export type WsEvent =
 	| { event: 'created'; activity: Activity }
 	| { event: 'updated'; activity: Activity }
 	| { event: 'deleted'; id: string }
+	| { event: 'template_updated'; template: MailTemplate }
 	| { event: 'lock'; activity_id: string; section: EditSection; user: string }
 	| { event: 'unlock'; activity_id: string; section: EditSection }
 	| { event: 'editors'; activity_id: string; users: string[] }
@@ -99,4 +103,15 @@ export interface MailTemplate {
 	recipients: string[];
 	created_at: string;
 	updated_at: string;
+}
+
+export interface SentMail {
+	id: string;
+	activity_id: string;
+	sender_id: string;
+	sender_email: string;
+	to_emails: string[];
+	subject: string;
+	body_html: string;
+	sent_at: string;
 }

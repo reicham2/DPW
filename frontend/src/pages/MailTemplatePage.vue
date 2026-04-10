@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useMailTemplates } from '../composables/useMailTemplates'
+import { useContactSearch } from '../composables/useContactSearch'
 import { user } from '../composables/useAuth'
-import type { Department } from '../types'
+import { wsSend, wsRegister, useWebSocket } from '../composables/useWebSocket'
+import type { Department, EditSection } from '../types'
 
 const ALL_DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
 
@@ -45,8 +47,6 @@ const activeDept = ref<Department>(
 const subject = ref('')
 const body = ref('')
 const recipients = ref<string[]>([''])
-const saving = ref(false)
-const saved = ref(false)
 const showVars = ref(false)
 const editorRef = ref<HTMLElement | null>(null)
 const curFont = ref('Arial')
@@ -60,26 +60,212 @@ const curOl = ref(false)
 const curBgColor = ref('#ffffff')
 let savedSelection: Range | null = null
 
+// ---- Dirty tracking & save indicator ----------------------------------------
+const dirtyFields = new Set<string>()
+const savedFields = ref<Record<string, number>>({})
+let savedTimer: ReturnType<typeof setTimeout> | null = null
+let suppressDirtyTracking = true
+let applyingRemote = false
+
+function markDirty(...fields: string[]) {
+  if (suppressDirtyTracking || applyingRemote) return
+  for (const f of fields) dirtyFields.add(f)
+}
+
+function showSavedIndicator() {
+  if (savedTimer) clearTimeout(savedTimer)
+  const snap: Record<string, number> = {}
+  for (const f of dirtyFields) snap[f] = Date.now()
+  dirtyFields.clear()
+  savedFields.value = snap
+  savedTimer = setTimeout(() => { savedFields.value = {} }, 2000)
+}
+
+// ---- Collaborative editing state -------------------------------------------
+const activeEditors = ref<string[]>([])
+const sectionLocks = ref<Map<EditSection, string>>(new Map())
+const myLockedSection = ref<EditSection | null>(null)
+
+function tplId() { return `tpl_${activeDept.value}` }
+
+function isLockedByOther(section: EditSection): boolean {
+  const locker = sectionLocks.value.get(section)
+  return !!locker && locker !== user.value?.display_name
+}
+function lockedBy(section: EditSection): string | null {
+  const locker = sectionLocks.value.get(section)
+  return locker && locker !== user.value?.display_name ? locker : null
+}
+
+function lockSection(section: EditSection) {
+  if (isLockedByOther(section)) return
+  if (myLockedSection.value === section) return
+  if (myLockedSection.value) {
+    wsSend({ type: 'unlock', activity_id: tplId(), section: myLockedSection.value })
+  }
+  myLockedSection.value = section
+  wsSend({ type: 'lock', activity_id: tplId(), section })
+}
+
+let unlockTimer: ReturnType<typeof setTimeout> | null = null
+function unlockSection(section: EditSection, event?: FocusEvent) {
+  if (myLockedSection.value !== section) return
+  if (event?.relatedTarget instanceof HTMLElement) {
+    const wrapper = (event.currentTarget as HTMLElement)
+    if (wrapper?.contains(event.relatedTarget)) return
+  }
+  if (unlockTimer) clearTimeout(unlockTimer)
+  unlockTimer = setTimeout(() => {
+    if (myLockedSection.value === section) {
+      myLockedSection.value = null
+      wsSend({ type: 'unlock', activity_id: tplId(), section })
+    }
+  }, 100)
+}
+
+// ---- Auto-save --------------------------------------------------------------
+const AUTOSAVE_INTERVAL = Number(import.meta.env.VITE_AUTOSAVE_INTERVAL) || 1500
+const AUTOSAVE_DEBOUNCE = (import.meta.env.VITE_AUTOSAVE_DEBOUNCE ?? 'true') !== 'false'
+
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+let autoSaveInterval: ReturnType<typeof setInterval> | null = null
+let hasPendingChanges = false
+
+function scheduleAutoSave() {
+  if (applyingRemote) return
+  if (AUTOSAVE_DEBOUNCE) {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer)
+    autoSaveTimer = setTimeout(doSave, AUTOSAVE_INTERVAL)
+  } else {
+    hasPendingChanges = true
+  }
+}
+
+function startAutoSaveInterval() {
+  if (!AUTOSAVE_DEBOUNCE && !autoSaveInterval) {
+    autoSaveInterval = setInterval(() => {
+      if (hasPendingChanges) {
+        hasPendingChanges = false
+        doSave()
+      }
+    }, AUTOSAVE_INTERVAL)
+  }
+}
+
+function stopAutoSaveInterval() {
+  if (autoSaveInterval) {
+    clearInterval(autoSaveInterval)
+    autoSaveInterval = null
+  }
+  hasPendingChanges = false
+}
+
+async function doSave() {
+  error.value = null
+  const validRecipients = recipients.value.map(r => r.trim()).filter(Boolean)
+  const result = await saveTemplate(activeDept.value, subject.value, body.value, validRecipients)
+  if (result) {
+    showSavedIndicator()
+    const idx = templates.value.findIndex(t => t.department === activeDept.value)
+    if (idx >= 0) templates.value[idx] = result
+    else templates.value.push(result)
+  }
+}
+
+// Watchers for auto-save + dirty tracking
+watch([subject], () => { markDirty('subject'); scheduleAutoSave() })
+watch([recipients], () => { markDirty('recipients'); scheduleAutoSave() }, { deep: true })
+// body changes are triggered by onEditorInput which calls scheduleAutoSave directly
+
+// ---- WS: live sync of template updates from other editors ------------------
+useWebSocket((e) => {
+  const id = tplId()
+  if (e.event === 'lock' && e.activity_id === id) {
+    sectionLocks.value.set(e.section, e.user)
+    sectionLocks.value = new Map(sectionLocks.value)
+  } else if (e.event === 'unlock' && e.activity_id === id) {
+    sectionLocks.value.delete(e.section)
+    sectionLocks.value = new Map(sectionLocks.value)
+  } else if (e.event === 'editors' && e.activity_id === id) {
+    activeEditors.value = e.users.filter((u: string) => u !== user.value?.display_name)
+  } else if (e.event === 'locks_state' && e.activity_id === id) {
+    const m = new Map<EditSection, string>()
+    for (const l of e.locks) {
+      m.set(l.section, l.user)
+    }
+    sectionLocks.value = m
+  } else if (e.event === 'template_updated') {
+    const tpl = e.template
+    if (tpl.department !== activeDept.value) return
+    // Update local templates cache
+    const idx = templates.value.findIndex(t => t.department === tpl.department)
+    if (idx >= 0) templates.value[idx] = tpl
+    else templates.value.push(tpl)
+    // Merge remote changes into edit fields
+    applyingRemote = true
+    if (tpl.subject !== subject.value && !myLockedSection.value?.startsWith('tpl_subject')) {
+      subject.value = tpl.subject
+    }
+    if (JSON.stringify(tpl.recipients) !== JSON.stringify(recipients.value.map(r => r.trim()).filter(Boolean))
+        && !myLockedSection.value?.startsWith('tpl_recipients')) {
+      recipients.value = tpl.recipients.length ? [...tpl.recipients] : ['']
+    }
+    if (tpl.body !== body.value && !myLockedSection.value?.startsWith('tpl_body')) {
+      body.value = tpl.body
+      nextTick(() => {
+        if (editorRef.value) editorRef.value.innerHTML = body.value
+      })
+    }
+    nextTick(() => { applyingRemote = false })
+  }
+})
+
+// ---- Load + mount -----------------------------------------------------------
 onMounted(async () => {
   await fetchTemplates()
   loadDept(activeDept.value)
+  if (user.value) {
+    wsRegister(user.value.display_name, user.value.microsoft_oid)
+    wsSend({ type: 'join', activity_id: tplId() })
+  }
+  startAutoSaveInterval()
+})
+
+onUnmounted(() => {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  if (savedTimer) clearTimeout(savedTimer)
+  stopAutoSaveInterval()
+  wsSend({ type: 'leave', activity_id: tplId() })
 })
 
 function loadDept(dept: Department) {
+  // Leave previous template room
+  wsSend({ type: 'leave', activity_id: tplId() })
+  myLockedSection.value = null
+  sectionLocks.value = new Map()
+  activeEditors.value = []
+
+  suppressDirtyTracking = true
   activeDept.value = dept
-  saved.value = false
   const tpl = templates.value.find(t => t.department === dept)
   subject.value = tpl?.subject ?? ''
   body.value    = tpl?.body ?? ''
   recipients.value = tpl?.recipients?.length ? [...tpl.recipients] : ['']
   nextTick(() => {
     if (editorRef.value) editorRef.value.innerHTML = body.value
+    suppressDirtyTracking = false
+    dirtyFields.clear()
   })
+
+  // Join new template room
+  wsSend({ type: 'join', activity_id: tplId() })
 }
 
 function onEditorInput() {
   if (editorRef.value) body.value = editorRef.value.innerHTML
   updateToolbarState()
+  markDirty('body')
+  scheduleAutoSave()
 }
 
 function updateToolbarState() {
@@ -112,7 +298,6 @@ function expandSelectionToVariables() {
   const range = sel.getRangeAt(0)
   const container = editorRef.value
   const fullText = container.textContent ?? ''
-  // Map range start/end to text offsets, then expand if inside a {{...}}
   function nodeOffset(node: Node, off: number): number {
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
     let pos = 0
@@ -134,7 +319,6 @@ function expandSelectionToVariables() {
   }
   let startOff = nodeOffset(range.startContainer, range.startOffset)
   let endOff = nodeOffset(range.endContainer, range.endOffset)
-  // Expand start backwards if inside a variable
   const varPattern = /\{\{\w+\}\}/g
   let m: RegExpExecArray | null
   while ((m = varPattern.exec(fullText)) !== null) {
@@ -214,25 +398,47 @@ function adjustFontSize(delta: number) {
   curSize.value = String(newSize)
 }
 
-function addRecipient() {
-  recipients.value.push('')
+// ---- Recipient contact search -----------------------------------------------
+const { results: contactResults, searching: contactSearching, search: searchContacts, clear: clearContactSearch } = useContactSearch()
+const recipientSearch = ref('')
+const showRecipientDropdown = ref(false)
+
+function onRecipientSearchInput() {
+  searchContacts(recipientSearch.value)
+}
+
+function addRecipient(email: string) {
+  if (!recipients.value.includes(email)) {
+    // Replace the empty sentinel if present
+    if (recipients.value.length === 1 && recipients.value[0] === '') {
+      recipients.value[0] = email
+    } else {
+      recipients.value.push(email)
+    }
+  }
+  recipientSearch.value = ''
+  showRecipientDropdown.value = false
+  clearContactSearch()
 }
 
 function removeRecipient(index: number) {
   recipients.value.splice(index, 1)
+  if (recipients.value.length === 0) recipients.value = ['']
 }
 
-async function handleSave() {
-  saving.value = true
-  saved.value  = false
-  const validRecipients = recipients.value.map(r => r.trim()).filter(Boolean)
-  const result = await saveTemplate(activeDept.value, subject.value, body.value, validRecipients)
-  saving.value = false
-  if (result) {
-    saved.value = true
-    const idx = templates.value.findIndex(t => t.department === activeDept.value)
-    if (idx >= 0) templates.value[idx] = result
-    else templates.value.push(result)
+function onRecipientBlur() {
+  setTimeout(() => {
+    showRecipientDropdown.value = false
+  }, 200)
+}
+
+function onRecipientKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    const val = recipientSearch.value.trim()
+    if (val && val.includes('@')) {
+      addRecipient(val)
+    }
   }
 }
 </script>
@@ -262,35 +468,69 @@ async function handleSave() {
 
     <p v-if="loading" class="loading">Laden...</p>
 
-    <form v-else class="detail-form" @submit.prevent="handleSave">
+    <div v-else class="detail-form">
+      <!-- Active editors indicator -->
+      <div v-if="activeEditors.length" class="editors-banner">
+        <span class="editors-banner-icon">👥</span>
+        <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
+      </div>
+
       <!-- Recipients -->
-      <div class="form-group">
-        <label>Empfänger</label>
-        <div class="mail-recipients">
-          <div v-for="(_, i) in recipients" :key="i" class="mail-recipient-row">
-            <input
-              v-model="recipients[i]"
-              type="email"
-              placeholder="email@example.com"
-            />
-            <button
-              v-if="recipients.length > 1"
-              type="button"
-              class="btn-remove-sm"
-              @click="removeRecipient(i)"
-            >×</button>
+      <div class="form-group lock-wrapper user-search-group" :class="{ 'is-locked': isLockedByOther('tpl_recipients') }"
+        @focusin="lockSection('tpl_recipients')" @focusout="unlockSection('tpl_recipients', $event)">
+        <div v-if="lockedBy('tpl_recipients')" class="lock-badge">🔒 {{ lockedBy('tpl_recipients') }}</div>
+        <label>Empfänger
+          <span v-if="savedFields['recipients']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['recipients']">💾</span>
+        </label>
+        <div class="user-chips" v-if="recipients.filter(r => r).length">
+          <span v-for="(email, i) in recipients" :key="email || i" class="user-chip" v-show="email">
+            {{ email }}
+            <button type="button" class="user-chip-remove" @click="removeRecipient(i)" :disabled="isLockedByOther('tpl_recipients')">✕</button>
+          </span>
+        </div>
+        <div class="user-search-wrapper">
+          <input
+            type="text"
+            v-model="recipientSearch"
+            placeholder="Kontakt suchen…"
+            @input="onRecipientSearchInput"
+            @focus="showRecipientDropdown = true"
+            @blur="onRecipientBlur"
+            @keydown="onRecipientKeydown"
+            :disabled="isLockedByOther('tpl_recipients')"
+          />
+          <div v-if="showRecipientDropdown && (contactResults.length || contactSearching)" class="user-dropdown">
+            <div v-if="contactSearching" class="user-dropdown-item user-dropdown-item--loading">Suchen…</div>
+            <div
+              v-for="c in contactResults"
+              :key="c.email"
+              class="user-dropdown-item"
+              @mousedown.prevent="addRecipient(c.email)"
+            >
+              <span class="contact-name">{{ c.displayName }}</span>
+              <span class="contact-email">{{ c.email }}</span>
+            </div>
           </div>
-          <button type="button" class="btn-add" @click="addRecipient">+ Empfänger</button>
         </div>
       </div>
 
-      <div class="form-group">
+      <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_subject') }"
+        @focusin="lockSection('tpl_subject')" @focusout="unlockSection('tpl_subject', $event)">
+        <div v-if="lockedBy('tpl_subject')" class="lock-badge">🔒 {{ lockedBy('tpl_subject') }}</div>
         <label>Betreff-Vorlage</label>
-        <input v-model="subject" type="text" placeholder="Betreff…" />
+        <div class="input-save-wrap">
+          <input v-model="subject" type="text" placeholder="Betreff…" :disabled="isLockedByOther('tpl_subject')" />
+          <span v-if="savedFields['subject']" class="field-saved-icon" :key="savedFields['subject']">💾</span>
+        </div>
       </div>
 
-      <div class="form-group">
+      <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_body') }"
+        @focusin="lockSection('tpl_body')" @focusout="unlockSection('tpl_body', $event)">
+        <div v-if="lockedBy('tpl_body')" class="lock-badge">🔒 {{ lockedBy('tpl_body') }}</div>
         <label>Nachricht-Vorlage</label>
+        <div class="input-save-wrap">
+          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['body']">💾</span>
+        </div>
         <div class="rich-editor-toolbar">
           <select class="toolbar-select" :value="curFont" @change="execCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
             <option value="" disabled>Schriftart</option>
@@ -327,7 +567,7 @@ async function handleSave() {
         <div
           ref="editorRef"
           class="rich-editor"
-          contenteditable="true"
+          :contenteditable="!isLockedByOther('tpl_body')"
           @input="onEditorInput"
           @mouseup="updateToolbarState"
           @keyup="updateToolbarState"
@@ -349,15 +589,6 @@ async function handleSave() {
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
-
-      <div class="form-actions">
-        <span v-if="saved" class="mail-saved-badge">✅ Gespeichert</span>
-        <div class="form-actions-right">
-          <button type="submit" class="btn-primary" :disabled="saving">
-            {{ saving ? 'Speichern...' : 'Vorlage speichern' }}
-          </button>
-        </div>
-      </div>
-    </form>
+    </div>
   </main>
 </template>
