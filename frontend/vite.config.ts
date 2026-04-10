@@ -1,8 +1,13 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+import path from 'path'
 
 export default defineConfig({
+  // Liest .env aus dem Projekt-Root (eine Ebene über frontend/).
+  // Lokal: <project-root>/.env  |  Docker: /app/.env (vom Dockerfile erstellt)
+  envDir: path.resolve(__dirname, '..'),
+
   plugins: [
     vue(),
     VitePWA({

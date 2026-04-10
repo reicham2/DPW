@@ -4,6 +4,10 @@ CREATE TYPE department_enum AS ENUM (
     'Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber'
 );
 
+CREATE TYPE user_role AS ENUM (
+    'admin', 'Stufenleiter', 'Leiter', 'Pio'
+);
+
 CREATE TABLE activities (
     id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     title            TEXT        NOT NULL,
@@ -52,6 +56,7 @@ CREATE TABLE users (
     email         TEXT        NOT NULL,
     display_name  TEXT        NOT NULL,
     department    department_enum,
+    role          user_role   NOT NULL DEFAULT 'Leiter',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

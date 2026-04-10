@@ -22,10 +22,25 @@
 
         <div class="form-group">
           <label class="form-label" for="department">Abteilung</label>
-          <select id="department" v-model="form.department" class="form-input">
+          <select
+            v-if="canChangeDepartment"
+            id="department"
+            v-model="form.department"
+            class="form-input"
+          >
             <option value="">Keine Angabe</option>
             <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
           </select>
+          <input
+            v-else
+            class="form-input form-input--readonly"
+            type="text"
+            :value="form.department || 'Keine Angabe'"
+            readonly
+          />
+          <p v-if="!canChangeDepartment" class="form-hint">
+            Abteilung kann nur von einem Admin geändert werden.
+          </p>
         </div>
 
         <div class="form-group">
@@ -48,6 +63,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { user, getIdToken } from '../composables/useAuth'
 import type { Department, User } from '../types'
+
+const canChangeDepartment = computed(() => user.value?.role === 'admin')
 
 const departments: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
 
@@ -201,6 +218,11 @@ async function save() {
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: default;
+}
+.form-hint {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  margin: 2px 0 0;
 }
 .profile-error {
   color: #dc2626;

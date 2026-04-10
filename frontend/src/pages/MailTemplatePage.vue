@@ -59,6 +59,7 @@ async function handleSave() {
   <nav class="page-tabs">
     <router-link to="/" class="page-tab">Aktivitäten</router-link>
     <router-link to="/mail-templates" class="page-tab page-tab--active">Mail-Vorlagen</router-link>
+    <router-link to="/admin" class="page-tab">Admin</router-link>
   </nav>
 
   <header class="header">

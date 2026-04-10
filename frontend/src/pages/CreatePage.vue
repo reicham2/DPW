@@ -11,6 +11,11 @@ const { createActivity, fetchDepartments, departments, error } = useActivities()
 const { users, fetchUsers } = useUsers()
 
 onMounted(async () => {
+  // Pio cannot create activities — redirect away
+  if (user.value?.role === 'Pio') {
+    router.replace('/')
+    return
+  }
   await Promise.all([fetchDepartments(), fetchUsers()])
 })
 

@@ -12,6 +12,7 @@ struct UserRecord
     std::string email;
     std::string display_name;
     std::optional<std::string> department;
+    std::string role; // 'admin' | 'Stufenleiter' | 'Leiter' | 'Pio'
     std::string created_at;
     std::string updated_at;
 };
@@ -47,13 +48,24 @@ public:
 
     // Users
     std::vector<UserRecord> list_users();
+    // initial_role / initial_dept only used when inserting a new user.
+    // force_role=true also updates role on conflict (used for admin-email detection).
     std::optional<UserRecord> upsert_user(const std::string &oid,
                                           const std::string &email,
-                                          const std::string &display_name);
+                                          const std::string &display_name,
+                                          const std::string &initial_role = "Leiter",
+                                          const std::string &initial_dept = "Leiter",
+                                          bool force_role = false);
     std::optional<UserRecord> get_user_by_oid(const std::string &oid);
+    // Update own profile (display_name only; department blocked by role on handler level).
     std::optional<UserRecord> update_user(const std::string &oid,
                                           const std::string &display_name,
                                           const std::optional<std::string> &department);
+    // Admin: update any user's display_name, department and role.
+    std::optional<UserRecord> update_user_admin(const std::string &id,
+                                                const std::string &display_name,
+                                                const std::optional<std::string> &department,
+                                                const std::string &role);
 
     // Mail templates
     std::vector<MailTemplate> list_mail_templates();
