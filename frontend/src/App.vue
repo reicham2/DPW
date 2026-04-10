@@ -59,6 +59,7 @@
     <!-- App content -->
     <div v-else class="app">
       <router-view />
+      <BugReportButton />
     </div>
   </div>
 </template>
@@ -66,6 +67,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import UserAvatar from './components/UserAvatar.vue'
+import BugReportButton from './components/BugReportButton.vue'
 import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
 import type { User } from './types'
 

@@ -5,6 +5,8 @@
 #include <string>
 #include <memory>
 #include <algorithm>
+#include <ctime>
+#include <curl/curl.h>
 
 static const std::string PFADI_HUE_GROUP_ID = "17fcb1fa-9fa2-45f2-96cc-3804d7097311";
 
@@ -1114,4 +1116,158 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
         } catch (std::exception& e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });
+}
+
+// ─── GitHub API helpers ───────────────────────────────────────────────────────
+
+static size_t github_write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
+{
+    auto *buf = static_cast<std::string *>(userdata);
+    buf->append(ptr, size * nmemb);
+    return size * nmemb;
+}
+
+static std::pair<long, std::string> github_post_issue(
+    const std::string &token, const std::string &body_json)
+{
+    const std::string url = "https://api.github.com/repos/reicham2/DPW/issues";
+    std::string response;
+
+    CURL *curl = curl_easy_init();
+    if (!curl)
+        throw std::runtime_error("curl_easy_init failed");
+
+    struct curl_slist *headers = nullptr;
+    std::string auth_hdr = "Authorization: Bearer " + token;
+    headers = curl_slist_append(headers, auth_hdr.c_str());
+    headers = curl_slist_append(headers, "Accept: application/vnd.github+json");
+    headers = curl_slist_append(headers, "X-GitHub-Api-Version: 2022-11-28");
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "User-Agent: DPW-BugReport/1.0");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body_json.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, github_write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+
+    CURLcode rc = curl_easy_perform(curl);
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (rc != CURLE_OK)
+        throw std::runtime_error(std::string("GitHub API call failed: ") + curl_easy_strerror(rc));
+
+    return {status, response};
+}
+
+
+// ─── POST /bug-report ─────────────────────────────────────────────────────────
+
+void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
+{
+    const char *github_token_env = std::getenv("GITHUB_TOKEN");
+    if (!github_token_env || std::string(github_token_env).empty())
+    {
+        send_json(res, 503, R"({"error":"Bug report service not configured"})");
+        return;
+    }
+    std::string github_token = github_token_env;
+
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Unauthorized"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    auto current_user = resolve_user(db, claims);
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, github_token, current_user](std::string_view chunk, bool last)
+    {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded())
+        {
+            send_json(res, 400, R"({"error":"invalid JSON"})");
+            return;
+        }
+
+        std::string description = str_field(j, "description");
+        std::string url         = str_field(j, "url");
+        std::string user_agent  = str_field(j, "userAgent");
+
+        if (description.empty())
+        {
+            send_json(res, 400, R"({"error":"description is required"})");
+            return;
+        }
+
+        // Title: first 80 chars of description
+        std::string title = "Bug Report: " + description.substr(0, 80);
+        if (description.size() > 80) title += "...";
+
+        // Reporter info
+        std::string reporter = current_user
+            ? current_user->display_name + " (" + current_user->email + ")"
+            : "Unbekannt";
+
+        // Timestamp
+        std::time_t now = std::time(nullptr);
+        char ts_buf[32];
+        std::strftime(ts_buf, sizeof(ts_buf), "%Y-%m-%d %H:%M UTC", std::gmtime(&now));
+
+        std::string body =
+            "## Beschreibung\n\n" + description +
+            "\n\n---\n"
+            "**Gemeldet von:** " + reporter + "  \n"
+            "**URL:** " + url + "  \n"
+            "**Browser:** " + user_agent + "  \n"
+            "**Zeitpunkt:** " + ts_buf;
+
+        nlohmann::json issue_payload = {
+            {"title", title},
+            {"body", body},
+            {"labels", nlohmann::json::array({"User-Bug"})}
+        };
+
+        try
+        {
+            auto [create_status, create_resp] = github_post_issue(github_token, issue_payload.dump());
+
+            if (create_status != 201)
+            {
+                send_json(res, 502, nlohmann::json{
+                    {"error", "GitHub API Fehler: " + std::to_string(create_status)}
+                }.dump());
+                return;
+            }
+
+            auto resp_j = nlohmann::json::parse(create_resp, nullptr, false);
+            std::string issue_url = resp_j.value("html_url", "");
+            send_json(res, 200, nlohmann::json{{"issue_url", issue_url}}.dump());
+        }
+        catch (std::exception &e)
+        {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        }
+    });
 }
