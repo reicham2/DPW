@@ -36,6 +36,7 @@ add_executable(server
     src/handlers.cpp
     src/auth.cpp
     src/ws_manager.cpp
+    src/graph.cpp
     # uSockets C/C++ sources
     ${usockets_SOURCE_DIR}/src/eventing/libuv.c
     ${usockets_SOURCE_DIR}/src/crypto/openssl.c

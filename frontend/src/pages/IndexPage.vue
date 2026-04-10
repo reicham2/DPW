@@ -9,8 +9,15 @@ const DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
 
 const { activities, loading, error, connected, fetchActivities } = useActivities()
 
-const search     = ref('')
-const activedept = ref<Department | 'Alle'>(user.value?.department ?? 'Alle')
+const isAdmin        = computed(() => user.value?.role === 'admin')
+const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
+const isPio          = computed(() => user.value?.role === 'Pio')
+
+const search = ref('')
+// Pio is locked to their own department; others default to own dept or 'Alle'
+const activedept = ref<Department | 'Alle'>(
+  isPio.value ? (user.value?.department ?? 'Alle') : (user.value?.department ?? 'Alle')
+)
 
 onMounted(fetchActivities)
 
@@ -25,7 +32,7 @@ const filtered = computed(() => {
   if (q) {
     list = list.filter(a =>
       a.title.toLowerCase().includes(q) ||
-      a.responsible.toLowerCase().includes(q) ||
+      a.responsible.join(' ').toLowerCase().includes(q) ||
       a.location.toLowerCase().includes(q) ||
       (a.goal ?? '').toLowerCase().includes(q)
     )
@@ -38,7 +45,10 @@ const filtered = computed(() => {
 <template>
   <nav class="page-tabs">
     <router-link to="/" class="page-tab page-tab--active">Aktivitäten</router-link>
-    <router-link to="/mail-templates" class="page-tab">Mail-Vorlagen</router-link>
+    <template v-if="isAdmin || isStufenleiter">
+      <router-link to="/mail-templates" class="page-tab">Mail-Vorlagen</router-link>
+      <router-link to="/admin" class="page-tab">Admin</router-link>
+    </template>
   </nav>
 
   <header class="header">
@@ -63,7 +73,8 @@ const filtered = computed(() => {
           placeholder="Suchen nach Titel, Ort, Verantwortlichen…"
         />
       </div>
-      <div class="filter-tabs">
+      <!-- Pio only sees their own dept; others can filter freely -->
+      <div v-if="!isPio" class="filter-tabs">
         <button
           class="filter-tab"
           :class="{ 'filter-tab--active': activedept === 'Alle' }"

@@ -87,12 +87,41 @@ function unlockSection(section: EditSection, event?: FocusEvent) {
 }
 
 // ---- Load ------------------------------------------------------------------
-const canEdit = computed(
-	() =>
-		!!user.value &&
-		!!activity.value &&
-		activity.value.responsible.includes(user.value.display_name),
-);
+const canEdit = computed(() => {
+	if (!user.value || !activity.value) return false;
+	const role = user.value.role;
+	if (role === 'admin') return true;
+	if (role === 'Stufenleiter') {
+		if (!!user.value.department && activity.value.department === user.value.department) return true;
+		return activity.value.responsible.includes(user.value.display_name);
+	}
+	// Leiter and Pio: only if verantwortlich (Pio also limited to own dept — enforced by backend)
+	return activity.value.responsible.includes(user.value.display_name);
+});
+
+const canDelete = computed(() => {
+	if (!user.value || !activity.value) return false;
+	const role = user.value.role;
+	if (role === 'admin') return true;
+	if (role === 'Stufenleiter') {
+		if (!!user.value.department && activity.value.department === user.value.department) return true;
+		return activity.value.responsible.includes(user.value.display_name);
+	}
+	// Leiter and Pio: only if verantwortlich
+	return activity.value.responsible.includes(user.value.display_name);
+});
+
+const canMail = computed(() => {
+	if (!user.value || !activity.value) return false;
+	const role = user.value.role;
+	if (role === 'admin') return true;
+	if (role === 'Stufenleiter') {
+		if (!!user.value.department && activity.value.department === user.value.department) return true;
+		return activity.value.responsible.includes(user.value.display_name);
+	}
+	// Leiter and Pio: only if verantwortlich
+	return activity.value.responsible.includes(user.value.display_name);
+});
 
 onMounted(async () => {
 	await Promise.all([fetchDepartments(), fetchUsers()]);
@@ -381,7 +410,7 @@ async function doDelete() {
 		<div class="header-right">
 			<span v-if="saving" class="saving-badge">Speichert…</span>
 			<router-link
-				v-if="activity && mode === 'view'"
+				v-if="activity && mode === 'view' && canMail"
 				:to="`/activities/${id}/mail`"
 				class="btn-mail"
 				title="Mail senden"
@@ -784,7 +813,7 @@ async function doDelete() {
 				<button
 					type="button"
 					class="btn-danger"
-					v-if="canEdit"
+					v-if="canDelete"
 					@click="doDelete"
 				>
 					Löschen

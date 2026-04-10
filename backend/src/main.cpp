@@ -52,6 +52,10 @@ int main()
          .patch("/me", [&](auto *res, auto *req)
                 { handle_patch_me(res, req, db); })
 
+         // Admin endpoints
+         .patch("/admin/users/:id", [&](auto *res, auto *req)
+                { handle_patch_admin_user(res, req, db); })
+
          // Static data
          .get("/departments", [&](auto *res, auto *req)
               { handle_get_departments(res, req); })

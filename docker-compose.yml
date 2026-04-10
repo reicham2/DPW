@@ -22,13 +22,16 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      POSTGRES_HOST:     db
-      POSTGRES_PORT:     "5432"
-      POSTGRES_DB:       activities
-      POSTGRES_USER:     activities_user
-      POSTGRES_PASSWORD: activities_pass
-      AZURE_TENANT_ID:   "${AZURE_TENANT_ID}"
-      AZURE_CLIENT_ID:   "${AZURE_CLIENT_ID}"
+      POSTGRES_HOST:      db
+      POSTGRES_PORT:      "5432"
+      POSTGRES_DB:        activities
+      POSTGRES_USER:      activities_user
+      POSTGRES_PASSWORD:  activities_pass
+      AZURE_TENANT_ID:    "${AZURE_TENANT_ID}"
+      AZURE_CLIENT_ID:    "${AZURE_CLIENT_ID}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET}"
+      DEBUG:              "${DEBUG}"
+      DEBUG_ADMIN_EMAIL:  "${DEBUG_ADMIN_EMAIL}"
     depends_on:
       db:
         condition: service_healthy
@@ -40,8 +43,13 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      # Ganzes Projekt-Root als Build-Context, damit .env erreichbar ist
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_MSAL_CLIENT_ID:  "${VITE_MSAL_CLIENT_ID}"
+        VITE_MSAL_TENANT_ID:  "${VITE_MSAL_TENANT_ID}"
+        VITE_DEBUG:           "${DEBUG}"
     restart: unless-stopped
     ports:
       - "80:80"

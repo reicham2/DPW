@@ -603,6 +603,7 @@ UserRecord Database::row_to_user(PGresult *res, int row)
     u.microsoft_oid = col("microsoft_oid") ? col("microsoft_oid") : "";
     u.email = col("email") ? col("email") : "";
     u.display_name = col("display_name") ? col("display_name") : "";
+    u.role = col("role") ? col("role") : "Leiter";
     u.created_at = col("created_at") ? col("created_at") : "";
     u.updated_at = col("updated_at") ? col("updated_at") : "";
     if (col("department"))
@@ -616,7 +617,7 @@ std::vector<UserRecord> Database::list_users()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT id, microsoft_oid, email, display_name, department::text, created_at, updated_at "
+                           "SELECT id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at "
                            "FROM users ORDER BY display_name");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -638,16 +639,36 @@ std::vector<UserRecord> Database::list_users()
 
 std::optional<UserRecord> Database::upsert_user(const std::string &oid,
                                                 const std::string &email,
-                                                const std::string &display_name)
+                                                const std::string &display_name,
+                                                const std::string &initial_role,
+                                                const std::string &initial_dept,
+                                                bool force_role)
 {
     ensure_connected();
+
+    // Build SQL — when force_role is true (admin email) we also update role on conflict.
+    std::string on_conflict;
+    if (force_role)
+    {
+        on_conflict =
+            "ON CONFLICT (microsoft_oid) DO UPDATE "
+            "SET email = EXCLUDED.email, role = '" + initial_role + "'::user_role, updated_at = NOW() ";
+    }
+    else
+    {
+        on_conflict =
+            "ON CONFLICT (microsoft_oid) DO UPDATE "
+            "SET email = EXCLUDED.email, updated_at = NOW() ";
+    }
+
+    std::string sql =
+        "INSERT INTO users (microsoft_oid, email, display_name, department, role) "
+        "VALUES ($1, $2, $3, '" + initial_dept + "'::department_enum, '" + initial_role + "'::user_role) " +
+        on_conflict +
+        "RETURNING id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at";
+
     const char *params[3] = {oid.c_str(), email.c_str(), display_name.c_str()};
-    PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO users (microsoft_oid, email, display_name, department) "
-                                 "VALUES ($1, $2, $3, 'Leiter'::department_enum) "
-                                 "ON CONFLICT (microsoft_oid) DO UPDATE SET email = EXCLUDED.email, updated_at = NOW() "
-                                 "RETURNING id, microsoft_oid, email, display_name, department::text, created_at, updated_at",
-                                 3, nullptr, params, nullptr, nullptr, 0);
+    PGresult *res = PQexecParams(conn_, sql.c_str(), 3, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
@@ -666,8 +687,29 @@ std::optional<UserRecord> Database::get_user_by_oid(const std::string &oid)
     ensure_connected();
     const char *params[1] = {oid.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, microsoft_oid, email, display_name, department::text, created_at, updated_at "
+                                 "SELECT id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at "
                                  "FROM users WHERE microsoft_oid = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    UserRecord u = row_to_user(res, 0);
+    PQclear(res);
+    return u;
+}
+
+// ---- get_user_by_id ---------------------------------------------------------
+
+std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at "
+                                 "FROM users WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
@@ -693,10 +735,40 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
         "UPDATE users SET display_name = $1, department = " +
         (department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
         " WHERE microsoft_oid = $2 "
-        "RETURNING id, microsoft_oid, email, display_name, department::text, created_at, updated_at";
+        "RETURNING id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at";
 
     const char *params[2] = {display_name.c_str(), oid.c_str()};
     PGresult *res = PQexecParams(conn_, sql.c_str(), 2, nullptr, params, nullptr, nullptr, 0);
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    UserRecord u = row_to_user(res, 0);
+    PQclear(res);
+    return u;
+}
+
+// ---- update_user_admin ------------------------------------------------------
+
+std::optional<UserRecord> Database::update_user_admin(const std::string &id,
+                                                       const std::string &display_name,
+                                                       const std::optional<std::string> &department,
+                                                       const std::string &role)
+{
+    ensure_connected();
+    std::string dept_str = department ? *department : "";
+
+    std::string sql =
+        "UPDATE users SET display_name = $1, department = " +
+        (department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
+        ", role = $2::user_role"
+        " WHERE id = $3 "
+        "RETURNING id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at";
+
+    const char *params[3] = {display_name.c_str(), role.c_str(), id.c_str()};
+    PGresult *res = PQexecParams(conn_, sql.c_str(), 3, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {

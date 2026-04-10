@@ -1,4 +1,5 @@
 export type Department = 'Leiter' | 'Pio' | 'Pfadi' | 'Wölfe' | 'Biber';
+export type UserRole = 'admin' | 'Stufenleiter' | 'Leiter' | 'Pio';
 
 export interface Program {
 	id: string;
@@ -80,6 +81,7 @@ export interface User {
 	email: string;
 	display_name: string;
 	department: Department | null;
+	role: UserRole;
 	created_at: string;
 	updated_at: string;
 }
