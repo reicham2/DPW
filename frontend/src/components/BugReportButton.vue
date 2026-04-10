@@ -26,6 +26,11 @@
             rows="6"
           />
 
+          <label class="bug-checkbox-label">
+            <input type="checkbox" v-model="sendDebugInfo" class="bug-checkbox" />
+            Erweiterte Diagnosedaten senden
+          </label>
+
           <p v-if="error" class="bug-error">{{ error }}</p>
 
           <div class="bug-actions">
@@ -67,6 +72,7 @@ const description = ref('')
 const error = ref('')
 const success = ref(false)
 const issueUrl = ref('')
+const sendDebugInfo = ref(false)
 
 function openModal() {
   isOpen.value = true
@@ -84,6 +90,7 @@ function closeAndReset() {
   error.value = ''
   success.value = false
   issueUrl.value = ''
+  sendDebugInfo.value = false
 }
 
 async function submitReport() {
@@ -103,7 +110,7 @@ async function submitReport() {
         description: description.value,
         url: window.location.href,
         userAgent: navigator.userAgent,
-        debugInfo: collectDebugInfo(),
+        ...(sendDebugInfo.value ? { debugInfo: collectDebugInfo() } : {}),
       }),
     })
 
@@ -231,6 +238,23 @@ async function submitReport() {
   margin: 0;
   font-size: 0.85rem;
   color: #dc2626;
+}
+
+/* ─── Checkbox ─── */
+.bug-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #6b7280;
+  cursor: pointer;
+  user-select: none;
+}
+.bug-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #0080ff;
+  cursor: pointer;
 }
 
 /* ─── Buttons ─── */
