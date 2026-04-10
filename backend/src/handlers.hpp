@@ -35,6 +35,10 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db);
 // Admin endpoints (admin role required)
 void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db);
 
+// Debug-only endpoints (only active when DEBUG=true)
+void handle_debug_get_users(HttpRes *res, HttpReq *req, Database &db);
+void handle_debug_login(HttpRes *res, HttpReq *req, Database &db);
+
 // Mail template endpoints
 void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db);

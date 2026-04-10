@@ -23,6 +23,7 @@ const graphMailScopes = {
 };
 
 let msalInstance: PublicClientApplication | null = null;
+let debugUserId: string | null = null;
 
 export const user = ref<User | null>(null);
 export const authLoading = ref(true);
@@ -39,6 +40,8 @@ async function getMsal(): Promise<PublicClientApplication> {
 }
 
 export async function getIdToken(): Promise<string> {
+	if (debugUserId) return `debug:${debugUserId}`;
+
 	const msal = await getMsal();
 	const account = msal.getActiveAccount();
 	if (!account) throw new Error('Nicht angemeldet');
@@ -101,9 +104,36 @@ export async function login(): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
-	const msal = await getMsal();
-	await msal.logoutPopup({ account: msal.getActiveAccount() ?? undefined });
+	if (!debugUserId) {
+		const msal = await getMsal();
+		msal.setActiveAccount(null);
+	}
+	debugUserId = null;
 	user.value = null;
+}
+
+export const isDebug = import.meta.env.VITE_DEBUG === 'true';
+
+export async function debugLogin(userId: string): Promise<void> {
+	loginError.value = null;
+	try {
+		const res = await fetch('/api/auth/debug-login', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ user_id: userId }),
+		});
+		if (res.ok) {
+			user.value = (await res.json()) as User;
+			debugUserId = userId;
+		} else {
+			const text = await res.text();
+			throw new Error(text || `Server-Fehler: ${res.status}`);
+		}
+	} catch (err) {
+		loginError.value =
+			err instanceof Error ? err.message : 'Debug-Anmeldung fehlgeschlagen.';
+		throw err;
+	}
 }
 
 export async function initAuth(): Promise<void> {
