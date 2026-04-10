@@ -908,6 +908,87 @@ std::optional<MailTemplate> Database::upsert_mail_template(const std::string &de
     return t;
 }
 
+// ---- Sent mails log ---------------------------------------------------------
+
+SentMail Database::row_to_sent_mail(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    SentMail m;
+    m.id = col("id") ? col("id") : "";
+    m.activity_id = col("activity_id") ? col("activity_id") : "";
+    m.sender_id = col("sender_id") ? col("sender_id") : "";
+    m.sender_email = col("sender_email") ? col("sender_email") : "";
+    if (col("to_emails"))
+        m.to_emails = parse_pg_array(col("to_emails"));
+    m.subject = col("subject") ? col("subject") : "";
+    m.body_html = col("body_html") ? col("body_html") : "";
+    m.sent_at = col("sent_at") ? col("sent_at") : "";
+    return m;
+}
+
+std::optional<SentMail> Database::log_sent_mail(const std::string &activity_id,
+                                                const std::string &sender_id,
+                                                const std::string &sender_email,
+                                                const std::vector<std::string> &to_emails,
+                                                const std::string &subject,
+                                                const std::string &body_html)
+{
+    ensure_connected();
+    std::string to_arr = "{";
+    for (size_t i = 0; i < to_emails.size(); ++i)
+    {
+        if (i > 0)
+            to_arr += ",";
+        to_arr += "\"" + to_emails[i] + "\"";
+    }
+    to_arr += "}";
+    const char *params[6] = {activity_id.c_str(), sender_id.c_str(), sender_email.c_str(),
+                             to_arr.c_str(), subject.c_str(), body_html.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO sent_mails (activity_id, sender_id, sender_email, to_emails, subject, body_html) "
+                                 "VALUES ($1, $2, $3, $4::text[], $5, $6) "
+                                 "RETURNING id, activity_id, sender_id, sender_email, to_emails, subject, body_html, sent_at",
+                                 6, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        fprintf(stderr, "[log_sent_mail] %s\n", err.c_str());
+        return std::nullopt;
+    }
+    SentMail m = row_to_sent_mail(res, 0);
+    PQclear(res);
+    return m;
+}
+
+std::vector<SentMail> Database::list_sent_mails(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, sender_id, sender_email, to_emails, subject, body_html, sent_at "
+                                 "FROM sent_mails WHERE activity_id = $1 ORDER BY sent_at DESC",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    std::vector<SentMail> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_sent_mail(res, i));
+    PQclear(res);
+    return out;
+}
+
 // ---- send_mail via Microsoft Graph ------------------------------------------
 
 static size_t graph_write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)

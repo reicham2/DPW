@@ -986,7 +986,7 @@ void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db)
 
 // ---- PUT /mail-templates/:department ----------------------------------------
 
-void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db)
+void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
     std::string auth_header{req->getHeader("authorization")};
     std::string token = extract_bearer_token(auth_header);
@@ -1025,7 +1025,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db)
     }
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, department, &db](std::string_view chunk, bool last)
+    res->onData([res, buf, department, &db, &wm](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -1053,6 +1053,8 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 500, R"({"error":"db error"})");
                 return;
             }
+            nlohmann::json msg = {{"event", "template_updated"}, {"template", template_to_json(*tpl)}};
+            wm.broadcast(msg.dump());
             send_json(res, 200, template_to_json(*tpl).dump());
         } catch (std::exception& e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
@@ -1070,9 +1072,10 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
         send_json(res, 401, R"({"error":"Unauthorized"})");
         return;
     }
+    TokenClaims claims;
     try
     {
-        validate_token(token);
+        claims = validate_token(token);
     }
     catch (std::exception &e)
     {
@@ -1080,9 +1083,11 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
 
+    auto current_user = resolve_user(db, claims);
+
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, token, &db](std::string_view chunk, bool last)
+    res->onData([res, buf, token, &db, current_user](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -1093,10 +1098,11 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
 
-        std::string subject    = j.value("subject", "");
-        std::string body_html  = j.value("body", "");
-        std::string from_email = j.value("from", "");
+        std::string subject     = j.value("subject", "");
+        std::string body_html   = j.value("body", "");
+        std::string from_email  = j.value("from", "");
         std::string graph_token = j.value("access_token", "");
+        std::string activity_id = j.value("activity_id", "");
 
         if (subject.empty() || body_html.empty() || graph_token.empty()) {
             send_json(res, 400, R"({"error":"subject, body and access_token are required"})");
@@ -1118,6 +1124,12 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
         try {
             bool ok = db.send_mail(graph_token, from_email, to_emails, subject, body_html);
             if (ok) {
+                // Log sent mail if activity_id was provided
+                if (!activity_id.empty()) {
+                    std::string sender_id = current_user ? current_user->id : "";
+                    std::string sender_email = current_user ? current_user->email : from_email;
+                    db.log_sent_mail(activity_id, sender_id, sender_email, to_emails, subject, body_html);
+                }
                 send_json(res, 200, R"({"status":"sent"})");
             } else {
                 send_json(res, 502, R"({"error":"Failed to send mail via Microsoft Graph"})");
@@ -1125,6 +1137,38 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
         } catch (std::exception& e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });
+}
+
+// ─── GET /activities/:id/sent-mails ──────────────────────────────────────────
+
+void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+    auto mails = db.list_sent_mails(activity_id);
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (auto &m : mails)
+    {
+        nlohmann::json to_arr = nlohmann::json::array();
+        for (auto &e : m.to_emails)
+            to_arr.push_back(e);
+
+        arr.push_back({
+            {"id", m.id},
+            {"activity_id", m.activity_id},
+            {"sender_id", m.sender_id},
+            {"sender_email", m.sender_email},
+            {"to_emails", to_arr},
+            {"subject", m.subject},
+            {"body_html", m.body_html},
+            {"sent_at", m.sent_at},
+        });
+    }
+    send_json(res, 200, arr.dump());
 }
 
 // ─── GitHub API helpers ───────────────────────────────────────────────────────

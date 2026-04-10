@@ -89,3 +89,17 @@ INSERT INTO mail_templates (department, subject, body, recipients) VALUES
     ('Pfadi',  '', '', '{}'),
     ('Wölfe',  '', '', '{}'),
     ('Biber',  '', '', '{}');
+
+-- Sent mail log (audit trail)
+CREATE TABLE sent_mails (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id  UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    sender_id    UUID        REFERENCES users(id) ON DELETE SET NULL,
+    sender_email TEXT        NOT NULL,
+    to_emails    TEXT[]      NOT NULL,
+    subject      TEXT        NOT NULL,
+    body_html    TEXT        NOT NULL,
+    sent_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_sent_mails_activity_id ON sent_mails (activity_id);
