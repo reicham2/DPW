@@ -184,7 +184,8 @@ Activity Database::row_to_activity(PGresult *res, int row)
                     mi.name = item.value("name", "");
                     mi.responsible = item.value("responsible", "");
                 }
-                a.material.push_back(mi);
+                if (!mi.name.empty())
+                    a.material.push_back(mi);
             }
         }
     }
@@ -382,6 +383,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
     const char *needs_s = input.needs_siko ? "true" : "false";
+    const char *dept_param = input.department ? dept_str.c_str() : nullptr;
 
     exec_or_throw(conn_, "BEGIN", "create_activity BEGIN");
 
@@ -391,30 +393,24 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
 
         if (input.siko_base64 && !input.siko_base64->empty())
         {
-            // Insert with SiKo
-            // dept_val is embedded in the SQL string below
-
-            // Can't use parameterised for the enum cast + conditional, so build safely:
-            // All user values go via $n params; only dept which is an enum needs casting.
-            // Use a fixed SQL with the enum value embedded for dept (safe as it's validated against enum).
-            std::string sql =
-                "INSERT INTO activities "
-                "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, siko) "
-                "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), " +
-                (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", $8::jsonb, $9, decode($10, 'base64')) "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at";
-
-            const char *p2[10] = {
+            // Insert with SiKo — department passed as $8 parameter (NULL pointer = SQL NULL)
+            const char *p2[11] = {
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
                 resp_json.c_str(),
+                dept_param,
                 mat_json.c_str(), needs_s,
                 input.siko_base64->c_str()};
-            PGresult *r = PQexecParams(conn_, sql.c_str(), 10, nullptr, p2, nullptr, nullptr, 0);
+            PGresult *r = PQexecParams(conn_,
+                "INSERT INTO activities "
+                "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, siko) "
+                "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
+                "$8::department_enum, $9::jsonb, $10, decode($11, 'base64')) "
+                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                "bad_weather_info, created_at, updated_at",
+                11, nullptr, p2, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -426,25 +422,24 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
         }
         else
         {
-            // Insert without SiKo
-            std::string sql =
-                "INSERT INTO activities "
-                "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, bad_weather_info) "
-                "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), " +
-                (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", $8::jsonb, $9, $10) "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at";
-
-            const char *p[10] = {
+            // Insert without SiKo — department passed as $8 parameter (NULL pointer = SQL NULL)
+            const char *p[11] = {
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
                 resp_json.c_str(),
+                dept_param,
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str()};
-            PGresult *r = PQexecParams(conn_, sql.c_str(), 10, nullptr, p, nullptr, nullptr, 0);
+            PGresult *r = PQexecParams(conn_,
+                "INSERT INTO activities "
+                "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, bad_weather_info) "
+                "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
+                "$8::department_enum, $9::jsonb, $10, $11) "
+                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                "bad_weather_info, created_at, updated_at",
+                11, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -478,6 +473,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
     const char *needs_s = input.needs_siko ? "true" : "false";
+    const char *dept_param = input.department ? dept_str.c_str() : nullptr;
 
     exec_or_throw(conn_, "BEGIN", "update_activity BEGIN");
 
@@ -488,27 +484,27 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
         // Case 1: new PDF uploaded — store it
         if (input.needs_siko && input.siko_base64 && !input.siko_base64->empty())
         {
-            std::string sql =
-                "UPDATE activities SET "
-                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
-                (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", material=$8::jsonb, "
-                "needs_siko=$9, siko=decode($10, 'base64'), bad_weather_info=$11 "
-                "WHERE id=$12 "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at";
-
-            const char *p[12] = {
+            // department passed as $8 parameter (NULL pointer = SQL NULL)
+            const char *p[13] = {
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
                 resp_json.c_str(),
+                dept_param,
                 mat_json.c_str(), needs_s,
                 input.siko_base64->c_str(),
                 bwi_str.c_str(), id.c_str()};
-            PGresult *r = PQexecParams(conn_, sql.c_str(), 12, nullptr, p, nullptr, nullptr, 0);
+            PGresult *r = PQexecParams(conn_,
+                "UPDATE activities SET "
+                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
+                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
+                "department=$8::department_enum, material=$9::jsonb, "
+                "needs_siko=$10, siko=decode($11, 'base64'), bad_weather_info=$12 "
+                "WHERE id=$13 "
+                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                "bad_weather_info, created_at, updated_at",
+                13, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -522,26 +518,26 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
         }
         else if (!input.needs_siko)
         {
-            std::string sql =
-                "UPDATE activities SET "
-                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
-                (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", material=$8::jsonb, "
-                "needs_siko=$9, siko=NULL, bad_weather_info=$10 "
-                "WHERE id=$11 "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at";
-
-            const char *p[11] = {
+            // department passed as $8 parameter (NULL pointer = SQL NULL)
+            const char *p[12] = {
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
                 resp_json.c_str(),
+                dept_param,
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str(), id.c_str()};
-            PGresult *r = PQexecParams(conn_, sql.c_str(), 11, nullptr, p, nullptr, nullptr, 0);
+            PGresult *r = PQexecParams(conn_,
+                "UPDATE activities SET "
+                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
+                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
+                "department=$8::department_enum, material=$9::jsonb, "
+                "needs_siko=$10, siko=NULL, bad_weather_info=$11 "
+                "WHERE id=$12 "
+                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                "bad_weather_info, created_at, updated_at",
+                12, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -556,26 +552,26 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
         }
         else
         {
-            std::string sql =
-                "UPDATE activities SET "
-                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), department=" +
-                (input.department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-                ", material=$8::jsonb, "
-                "needs_siko=$9, bad_weather_info=$10 "
-                "WHERE id=$11 "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at";
-
-            const char *p[11] = {
+            // department passed as $8 parameter (NULL pointer = SQL NULL)
+            const char *p[12] = {
                 input.title.c_str(), input.date.c_str(),
                 input.start_time.c_str(), input.end_time.c_str(),
                 input.goal.c_str(), input.location.c_str(),
                 resp_json.c_str(),
+                dept_param,
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str(), id.c_str()};
-            PGresult *r = PQexecParams(conn_, sql.c_str(), 11, nullptr, p, nullptr, nullptr, 0);
+            PGresult *r = PQexecParams(conn_,
+                "UPDATE activities SET "
+                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
+                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
+                "department=$8::department_enum, material=$9::jsonb, "
+                "needs_siko=$10, bad_weather_info=$11 "
+                "WHERE id=$12 "
+                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                "bad_weather_info, created_at, updated_at",
+                12, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);

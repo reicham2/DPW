@@ -129,13 +129,12 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
                 mi.name = m.get<std::string>();
             }
             else if (m.is_object())
-
-            if (!mi.name.empty())
-                input.material.push_back(mi);
+            {
                 mi.name = str_field(m, "name");
                 mi.responsible = str_field(m, "responsible");
             }
-            input.material.push_back(mi);
+            if (!mi.name.empty())
+                input.material.push_back(mi);
         }
     }
 
