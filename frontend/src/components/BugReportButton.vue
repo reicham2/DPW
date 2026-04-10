@@ -59,6 +59,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { getIdToken } from '../composables/useAuth'
+import { collectDebugInfo } from '../composables/useDebugInfo'
 
 const isOpen = ref(false)
 const isSubmitting = ref(false)
@@ -102,6 +103,7 @@ async function submitReport() {
         description: description.value,
         url: window.location.href,
         userAgent: navigator.userAgent,
+        debugInfo: collectDebugInfo(),
       }),
     })
 
