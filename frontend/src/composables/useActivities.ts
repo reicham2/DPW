@@ -77,7 +77,7 @@ export function useActivities() {
     } catch { /* non-critical */ }
   }
 
-  async function createActivity(input: ActivityInput): Promise<void> {
+  async function createActivity(input: ActivityInput): Promise<string | null> {
     error.value = null
     try {
       const body: Record<string, unknown> = { ...input }
@@ -87,8 +87,11 @@ export function useActivities() {
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(await res.text())
+      const created = await res.json()
+      return created.id ?? null
     } catch (e) {
       error.value = String(e)
+      return null
     }
   }
 
