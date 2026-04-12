@@ -215,13 +215,15 @@ watch(lastUpdatedActivity, (updated) => {
 			editBadWeather.value = updated.bad_weather_info ?? '';
 		if (JSON.stringify(updated.material) !== JSON.stringify(prev.material))
 			editMaterial.value = [...updated.material.map(m => ({ name: m.name, responsible: m.responsible ?? '' })), { name: '', responsible: '' }];
-		if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs))
+		if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs)) {
 			editPrograms.value = updated.programs.map((p) => ({
 				time: p.time,
 				title: p.title,
 				description: p.description,
 				responsible: p.responsible,
 			}));
+			initProgEditors();
+		}
 		nextTick(() => {
 			applyingRemote = false;
 		}); // reset after Vue has flushed all watchers
