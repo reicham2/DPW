@@ -799,6 +799,20 @@ body {
 .user-dropdown-item:hover {
 	background: #f3f4f6;
 }
+.user-dropdown-item--loading {
+	color: #9ca3af;
+	font-style: italic;
+	cursor: default;
+}
+.user-dropdown-item .contact-name {
+	display: block;
+	font-weight: 500;
+}
+.user-dropdown-item .contact-email {
+	display: block;
+	font-size: 0.8rem;
+	color: #6b7280;
+}
 
 /* ---- Program timeline (view) ---- */
 .program-timeline {
@@ -1494,4 +1508,382 @@ body {
 .tpl-var-desc {
 	font-size: 0.82rem;
 	color: #6b7280;
+}
+
+/* =============================================================================
+   RICH TEXT EDITOR — contenteditable with toolbar
+   ============================================================================= */
+
+.rich-editor-toolbar {
+	display: flex;
+	gap: 2px;
+	padding: 6px 8px;
+	background: #f9fafb;
+	border: 1px solid #d1d5db;
+	border-bottom: none;
+	border-radius: 8px 8px 0 0;
+	flex-wrap: wrap;
+}
+
+.rich-editor-toolbar button {
+	padding: 4px 10px;
+	font-size: 0.82rem;
+	font-family: inherit;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+	cursor: pointer;
+	color: #374151;
+	transition:
+		background 0.12s,
+		border-color 0.12s;
+	line-height: 1.4;
+}
+
+.rich-editor-toolbar button:hover {
+	background: #e8f0fe;
+	border-color: #0080ff;
+}
+
+.rich-editor-toolbar button.toolbar-btn--active,
+.toolbar-btn-sm.toolbar-btn--active {
+	background: #dbeafe;
+	border-color: #0080ff;
+	color: #0080ff;
+}
+
+.toolbar-select {
+	padding: 4px 8px;
+	font-size: 0.82rem;
+	font-family: inherit;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+	cursor: pointer;
+	color: #374151;
+	line-height: 1.4;
+	outline: none;
+	max-width: 140px;
+}
+
+.toolbar-select--narrow {
+	max-width: 64px;
+	text-align: center;
+}
+
+.toolbar-btn-sm {
+	padding: 4px 7px;
+	font-size: 0.78rem;
+	font-family: inherit;
+	font-weight: 700;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+	cursor: pointer;
+	color: #374151;
+	line-height: 1.4;
+	transition:
+		background 0.12s,
+		border-color 0.12s;
+}
+
+.toolbar-btn-sm:hover {
+	background: #e8f0fe;
+	border-color: #0080ff;
+}
+
+.toolbar-select:focus {
+	border-color: #0080ff;
+}
+
+.toolbar-color {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px 6px;
+	font-size: 0.82rem;
+	font-weight: 700;
+	color: #374151;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+	cursor: pointer;
+	transition:
+		background 0.12s,
+		border-color 0.12s;
+	line-height: 1.4;
+}
+
+.toolbar-color:hover {
+	background: #e8f0fe;
+	border-color: #0080ff;
+}
+
+.toolbar-color input[type='color'] {
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+}
+
+.toolbar-color--bg {
+	background: #fffde7;
+}
+
+.toolbar-color-icon {
+	background: #ffe066;
+	padding: 0 3px;
+	border-radius: 2px;
+}
+
+.toolbar-sep {
+	width: 1px;
+	background: #e5e7eb;
+	margin: 2px 4px;
+	align-self: stretch;
+}
+
+.rich-editor {
+	min-height: 220px;
+	max-height: 500px;
+	overflow-y: auto;
+	padding: 12px 14px;
+	font-size: 1rem;
+	font-family: Arial, Helvetica, sans-serif;
+	line-height: 1.6;
+	border: 1px solid #d1d5db;
+	border-radius: 0 0 8px 8px;
+	background: #fff;
+	outline: none;
+	transition:
+		border-color 0.15s,
+		box-shadow 0.15s;
+}
+
+.rich-editor--compact {
+	min-height: 80px;
+	max-height: 300px;
+}
+
+.rich-editor-toolbar--compact {
+	flex-wrap: wrap;
+}
+
+.rich-editor:focus {
+	border-color: #0080ff;
+	box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.15);
+}
+
+.rich-editor:empty::before {
+	content: attr(data-placeholder);
+	color: #9ca3af;
+	pointer-events: none;
+}
+
+.rich-editor ul,
+.rich-editor ol {
+	padding-left: 24px;
+	margin: 4px 0;
+}
+
+.rich-editor p {
+	margin: 0 0 4px;
+}
+
+@media (max-width: 599px) {
+	.rich-editor {
+		min-height: 180px;
+		font-size: 1rem;
+	}
+
+	.rich-editor-toolbar button {
+		padding: 6px 10px;
+		min-height: 36px;
+	}
+}
+
+/* ─── Mail Warning Dialog ─── */
+.mail-warning-overlay {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+}
+
+.mail-warning-box {
+	background: #fff;
+	border-radius: 16px;
+	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
+	padding: 32px;
+	max-width: 480px;
+	width: 100%;
+	text-align: center;
+}
+
+.mail-warning-icon {
+	font-size: 2.5rem;
+	margin-bottom: 12px;
+}
+
+.mail-warning-title {
+	font-size: 1.2rem;
+	font-weight: 700;
+	color: #1a202c;
+	margin: 0 0 8px;
+}
+
+.mail-warning-text {
+	font-size: 0.95rem;
+	color: #6b7280;
+	line-height: 1.5;
+	margin: 0 0 24px;
+}
+
+.mail-warning-actions {
+	display: flex;
+	justify-content: center;
+	gap: 12px;
+}
+
+/* ─── Sent Mails Section ─── */
+.sent-mails-section {
+	margin-bottom: 24px;
+}
+
+.sent-mails-title {
+	font-size: 1rem;
+	font-weight: 700;
+	color: #1a202c;
+	margin: 0 0 12px;
+}
+
+.sent-mails-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.sent-mail-card {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 12px 16px;
+	cursor: pointer;
+	transition:
+		background 0.15s,
+		border-color 0.15s;
+	font-family: inherit;
+	font-size: inherit;
+	color: inherit;
+}
+
+.sent-mail-card:hover {
+	background: #f0f4ff;
+	border-color: #0080ff;
+}
+
+.sent-mail-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 12px;
+	margin-bottom: 4px;
+}
+
+.sent-mail-subject {
+	font-weight: 600;
+	color: #1a202c;
+	font-size: 0.95rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+}
+
+.sent-mail-date {
+	font-size: 0.8rem;
+	color: #9ca3af;
+	white-space: nowrap;
+}
+
+.sent-mail-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	font-size: 0.82rem;
+	color: #6b7280;
+}
+
+.sent-mail-meta span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* ─── Mail Viewer Overlay ─── */
+.mail-viewer-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.45);
+	z-index: 199;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+}
+
+.mail-viewer-modal {
+	background: #fff;
+	border-radius: 16px;
+	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+	width: 100%;
+	max-width: 700px;
+	max-height: 85vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.mail-viewer-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 20px 24px 0;
+}
+
+.mail-viewer-title {
+	font-size: 1.1rem;
+	font-weight: 700;
+	color: #1a202c;
+	margin: 0;
+}
+
+.mail-viewer-meta {
+	padding: 16px 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 0.88rem;
+	color: #374151;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+.mail-viewer-body {
+	padding: 20px 24px;
+	overflow-y: auto;
+	flex: 1;
+	font-size: 0.95rem;
+	line-height: 1.6;
+	color: #1a202c;
+}
+
+.mail-viewer-actions {
+	padding: 16px 24px;
+	display: flex;
+	justify-content: flex-end;
+	border-top: 1px solid #e5e7eb;
 }

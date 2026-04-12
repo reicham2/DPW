@@ -88,9 +88,11 @@ int main()
          .get("/mail-templates/:department", [&](auto *res, auto *req)
               { handle_get_mail_template(res, req, db); })
          .put("/mail-templates/:department", [&](auto *res, auto *req)
-              { handle_put_mail_template(res, req, db); })
+              { handle_put_mail_template(res, req, db, wm); })
          .post("/send-mail", [&](auto *res, auto *req)
                { handle_post_send_mail(res, req, db); })
+         .get("/activities/:id/sent-mails", [&](auto *res, auto *req)
+              { handle_get_sent_mails(res, req, db); })
 
          // Bug report — creates a GitHub issue
          .post("/bug-report", [&](auto *res, auto *req)

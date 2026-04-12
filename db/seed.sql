@@ -120,10 +120,12 @@ INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
 -- Mail-Templates mit Beispielinhalt
 UPDATE mail_templates SET
     subject = 'Einladung zur Pfadi-Aktivität: {{titel}}',
-    body = 'Liebe Eltern\n\nWir laden herzlich zur nächsten Aktivität ein:\n\n📅 Datum: {{datum}}\n🕐 Zeit: {{startzeit}} – {{endzeit}}\n📍 Ort: {{ort}}\n\nZiel: {{ziel}}\n\nBei Schlechtwetter: {{schlechtwetter}}\n\nFreundliche Grüsse\nDie Pfadileitung'
+    body = '<p>Liebe Eltern</p><p>Wir laden herzlich zur nächsten Aktivität ein:</p><p>📅 Datum: {{datum}}<br>🕐 Zeit: {{startzeit}} – {{endzeit}}<br>📍 Ort: {{ort}}</p><p>Ziel: {{ziel}}</p><p>Bei Schlechtwetter: {{schlechtwetter}}</p><p>Freundliche Grüsse<br>{{absender_name}}<br>{{absender_email}}</p>',
+    recipients = ARRAY['eltern-pfadi@pfadihue.ch']
 WHERE department = 'Pfadi';
 
 UPDATE mail_templates SET
     subject = 'Wölfe-Aktivität: {{titel}}',
-    body = 'Liebe Eltern\n\nDie nächste Wölfe-Aktivität steht an:\n\n📅 {{datum}}\n🕐 {{startzeit}} – {{endzeit}}\n📍 {{ort}}\n\nMitbringen: wetterfeste Kleidung, Zvieri\n\nBis bald!\nDas Wölfe-Team'
+    body = '<p>Liebe Eltern</p><p>Die nächste Wölfe-Aktivität steht an:</p><p>📅 {{datum_kurz}}<br>🕐 {{startzeit}} – {{endzeit}}<br>📍 {{ort}}</p><p>Mitbringen: wetterfeste Kleidung, Zvieri</p><p>Bis bald!<br>Das Wölfe-Team<br>{{absender_name}}</p>',
+    recipients = ARRAY['eltern-woelfe@pfadihue.ch']
 WHERE department = 'Wölfe';

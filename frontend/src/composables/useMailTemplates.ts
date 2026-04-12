@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import type { MailTemplate, Department } from '../types';
+import type { MailTemplate, Department, SentMail } from '../types';
 import { getIdToken, getGraphAccessToken } from './useAuth';
 
 const BASE = '/api';
@@ -60,6 +60,7 @@ export function useMailTemplates() {
 		department: Department,
 		subject: string,
 		body: string,
+		recipients: string[] = [],
 	): Promise<MailTemplate | null> {
 		error.value = null;
 		try {
@@ -67,7 +68,7 @@ export function useMailTemplates() {
 				`${BASE}/mail-templates/${encodeURIComponent(department)}`,
 				{
 					method: 'PUT',
-					body: JSON.stringify({ subject, body }),
+					body: JSON.stringify({ subject, body, recipients }),
 				},
 			);
 			if (!res.ok) throw new Error(await res.text());
@@ -83,6 +84,7 @@ export function useMailTemplates() {
 		subject: string,
 		bodyHtml: string,
 		fromEmail: string,
+		activityId?: string,
 	): Promise<boolean> {
 		sending.value = true;
 		error.value = null;
@@ -101,6 +103,7 @@ export function useMailTemplates() {
 					body: bodyHtml,
 					from: fromEmail,
 					access_token: graphToken,
+					...(activityId ? { activity_id: activityId } : {}),
 				}),
 			});
 			if (!res.ok) {
@@ -116,6 +119,18 @@ export function useMailTemplates() {
 		}
 	}
 
+	async function fetchSentMails(activityId: string): Promise<SentMail[]> {
+		try {
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/sent-mails`,
+			);
+			if (!res.ok) return [];
+			return (await res.json()) as SentMail[];
+		} catch {
+			return [];
+		}
+	}
+
 	return {
 		templates,
 		loading,
@@ -125,5 +140,6 @@ export function useMailTemplates() {
 		fetchTemplate,
 		saveTemplate,
 		sendMail,
+		fetchSentMails,
 	};
 }

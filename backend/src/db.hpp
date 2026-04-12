@@ -23,8 +23,21 @@ struct MailTemplate
     std::string department;
     std::string subject;
     std::string body;
+    std::vector<std::string> recipients;
     std::string created_at;
     std::string updated_at;
+};
+
+struct SentMail
+{
+    std::string id;
+    std::string activity_id;
+    std::string sender_id;
+    std::string sender_email;
+    std::vector<std::string> to_emails;
+    std::string subject;
+    std::string body_html;
+    std::string sent_at;
 };
 
 class Database
@@ -73,7 +86,8 @@ public:
     std::optional<MailTemplate> get_mail_template_by_department(const std::string &department);
     std::optional<MailTemplate> upsert_mail_template(const std::string &department,
                                                      const std::string &subject,
-                                                     const std::string &body);
+                                                     const std::string &body,
+                                                     const std::vector<std::string> &recipients);
 
     // Send mail via Microsoft Graph
     bool send_mail(const std::string &access_token,
@@ -81,6 +95,15 @@ public:
                    const std::vector<std::string> &to_emails,
                    const std::string &subject,
                    const std::string &body_html);
+
+    // Sent mails log
+    std::optional<SentMail> log_sent_mail(const std::string &activity_id,
+                                          const std::string &sender_id,
+                                          const std::string &sender_email,
+                                          const std::vector<std::string> &to_emails,
+                                          const std::string &subject,
+                                          const std::string &body_html);
+    std::vector<SentMail> list_sent_mails(const std::string &activity_id);
 
 private:
     PGconn *conn_{nullptr};
@@ -90,6 +113,7 @@ private:
     Program row_to_program(PGresult *res, int row);
     UserRecord row_to_user(PGresult *res, int row);
     MailTemplate row_to_mail_template(PGresult *res, int row);
+    SentMail row_to_sent_mail(PGresult *res, int row);
     void attach_programs(std::vector<Activity> &activities);
     void attach_programs_single(Activity &a);
 

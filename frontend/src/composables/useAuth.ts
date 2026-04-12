@@ -19,7 +19,7 @@ const loginRequest = {
 };
 
 const graphMailScopes = {
-	scopes: ['Mail.Send'],
+	scopes: ['Mail.Send', 'People.Read'],
 };
 
 let msalInstance: PublicClientApplication | null = null;

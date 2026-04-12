@@ -42,8 +42,9 @@ void handle_debug_login(HttpRes *res, HttpReq *req, Database &db);
 // Mail template endpoints
 void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db);
-void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db);
 
 // Bug report (creates GitHub issue)
 void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db);

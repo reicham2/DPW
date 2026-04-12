@@ -403,14 +403,14 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
                 mat_json.c_str(), needs_s,
                 input.siko_base64->c_str()};
             PGresult *r = PQexecParams(conn_,
-                "INSERT INTO activities "
-                "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, siko) "
-                "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
-                "$8::department_enum, $9::jsonb, $10, decode($11, 'base64')) "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at",
-                11, nullptr, p2, nullptr, nullptr, 0);
+                                       "INSERT INTO activities "
+                                       "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, siko) "
+                                       "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
+                                       "$8::department_enum, $9::jsonb, $10, decode($11, 'base64')) "
+                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                                       "bad_weather_info, created_at, updated_at",
+                                       11, nullptr, p2, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -432,14 +432,14 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str()};
             PGresult *r = PQexecParams(conn_,
-                "INSERT INTO activities "
-                "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, bad_weather_info) "
-                "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
-                "$8::department_enum, $9::jsonb, $10, $11) "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at",
-                11, nullptr, p, nullptr, nullptr, 0);
+                                       "INSERT INTO activities "
+                                       "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, bad_weather_info) "
+                                       "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
+                                       "$8::department_enum, $9::jsonb, $10, $11) "
+                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                                       "bad_weather_info, created_at, updated_at",
+                                       11, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -495,16 +495,16 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 input.siko_base64->c_str(),
                 bwi_str.c_str(), id.c_str()};
             PGresult *r = PQexecParams(conn_,
-                "UPDATE activities SET "
-                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
-                "department=$8::department_enum, material=$9::jsonb, "
-                "needs_siko=$10, siko=decode($11, 'base64'), bad_weather_info=$12 "
-                "WHERE id=$13 "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at",
-                13, nullptr, p, nullptr, nullptr, 0);
+                                       "UPDATE activities SET "
+                                       "title=$1, date=$2::date, start_time=$3, end_time=$4, "
+                                       "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
+                                       "department=$8::department_enum, material=$9::jsonb, "
+                                       "needs_siko=$10, siko=decode($11, 'base64'), bad_weather_info=$12 "
+                                       "WHERE id=$13 "
+                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                                       "bad_weather_info, created_at, updated_at",
+                                       13, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -528,16 +528,16 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str(), id.c_str()};
             PGresult *r = PQexecParams(conn_,
-                "UPDATE activities SET "
-                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
-                "department=$8::department_enum, material=$9::jsonb, "
-                "needs_siko=$10, siko=NULL, bad_weather_info=$11 "
-                "WHERE id=$12 "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at",
-                12, nullptr, p, nullptr, nullptr, 0);
+                                       "UPDATE activities SET "
+                                       "title=$1, date=$2::date, start_time=$3, end_time=$4, "
+                                       "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
+                                       "department=$8::department_enum, material=$9::jsonb, "
+                                       "needs_siko=$10, siko=NULL, bad_weather_info=$11 "
+                                       "WHERE id=$12 "
+                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                                       "bad_weather_info, created_at, updated_at",
+                                       12, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -562,16 +562,16 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                 mat_json.c_str(), needs_s,
                 bwi_str.c_str(), id.c_str()};
             PGresult *r = PQexecParams(conn_,
-                "UPDATE activities SET "
-                "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
-                "department=$8::department_enum, material=$9::jsonb, "
-                "needs_siko=$10, bad_weather_info=$11 "
-                "WHERE id=$12 "
-                "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                "bad_weather_info, created_at, updated_at",
-                12, nullptr, p, nullptr, nullptr, 0);
+                                       "UPDATE activities SET "
+                                       "title=$1, date=$2::date, start_time=$3, end_time=$4, "
+                                       "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
+                                       "department=$8::department_enum, material=$9::jsonb, "
+                                       "needs_siko=$10, bad_weather_info=$11 "
+                                       "WHERE id=$12 "
+                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                                       "bad_weather_info, created_at, updated_at",
+                                       12, nullptr, p, nullptr, nullptr, 0);
             if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
             {
                 std::string err = PQresultErrorMessage(r);
@@ -681,7 +681,8 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
     {
         on_conflict =
             "ON CONFLICT (microsoft_oid) DO UPDATE "
-            "SET email = EXCLUDED.email, role = '" + initial_role + "'::user_role, updated_at = NOW() ";
+            "SET email = EXCLUDED.email, role = '" +
+            initial_role + "'::user_role, updated_at = NOW() ";
     }
     else
     {
@@ -692,7 +693,8 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
 
     std::string sql =
         "INSERT INTO users (microsoft_oid, email, display_name, department, role) "
-        "VALUES ($1, $2, $3, '" + initial_dept + "'::department_enum, '" + initial_role + "'::user_role) " +
+        "VALUES ($1, $2, $3, '" +
+        initial_dept + "'::department_enum, '" + initial_role + "'::user_role) " +
         on_conflict +
         "RETURNING id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at";
 
@@ -782,9 +784,9 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
 // ---- update_user_admin ------------------------------------------------------
 
 std::optional<UserRecord> Database::update_user_admin(const std::string &id,
-                                                       const std::string &display_name,
-                                                       const std::optional<std::string> &department,
-                                                       const std::string &role)
+                                                      const std::string &display_name,
+                                                      const std::optional<std::string> &department,
+                                                      const std::string &role)
 {
     ensure_connected();
     std::string dept_str = department ? *department : "";
@@ -825,6 +827,8 @@ MailTemplate Database::row_to_mail_template(PGresult *res, int row)
     t.department = col("department") ? col("department") : "";
     t.subject = col("subject") ? col("subject") : "";
     t.body = col("body") ? col("body") : "";
+    if (col("recipients"))
+        t.recipients = parse_pg_array(col("recipients"));
     t.created_at = col("created_at") ? col("created_at") : "";
     t.updated_at = col("updated_at") ? col("updated_at") : "";
     return t;
@@ -834,7 +838,7 @@ std::vector<MailTemplate> Database::list_mail_templates()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT id, department::text, subject, body, created_at, updated_at "
+                           "SELECT id, department::text, subject, body, recipients, created_at, updated_at "
                            "FROM mail_templates ORDER BY department");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -857,7 +861,7 @@ std::optional<MailTemplate> Database::get_mail_template_by_department(const std:
     ensure_connected();
     const char *params[1] = {department.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, department::text, subject, body, created_at, updated_at "
+                                 "SELECT id, department::text, subject, body, recipients, created_at, updated_at "
                                  "FROM mail_templates WHERE department = $1::department_enum",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
@@ -873,16 +877,26 @@ std::optional<MailTemplate> Database::get_mail_template_by_department(const std:
 
 std::optional<MailTemplate> Database::upsert_mail_template(const std::string &department,
                                                            const std::string &subject,
-                                                           const std::string &body)
+                                                           const std::string &body,
+                                                           const std::vector<std::string> &recipients)
 {
     ensure_connected();
-    const char *params[3] = {department.c_str(), subject.c_str(), body.c_str()};
+    // Build PostgreSQL text array literal for recipients
+    std::string recipients_arr = "{";
+    for (size_t i = 0; i < recipients.size(); ++i)
+    {
+        if (i > 0)
+            recipients_arr += ",";
+        recipients_arr += "\"" + recipients[i] + "\"";
+    }
+    recipients_arr += "}";
+    const char *params[4] = {department.c_str(), subject.c_str(), body.c_str(), recipients_arr.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO mail_templates (department, subject, body) "
-                                 "VALUES ($1::department_enum, $2, $3) "
-                                 "ON CONFLICT (department) DO UPDATE SET subject = EXCLUDED.subject, body = EXCLUDED.body "
-                                 "RETURNING id, department::text, subject, body, created_at, updated_at",
-                                 3, nullptr, params, nullptr, nullptr, 0);
+                                 "INSERT INTO mail_templates (department, subject, body, recipients) "
+                                 "VALUES ($1::department_enum, $2, $3, $4::text[]) "
+                                 "ON CONFLICT (department) DO UPDATE SET subject = EXCLUDED.subject, body = EXCLUDED.body, recipients = EXCLUDED.recipients "
+                                 "RETURNING id, department::text, subject, body, recipients, created_at, updated_at",
+                                 4, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
@@ -892,6 +906,87 @@ std::optional<MailTemplate> Database::upsert_mail_template(const std::string &de
     MailTemplate t = row_to_mail_template(res, 0);
     PQclear(res);
     return t;
+}
+
+// ---- Sent mails log ---------------------------------------------------------
+
+SentMail Database::row_to_sent_mail(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    SentMail m;
+    m.id = col("id") ? col("id") : "";
+    m.activity_id = col("activity_id") ? col("activity_id") : "";
+    m.sender_id = col("sender_id") ? col("sender_id") : "";
+    m.sender_email = col("sender_email") ? col("sender_email") : "";
+    if (col("to_emails"))
+        m.to_emails = parse_pg_array(col("to_emails"));
+    m.subject = col("subject") ? col("subject") : "";
+    m.body_html = col("body_html") ? col("body_html") : "";
+    m.sent_at = col("sent_at") ? col("sent_at") : "";
+    return m;
+}
+
+std::optional<SentMail> Database::log_sent_mail(const std::string &activity_id,
+                                                const std::string &sender_id,
+                                                const std::string &sender_email,
+                                                const std::vector<std::string> &to_emails,
+                                                const std::string &subject,
+                                                const std::string &body_html)
+{
+    ensure_connected();
+    std::string to_arr = "{";
+    for (size_t i = 0; i < to_emails.size(); ++i)
+    {
+        if (i > 0)
+            to_arr += ",";
+        to_arr += "\"" + to_emails[i] + "\"";
+    }
+    to_arr += "}";
+    const char *params[6] = {activity_id.c_str(), sender_id.c_str(), sender_email.c_str(),
+                             to_arr.c_str(), subject.c_str(), body_html.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO sent_mails (activity_id, sender_id, sender_email, to_emails, subject, body_html) "
+                                 "VALUES ($1, $2, $3, $4::text[], $5, $6) "
+                                 "RETURNING id, activity_id, sender_id, sender_email, to_emails, subject, body_html, sent_at",
+                                 6, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        fprintf(stderr, "[log_sent_mail] %s\n", err.c_str());
+        return std::nullopt;
+    }
+    SentMail m = row_to_sent_mail(res, 0);
+    PQclear(res);
+    return m;
+}
+
+std::vector<SentMail> Database::list_sent_mails(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, sender_id, sender_email, to_emails, subject, body_html, sent_at "
+                                 "FROM sent_mails WHERE activity_id = $1 ORDER BY sent_at DESC",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    std::vector<SentMail> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_sent_mail(res, i));
+    PQclear(res);
+    return out;
 }
 
 // ---- send_mail via Microsoft Graph ------------------------------------------
