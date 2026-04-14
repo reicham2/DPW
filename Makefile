@@ -1,6 +1,7 @@
 .PHONY: up down build rebuild logs logs-backend logs-frontend logs-db \
        restart restart-backend restart-frontend restart-db \
-	db-reset db-seed ps clean build-backend-debug rebuild-backend-debug
+	db-reset db-seed ps clean build-backend-debug rebuild-backend-debug \
+	full-rebuild update-deps
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:
@@ -76,3 +77,19 @@ ps:
 
 clean:
 	docker compose down -v --rmi local --remove-orphans
+
+# ── Submodule Deps aktualisieren ──────────────────────────────────────────────
+UWS_TAG  ?= v20.62.0
+USOCK_TAG ?= v0.8.8
+
+update-deps:
+	cd backend/deps/uWebSockets && git fetch --tags && git -c advice.detachedHead=false checkout $(UWS_TAG)
+	cd backend/deps/uSockets && git fetch --tags && git -c advice.detachedHead=false checkout $(USOCK_TAG)
+	@echo "✅ uWebSockets $(UWS_TAG), uSockets $(USOCK_TAG)"
+
+# ── Komplett-Rebuild (Cache löschen + Deps aktualisieren) ────────────────────
+full-rebuild: update-deps
+	docker builder prune --all -f
+	docker compose build --no-cache
+	docker compose up -d --force-recreate
+	@echo "✅ Full rebuild abgeschlossen"
