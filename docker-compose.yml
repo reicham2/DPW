@@ -19,6 +19,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        BACKEND_BUILD_TYPE: "${BACKEND_BUILD_TYPE:-Release}"
     restart: unless-stopped
     environment:
       POSTGRES_HOST: db

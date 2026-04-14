@@ -1,6 +1,6 @@
 .PHONY: up down build rebuild logs logs-backend logs-frontend logs-db \
        restart restart-backend restart-frontend restart-db \
-       db-reset db-seed ps clean
+	db-reset db-seed ps clean build-backend-debug rebuild-backend-debug
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:
@@ -18,6 +18,12 @@ rebuild:
 
 rebuild-backend:
 	docker compose up -d --no-deps --build --force-recreate backend
+
+build-backend-debug:
+	BACKEND_BUILD_TYPE=Debug docker compose build backend
+
+rebuild-backend-debug:
+	BACKEND_BUILD_TYPE=Debug docker compose up -d --no-deps --build --force-recreate backend
 
 rebuild-frontend:
 	docker compose up -d --no-deps --build --force-recreate frontend
