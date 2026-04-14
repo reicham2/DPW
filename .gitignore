@@ -1,6 +1,11 @@
 #Bhalt dini Gheimniss für dich XD
 .env
 
+#Scheiss Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
 # Prerequisites
 *.d
 

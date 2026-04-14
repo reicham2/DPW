@@ -14,7 +14,7 @@ INSERT INTO users (id, microsoft_oid, email, display_name, department, role) VAL
 ON CONFLICT (microsoft_oid) DO NOTHING;
 
 -- ── Test-Aktivitäten ────────────────────────────────────────────────────────
-INSERT INTO activities (id, title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, bad_weather_info) VALUES
+INSERT INTO activities (id, title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info) VALUES
 
     -- Pfadi-Aktivität (vergangen)
     ('b0000000-0000-0000-0000-000000000001',
@@ -25,8 +25,8 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      'Waldlichtung Hüttenberg',
      ARRAY['Leiter Eins', 'Stufen Leiter'],
      'Pfadi',
-     '[{"name": "Karte 1:25000", "responsible": "Leiter Eins"}, {"name": "Kompass (5x)", "responsible": ""}, {"name": "Posten-Blätter", "responsible": "Stufen Leiter"}]'::jsonb,
-     false,
+     '[{"name": "Karte 1:25000", "responsible": ["Leiter Eins"]}, {"name": "Kompass (5x)", "responsible": []}, {"name": "Posten-Blätter", "responsible": ["Stufen Leiter"]}]'::jsonb,
+     NULL,
      'Aktivität findet im Pfadiheim statt mit Indoor-Posten'),
 
     -- Pfadi-Aktivität (heute)
@@ -38,8 +38,8 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      'Pfadiheim Hüetli',
      ARRAY['Leiter Eins'],
      'Pfadi',
-     '[{"name": "Seil 20m (3x)", "responsible": "Leiter Eins"}, {"name": "Blachen (4x)", "responsible": ""}, {"name": "Zeltmaterial", "responsible": "Stufen Leiter"}]'::jsonb,
-     true,
+     '[{"name": "Seil 20m (3x)", "responsible": ["Leiter Eins"]}, {"name": "Blachen (4x)", "responsible": []}, {"name": "Zeltmaterial", "responsible": ["Stufen Leiter"]}]'::jsonb,
+     'Nächstes Spital: Kantonsspital, 10 Min. Kontakt: 044 123 45 67. Notfallnummern bei Leitung.',
      NULL),
 
     -- Wölfe-Aktivität (nächste Woche)
@@ -51,8 +51,8 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      'Schulhaus Dorf',
      ARRAY['Leiter Zwei'],
      'Wölfe',
-     '[{"name": "Schatzkiste", "responsible": "Leiter Zwei"}, {"name": "Hinweis-Zettel (20x)", "responsible": ""}]'::jsonb,
-     false,
+     '[{"name": "Schatzkiste", "responsible": ["Leiter Zwei"]}, {"name": "Hinweis-Zettel (20x)", "responsible": []}]'::jsonb,
+     NULL,
      'Schatzsuche wird im Schulhaus durchgeführt'),
 
     -- Pio-Aktivität (nächste Woche)
@@ -64,8 +64,8 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      'Pfadiheim Hüetli',
      ARRAY['Pio Eins'],
      'Pio',
-     '[{"name": "Kocher (2x)", "responsible": "Pio Eins"}, {"name": "Pfannen-Set", "responsible": ""}, {"name": "Lebensmittel-Liste", "responsible": "Pio Eins"}]'::jsonb,
-     false,
+     '[{"name": "Kocher (2x)", "responsible": ["Pio Eins"]}, {"name": "Pfannen-Set", "responsible": []}, {"name": "Lebensmittel-Liste", "responsible": ["Pio Eins"]}]'::jsonb,
+     NULL,
      NULL),
 
     -- Biber-Aktivität (in 2 Wochen)
@@ -77,8 +77,8 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      'Gemeindesaal',
      ARRAY['Leiter Drei'],
      'Biber',
-     '[{"name": "Bastelpapier", "responsible": ""}, {"name": "Schere (10x)", "responsible": "Leiter Drei"}, {"name": "Leim", "responsible": ""}]'::jsonb,
-     false,
+     '[{"name": "Bastelpapier", "responsible": []}, {"name": "Schere (10x)", "responsible": ["Leiter Drei"]}, {"name": "Leim", "responsible": []}]'::jsonb,
+     NULL,
      NULL),
 
     -- Leiter-Aktivität (ohne Material)
@@ -91,31 +91,31 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Admin User', 'Stufen Leiter'],
      'Leiter',
      '[]'::jsonb,
-     false,
+     NULL,
      NULL);
 
 -- ── Programm-Einträge ───────────────────────────────────────────────────────
 
 -- Programme für "Geländespiel im Wald"
 INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000001', '14:00', 'Einstieg',          'Begrüssung und Erklärung der Regeln',         'Leiter Eins'),
-    ('b0000000-0000-0000-0000-000000000001', '14:15', 'Geländespiel',      'Posten im Wald ablaufen mit Karte & Kompass',  'Stufen Leiter'),
-    ('b0000000-0000-0000-0000-000000000001', '16:00', 'Auswertung',        'Punkte zählen und Sieger küren',               'Leiter Eins'),
-    ('b0000000-0000-0000-0000-000000000001', '16:30', 'Abschluss',         'Zvieri und Aufräumen',                         'Stufen Leiter');
+    ('b0000000-0000-0000-0000-000000000001', '14:00', 'Einstieg',          'Begrüssung und Erklärung der Regeln',         ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000001', '14:15', 'Geländespiel',      'Posten im Wald ablaufen mit Karte & Kompass',  ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000001', '16:00', 'Auswertung',        'Punkte zählen und Sieger küren',               ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000001', '16:30', 'Abschluss',         'Zvieri und Aufräumen',                         ARRAY['Stufen Leiter']);
 
 -- Programme für "Pioniertechnik: Seilbrücke"
 INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000002', '13:30', 'Knoten-Repetition', 'Mastwurf, Kreuzknoten, Achterknoten üben',     'Leiter Eins'),
-    ('b0000000-0000-0000-0000-000000000002', '14:15', 'Brücke planen',     'Standort wählen und Skizze zeichnen',          'Leiter Eins'),
-    ('b0000000-0000-0000-0000-000000000002', '14:45', 'Brücke bauen',      'Seilbrücke aufbauen in Gruppen',               'Leiter Eins'),
-    ('b0000000-0000-0000-0000-000000000002', '16:30', 'Überquerung & Abbau', 'Jede Gruppe überquert, danach Abbau',        'Leiter Eins');
+    ('b0000000-0000-0000-0000-000000000002', '13:30', 'Knoten-Repetition', 'Mastwurf, Kreuzknoten, Achterknoten üben',     ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000002', '14:15', 'Brücke planen',     'Standort wählen und Skizze zeichnen',          ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000002', '14:45', 'Brücke bauen',      'Seilbrücke aufbauen in Gruppen',               ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000002', '16:30', 'Überquerung & Abbau', 'Jede Gruppe überquert, danach Abbau',        ARRAY['Leiter Eins']);
 
 -- Programme für "Schatzsuche"
 INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000003', '14:00', 'Einführung',        'Geschichte erzählen und Gruppen bilden',        'Leiter Zwei'),
-    ('b0000000-0000-0000-0000-000000000003', '14:20', 'Schatzsuche',       'Hinweise suchen und Rätsel lösen',             'Leiter Zwei'),
-    ('b0000000-0000-0000-0000-000000000003', '15:45', 'Schatz öffnen',     'Gemeinsam den Schatz öffnen',                  'Leiter Zwei'),
-    ('b0000000-0000-0000-0000-000000000003', '16:00', 'Zvieri',            'Zvieri und Verabschiedung',                    'Leiter Zwei');
+    ('b0000000-0000-0000-0000-000000000003', '14:00', 'Einführung',        'Geschichte erzählen und Gruppen bilden',        ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000003', '14:20', 'Schatzsuche',       'Hinweise suchen und Rätsel lösen',             ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000003', '15:45', 'Schatz öffnen',     'Gemeinsam den Schatz öffnen',                  ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000003', '16:00', 'Zvieri',            'Zvieri und Verabschiedung',                    ARRAY['Leiter Zwei']);
 
 -- Mail-Templates mit Beispielinhalt
 UPDATE mail_templates SET

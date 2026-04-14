@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <sstream>
+#include <functional>
 #include <curl/curl.h>
 #include "json.hpp"
 
@@ -100,7 +101,7 @@ std::string Database::format_material_param(const std::vector<std::string> &mate
     return oss.str();
 }
 
-// Formats vector<MaterialItem> as a JSONB value like [{"name":"a","responsible":"b"},...]
+// Formats vector<MaterialItem> as a JSONB value like [{"name":"a","responsible":["b","c"]},...]
 std::string Database::format_material_items_param(const std::vector<MaterialItem> &items)
 {
     nlohmann::json arr = nlohmann::json::array();
@@ -150,20 +151,10 @@ Activity Database::row_to_activity(PGresult *res, int row)
     if (bwi)
         a.bad_weather_info = bwi;
 
-    // needs_siko
-    const char *ns = col("needs_siko");
-    a.needs_siko = (ns && (ns[0] == 't' || ns[0] == '1'));
-
-    // has_siko: check if column is non-null (we don't fetch bytes in list/get queries)
-    int siko_col = PQfnumber(res, "has_siko");
-    if (siko_col >= 0 && !PQgetisnull(res, row, siko_col))
-    {
-        const char *hs = PQgetvalue(res, row, siko_col);
-        if (hs && (hs[0] == 't' || hs[0] == '1'))
-        {
-            a.siko.push_back(0); // sentinel: non-empty means has_siko=true
-        }
-    }
+    // siko_text
+    const char *siko_t = col("siko_text");
+    if (siko_t)
+        a.siko_text = siko_t;
 
     // material (JSONB column)
     const char *mat = col("material");
@@ -182,7 +173,18 @@ Activity Database::row_to_activity(PGresult *res, int row)
                 else if (item.is_object())
                 {
                     mi.name = item.value("name", "");
-                    mi.responsible = item.value("responsible", "");
+                    if (item.contains("responsible") && item["responsible"].is_array())
+                    {
+                        for (const auto &r : item["responsible"])
+                            if (r.is_string())
+                                mi.responsible.push_back(r.get<std::string>());
+                    }
+                    else if (item.contains("responsible") && item["responsible"].is_string())
+                    {
+                        std::string rs = item["responsible"].get<std::string>();
+                        if (!rs.empty())
+                            mi.responsible.push_back(rs);
+                    }
                 }
                 if (!mi.name.empty())
                     a.material.push_back(mi);
@@ -208,7 +210,11 @@ Program Database::row_to_program(PGresult *res, int row)
     p.time = col("time");
     p.title = col("title");
     p.description = col("description");
-    p.responsible = col("responsible");
+    {
+        int c = PQfnumber(res, "responsible");
+        if (c >= 0 && !PQgetisnull(res, row, c))
+            p.responsible = parse_pg_array(PQgetvalue(res, row, c));
+    }
     return p;
 }
 
@@ -269,7 +275,7 @@ std::vector<Activity> Database::list_activities()
     ensure_connected();
     PGresult *res = PQexec(conn_,
                            "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
-                           "       department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                           "       department::text, material, siko_text, "
                            "       bad_weather_info, created_at, updated_at "
                            "FROM activities ORDER BY date DESC, start_time");
 
@@ -297,7 +303,7 @@ std::optional<Activity> Database::get_activity_by_id(const std::string &id)
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                 "       department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
+                                 "       department::text, material, siko_text, "
                                  "       bad_weather_info, created_at, updated_at "
                                  "FROM activities WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -313,28 +319,23 @@ std::optional<Activity> Database::get_activity_by_id(const std::string &id)
     return a;
 }
 
-// ---- get_siko ---------------------------------------------------------------
+// ---- get_predefined_locations ------------------------------------------------
 
-std::optional<std::vector<uint8_t>> Database::get_siko(const std::string &activity_id)
+std::vector<std::string> Database::get_predefined_locations()
 {
     ensure_connected();
-    const char *params[1] = {activity_id.c_str()};
-    // Request siko in binary format (resultFormat=1)
-    int paramFormats[1] = {0};
-    PGresult *res = PQexecParams(conn_,
-                                 "SELECT siko FROM activities WHERE id = $1 AND siko IS NOT NULL",
-                                 1, nullptr, params, nullptr, paramFormats, 1); // last arg: result binary
-
-    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    PGresult *res = PQexec(conn_, "SELECT name FROM predefined_locations ORDER BY name");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
         PQclear(res);
-        return std::nullopt;
+        return {};
     }
-    int len = PQgetlength(res, 0, 0);
-    const uint8_t *data = reinterpret_cast<const uint8_t *>(PQgetvalue(res, 0, 0));
-    std::vector<uint8_t> bytes(data, data + len);
+    std::vector<std::string> out;
+    int n = PQntuples(res);
+    for (int i = 0; i < n; ++i)
+        out.push_back(PQgetvalue(res, i, 0));
     PQclear(res);
-    return bytes;
+    return out;
 }
 
 // ---- Transaction helpers ----------------------------------------------------
@@ -351,19 +352,21 @@ static void exec_or_throw(PGconn *conn, const char *sql, const char *context)
 // Insert programs within an open transaction
 static void insert_programs(PGconn *conn,
                             const std::string &activity_id,
-                            const std::vector<ProgramInput> &programs)
+                            const std::vector<ProgramInput> &programs,
+                            const std::function<std::string(const std::vector<std::string> &)> &fmt)
 {
     for (const auto &pi : programs)
     {
+        std::string resp_json = fmt(pi.responsible);
         const char *params[5] = {
             activity_id.c_str(),
             pi.time.c_str(),
             pi.title.c_str(),
             pi.description.c_str(),
-            pi.responsible.c_str()};
+            resp_json.c_str()};
         PGresult *r = PQexecParams(conn,
                                    "INSERT INTO programs (activity_id, time, title, description, responsible) "
-                                   "VALUES ($1, $2, $3, $4, $5)",
+                                   "VALUES ($1, $2, $3, $4, array(select jsonb_array_elements_text($5::jsonb)))",
                                    5, nullptr, params, nullptr, nullptr, 0);
         ExecStatusType s = PQresultStatus(r);
         PQclear(r);
@@ -382,75 +385,42 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
     std::string resp_json = Database::format_material_param(input.responsible);
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
-    const char *needs_s = input.needs_siko ? "true" : "false";
+    std::string siko_str = input.siko_text ? *input.siko_text : "";
     const char *dept_param = input.department ? dept_str.c_str() : nullptr;
+    const char *siko_param = input.siko_text ? siko_str.c_str() : nullptr;
 
     exec_or_throw(conn_, "BEGIN", "create_activity BEGIN");
 
     try
     {
-        Activity a;
-
-        if (input.siko_base64 && !input.siko_base64->empty())
+        const char *p2[12] = {
+            input.title.c_str(), input.date.c_str(),
+            input.start_time.c_str(), input.end_time.c_str(),
+            input.goal.c_str(), input.location.c_str(),
+            resp_json.c_str(),
+            dept_param,
+            mat_json.c_str(),
+            siko_param,
+            bwi_str.c_str()};
+        PGresult *r = PQexecParams(conn_,
+                                   "INSERT INTO activities "
+                                   "(title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info) "
+                                   "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
+                                   "$8::department_enum, $9::jsonb, $10, $11) "
+                                   "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                   "department::text, material, siko_text, "
+                                   "bad_weather_info, created_at, updated_at",
+                                   11, nullptr, p2, nullptr, nullptr, 0);
+        if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
-            // Insert with SiKo — department passed as $8 parameter (NULL pointer = SQL NULL)
-            const char *p2[11] = {
-                input.title.c_str(), input.date.c_str(),
-                input.start_time.c_str(), input.end_time.c_str(),
-                input.goal.c_str(), input.location.c_str(),
-                resp_json.c_str(),
-                dept_param,
-                mat_json.c_str(), needs_s,
-                input.siko_base64->c_str()};
-            PGresult *r = PQexecParams(conn_,
-                                       "INSERT INTO activities "
-                                       "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, siko) "
-                                       "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
-                                       "$8::department_enum, $9::jsonb, $10, decode($11, 'base64')) "
-                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                                       "bad_weather_info, created_at, updated_at",
-                                       11, nullptr, p2, nullptr, nullptr, 0);
-            if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
-            {
-                std::string err = PQresultErrorMessage(r);
-                PQclear(r);
-                throw std::runtime_error("create_activity INSERT: " + err);
-            }
-            a = row_to_activity(r, 0);
+            std::string err = PQresultErrorMessage(r);
             PQclear(r);
+            throw std::runtime_error("create_activity INSERT: " + err);
         }
-        else
-        {
-            // Insert without SiKo — department passed as $8 parameter (NULL pointer = SQL NULL)
-            const char *p[11] = {
-                input.title.c_str(), input.date.c_str(),
-                input.start_time.c_str(), input.end_time.c_str(),
-                input.goal.c_str(), input.location.c_str(),
-                resp_json.c_str(),
-                dept_param,
-                mat_json.c_str(), needs_s,
-                bwi_str.c_str()};
-            PGresult *r = PQexecParams(conn_,
-                                       "INSERT INTO activities "
-                                       "(title, date, start_time, end_time, goal, location, responsible, department, material, needs_siko, bad_weather_info) "
-                                       "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
-                                       "$8::department_enum, $9::jsonb, $10, $11) "
-                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                                       "bad_weather_info, created_at, updated_at",
-                                       11, nullptr, p, nullptr, nullptr, 0);
-            if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
-            {
-                std::string err = PQresultErrorMessage(r);
-                PQclear(r);
-                throw std::runtime_error("create_activity INSERT: " + err);
-            }
-            a = row_to_activity(r, 0);
-            PQclear(r);
-        }
+        Activity a = row_to_activity(r, 0);
+        PQclear(r);
 
-        insert_programs(conn_, a.id, input.programs);
+        insert_programs(conn_, a.id, input.programs, Database::format_material_param);
         exec_or_throw(conn_, "COMMIT", "create_activity COMMIT");
         attach_programs_single(a);
         return a;
@@ -472,116 +442,43 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
     std::string resp_json = Database::format_material_param(input.responsible);
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
-    const char *needs_s = input.needs_siko ? "true" : "false";
+    std::string siko_str = input.siko_text ? *input.siko_text : "";
     const char *dept_param = input.department ? dept_str.c_str() : nullptr;
+    const char *siko_param = input.siko_text ? siko_str.c_str() : nullptr;
 
     exec_or_throw(conn_, "BEGIN", "update_activity BEGIN");
 
     try
     {
-        Activity a;
-
-        // Case 1: new PDF uploaded — store it
-        if (input.needs_siko && input.siko_base64 && !input.siko_base64->empty())
+        const char *p[12] = {
+            input.title.c_str(), input.date.c_str(),
+            input.start_time.c_str(), input.end_time.c_str(),
+            input.goal.c_str(), input.location.c_str(),
+            resp_json.c_str(),
+            dept_param,
+            mat_json.c_str(),
+            siko_param,
+            bwi_str.c_str(), id.c_str()};
+        PGresult *r = PQexecParams(conn_,
+                                   "UPDATE activities SET "
+                                   "title=$1, date=$2::date, start_time=$3, end_time=$4, "
+                                   "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
+                                   "department=$8::department_enum, material=$9::jsonb, "
+                                   "siko_text=$10, bad_weather_info=$11 "
+                                   "WHERE id=$12 "
+                                   "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                   "department::text, material, siko_text, "
+                                   "bad_weather_info, created_at, updated_at",
+                                   12, nullptr, p, nullptr, nullptr, 0);
+        if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
-            // department passed as $8 parameter (NULL pointer = SQL NULL)
-            const char *p[13] = {
-                input.title.c_str(), input.date.c_str(),
-                input.start_time.c_str(), input.end_time.c_str(),
-                input.goal.c_str(), input.location.c_str(),
-                resp_json.c_str(),
-                dept_param,
-                mat_json.c_str(), needs_s,
-                input.siko_base64->c_str(),
-                bwi_str.c_str(), id.c_str()};
-            PGresult *r = PQexecParams(conn_,
-                                       "UPDATE activities SET "
-                                       "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                                       "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
-                                       "department=$8::department_enum, material=$9::jsonb, "
-                                       "needs_siko=$10, siko=decode($11, 'base64'), bad_weather_info=$12 "
-                                       "WHERE id=$13 "
-                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                                       "bad_weather_info, created_at, updated_at",
-                                       13, nullptr, p, nullptr, nullptr, 0);
-            if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
-            {
-                std::string err = PQresultErrorMessage(r);
-                PQclear(r);
-                throw std::runtime_error("update_activity UPDATE (with siko): " + err);
-            }
-            a = row_to_activity(r, 0);
+            std::string err = PQresultErrorMessage(r);
             PQclear(r);
-
-            // Case 2: needs_siko turned off — explicitly clear the stored file
+            PQexec(conn_, "ROLLBACK");
+            return std::nullopt;
         }
-        else if (!input.needs_siko)
-        {
-            // department passed as $8 parameter (NULL pointer = SQL NULL)
-            const char *p[12] = {
-                input.title.c_str(), input.date.c_str(),
-                input.start_time.c_str(), input.end_time.c_str(),
-                input.goal.c_str(), input.location.c_str(),
-                resp_json.c_str(),
-                dept_param,
-                mat_json.c_str(), needs_s,
-                bwi_str.c_str(), id.c_str()};
-            PGresult *r = PQexecParams(conn_,
-                                       "UPDATE activities SET "
-                                       "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                                       "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
-                                       "department=$8::department_enum, material=$9::jsonb, "
-                                       "needs_siko=$10, siko=NULL, bad_weather_info=$11 "
-                                       "WHERE id=$12 "
-                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                                       "bad_weather_info, created_at, updated_at",
-                                       12, nullptr, p, nullptr, nullptr, 0);
-            if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
-            {
-                std::string err = PQresultErrorMessage(r);
-                PQclear(r);
-                PQexec(conn_, "ROLLBACK");
-                return std::nullopt;
-            }
-            a = row_to_activity(r, 0);
-            PQclear(r);
-
-            // Case 3: needs_siko on but no new file — keep existing siko unchanged
-        }
-        else
-        {
-            // department passed as $8 parameter (NULL pointer = SQL NULL)
-            const char *p[12] = {
-                input.title.c_str(), input.date.c_str(),
-                input.start_time.c_str(), input.end_time.c_str(),
-                input.goal.c_str(), input.location.c_str(),
-                resp_json.c_str(),
-                dept_param,
-                mat_json.c_str(), needs_s,
-                bwi_str.c_str(), id.c_str()};
-            PGresult *r = PQexecParams(conn_,
-                                       "UPDATE activities SET "
-                                       "title=$1, date=$2::date, start_time=$3, end_time=$4, "
-                                       "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
-                                       "department=$8::department_enum, material=$9::jsonb, "
-                                       "needs_siko=$10, bad_weather_info=$11 "
-                                       "WHERE id=$12 "
-                                       "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                       "department::text, material, needs_siko, (siko IS NOT NULL) AS has_siko, "
-                                       "bad_weather_info, created_at, updated_at",
-                                       12, nullptr, p, nullptr, nullptr, 0);
-            if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
-            {
-                std::string err = PQresultErrorMessage(r);
-                PQclear(r);
-                PQexec(conn_, "ROLLBACK");
-                return std::nullopt;
-            }
-            a = row_to_activity(r, 0);
-            PQclear(r);
-        }
+        Activity a = row_to_activity(r, 0);
+        PQclear(r);
 
         // Replace programs
         const char *del_params[1] = {id.c_str()};
@@ -590,7 +487,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                                      1, nullptr, del_params, nullptr, nullptr, 0);
         PQclear(del);
 
-        insert_programs(conn_, a.id, input.programs);
+        insert_programs(conn_, a.id, input.programs, Database::format_material_param);
         exec_or_throw(conn_, "COMMIT", "update_activity COMMIT");
         attach_programs_single(a);
         return a;
@@ -1049,4 +946,111 @@ bool Database::send_mail(const std::string &access_token,
         return false;
     }
     return true;
+}
+
+// ---- Attachment helpers -----------------------------------------------------
+
+Attachment Database::row_to_attachment(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> std::string
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return "";
+        return PQgetvalue(res, row, c);
+    };
+    Attachment att;
+    att.id = col("id");
+    att.activity_id = col("activity_id");
+    att.filename = col("filename");
+    att.content_type = col("content_type");
+    att.created_at = col("created_at");
+    return att;
+}
+
+std::vector<Attachment> Database::list_attachments(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, filename, content_type, created_at "
+                                 "FROM attachments WHERE activity_id = $1 ORDER BY created_at",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    std::vector<Attachment> out;
+    int n = PQntuples(res);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_attachment(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<Attachment> Database::add_attachment(const std::string &activity_id,
+                                                   const std::string &filename,
+                                                   const std::string &content_type,
+                                                   const std::string &data_base64)
+{
+    ensure_connected();
+    const char *params[4] = {
+        activity_id.c_str(),
+        filename.c_str(),
+        content_type.c_str(),
+        data_base64.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO attachments (activity_id, filename, content_type, data) "
+                                 "VALUES ($1, $2, $3, decode($4, 'base64')) "
+                                 "RETURNING id, activity_id, filename, content_type, created_at",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    Attachment att = row_to_attachment(res, 0);
+    PQclear(res);
+    return att;
+}
+
+std::optional<AttachmentData> Database::get_attachment_data(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT filename, content_type, data FROM attachments WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    AttachmentData ad;
+    ad.filename = PQgetvalue(res, 0, 0);
+    ad.content_type = PQgetvalue(res, 0, 1);
+    // data column is bytea returned as hex-escaped text; use PQunescapeBytea
+    size_t len = 0;
+    unsigned char *unescaped = PQunescapeBytea(
+        reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, 2)), &len);
+    if (unescaped)
+    {
+        ad.data.assign(unescaped, unescaped + len);
+        PQfreemem(unescaped);
+    }
+    PQclear(res);
+    return ad;
+}
+
+bool Database::delete_attachment(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM attachments WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
 }

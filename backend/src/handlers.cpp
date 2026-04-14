@@ -136,7 +136,6 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
             if (r.is_string())
                 input.responsible.push_back(r.get<std::string>());
     }
-    input.needs_siko = j.value("needs_siko", false);
 
     if (j.contains("department") && j["department"].is_string())
         input.department = j["department"].get<std::string>();
@@ -148,11 +147,11 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
             input.bad_weather_info = bwi;
     }
 
-    if (j.contains("siko_base64") && j["siko_base64"].is_string())
+    if (j.contains("siko_text") && j["siko_text"].is_string())
     {
-        std::string sb = j["siko_base64"].get<std::string>();
-        if (!sb.empty())
-            input.siko_base64 = sb;
+        std::string st = j["siko_text"].get<std::string>();
+        if (!st.empty())
+            input.siko_text = st;
     }
 
     if (j.contains("material") && j["material"].is_array())
@@ -167,7 +166,18 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
             else if (m.is_object())
             {
                 mi.name = str_field(m, "name");
-                mi.responsible = str_field(m, "responsible");
+                if (m.contains("responsible") && m["responsible"].is_array())
+                {
+                    for (auto &r : m["responsible"])
+                        if (r.is_string())
+                            mi.responsible.push_back(r.get<std::string>());
+                }
+                else if (m.contains("responsible") && m["responsible"].is_string())
+                {
+                    std::string rs = m["responsible"].get<std::string>();
+                    if (!rs.empty())
+                        mi.responsible.push_back(rs);
+                }
             }
             if (!mi.name.empty())
                 input.material.push_back(mi);
@@ -182,7 +192,18 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
             pi.time = str_field(p, "time");
             pi.title = str_field(p, "title");
             pi.description = str_field(p, "description");
-            pi.responsible = str_field(p, "responsible");
+            if (p.contains("responsible") && p["responsible"].is_array())
+            {
+                for (auto &r : p["responsible"])
+                    if (r.is_string())
+                        pi.responsible.push_back(r.get<std::string>());
+            }
+            else if (p.contains("responsible") && p["responsible"].is_string())
+            {
+                std::string rs = p["responsible"].get<std::string>();
+                if (!rs.empty())
+                    pi.responsible.push_back(rs);
+            }
             input.programs.push_back(pi);
         }
     }
@@ -254,9 +275,30 @@ void handle_get_activity(HttpRes *res, HttpReq *req, Database &db)
     }
 }
 
-// ---- GET /activities/:id/siko -----------------------------------------------
+// ---- GET /locations ---------------------------------------------------------
 
-void handle_get_siko(HttpRes *res, HttpReq *req, Database &db)
+void handle_get_locations(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto locs = db.get_predefined_locations();
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &l : locs)
+            arr.push_back(l);
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- GET /activities/:id/attachments ----------------------------------------
+
+void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db)
 {
     TokenClaims claims;
     if (!require_auth(res, req, claims))
@@ -264,19 +306,135 @@ void handle_get_siko(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     try
     {
-        auto bytes = db.get_siko(id);
-        if (!bytes || bytes->empty())
+        auto atts = db.list_attachments(id);
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &a : atts)
+            arr.push_back(attachment_to_json(a));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- POST /activities/:id/attachments ---------------------------------------
+
+void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Unauthorized"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_microsoft_token(token);
+    }
+    catch (std::exception &e)
+    {
+        // Also try debug token
+        try
+        {
+            const char *dbg = std::getenv("DEBUG");
+            bool debug_mode = dbg && (std::string(dbg) == "true" || std::string(dbg) == "1");
+            if (debug_mode && token.rfind("debug:", 0) == 0)
+            {
+                claims.oid = "debug:" + token.substr(6);
+                claims.email = "debug@local";
+                claims.display_name = "Debug";
+            }
+            else
+                throw;
+        }
+        catch (...)
+        {
+            send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+            return;
+        }
+    }
+    std::string activity_id{req->getParameter(0)};
+
+    res->onAborted([] {});
+    std::string body;
+    res->onData([res, &db, activity_id, body = std::move(body)](std::string_view chunk, bool last) mutable
+                {
+        body.append(chunk);
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(body, nullptr, false);
+        if (!j.is_object()) {
+            send_json(res, 400, R"({"error":"invalid JSON"})");
+            return;
+        }
+        std::string filename = j.value("filename", "");
+        std::string content_type = j.value("content_type", "application/octet-stream");
+        std::string data_base64 = j.value("data", "");
+        if (filename.empty() || data_base64.empty()) {
+            send_json(res, 400, R"({"error":"filename and data required"})");
+            return;
+        }
+        try {
+            auto att = db.add_attachment(activity_id, filename, content_type, data_base64);
+            if (!att) {
+                send_json(res, 500, R"({"error":"failed to add attachment"})");
+                return;
+            }
+            send_json(res, 201, attachment_to_json(*att).dump());
+        } catch (std::exception &e) {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
+}
+
+// ---- GET /attachments/:id/download ------------------------------------------
+
+void handle_get_attachment_download(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    std::string id{req->getParameter(0)};
+    try
+    {
+        auto ad = db.get_attachment_data(id);
+        if (!ad || ad->data.empty())
         {
             send_json(res, 404, R"({"error":"Keine SiKo-Datei vorhanden"})");
             return;
         }
-        std::string disp = "attachment; filename=\"siko-" + id + ".pdf\"";
         set_cors(res);
         res->writeStatus("200 OK");
-        res->writeHeader("Content-Type", "application/pdf");
+        res->writeHeader("Content-Type", ad->content_type);
+        std::string disp = "inline; filename=\"" + ad->filename + "\"";
         res->writeHeader("Content-Disposition", disp);
         res->end(std::string_view(
-            reinterpret_cast<const char *>(bytes->data()), bytes->size()));
+            reinterpret_cast<const char *>(ad->data.data()), ad->data.size()));
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- DELETE /attachments/:id ------------------------------------------------
+
+void handle_delete_attachment(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    std::string id{req->getParameter(0)};
+    try
+    {
+        if (!db.delete_attachment(id))
+        {
+            send_json(res, 404, R"({"error":"not found"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
     }
     catch (std::exception &e)
     {

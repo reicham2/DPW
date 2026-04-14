@@ -70,9 +70,19 @@ int main()
          .post("/activities", [&](auto *res, auto *req)
                { handle_post_activity(res, req, db, wm); })
 
-         // SiKo download — must be registered BEFORE /activities/:id
-         .get("/activities/:id/siko", [&](auto *res, auto *req)
-              { handle_get_siko(res, req, db); })
+         // Predefined locations
+         .get("/locations", [&](auto *res, auto *req)
+              { handle_get_locations(res, req, db); })
+
+         // Attachments — must be registered BEFORE /activities/:id
+         .get("/activities/:id/attachments", [&](auto *res, auto *req)
+              { handle_get_attachments(res, req, db); })
+         .post("/activities/:id/attachments", [&](auto *res, auto *req)
+               { handle_post_attachment(res, req, db); })
+         .get("/attachments/:id/download", [&](auto *res, auto *req)
+              { handle_get_attachment_download(res, req, db); })
+         .del("/attachments/:id", [&](auto *res, auto *req)
+              { handle_delete_attachment(res, req, db); })
 
          // Single activity CRUD
          .get("/activities/:id", [&](auto *res, auto *req)

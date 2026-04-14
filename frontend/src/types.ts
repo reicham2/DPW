@@ -7,19 +7,19 @@ export interface Program {
 	time: string;
 	title: string;
 	description: string;
-	responsible: string;
+	responsible: string[];
 }
 
 export interface ProgramInput {
 	time: string;
 	title: string;
 	description: string;
-	responsible: string;
+	responsible: string[];
 }
 
 export interface MaterialItem {
 	name: string;
-	responsible?: string;
+	responsible?: string[];
 }
 
 export interface Activity {
@@ -33,8 +33,7 @@ export interface Activity {
 	responsible: string[];
 	department: Department | null;
 	material: MaterialItem[];
-	needs_siko: boolean;
-	has_siko: boolean;
+	siko_text: string | null;
 	bad_weather_info: string | null;
 	created_at: string;
 	updated_at: string;
@@ -51,8 +50,7 @@ export interface ActivityInput {
 	responsible: string[];
 	department?: Department | null;
 	material: MaterialItem[];
-	needs_siko: boolean;
-	siko_base64?: string;
+	siko_text?: string | null;
 	bad_weather_info?: string | null;
 	programs: ProgramInput[];
 }
@@ -114,4 +112,12 @@ export interface SentMail {
 	subject: string;
 	body_html: string;
 	sent_at: string;
+}
+
+export interface Attachment {
+	id: string;
+	activity_id: string;
+	filename: string;
+	content_type: string;
+	created_at: string;
 }

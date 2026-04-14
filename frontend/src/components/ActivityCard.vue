@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { Activity } from '../types'
 
-const props = defineProps<{ activity: Activity }>()
+const props = defineProps<{
+  activity: Activity
+  dimmed?: boolean
+}>()
 
 function formatDate(d: string): string {
   // Append time to avoid timezone-shift on date-only strings
@@ -14,7 +17,7 @@ function formatDate(d: string): string {
 </script>
 
 <template>
-  <div class="activity-card">
+  <div class="activity-card" :class="{ 'activity-card--dimmed': dimmed }">
     <div class="card-header">
       <span class="card-title">{{ activity.title }}</span>
       <span v-if="activity.department" class="card-dept-badge">
