@@ -56,8 +56,17 @@ public:
     std::optional<Activity> update_activity(const std::string &id, const ActivityInput &input);
     bool delete_activity(const std::string &id);
 
-    // SiKo raw bytes (binary download)
-    std::optional<std::vector<uint8_t>> get_siko(const std::string &activity_id);
+    // Predefined locations
+    std::vector<std::string> get_predefined_locations();
+
+    // Attachments
+    std::optional<Attachment> add_attachment(const std::string &activity_id,
+                                             const std::string &filename,
+                                             const std::string &content_type,
+                                             const std::string &data_base64);
+    std::vector<Attachment> list_attachments(const std::string &activity_id);
+    std::optional<AttachmentData> get_attachment_data(const std::string &id);
+    bool delete_attachment(const std::string &id);
 
     // Users
     std::vector<UserRecord> list_users();
@@ -111,6 +120,7 @@ private:
 
     Activity row_to_activity(PGresult *res, int row);
     Program row_to_program(PGresult *res, int row);
+    Attachment row_to_attachment(PGresult *res, int row);
     UserRecord row_to_user(PGresult *res, int row);
     MailTemplate row_to_mail_template(PGresult *res, int row);
     SentMail row_to_sent_mail(PGresult *res, int row);

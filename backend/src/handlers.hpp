@@ -21,10 +21,18 @@ std::string auth_token_from_header(HttpRes *res, const std::string &auth_header)
 void handle_get_departments(HttpRes *res, HttpReq *req);
 void handle_get_activities(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activity(HttpRes *res, HttpReq *req, Database &db);
-void handle_get_siko(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+
+// Predefined locations
+void handle_get_locations(HttpRes *res, HttpReq *req, Database &db);
+
+// Attachments
+void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_attachment_download(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_attachment(HttpRes *res, HttpReq *req, Database &db);
 
 // Auth + user endpoints
 void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db);
