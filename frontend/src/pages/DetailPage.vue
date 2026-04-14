@@ -8,6 +8,7 @@ import { wsSend, wsRegister } from '../composables/useWebSocket';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 
+
 const route = useRoute();
 const router = useRouter();
 const id = route.params.id as string;

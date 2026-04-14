@@ -414,7 +414,7 @@ void handle_get_attachment_download(HttpRes *res, HttpReq *req, Database &db)
         auto ad = db.get_attachment_data(id);
         if (!ad || ad->data.empty())
         {
-            send_json(res, 404, R"({"error":"attachment not found"})");
+            send_json(res, 404, R"({"error":"Keine SiKo-Datei vorhanden"})");
             return;
         }
         set_cors(res);
