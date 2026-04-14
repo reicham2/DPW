@@ -43,14 +43,6 @@ const filtered = computed(() => {
 </script>
 
 <template>
-  <nav class="page-tabs">
-    <router-link to="/" class="page-tab page-tab--active">Aktivitäten</router-link>
-    <template v-if="isAdmin || isStufenleiter">
-      <router-link to="/mail-templates" class="page-tab">Mail-Vorlagen</router-link>
-      <router-link to="/admin" class="page-tab">Admin</router-link>
-    </template>
-  </nav>
-
   <header class="header">
     <h1>Aktivitäten</h1>
     <div class="header-right">

@@ -444,12 +444,6 @@ function onRecipientKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <nav class="page-tabs">
-    <router-link to="/" class="page-tab">Aktivitäten</router-link>
-    <router-link to="/mail-templates" class="page-tab page-tab--active">Mail-Vorlagen</router-link>
-    <router-link v-if="isAdmin || isStufenleiter" to="/admin" class="page-tab">Admin</router-link>
-  </nav>
-
   <header class="header">
     <h1>Mail-Vorlagen</h1>
   </header>

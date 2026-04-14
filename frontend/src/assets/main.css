@@ -38,13 +38,21 @@ body {
 .global-nav-logo {
 	display: inline-flex;
 	align-items: center;
+	gap: 10px;
 	text-decoration: none;
 }
 
 .global-nav-logo-img {
-	height: 50px;
+	height: 40px;
 	width: auto;
 	display: block;
+}
+
+.global-nav-title {
+	font-size: 1.15rem;
+	font-weight: 700;
+	color: #1a202c;
+	letter-spacing: -0.01em;
 }
 
 .app {
