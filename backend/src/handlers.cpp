@@ -72,7 +72,7 @@ bool require_auth(HttpRes *res, HttpReq *req, TokenClaims &out_claims)
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
         return false;
     }
     try
@@ -92,7 +92,7 @@ std::string auth_token_from_header(HttpRes *res, const std::string &auth_header)
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
     }
     return token;
 }
@@ -243,7 +243,7 @@ void handle_get_activity(HttpRes *res, HttpReq *req, Database &db)
         auto activity = db.get_activity_by_id(id);
         if (!activity)
         {
-            send_json(res, 404, R"({"error":"not found"})");
+            send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
         send_json(res, 200, to_json(*activity).dump());
@@ -267,7 +267,7 @@ void handle_get_siko(HttpRes *res, HttpReq *req, Database &db)
         auto bytes = db.get_siko(id);
         if (!bytes || bytes->empty())
         {
-            send_json(res, 404, R"({"error":"no SiKo file"})");
+            send_json(res, 404, R"({"error":"Keine SiKo-Datei vorhanden"})");
             return;
         }
         std::string disp = "attachment; filename=\"siko-" + id + ".pdf\"";
@@ -293,7 +293,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
         return;
     }
     TokenClaims claims;
@@ -319,13 +319,13 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
 
         auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (j.is_discarded()) {
-            send_json(res, 400, R"({"error":"invalid JSON"})");
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
             return;
         }
 
         ActivityInput input = parse_activity_input(j);
         if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
-            send_json(res, 400, R"({"error":"title, date, start_time and end_time are required"})");
+            send_json(res, 400, R"({"error":"Titel, Datum, Startzeit und Endzeit sind erforderlich"})");
             return;
         }
 
@@ -345,7 +345,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
         try {
             auto activity = db.create_activity(input);
             if (!activity) {
-                send_json(res, 500, R"({"error":"db error"})");
+                send_json(res, 500, R"({"error":"Datenbankfehler"})");
                 return;
             }
             nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
@@ -364,7 +364,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
         return;
     }
     TokenClaims claims;
@@ -394,7 +394,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
             auto activity = db.get_activity_by_id(id);
             if (!activity)
             {
-                send_json(res, 404, R"({"error":"not found"})");
+                send_json(res, 404, R"({"error":"Nicht gefunden"})");
                 return;
             }
             if (role == "Stufenleiter")
@@ -443,20 +443,20 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
         auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (j.is_discarded()) {
-            send_json(res, 400, R"({"error":"invalid JSON"})");
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
             return;
         }
 
         ActivityInput input = parse_activity_input(j);
         if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
-            send_json(res, 400, R"({"error":"title, date, start_time and end_time are required"})");
+            send_json(res, 400, R"({"error":"Titel, Datum, Startzeit und Endzeit sind erforderlich"})");
             return;
         }
 
         try {
             auto activity = db.update_activity(id, input);
             if (!activity) {
-                send_json(res, 404, R"({"error":"not found"})");
+                send_json(res, 404, R"({"error":"Nicht gefunden"})");
                 return;
             }
             nlohmann::json msg = {{"event", "updated"}, {"activity", to_json(*activity)}};
@@ -490,7 +490,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
             auto activity = db.get_activity_by_id(id);
             if (!activity)
             {
-                send_json(res, 404, R"({"error":"not found"})");
+                send_json(res, 404, R"({"error":"Nicht gefunden"})");
                 return;
             }
             if (role == "Stufenleiter")
@@ -534,7 +534,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
         bool ok = db.delete_activity(id);
         if (!ok)
         {
-            send_json(res, 404, R"({"error":"not found"})");
+            send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
         nlohmann::json msg = {{"event", "deleted"}, {"id", id}};
@@ -639,7 +639,7 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
                                    initial_role, initial_dept, force_role);
         if (!user)
         {
-            send_json(res, 500, R"({"error":"db error"})");
+            send_json(res, 500, R"({"error":"Datenbankfehler"})");
             return;
         }
         send_json(res, 200, user_to_json(*user).dump());
@@ -662,7 +662,7 @@ void handle_get_me(HttpRes *res, HttpReq *req, Database &db)
         auto user = resolve_user(db, claims);
         if (!user)
         {
-            send_json(res, 404, R"({"error":"user not found"})");
+            send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
             return;
         }
         send_json(res, 200, user_to_json(*user).dump());
@@ -707,7 +707,7 @@ void handle_debug_get_users(HttpRes *res, HttpReq * /*req*/, Database &db)
 {
     if (!is_debug_mode())
     {
-        send_json(res, 404, R"({"error":"not found"})");
+        send_json(res, 404, R"({"error":"Nicht gefunden"})");
         return;
     }
     try
@@ -729,7 +729,7 @@ void handle_debug_login(HttpRes *res, HttpReq * /*req*/, Database &db)
 {
     if (!is_debug_mode())
     {
-        send_json(res, 404, R"({"error":"not found"})");
+        send_json(res, 404, R"({"error":"Nicht gefunden"})");
         return;
     }
 
@@ -745,7 +745,7 @@ void handle_debug_login(HttpRes *res, HttpReq * /*req*/, Database &db)
             auto j = nlohmann::json::parse(*buf, nullptr, false);
             if (j.is_discarded())
             {
-                send_json(res, 400, R"({"error":"invalid JSON"})");
+                send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
                 return;
             }
             std::string user_id;
@@ -753,13 +753,13 @@ void handle_debug_login(HttpRes *res, HttpReq * /*req*/, Database &db)
                 user_id = j["user_id"].get<std::string>();
             if (user_id.empty())
             {
-                send_json(res, 400, R"({"error":"user_id required"})");
+                send_json(res, 400, R"({"error":"Benutzer-ID ist erforderlich"})");;
                 return;
             }
             auto user = db.get_user_by_id(user_id);
             if (!user)
             {
-                send_json(res, 404, R"({"error":"user not found"})");
+                send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
             send_json(res, 200, user_to_json(*user).dump());
@@ -778,7 +778,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
         return;
     }
     TokenClaims claims;
@@ -810,7 +810,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
 
         auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (j.is_discarded()) {
-            send_json(res, 400, R"({"error":"invalid JSON"})");
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
             return;
         }
 
@@ -839,7 +839,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto user = db.update_user_admin(target_id, display_name, department, role);
             if (!user) {
-                send_json(res, 404, R"({"error":"user not found"})");
+                send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
             send_json(res, 200, user_to_json(*user).dump());
@@ -857,7 +857,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
         return;
     }
 
@@ -881,7 +881,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
 
         auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (j.is_discarded()) {
-            send_json(res, 400, R"({"error":"invalid JSON"})");
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
             return;
         }
 
@@ -916,7 +916,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto user = db.update_user(current_user->microsoft_oid, display_name, department);
             if (!user) {
-                send_json(res, 404, R"({"error":"user not found"})");
+                send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
             send_json(res, 200, user_to_json(*user).dump());
@@ -992,7 +992,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
         return;
     }
     TokenClaims claims;
@@ -1032,7 +1032,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
 
         auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (j.is_discarded()) {
-            send_json(res, 400, R"({"error":"invalid JSON"})");
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
             return;
         }
 
@@ -1050,7 +1050,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
         try {
             auto tpl = db.upsert_mail_template(department, subject, body, recipients);
             if (!tpl) {
-                send_json(res, 500, R"({"error":"db error"})");
+                send_json(res, 500, R"({"error":"Datenbankfehler"})");
                 return;
             }
             nlohmann::json msg = {{"event", "template_updated"}, {"template", template_to_json(*tpl)}};
@@ -1069,7 +1069,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
         return;
     }
     TokenClaims claims;
@@ -1094,7 +1094,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
 
         auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (j.is_discarded()) {
-            send_json(res, 400, R"({"error":"invalid JSON"})");
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
             return;
         }
 
@@ -1233,7 +1233,7 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
     std::string token = extract_bearer_token(auth_header);
     if (token.empty())
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
         return;
     }
     TokenClaims claims;
@@ -1259,7 +1259,7 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
         auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (j.is_discarded())
         {
-            send_json(res, 400, R"({"error":"invalid JSON"})");
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
             return;
         }
 

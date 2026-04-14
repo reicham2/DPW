@@ -5,6 +5,7 @@ import { useActivities } from '../composables/useActivities';
 import { useUsers } from '../composables/useUsers';
 import { user } from '../composables/useAuth';
 import { wsSend, wsRegister } from '../composables/useWebSocket';
+import ErrorAlert from '../components/ErrorAlert.vue';
 import type { Activity, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
 
 const route = useRoute();
@@ -1088,7 +1089,7 @@ async function doDelete() {
 			</div>
 
 			<!-- Error -->
-			<p v-if="error" class="error">{{ error }}</p>
+			<ErrorAlert :error="error" />
 
 			<!-- Actions -->
 			<div class="form-actions">

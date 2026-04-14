@@ -18,13 +18,14 @@
         <!-- Form -->
         <div v-if="!success" class="bug-modal-body">
           <label class="bug-label" for="bug-description">Beschreibung *</label>
-          <textarea
+          <div
+            ref="editorRef"
             id="bug-description"
-            v-model="description"
             class="bug-textarea"
-            placeholder="Beschreibe das Problem so genau wie möglich..."
-            rows="6"
-          />
+            contenteditable="true"
+            @input="onEditorInput"
+            data-placeholder="Beschreibe das Problem so genau wie möglich..."
+          ></div>
 
           <label class="bug-checkbox-label">
             <input type="checkbox" v-model="sendDebugInfo" class="bug-checkbox" />
@@ -62,9 +63,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { getIdToken } from '../composables/useAuth'
 import { collectDebugInfo } from '../composables/useDebugInfo'
+import { bugReportOpen, bugReportPrefill } from '../composables/useBugReport'
 
 const isOpen = ref(false)
 const isSubmitting = ref(false)
@@ -73,11 +75,55 @@ const error = ref('')
 const success = ref(false)
 const issueUrl = ref('')
 const sendDebugInfo = ref(false)
+const editorRef = ref<HTMLElement | null>(null)
+
+function markdownToHtml(md: string): string {
+  return md
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>')
+}
+
+function htmlToMarkdown(html: string): string {
+  return html
+    .replace(/<strong>(.*?)<\/strong>/gi, '**$1**')
+    .replace(/<b>(.*?)<\/b>/gi, '**$1**')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<div>/gi, '\n')
+    .replace(/<\/div>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+}
+
+function onEditorInput() {
+  if (editorRef.value) {
+    description.value = htmlToMarkdown(editorRef.value.innerHTML)
+  }
+}
 
 function openModal() {
   isOpen.value = true
   error.value = ''
 }
+
+watch(bugReportOpen, (val) => {
+  if (val) {
+    description.value = bugReportPrefill.value
+    bugReportOpen.value = false
+    bugReportPrefill.value = ''
+    openModal()
+    nextTick(() => {
+      if (editorRef.value) {
+        editorRef.value.innerHTML = markdownToHtml(description.value)
+      }
+    })
+  }
+})
 
 function closeModal() {
   if (isSubmitting.value) return
@@ -91,6 +137,7 @@ function closeAndReset() {
   success.value = false
   issueUrl.value = ''
   sendDebugInfo.value = false
+  if (editorRef.value) editorRef.value.innerHTML = ''
 }
 
 async function submitReport() {
@@ -222,14 +269,22 @@ async function submitReport() {
   border-radius: 8px;
   font-size: 0.9rem;
   font-family: inherit;
-  resize: vertical;
   min-height: 120px;
+  max-height: 300px;
+  overflow-y: auto;
   color: #1a202c;
   box-sizing: border-box;
   transition: border-color 0.15s;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.bug-textarea:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
 }
 .bug-textarea:focus {
-  outline: none;
   border-color: #0080ff;
   box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.12);
 }

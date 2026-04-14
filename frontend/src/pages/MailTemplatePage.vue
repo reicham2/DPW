@@ -26,6 +26,7 @@ const TEMPLATE_VARIABLES = [
 ]
 
 const { fetchTemplates, saveTemplate, templates, loading, error } = useMailTemplates()
+import ErrorAlert from '../components/ErrorAlert.vue'
 
 const isAdmin        = computed(() => user.value?.role === 'admin')
 const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
@@ -582,7 +583,7 @@ function onRecipientKeydown(e: KeyboardEvent) {
         </div>
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <ErrorAlert :error="error" />
     </div>
   </main>
 </template>
