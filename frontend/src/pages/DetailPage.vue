@@ -844,8 +844,9 @@ function closeActivityPreview() {
 }
 
 // ---- Auto-save --------------------------------------------------------------
-const AUTOSAVE_INTERVAL = Number(import.meta.env.VITE_AUTOSAVE_INTERVAL) || 1500;
-const AUTOSAVE_DEBOUNCE = (import.meta.env.VITE_AUTOSAVE_DEBOUNCE ?? 'true') !== 'false';
+import { config } from '../config';
+const AUTOSAVE_INTERVAL = config.AUTOSAVE_INTERVAL;
+const AUTOSAVE_DEBOUNCE = config.AUTOSAVE_DEBOUNCE;
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let autoSaveInterval: ReturnType<typeof setInterval> | null = null;
