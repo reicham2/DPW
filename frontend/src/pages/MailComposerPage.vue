@@ -5,6 +5,7 @@ import { useActivities } from '../composables/useActivities';
 import { useMailTemplates } from '../composables/useMailTemplates';
 import { useContactSearch } from '../composables/useContactSearch';
 import { user } from '../composables/useAuth';
+import ErrorAlert from '../components/ErrorAlert.vue';
 import type { Activity, Department, SentMail } from '../types';
 
 const route = useRoute()
@@ -339,10 +340,10 @@ function closeMailViewer() {
 	</header>
 
 	<main class="main">
-		<p v-if="loadError" class="error">{{ loadError }}</p>
+		<ErrorAlert :error="loadError" />
 
 		<!-- Warning dialog when mails already sent -->
-		<div v-else-if="showWarning && !warningConfirmed" class="mail-warning-overlay">
+		<div v-if="!loadError && showWarning && !warningConfirmed" class="mail-warning-overlay">
 			<div class="mail-warning-box">
 				<div class="mail-warning-icon">⚠️</div>
 				<h2 class="mail-warning-title">Bereits versendete Mails</h2>
@@ -357,14 +358,14 @@ function closeMailViewer() {
 			</div>
 		</div>
 
-		<div v-else-if="sent" class="mail-sent">
+		<div v-if="!loadError && sent" class="mail-sent">
 			<p class="mail-sent-text">✅ Mail wurde erfolgreich versendet!</p>
 			<button class="btn-primary" @click="router.back()">
 				Zurück zur Aktivität
 			</button>
 		</div>
 
-		<template v-else-if="activity">
+		<template v-if="!loadError && !sent && activity">
 			<!-- Sent mails list -->
 			<div v-if="sentMails.length > 0" class="sent-mails-section">
 				<h2 class="sent-mails-title">Bereits versendete Mails</h2>
@@ -517,7 +518,7 @@ function closeMailViewer() {
 				></div>
 			</div>
 
-			<p v-if="error" class="error">{{ error }}</p>
+			<ErrorAlert :error="error" />
 
 			<div class="form-actions">
 				<button type="button" class="btn-secondary" @click="router.back()">

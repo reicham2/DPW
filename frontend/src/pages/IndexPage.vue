@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useActivities } from '../composables/useActivities'
 import { user } from '../composables/useAuth'
 import ActivityList from '../components/ActivityList.vue'
+import ErrorAlert from '../components/ErrorAlert.vue'
 import type { Department } from '../types'
 
 const DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
@@ -90,7 +91,7 @@ const filtered = computed(() => {
       </div>
     </div>
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <ErrorAlert :error="error" />
     <p v-if="loading" class="loading">Laden...</p>
 
     <template v-if="!loading">

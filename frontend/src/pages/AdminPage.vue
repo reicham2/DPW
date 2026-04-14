@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { user as currentUser, getIdToken } from '../composables/useAuth'
+import ErrorAlert from '../components/ErrorAlert.vue'
 import { useRouter } from 'vue-router'
 import type { User, Department, UserRole } from '../types'
 
@@ -129,7 +130,7 @@ function roleBadgeClass(role: UserRole) {
 
   <main class="main">
     <div v-if="loading" class="loading">Lade Benutzer...</div>
-    <div v-else-if="error" class="error-msg">{{ error }}</div>
+    <div v-else-if="error" class="error-msg"><ErrorAlert :error="error" /></div>
     <template v-else>
       <!-- Department filter (admin only; Stufenleiter is locked to own dept) -->
       <div v-if="isAdmin" class="filter-bar">
@@ -207,7 +208,7 @@ function roleBadgeClass(role: UserRole) {
           </select>
         </div>
 
-        <div v-if="saveError" class="form-error">{{ saveError }}</div>
+        <ErrorAlert :error="saveError" />
 
         <div class="modal-actions">
           <button type="button" class="btn-cancel" @click="closeEdit">Abbrechen</button>

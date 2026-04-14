@@ -48,7 +48,7 @@
           <input class="form-input form-input--readonly" type="text" :value="user?.email" readonly />
         </div>
 
-        <div v-if="error" class="profile-error">{{ error }}</div>
+        <ErrorAlert :error="error" />
         <div v-if="saved" class="profile-success">Gespeichert!</div>
 
         <button type="submit" class="btn-primary" :disabled="saving">
@@ -62,6 +62,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { user, getIdToken } from '../composables/useAuth'
+import ErrorAlert from '../components/ErrorAlert.vue'
 import type { Department, User } from '../types'
 
 const canChangeDepartment = computed(() => user.value?.role === 'admin')
