@@ -45,16 +45,15 @@ services:
 
   frontend:
     build:
-      # Ganzes Projekt-Root als Build-Context, damit .env erreichbar ist
-      context: .
-      dockerfile: frontend/Dockerfile
-      args:
-        VITE_MSAL_CLIENT_ID: "${VITE_MSAL_CLIENT_ID}"
-        VITE_MSAL_TENANT_ID: "${VITE_MSAL_TENANT_ID}"
-        VITE_DEBUG: "${VITE_DEBUG}"
-        VITE_AUTOSAVE_INTERVAL: "${VITE_AUTOSAVE_INTERVAL:-1500}"
-        VITE_AUTOSAVE_DEBOUNCE: "${VITE_AUTOSAVE_DEBOUNCE:-true}"
+      context: ./frontend
+      dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      MSAL_CLIENT_ID: "${VITE_MSAL_CLIENT_ID}"
+      MSAL_TENANT_ID: "${VITE_MSAL_TENANT_ID}"
+      DEBUG: "${VITE_DEBUG}"
+      AUTOSAVE_INTERVAL: "${VITE_AUTOSAVE_INTERVAL:-1500}"
+      AUTOSAVE_DEBOUNCE: "${VITE_AUTOSAVE_DEBOUNCE:-true}"
     ports:
       - "80:80"
     depends_on:
