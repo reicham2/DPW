@@ -29,7 +29,6 @@ async function submit() {
     responsible:     user.value ? [user.value.display_name] : [],
     department:      user.value?.department ?? null,
     material:        [],
-    needs_siko:      false,
     bad_weather_info: null,
     programs:        []
   })
