@@ -113,12 +113,6 @@ function roleBadgeClass(role: UserRole) {
 </script>
 
 <template>
-  <nav class="page-tabs">
-    <router-link to="/" class="page-tab">Aktivitäten</router-link>
-    <router-link to="/mail-templates" class="page-tab">Mail-Vorlagen</router-link>
-    <router-link to="/admin" class="page-tab page-tab--active">Admin</router-link>
-  </nav>
-
   <header class="header">
     <h1>Benutzerverwaltung</h1>
     <div class="header-right">

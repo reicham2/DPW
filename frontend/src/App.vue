@@ -3,9 +3,22 @@
     <nav class="global-nav">
       <div class="global-nav-inner">
         <router-link to="/" class="global-nav-logo">
-          <img src="/logo.svg" alt="DPWeb" class="global-nav-logo-img" />
+          <img src="/logo.png" alt="DPWeb" class="global-nav-logo-img" />
+          <span class="global-nav-title">DPWeb</span>
         </router-link>
-        <div class="global-nav-user">
+        <div v-if="user" class="global-nav-links">
+          <router-link to="/" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }">Aktivitäten</router-link>
+          <router-link v-if="isAdmin || isStufenleiter" to="/mail-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/mail-templates' }">Mail-Vorlagen</router-link>
+          <router-link v-if="isAdmin || isStufenleiter" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
+        </div>
+        <div class="global-nav-right">
+          <a href="https://github.com/reicham2/DPW/wiki" target="_blank" rel="noopener noreferrer" class="global-nav-help" title="Hilfe">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="10" r="8.5" />
+              <path d="M7.5 7.5a2.5 2.5 0 0 1 4.85.83c0 1.67-2.5 2.5-2.5 2.5" />
+              <circle cx="10" cy="14" r="0.5" fill="currentColor" stroke="none" />
+            </svg>
+          </a>
           <UserAvatar />
         </div>
       </div>
@@ -65,11 +78,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import UserAvatar from './components/UserAvatar.vue'
 import BugReportButton from './components/BugReportButton.vue'
 import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
 import type { User } from './types'
+
+const route = useRoute()
+const isAdmin = computed(() => user.value?.role === 'admin')
+const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
 
 const loggingIn = ref(false)
 const debugUsers = ref<User[]>([])
@@ -219,9 +237,61 @@ onMounted(() => {
   color: #9ca3af;
 }
 
-.global-nav-user {
+.global-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 24px;
+}
+
+.global-nav-link {
+  padding: 6px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.global-nav-link:hover {
+  color: #0080ff;
+  background: #f0f7ff;
+}
+.global-nav-link--active {
+  color: #0080ff;
+  background: #e8f0fe;
+}
+
+.global-nav-right {
   margin-left: auto;
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+
+.global-nav-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  transition: color 0.15s;
+  text-decoration: none;
+}
+.global-nav-help:hover {
+  color: #1a56db;
+}
+
+@media (max-width: 599px) {
+  .global-nav-links {
+    margin-left: 12px;
+    gap: 2px;
+  }
+  .global-nav-link {
+    padding: 6px 8px;
+    font-size: 0.8rem;
+  }
+  .global-nav-title {
+    display: none;
+  }
 }
 </style>
