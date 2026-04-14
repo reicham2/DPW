@@ -297,6 +297,7 @@ function expandSelectionToVariables() {
   const sel = window.getSelection()
   if (!sel || !sel.rangeCount || !editorRef.value) return
   const range = sel.getRangeAt(0)
+  if (range.collapsed) return
   const container = editorRef.value
   const fullText = container.textContent ?? ''
   function nodeOffset(node: Node, off: number): number {
@@ -357,6 +358,30 @@ function saveSelection() {
 }
 
 function setFontSize(size: string) {
+  if (savedSelection) {
+    const sel = window.getSelection()
+    if (sel) { sel.removeAllRanges(); sel.addRange(savedSelection) }
+    savedSelection = null
+  }
+  const sel = window.getSelection()
+  if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+    // Collapsed cursor: insert a zero-width space inside a styled span
+    const span = document.createElement('span')
+    span.style.fontSize = size + 'px'
+    span.textContent = '\u200B'
+    const range = sel.getRangeAt(0)
+    range.insertNode(span)
+    // Place cursor after the ZWS inside the span
+    const newRange = document.createRange()
+    newRange.setStart(span.firstChild!, 1)
+    newRange.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(newRange)
+    editorRef.value?.focus()
+    curSize.value = size
+    onEditorInput()
+    return
+  }
   expandSelectionToVariables()
   document.execCommand('fontSize', false, '7')
   const fontEls = editorRef.value?.querySelectorAll('font[size="7"]')
@@ -369,8 +394,8 @@ function setFontSize(size: string) {
     newSpans.push(span)
   })
   if (newSpans.length) {
-    const sel = window.getSelection()
-    if (sel) {
+    const sel2 = window.getSelection()
+    if (sel2) {
       const range = document.createRange()
       const tw1 = document.createTreeWalker(newSpans[0], NodeFilter.SHOW_TEXT)
       const firstText = tw1.nextNode()
@@ -381,8 +406,8 @@ function setFontSize(size: string) {
       if (firstText && lastText) {
         range.setStart(firstText, 0)
         range.setEnd(lastText, (lastText as Text).length)
-        sel.removeAllRanges()
-        sel.addRange(range)
+        sel2.removeAllRanges()
+        sel2.addRange(range)
       }
     }
   }
@@ -537,13 +562,13 @@ function onRecipientKeydown(e: KeyboardEvent) {
             <option value="Verdana" style="font-family:Verdana">Verdana</option>
             <option value="Trebuchet MS" style="font-family:'Trebuchet MS'">Trebuchet MS</option>
           </select>
-          <input type="text" class="toolbar-select toolbar-select--narrow" :value="curSize" @change="setFontSize(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="setFontSize(($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
-          <button type="button" class="toolbar-btn-sm" @click="adjustFontSize(-2)" title="Kleiner">A−</button>
-          <button type="button" class="toolbar-btn-sm" @click="adjustFontSize(2)" title="Grösser">A+</button>
+          <input type="text" class="toolbar-select toolbar-select--narrow" :value="curSize" @mousedown="saveSelection" @change="setFontSize(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="setFontSize(($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
+          <button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="adjustFontSize(-2)" title="Kleiner">A−</button>
+          <button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="adjustFontSize(2)" title="Grösser">A+</button>
           <span class="toolbar-sep"></span>
-          <button type="button" :class="{'toolbar-btn--active': curBold}" @click="execCmd('bold')" title="Fett"><b>B</b></button>
-          <button type="button" :class="{'toolbar-btn--active': curItalic}" @click="execCmd('italic')" title="Kursiv"><i>I</i></button>
-          <button type="button" :class="{'toolbar-btn--active': curUnderline}" @click="execCmd('underline')" title="Unterstrichen"><u>U</u></button>
+          <button type="button" :class="{'toolbar-btn--active': curBold}" @mousedown.prevent @click="execCmd('bold')" title="Fett"><b>B</b></button>
+          <button type="button" :class="{'toolbar-btn--active': curItalic}" @mousedown.prevent @click="execCmd('italic')" title="Kursiv"><i>I</i></button>
+          <button type="button" :class="{'toolbar-btn--active': curUnderline}" @mousedown.prevent @click="execCmd('underline')" title="Unterstrichen"><u>U</u></button>
           <span class="toolbar-sep"></span>
           <label class="toolbar-color" title="Schriftfarbe" @mousedown="saveSelection">
             A
@@ -554,10 +579,10 @@ function onRecipientKeydown(e: KeyboardEvent) {
             <input type="color" :value="curBgColor" @input="execCmd('hiliteColor', ($event.target as HTMLInputElement).value)" />
           </label>
           <span class="toolbar-sep"></span>
-          <button type="button" :class="{'toolbar-btn--active': curUl}" @click="execCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
-          <button type="button" :class="{'toolbar-btn--active': curOl}" @click="execCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
+          <button type="button" :class="{'toolbar-btn--active': curUl}" @mousedown.prevent @click="execCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
+          <button type="button" :class="{'toolbar-btn--active': curOl}" @mousedown.prevent @click="execCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
           <span class="toolbar-sep"></span>
-          <button type="button" @click="execCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
+          <button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
         </div>
         <div
           ref="editorRef"
