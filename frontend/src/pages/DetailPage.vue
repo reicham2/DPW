@@ -427,6 +427,31 @@ function progExecCmd(i: number, cmd: string, value?: string) {
 }
 
 function progSetFontSize(i: number, size: string) {
+	if (progSavedSelection) {
+		const sel = window.getSelection();
+		if (sel) { sel.removeAllRanges(); sel.addRange(progSavedSelection); }
+		progSavedSelection = null;
+	}
+	const sel = window.getSelection();
+	if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+		// Collapsed cursor: insert a zero-width space inside a styled span
+		const span = document.createElement('span');
+		span.style.fontSize = size + 'px';
+		span.textContent = '\u200B';
+		const range = sel.getRangeAt(0);
+		range.insertNode(span);
+		// Place cursor after the ZWS inside the span
+		const newRange = document.createRange();
+		newRange.setStart(span.firstChild!, 1);
+		newRange.collapse(true);
+		sel.removeAllRanges();
+		sel.addRange(newRange);
+		const el = progEditorRefs.value[i];
+		el?.focus();
+		if (progToolbar.value) progToolbar.value.size = size;
+		onProgDescInput(i);
+		return;
+	}
 	document.execCommand('fontSize', false, '7');
 	const el = progEditorRefs.value[i];
 	const fontEls = el?.querySelectorAll('font[size="7"]');
@@ -927,13 +952,13 @@ async function doDelete() {
 											<option value="Courier New" style="font-family:'Courier New'">Courier New</option>
 											<option value="Verdana" style="font-family:Verdana">Verdana</option>
 										</select>
-										<input type="text" class="toolbar-select toolbar-select--narrow" :value="progToolbar.size" @change="progSetFontSize(i, ($event.target as HTMLInputElement).value)" @keydown.enter.prevent="progSetFontSize(i, ($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
-										<button type="button" class="toolbar-btn-sm" @click="progAdjustFontSize(i, -2)" title="Kleiner">A−</button>
-										<button type="button" class="toolbar-btn-sm" @click="progAdjustFontSize(i, 2)" title="Grösser">A+</button>
+										<input type="text" class="toolbar-select toolbar-select--narrow" :value="progToolbar.size" @mousedown="progSaveSelection" @change="progSetFontSize(i, ($event.target as HTMLInputElement).value)" @keydown.enter.prevent="progSetFontSize(i, ($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
+										<button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="progAdjustFontSize(i, -2)" title="Kleiner">A−</button>
+										<button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="progAdjustFontSize(i, 2)" title="Grösser">A+</button>
 										<span class="toolbar-sep"></span>
-										<button type="button" :class="{'toolbar-btn--active': progToolbar.bold}" @click="progExecCmd(i, 'bold')" title="Fett"><b>B</b></button>
-										<button type="button" :class="{'toolbar-btn--active': progToolbar.italic}" @click="progExecCmd(i, 'italic')" title="Kursiv"><i>I</i></button>
-										<button type="button" :class="{'toolbar-btn--active': progToolbar.underline}" @click="progExecCmd(i, 'underline')" title="Unterstrichen"><u>U</u></button>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.bold}" @mousedown.prevent @click="progExecCmd(i, 'bold')" title="Fett"><b>B</b></button>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.italic}" @mousedown.prevent @click="progExecCmd(i, 'italic')" title="Kursiv"><i>I</i></button>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.underline}" @mousedown.prevent @click="progExecCmd(i, 'underline')" title="Unterstrichen"><u>U</u></button>
 										<span class="toolbar-sep"></span>
 										<label class="toolbar-color" title="Schriftfarbe" @mousedown="progSaveSelection">
 											A
@@ -944,10 +969,10 @@ async function doDelete() {
 											<input type="color" :value="progToolbar.bgColor" @input="progExecCmd(i, 'hiliteColor', ($event.target as HTMLInputElement).value)" />
 										</label>
 										<span class="toolbar-sep"></span>
-										<button type="button" :class="{'toolbar-btn--active': progToolbar.ul}" @click="progExecCmd(i, 'insertUnorderedList')" title="Aufzählung">• Liste</button>
-										<button type="button" :class="{'toolbar-btn--active': progToolbar.ol}" @click="progExecCmd(i, 'insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.ul}" @mousedown.prevent @click="progExecCmd(i, 'insertUnorderedList')" title="Aufzählung">• Liste</button>
+										<button type="button" :class="{'toolbar-btn--active': progToolbar.ol}" @mousedown.prevent @click="progExecCmd(i, 'insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
 										<span class="toolbar-sep"></span>
-										<button type="button" @click="progExecCmd(i, 'removeFormat')" title="Formatierung entfernen">✕ Format</button>
+										<button type="button" @mousedown.prevent @click="progExecCmd(i, 'removeFormat')" title="Formatierung entfernen">✕ Format</button>
 									</div>
 									<div
 										:ref="(el) => setProgEditorRef(el, i)"
