@@ -148,7 +148,11 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
     }
 
     if (j.contains("siko_text") && j["siko_text"].is_string())
+    if (j.contains("siko_text") && j["siko_text"].is_string())
     {
+        std::string st = j["siko_text"].get<std::string>();
+        if (!st.empty())
+            input.siko_text = st;
         std::string st = j["siko_text"].get<std::string>();
         if (!st.empty())
             input.siko_text = st;
@@ -166,6 +170,18 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
             else if (m.is_object())
             {
                 mi.name = str_field(m, "name");
+                if (m.contains("responsible") && m["responsible"].is_array())
+                {
+                    for (auto &r : m["responsible"])
+                        if (r.is_string())
+                            mi.responsible.push_back(r.get<std::string>());
+                }
+                else if (m.contains("responsible") && m["responsible"].is_string())
+                {
+                    std::string rs = m["responsible"].get<std::string>();
+                    if (!rs.empty())
+                        mi.responsible.push_back(rs);
+                }
                 if (m.contains("responsible") && m["responsible"].is_array())
                 {
                     for (auto &r : m["responsible"])
@@ -297,7 +313,30 @@ void handle_get_locations(HttpRes *res, HttpReq *req, Database &db)
 }
 
 // ---- GET /activities/:id/attachments ----------------------------------------
+// ---- GET /locations ---------------------------------------------------------
 
+void handle_get_locations(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto locs = db.get_predefined_locations();
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &l : locs)
+            arr.push_back(l);
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- GET /activities/:id/attachments ----------------------------------------
+
+void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db)
 void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db)
 {
     TokenClaims claims;
@@ -404,13 +443,40 @@ void handle_get_attachment_download(HttpRes *res, HttpReq *req, Database &db)
         {
             send_json(res, 404, R"({"error":"attachment not found"})");
             return;
+            return;
         }
         set_cors(res);
         res->writeStatus("200 OK");
         res->writeHeader("Content-Type", ad->content_type);
         std::string disp = "inline; filename=\"" + ad->filename + "\"";
+        res->writeHeader("Content-Type", ad->content_type);
+        std::string disp = "inline; filename=\"" + ad->filename + "\"";
         res->writeHeader("Content-Disposition", disp);
         res->end(std::string_view(
+            reinterpret_cast<const char *>(ad->data.data()), ad->data.size()));
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- DELETE /attachments/:id ------------------------------------------------
+
+void handle_delete_attachment(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    std::string id{req->getParameter(0)};
+    try
+    {
+        if (!db.delete_attachment(id))
+        {
+            send_json(res, 404, R"({"error":"not found"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
             reinterpret_cast<const char *>(ad->data.data()), ad->data.size()));
     }
     catch (std::exception &e)
