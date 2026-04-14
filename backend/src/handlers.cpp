@@ -178,18 +178,6 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
                     if (!rs.empty())
                         mi.responsible.push_back(rs);
                 }
-                if (m.contains("responsible") && m["responsible"].is_array())
-                {
-                    for (auto &r : m["responsible"])
-                        if (r.is_string())
-                            mi.responsible.push_back(r.get<std::string>());
-                }
-                else if (m.contains("responsible") && m["responsible"].is_string())
-                {
-                    std::string rs = m["responsible"].get<std::string>();
-                    if (!rs.empty())
-                        mi.responsible.push_back(rs);
-                }
             }
             if (!mi.name.empty())
                 input.material.push_back(mi);
