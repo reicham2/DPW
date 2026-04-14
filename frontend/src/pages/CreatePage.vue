@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
+import ErrorAlert from '../components/ErrorAlert.vue'
 import { user } from '../composables/useAuth'
 
 const router = useRouter()
@@ -71,7 +72,7 @@ async function submit() {
       </div>
 
       <!-- Error -->
-      <p v-if="error" class="error">{{ error }}</p>
+      <ErrorAlert :error="error" />
 
       <!-- Actions -->
       <div class="form-actions">

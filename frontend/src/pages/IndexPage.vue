@@ -4,6 +4,7 @@ import { useActivities } from '../composables/useActivities'
 import { user } from '../composables/useAuth'
 import ActivityList from '../components/ActivityList.vue'
 import type { Activity, Department, MaterialItem } from '../types'
+import ErrorAlert from '../components/ErrorAlert.vue'
 
 const DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
 
@@ -232,7 +233,7 @@ const earlierCount = computed(() => {
       </div>
     </div>
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <ErrorAlert :error="error" />
     <p v-if="loading" class="loading">Laden...</p>
 
     <template v-if="!loading">
