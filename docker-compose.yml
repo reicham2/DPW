@@ -11,9 +11,10 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U activities_user -d activities"]
-      interval: 5s
-      timeout: 5s
+      interval: 2s
+      timeout: 3s
       retries: 10
+      start_period: 3s
 
   backend:
     build:
@@ -39,9 +40,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
 
   frontend:
     build:
@@ -55,7 +57,7 @@ services:
       AUTOSAVE_INTERVAL: "${VITE_AUTOSAVE_INTERVAL:-1500}"
       AUTOSAVE_DEBOUNCE: "${VITE_AUTOSAVE_DEBOUNCE:-true}"
     ports:
-      - "80:80"
+      - "8000:80"
     depends_on:
       backend:
         condition: service_healthy
