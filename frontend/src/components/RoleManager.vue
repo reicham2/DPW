@@ -56,6 +56,8 @@ const deptAccess = ref<RoleDeptAccess[]>([])
 
 function isProtected(name: string) { return name === 'admin' }
 
+const sortedRoles = computed(() => [...roles.value].sort((a, b) => a.name.localeCompare(b.name, 'de')))
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -150,7 +152,7 @@ async function setDeptAccessLevel(role: string, scope: 'own' | 'all', level: Dep
 const SCOPE_OPTIONS_DEPT_ACCESS = [
   { value: 'none', label: 'Kein Zugriff' },
   { value: 'read', label: 'Nur lesen' },
-  { value: 'readwrite', label: 'Lesen und schreiben' },
+  { value: 'readwrite', label: 'Lesen und erstellen' },
 ]
 
 // ── Permission editing ──────────────────────────────────────────────────────
@@ -215,7 +217,7 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
     <ErrorAlert :error="error" />
 
     <template v-if="!loading">
-      <div v-for="r in roles" :key="r.name" class="role-card">
+      <div v-for="r in sortedRoles" :key="r.name" class="role-card">
         <!-- Role header -->
         <div class="role-card-header" @click="editingRole !== r.name && toggleOpen(r.name)">
           <template v-if="editingRole === r.name">
@@ -306,7 +308,7 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
                 <div class="perm-grid-header">
                   <span class="perm-grid-label">Stufe</span>
                   <span class="perm-grid-col">Lesen</span>
-                  <span class="perm-grid-col">Schreiben</span>
+                  <span class="perm-grid-col">Erstellen</span>
                 </div>
                 <div v-for="dept in departments" :key="dept.name" class="perm-grid-row">
                   <span class="perm-grid-label">
@@ -430,7 +432,10 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
   font-size: 0.9rem; outline: none;
 }
 .form-input:focus { border-color: #1a56db; }
-.color-input { width: 36px; height: 36px; padding: 0; border: 1.5px solid #d1d5db; border-radius: 6px; cursor: pointer; }
+.color-input { width: 36px; height: 36px; padding: 0; border: 1.5px solid #d1d5db; border-radius: 8px; cursor: pointer; -webkit-appearance: none; appearance: none; background: none; }
+.color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.color-input::-webkit-color-swatch { border: none; border-radius: 6px; }
+.color-input::-moz-color-swatch { border: none; border-radius: 6px; }
 .edit-actions { display: flex; gap: 8px; }
 
 .btn-edit, .btn-cancel {

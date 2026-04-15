@@ -35,6 +35,8 @@ const otherDepts = computed(() => departments.value.filter(d => d.name !== delet
 
 function isDefault(name: string) { return name === DEFAULT_DEPT }
 
+const sortedDepartments = computed(() => [...departments.value].sort((a, b) => a.name.localeCompare(b.name, 'de')))
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -147,7 +149,7 @@ async function confirmDelete() {
 
     <template v-if="!loading">
       <div class="item-list">
-        <div v-for="dept in departments" :key="dept.name" class="item-card">
+        <div v-for="dept in sortedDepartments" :key="dept.name" class="item-card">
           <template v-if="editingName === dept.name">
             <form class="edit-form" @submit.prevent="saveEdit">
               <div class="edit-row">
@@ -290,7 +292,10 @@ async function confirmDelete() {
   font-size: 0.9rem; outline: none;
 }
 .form-input:focus { border-color: #1a56db; }
-.color-input { width: 36px; height: 36px; padding: 0; border: 1.5px solid #d1d5db; border-radius: 6px; cursor: pointer; }
+.color-input { width: 36px; height: 36px; padding: 0; border: 1.5px solid #d1d5db; border-radius: 8px; cursor: pointer; -webkit-appearance: none; appearance: none; background: none; }
+.color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.color-input::-webkit-color-swatch { border: none; border-radius: 6px; }
+.color-input::-moz-color-swatch { border: none; border-radius: 6px; }
 .edit-actions { display: flex; gap: 8px; }
 
 .btn-edit, .btn-cancel {
