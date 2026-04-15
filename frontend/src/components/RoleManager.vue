@@ -118,6 +118,41 @@ async function handleDeleteRole(name: string) {
   finally { saving.value = null }
 }
 
+// ── Dept access level helper ────────────────────────────────────────────────
+
+type DeptAccessLevel = 'none' | 'read' | 'readwrite'
+
+function getDeptAccessLevel(perm: RolePermission, scope: 'own' | 'all'): DeptAccessLevel {
+  const read = scope === 'own' ? perm.can_read_own_dept : perm.can_read_all_depts
+  const write = scope === 'own' ? perm.can_write_own_dept : perm.can_write_all_depts
+  if (write) return 'readwrite'
+  if (read) return 'read'
+  return 'none'
+}
+
+async function setDeptAccessLevel(role: string, scope: 'own' | 'all', level: DeptAccessLevel) {
+  const perm = getPermForRole(role)
+  if (!perm) return
+  const read = level === 'read' || level === 'readwrite'
+  const write = level === 'readwrite'
+  const readField = scope === 'own' ? 'can_read_own_dept' : 'can_read_all_depts'
+  const writeField = scope === 'own' ? 'can_write_own_dept' : 'can_write_all_depts'
+  saving.value = `${role}-${scope}-access`
+  error.value = null
+  try {
+    const updated = { ...perm, [readField]: read, [writeField]: write }
+    await updateRolePermission(updated)
+    await fetchRolePermissions()
+  } catch (e) { error.value = String(e) }
+  finally { saving.value = null }
+}
+
+const SCOPE_OPTIONS_DEPT_ACCESS = [
+  { value: 'none', label: 'Kein Zugriff' },
+  { value: 'read', label: 'Nur lesen' },
+  { value: 'readwrite', label: 'Lesen und schreiben' },
+]
+
 // ── Permission editing ──────────────────────────────────────────────────────
 
 async function updatePerm(role: string, field: string, value: any) {
@@ -216,36 +251,18 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
             <p v-if="isProtected(r.name)" class="protected-perms-hint">Die Admin-Rolle hat immer alle Berechtigungen und kann nicht verändert werden.</p>
             <template v-else>
             <div class="perm-row">
-              <div class="perm-info"><span class="perm-label">Eigene Stufe lesen</span></div>
-              <label class="toggle-cell">
-                <input type="checkbox" :checked="getPermForRole(r.name)!.can_read_own_dept"
-                  @change="updatePerm(r.name, 'can_read_own_dept', !getPermForRole(r.name)!.can_read_own_dept)" />
-                <span class="toggle-slider" />
-              </label>
+              <div class="perm-info"><span class="perm-label">Eigene Stufe</span></div>
+              <select class="scope-select" :value="getDeptAccessLevel(getPermForRole(r.name)!, 'own')"
+                @change="setDeptAccessLevel(r.name, 'own', ($event.target as HTMLSelectElement).value as DeptAccessLevel)">
+                <option v-for="o in SCOPE_OPTIONS_DEPT_ACCESS" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
             </div>
             <div class="perm-row">
-              <div class="perm-info"><span class="perm-label">Eigene Stufe schreiben</span></div>
-              <label class="toggle-cell">
-                <input type="checkbox" :checked="getPermForRole(r.name)!.can_write_own_dept"
-                  @change="updatePerm(r.name, 'can_write_own_dept', !getPermForRole(r.name)!.can_write_own_dept)" />
-                <span class="toggle-slider" />
-              </label>
-            </div>
-            <div class="perm-row">
-              <div class="perm-info"><span class="perm-label">Alle Stufen lesen</span></div>
-              <label class="toggle-cell">
-                <input type="checkbox" :checked="getPermForRole(r.name)!.can_read_all_depts"
-                  @change="updatePerm(r.name, 'can_read_all_depts', !getPermForRole(r.name)!.can_read_all_depts)" />
-                <span class="toggle-slider" />
-              </label>
-            </div>
-            <div class="perm-row">
-              <div class="perm-info"><span class="perm-label">Alle Stufen schreiben</span></div>
-              <label class="toggle-cell">
-                <input type="checkbox" :checked="getPermForRole(r.name)!.can_write_all_depts"
-                  @change="updatePerm(r.name, 'can_write_all_depts', !getPermForRole(r.name)!.can_write_all_depts)" />
-                <span class="toggle-slider" />
-              </label>
+              <div class="perm-info"><span class="perm-label">Alle Stufen</span></div>
+              <select class="scope-select" :value="getDeptAccessLevel(getPermForRole(r.name)!, 'all')"
+                @change="setDeptAccessLevel(r.name, 'all', ($event.target as HTMLSelectElement).value as DeptAccessLevel)">
+                <option v-for="o in SCOPE_OPTIONS_DEPT_ACCESS" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
             </div>
 
             <div class="perm-row">

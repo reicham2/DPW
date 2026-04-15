@@ -32,7 +32,7 @@ const {
 	predefinedLocations,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
-const { myPermissions, fetchMyPermissions, canWriteDept } = usePermissions();
+const { myPermissions, fetchMyPermissions, canWriteDept, writableDepts, canReadDept } = usePermissions();
 
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
@@ -156,6 +156,13 @@ function unlockSection(section: EditSection, event?: FocusEvent) {
 }
 
 // ---- Load ------------------------------------------------------------------
+const canView = computed(() => {
+	if (!user.value || !activity.value) return true; // don't block during loading
+	const dept = activity.value.department;
+	if (!dept) return true; // activities without department are visible to all
+	return canReadDept(dept, user.value.department);
+});
+
 const canEdit = computed(() => {
 	if (!user.value || !activity.value) return false;
 	const dept = activity.value.department;
@@ -184,6 +191,11 @@ onMounted(async () => {
 	await Promise.all([fetchDepartments(), fetchUsers(), fetchLocations(), fetchActivities(), fetchMyPermissions()]);
 	activity.value = await fetchActivity(id);
 	if (activity.value) {
+		// Check read permission
+		if (!canView.value) {
+			router.replace('/');
+			return;
+		}
 		document.title = `${activity.value.title} – DPWeb`;
 		attachments.value = await fetchAttachments(id);
 	}
@@ -474,9 +486,12 @@ function onLocationBlur() {
 const departmentSearch = ref('');
 const showDepartmentDropdown = ref(false);
 
+const editWritableDepts = computed(() => writableDepts(user.value?.department));
+const deptFieldDisabled = computed(() => editWritableDepts.value.length <= 1);
+
 const filteredDepartments = computed(() => {
 	const q = departmentSearch.value.toLowerCase();
-	return departments.value.filter(
+	return editWritableDepts.value.filter(
 		(dep) => q === '' || dep.toLowerCase().includes(q),
 	);
 });
@@ -1295,7 +1310,7 @@ async function doDelete() {
 							@focus="showDepartmentDropdown = true"
 							@blur="onDepartmentBlur"
 							placeholder="Stufe wählen…"
-							:disabled="isLockedByOther('location')"
+							:disabled="isLockedByOther('location') || deptFieldDisabled"
 						/>
 						<div v-if="showDepartmentDropdown && filteredDepartments.length" class="user-dropdown">
 							<div

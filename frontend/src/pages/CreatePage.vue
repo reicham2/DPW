@@ -1,22 +1,48 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
+import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import { user } from '../composables/useAuth'
+import type { Department } from '../types'
 
 const router = useRouter()
 const { createActivity, error } = useActivities()
+const { fetchDepartments, fetchMyPermissions, writableDepts } = usePermissions()
 
 // ---- Form state ------------------------------------------------------------
 const title      = ref('')
 const date       = ref('')
 const start_time = ref('')
 const end_time   = ref('')
+const department = ref<Department | ''>('')
 const submitting = ref(false)
+const loaded     = ref(false)
+
+const availableDepts = computed(() => writableDepts(user.value?.department))
+const onlyOneDept = computed(() => availableDepts.value.length === 1)
+
+onMounted(async () => {
+  await Promise.all([fetchDepartments(), fetchMyPermissions()])
+  const depts = availableDepts.value
+  if (depts.length === 0) {
+    router.replace('/')
+    return
+  }
+  // Pre-select: own dept if writable, else the single available dept
+  const userDept = user.value?.department
+  if (userDept && depts.includes(userDept)) {
+    department.value = userDept
+  } else if (depts.length === 1) {
+    department.value = depts[0]
+  }
+  loaded.value = true
+})
 
 // ---- Submit ----------------------------------------------------------------
 async function submit() {
+  if (!department.value) return
   submitting.value = true
   error.value = null
 
@@ -28,7 +54,7 @@ async function submit() {
     goal:            '',
     location:        '',
     responsible:     user.value ? [user.value.display_name] : [],
-    department:      user.value?.department ?? null,
+    department:      department.value,
     material:        [],
     bad_weather_info: null,
     programs:        []
@@ -46,7 +72,8 @@ async function submit() {
   </header>
 
   <main class="main">
-    <form class="detail-form" @submit.prevent="submit">
+    <p v-if="!loaded" class="loading">Laden…</p>
+    <form v-else class="detail-form" @submit.prevent="submit">
 
       <!-- Titel -->
       <div class="form-group">
@@ -69,6 +96,15 @@ async function submit() {
           <label for="end_time">Endzeit</label>
           <input id="end_time" v-model="end_time" type="time" />
         </div>
+      </div>
+
+      <!-- Stufe -->
+      <div class="form-group">
+        <label for="department">Stufe</label>
+        <select id="department" v-model="department" :disabled="onlyOneDept" required>
+          <option value="" disabled>Stufe wählen…</option>
+          <option v-for="dep in availableDepts" :key="dep" :value="dep">{{ dep }}</option>
+        </select>
       </div>
 
       <!-- Error -->

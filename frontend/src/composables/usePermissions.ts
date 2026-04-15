@@ -214,6 +214,18 @@ function canManageSystem(): boolean {
 	return p.user_role_scope === 'all';
 }
 
+function readableDepts(userDept: string | null | undefined): string[] {
+	return departments.value
+		.map((d) => d.name)
+		.filter((name) => canReadDept(name, userDept));
+}
+
+function writableDepts(userDept: string | null | undefined): string[] {
+	return departments.value
+		.map((d) => d.name)
+		.filter((name) => canWriteDept(name, userDept));
+}
+
 // ── Fetch all ───────────────────────────────────────────────────────────────
 
 async function fetchAll() {
@@ -258,5 +270,7 @@ export function usePermissions() {
 		canWriteDept,
 		canManageUsers,
 		canManageSystem,
+		readableDepts,
+		writableDepts,
 	};
 }

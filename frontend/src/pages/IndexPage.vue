@@ -7,18 +7,19 @@ import ActivityList from '../components/ActivityList.vue'
 import type { Activity, Department, MaterialItem } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
 
-const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadDept } = usePermissions()
-const DEPARTMENTS = computed<Department[]>(() => deptRecords.value.map(d => d.name))
+const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadDept, canWriteDept, readableDepts, writableDepts } = usePermissions()
+const DEPARTMENTS = computed<Department[]>(() => readableDepts(user.value?.department))
 
 const { activities, loading, error, connected, fetchActivities } = useActivities()
 
 // Permission-based: can user see multiple departments?
 const canReadMultipleDepts = computed(() => {
-  const p = myPermissions.value
-  if (!p) return false
-  if (p.can_read_all_depts) return true
-  const accessCount = (p.dept_access ?? []).filter(d => d.can_read).length
-  return accessCount > 0 // has cross-dept access
+  return DEPARTMENTS.value.length > 1
+})
+
+// Can the user create activities? (has write access to at least one dept)
+const canCreateActivity = computed(() => {
+  return writableDepts(user.value?.department).length > 0
 })
 
 const search = ref('')
@@ -82,6 +83,10 @@ interface ListEntry {
 
 const filteredEntries = computed<ListEntry[]>(() => {
   let list = activities.value
+
+  // Filter by readable departments (client-side safety net)
+  const readable = new Set(DEPARTMENTS.value)
+  list = list.filter(a => !a.department || readable.has(a.department))
 
   // Department filter
   if (activedept.value !== 'Alle') {
@@ -151,6 +156,9 @@ const filteredEntries = computed<ListEntry[]>(() => {
 // Counts of activities outside the visible window
 const baseList = computed(() => {
   let list = activities.value
+  // Filter by readable departments
+  const readable = new Set(DEPARTMENTS.value)
+  list = list.filter(a => !a.department || readable.has(a.department))
   if (activedept.value !== 'Alle') list = list.filter(a => a.department === activedept.value)
   const q = search.value.trim().toLowerCase()
   if (q) {
@@ -188,7 +196,8 @@ const earlierCount = computed(() => {
       <span class="status" :class="connected ? 'status--live' : 'status--off'">
         {{ connected ? 'Live' : 'Verbinde...' }}
       </span>
-      <router-link to="/activities/new" class="btn-primary">+ Neue Aktivität</router-link>
+      <router-link v-if="canCreateActivity" to="/activities/new" class="btn-primary">+ Neue Aktivität</router-link>
+      <button v-else class="btn-primary" disabled title="Keine Schreibrechte">+ Neue Aktivität</button>
     </div>
   </header>
 
