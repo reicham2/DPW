@@ -1,5 +1,25 @@
 # DPW
 
+## CI / Docker Images
+
+GitHub Actions builds Docker images for both services:
+
+- `ghcr.io/<owner>/dpw-backend`
+- `ghcr.io/<owner>/dpw-frontend`
+
+Pipeline behavior:
+
+- Pull requests to `main`: build both images, run smoke tests, do not push to GHCR.
+- Push to `main`: build, push to GHCR, and run smoke tests.
+- Push tag `v*`: build and push to GHCR.
+
+Published tags include:
+
+- `main` (branch builds)
+- `latest` (default branch)
+- `sha-<short-commit>`
+- release tag name (for example `v1.2.3`)
+
 ## Schnellstart
 
 ```bash
