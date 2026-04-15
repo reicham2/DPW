@@ -111,6 +111,15 @@ async function saveEdit() {
     const updated: User = await res.json()
     const idx = users.value.findIndex(u => u.id === updated.id)
     if (idx !== -1) users.value[idx] = updated
+    if (currentUser.value && currentUser.value.id === updated.id) {
+      currentUser.value = {
+        ...currentUser.value,
+        display_name: updated.display_name,
+        department: updated.department,
+        role: updated.role,
+      }
+      await fetchMyPermissions()
+    }
     closeEdit()
   } catch (e) {
     saveError.value = String(e)

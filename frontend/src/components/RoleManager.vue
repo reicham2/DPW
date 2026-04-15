@@ -28,6 +28,7 @@ const {
   rolePermissions,
   fetchAll,
   fetchRolePermissions,
+  fetchMyPermissions,
   fetchDepartments,
   createRole,
   updateRole,
@@ -91,6 +92,7 @@ async function saveRoleEdit() {
   try {
     await updateRole(editingRole.value, editForm.value)
     await fetchAll()
+    await fetchMyPermissions()
     editingRole.value = null
   } catch (e) { error.value = String(e) }
   finally { saving.value = null }
@@ -103,6 +105,7 @@ async function handleAddRole() {
   try {
     await createRole(addForm.value)
     await fetchAll()
+    await fetchMyPermissions()
     addForm.value = { name: '', color: '#6b7280' }
     showAdd.value = false
   } catch (e) { error.value = String(e) }
@@ -116,6 +119,7 @@ async function handleDeleteRole(name: string) {
   try {
     await deleteRole(name)
     await fetchAll()
+    await fetchMyPermissions()
   } catch (e) { error.value = String(e) }
   finally { saving.value = null }
 }
@@ -145,6 +149,7 @@ async function setDeptAccessLevel(role: string, scope: 'own' | 'all', level: Dep
     const updated = { ...perm, [readField]: read, [writeField]: write }
     await updateRolePermission(updated)
     await fetchRolePermissions()
+    await fetchMyPermissions()
   } catch (e) { error.value = String(e) }
   finally { saving.value = null }
 }
@@ -166,6 +171,7 @@ async function updatePerm(role: string, field: string, value: any) {
     const updated = { ...perm, [field]: value }
     await updateRolePermission(updated)
     await fetchRolePermissions()
+    await fetchMyPermissions()
   } catch (e) { error.value = String(e) }
   finally { saving.value = null }
 }
@@ -201,6 +207,7 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
       can_write: field === 'can_write' ? newVal : current.can_write,
     })
     deptAccess.value = await fetchRoleDeptAccess(role)
+    await fetchMyPermissions()
   } catch (e) { error.value = String(e) }
   finally { saving.value = null }
 }

@@ -262,8 +262,8 @@ const earlierCount = computed(() => {
         @click="loadEarlier"
       >⬆ Frühere Aktivitäten laden ({{ earlierCount }})</button>
 
-      <p v-if="filteredEntries.length === 0 && activities.length > 0" class="filter-empty">
-        Keine Aktivitäten für diese Filter.
+      <p v-if="filteredEntries.length === 0" class="filter-empty">
+        {{ activities.length > 0 ? 'Keine Aktivitäten für diese Filter.' : 'Noch keine Aktivitäten.' }}
       </p>
 
       <ActivityList :entries="filteredEntries" />

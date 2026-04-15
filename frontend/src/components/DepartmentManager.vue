@@ -9,6 +9,7 @@ const DEFAULT_DEPT = 'Allgemein'
 const {
   departments,
   fetchDepartments,
+  fetchMyPermissions,
   createDepartment,
   updateDepartment,
   deleteDepartment,
@@ -64,6 +65,7 @@ async function saveEdit() {
   try {
     await updateDepartment(editingName.value, editForm.value)
     await fetchDepartments()
+    await fetchMyPermissions()
     editingName.value = null
   } catch (e) {
     error.value = String(e)
@@ -79,6 +81,7 @@ async function handleAdd() {
   try {
     await createDepartment(addForm.value)
     await fetchDepartments()
+    await fetchMyPermissions()
     addForm.value = { name: '', color: '#6b7280' }
     showAdd.value = false
   } catch (e) {
@@ -129,6 +132,7 @@ async function confirmDelete() {
     if (!res.ok) throw new Error(await res.text())
     deleteTarget.value = null
     await fetchDepartments()
+    await fetchMyPermissions()
   } catch (e) {
     error.value = String(e)
   } finally {
