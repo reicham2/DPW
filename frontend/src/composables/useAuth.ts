@@ -25,6 +25,7 @@ const graphMailScopes = {
 
 let msalInstance: PublicClientApplication | null = null;
 let debugUserId: string | null = null;
+const DEBUG_USER_STORAGE_KEY = 'dpw.debugUserId';
 
 export const user = ref<User | null>(null);
 export const authLoading = ref(true);
@@ -92,6 +93,8 @@ async function syncUser(idToken: string): Promise<void> {
 
 export async function login(): Promise<void> {
 	loginError.value = null;
+	debugUserId = null;
+	localStorage.removeItem(DEBUG_USER_STORAGE_KEY);
 	const msal = await getMsal();
 	try {
 		const result = await msal.loginPopup(loginRequest);
@@ -110,6 +113,7 @@ export async function logout(): Promise<void> {
 		msal.setActiveAccount(null);
 	}
 	debugUserId = null;
+	localStorage.removeItem(DEBUG_USER_STORAGE_KEY);
 	user.value = null;
 }
 
@@ -118,19 +122,12 @@ export const isDebug = config.DEBUG;
 export async function debugLogin(userId: string): Promise<void> {
 	loginError.value = null;
 	try {
-		const res = await fetch('/api/auth/debug-login', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ user_id: userId }),
-		});
-		if (res.ok) {
-			user.value = (await res.json()) as User;
-			debugUserId = userId;
-		} else {
-			const text = await res.text();
-			throw new Error(text || `Server-Fehler: ${res.status}`);
-		}
+		debugUserId = userId;
+		localStorage.setItem(DEBUG_USER_STORAGE_KEY, userId);
+		await syncUser(`debug:${userId}`);
 	} catch (err) {
+		debugUserId = null;
+		localStorage.removeItem(DEBUG_USER_STORAGE_KEY);
 		loginError.value =
 			err instanceof Error ? err.message : 'Debug-Anmeldung fehlgeschlagen.';
 		throw err;
@@ -139,6 +136,13 @@ export async function debugLogin(userId: string): Promise<void> {
 
 export async function initAuth(): Promise<void> {
 	try {
+		const storedDebugUserId = localStorage.getItem(DEBUG_USER_STORAGE_KEY);
+		if (storedDebugUserId) {
+			debugUserId = storedDebugUserId;
+			await syncUser(`debug:${storedDebugUserId}`);
+			return;
+		}
+
 		const msal = await getMsal();
 		const accounts = msal.getAllAccounts();
 		if (accounts.length > 0) {

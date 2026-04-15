@@ -778,6 +778,18 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
+        if (claims.oid.rfind("debug:", 0) == 0)
+        {
+            auto existing = resolve_user(db, claims);
+            if (!existing)
+            {
+                send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
+                return;
+            }
+            send_json(res, 200, user_to_json(*existing).dump());
+            return;
+        }
+
         // Determine initial role / department for new users.
         std::string initial_role = "Mitglied";
         std::string initial_dept = "Allgemein";
