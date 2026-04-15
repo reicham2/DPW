@@ -253,33 +253,72 @@ void handle_get_departments(HttpRes *res, HttpReq * /*req*/, Database &db)
 
 // ── Permission helpers ───────────────────────────────────────────────────────
 
-// Permission helper: can the user read activities in the given department?
-static bool can_read_dept(const RolePermission &perm, const UserRecord &user,
-                          const std::vector<RoleDeptAccess> &dept_access,
-                          const std::string &dept)
+static bool has_dept_read_access(const std::vector<RoleDeptAccess> &dept_access, const std::string &dept)
 {
-    if (perm.can_read_all_depts)
-        return true;
-    if (perm.can_read_own_dept && user.department && *user.department == dept)
-        return true;
-    for (auto &da : dept_access)
+    for (const auto &da : dept_access)
+    {
         if (da.department == dept && da.can_read)
             return true;
+    }
     return false;
 }
 
-// Permission helper: can the user write activities in the given department?
-static bool can_write_dept(const RolePermission &perm, const UserRecord &user,
-                           const std::vector<RoleDeptAccess> &dept_access,
-                           const std::string &dept)
+static bool has_dept_create_access(const std::vector<RoleDeptAccess> &dept_access, const std::string &dept)
 {
-    if (perm.can_write_all_depts)
-        return true;
-    if (perm.can_write_own_dept && user.department && *user.department == dept)
-        return true;
-    for (auto &da : dept_access)
+    for (const auto &da : dept_access)
+    {
         if (da.department == dept && da.can_write)
             return true;
+    }
+    return false;
+}
+
+static bool can_create_dept(const RolePermission &perm, const UserRecord &user,
+                            const std::vector<RoleDeptAccess> &dept_access,
+                            const std::string &dept)
+{
+    if (perm.activity_create_scope == "all")
+        return true;
+    if (perm.activity_create_scope == "own_dept" && user.department && *user.department == dept)
+        return true;
+    return has_dept_create_access(dept_access, dept);
+}
+
+static bool is_activity_responsible(const Activity &activity, const UserRecord &user, const TokenClaims &claims)
+{
+    for (const auto &responsible : activity.responsible)
+    {
+        if (responsible == user.display_name || responsible == claims.email)
+            return true;
+    }
+    return false;
+}
+
+static bool can_read_activity(const RolePermission &perm, const UserRecord &user,
+                              const std::vector<RoleDeptAccess> &dept_access,
+                              const Activity &activity, const TokenClaims &/*claims*/)
+{
+    if (perm.activity_read_scope == "all")
+        return true;
+
+    if (!activity.department)
+        return perm.activity_read_scope != "none";
+
+    const std::string &dept = *activity.department;
+    if (perm.activity_read_scope == "same_dept" && user.department && *user.department == dept)
+        return true;
+    return has_dept_read_access(dept_access, dept);
+}
+
+static bool can_edit_activity(const RolePermission &perm, const UserRecord &user,
+                              const Activity &activity, const TokenClaims &claims)
+{
+    if (perm.activity_edit_scope == "all")
+        return true;
+    if (perm.activity_edit_scope == "same_dept")
+        return activity.department && user.department && *activity.department == *user.department;
+    if (perm.activity_edit_scope == "own")
+        return is_activity_responsible(activity, user, claims);
     return false;
 }
 
@@ -307,10 +346,9 @@ void handle_get_activities(HttpRes *res, HttpReq *req, Database &db)
         nlohmann::json arr = nlohmann::json::array();
         for (auto &a : activities)
         {
-            // Filter: user can only see activities in departments they have read access to
-            if (current_user && perm && a.department)
+            if (current_user && perm)
             {
-                if (!can_read_dept(*perm, *current_user, dept_access, *a.department))
+                if (!can_read_activity(*perm, *current_user, dept_access, a, claims))
                     continue;
             }
             arr.push_back(to_json(a));
@@ -333,12 +371,25 @@ void handle_get_activity(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     try
     {
+        auto current_user = resolve_user(db, claims);
         auto activity = db.get_activity_by_id(id);
         if (!activity)
         {
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
+
+        if (current_user)
+        {
+            auto perm = db.get_role_permission(current_user->role);
+            auto dept_access = db.list_role_dept_access(current_user->role);
+            if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity, claims))
+            {
+                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                return;
+            }
+        }
+
         send_json(res, 200, to_json(*activity).dump());
     }
     catch (std::exception &e)
@@ -378,6 +429,19 @@ void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     try
     {
+        auto current_user = resolve_user(db, claims);
+        if (current_user)
+        {
+            auto activity = db.get_activity_by_id(id);
+            auto perm = db.get_role_permission(current_user->role);
+            auto dept_access = db.list_role_dept_access(current_user->role);
+            if (!activity || !perm || !can_read_activity(*perm, *current_user, dept_access, *activity, claims))
+            {
+                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                return;
+            }
+        }
+
         auto atts = db.list_attachments(id);
         nlohmann::json arr = nlohmann::json::array();
         for (const auto &a : atts)
@@ -394,41 +458,32 @@ void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db)
 
 void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db)
 {
-    std::string auth_header{req->getHeader("authorization")};
-    std::string token = extract_bearer_token(auth_header);
-    if (token.empty())
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
     {
-        send_json(res, 401, R"({"error":"Unauthorized"})");
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
     }
-    TokenClaims claims;
-    try
-    {
-        claims = validate_microsoft_token(token);
-    }
-    catch (std::exception &e)
-    {
-        // Also try debug token
-        try
-        {
-            const char *dbg = std::getenv("DEBUG");
-            bool debug_mode = dbg && (std::string(dbg) == "true" || std::string(dbg) == "1");
-            if (debug_mode && token.rfind("debug:", 0) == 0)
-            {
-                claims.oid = "debug:" + token.substr(6);
-                claims.email = "debug@local";
-                claims.display_name = "Debug";
-            }
-            else
-                throw;
-        }
-        catch (...)
-        {
-            send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
-            return;
-        }
-    }
     std::string activity_id{req->getParameter(0)};
+
+    auto activity = db.get_activity_by_id(activity_id);
+    if (!activity)
+    {
+        send_json(res, 404, R"({"error":"Nicht gefunden"})");
+        return;
+    }
+
+    auto perm = db.get_role_permission(current_user->role);
+    auto dept_access = db.list_role_dept_access(current_user->role);
+    if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity, claims))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
 
     res->onAborted([] {});
     std::string body;
@@ -477,6 +532,22 @@ void handle_get_attachment_download(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 404, R"({"error":"Keine SiKo-Datei vorhanden"})");
             return;
         }
+
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto activity = db.get_activity_by_id(ad->activity_id);
+        auto perm = db.get_role_permission(current_user->role);
+        auto dept_access = db.list_role_dept_access(current_user->role);
+        if (!activity || !perm || !can_read_activity(*perm, *current_user, dept_access, *activity, claims))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
         set_cors(res);
         res->writeStatus("200 OK");
         res->writeHeader("Content-Type", ad->content_type);
@@ -501,6 +572,28 @@ void handle_delete_attachment(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     try
     {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        auto attachment = db.get_attachment_data(id);
+        if (!attachment)
+        {
+            send_json(res, 404, R"({"error":"not found"})");
+            return;
+        }
+
+        auto activity = db.get_activity_by_id(attachment->activity_id);
+        auto perm = db.get_role_permission(current_user->role);
+        if (!activity || !perm || !can_edit_activity(*perm, *current_user, *activity, claims))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
         if (!db.delete_attachment(id))
         {
             send_json(res, 404, R"({"error":"not found"})");
@@ -559,11 +652,11 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
             return;
         }
 
-        // Check write permission for the target department
+        // Check create permission for the target department.
         if (current_user && input.department) {
             auto perm = db.get_role_permission(current_user->role);
             auto dept_access = db.list_role_dept_access(current_user->role);
-            if (perm && !can_write_dept(*perm, *current_user, dept_access, *input.department)) {
+            if (!perm || !can_create_dept(*perm, *current_user, dept_access, *input.department)) {
                 send_json(res, 403, R"({"error":"Keine Schreibberechtigung für diese Stufe"})");
                 return;
             }
@@ -606,8 +699,9 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
     }
 
     std::string id{req->getParameter(0)};
+    std::optional<std::string> current_department;
 
-    // Permission check: user needs write access to the activity's department
+    // Permission check: user needs activity edit permission for this activity.
     auto current_user = resolve_user(db, claims);
     if (!current_user)
     {
@@ -622,26 +716,8 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
-        auto dept_access = db.list_role_dept_access(current_user->role);
-        bool allowed = false;
-        if (perm)
-        {
-            // Can write to the activity's department?
-            if (activity->department && can_write_dept(*perm, *current_user, dept_access, *activity->department))
-                allowed = true;
-            // Can write to own dept and is responsible?
-            if (!allowed && perm->can_write_own_dept)
-            {
-                for (auto &r : activity->responsible)
-                {
-                    if (r == current_user->display_name || r == claims.email)
-                    {
-                        allowed = true;
-                        break;
-                    }
-                }
-            }
-        }
+        bool allowed = perm && can_edit_activity(*perm, *current_user, *activity, claims);
+        current_department = activity->department;
         if (!allowed)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -651,7 +727,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, id, &db, &wm](std::string_view chunk, bool last)
+    res->onData([res, buf, id, &db, &wm, current_user, current_department](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -666,6 +742,15 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
             send_json(res, 400, R"({"error":"Titel, Datum, Startzeit und Endzeit sind erforderlich"})");
             return;
+        }
+
+        if (current_user && input.department != current_department) {
+            auto perm = db.get_role_permission(current_user->role);
+            auto dept_access = db.list_role_dept_access(current_user->role);
+            if (!input.department || !perm || !can_create_dept(*perm, *current_user, dept_access, *input.department)) {
+                send_json(res, 403, R"({"error":"Keine Schreibberechtigung für diese Stufe"})");
+                return;
+            }
         }
 
         try {
@@ -691,7 +776,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
         return;
     std::string id{req->getParameter(0)};
 
-    // Permission checks are resolved dynamically from role permissions and department access.
+    // Permission checks are resolved dynamically from the activity edit scope.
     auto current_user = resolve_user(db, claims);
     if (!current_user)
     {
@@ -706,24 +791,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
-        auto dept_access = db.list_role_dept_access(current_user->role);
-        bool allowed = false;
-        if (perm)
-        {
-            if (activity->department && can_write_dept(*perm, *current_user, dept_access, *activity->department))
-                allowed = true;
-            if (!allowed && perm->can_write_own_dept)
-            {
-                for (auto &r : activity->responsible)
-                {
-                    if (r == current_user->display_name || r == claims.email)
-                    {
-                        allowed = true;
-                        break;
-                    }
-                }
-            }
-        }
+        bool allowed = perm && can_edit_activity(*perm, *current_user, *activity, claims);
         if (!allowed)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -894,10 +962,45 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        // Determine visibility based on user management scopes
+        bool can_see_all = perm->user_dept_scope == "all" || perm->user_role_scope == "all";
+        bool can_see_dept = perm->user_dept_scope == "own_dept" || perm->user_role_scope == "own_dept";
+
         auto users = db.list_users();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &u : users)
-            arr.push_back(user_to_json(u));
+        {
+            if (can_see_all)
+            {
+                arr.push_back(user_to_json(u));
+            }
+            else if (can_see_dept)
+            {
+                // own_dept: only users in same department + self
+                if (u.id == current_user->id ||
+                    (current_user->department && u.department && *current_user->department == *u.department))
+                    arr.push_back(user_to_json(u));
+            }
+            else
+            {
+                // own or none: only self
+                if (u.id == current_user->id)
+                    arr.push_back(user_to_json(u));
+            }
+        }
         send_json(res, 200, arr.dump());
     }
     catch (std::exception &e)
@@ -1243,10 +1346,31 @@ void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || perm->mail_templates_scope == "none")
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
         auto templates = db.list_mail_templates();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &t : templates)
+        {
+            // own_dept: only templates for user's own department
+            if (perm->mail_templates_scope == "own_dept")
+            {
+                if (!current_user->department || t.department != *current_user->department)
+                    continue;
+            }
             arr.push_back(template_to_json(t));
+        }
         send_json(res, 200, arr.dump());
     }
     catch (std::exception &e)
@@ -1265,6 +1389,27 @@ void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db)
     std::string department = url_decode(std::string{req->getParameter(0)});
     try
     {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || perm->mail_templates_scope == "none")
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        if (perm->mail_templates_scope == "own_dept")
+        {
+            if (!current_user->department || *current_user->department != department)
+            {
+                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                return;
+            }
+        }
+
         auto tpl = db.get_mail_template_by_department(department);
         if (!tpl)
         {
@@ -1385,6 +1530,19 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
 
     auto current_user = resolve_user(db, claims);
 
+    // Permission check: mail_send_scope
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm_check = db.get_role_permission(current_user->role);
+    if (!perm_check || perm_check->mail_send_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
     res->onData([res, buf, token, &db, current_user](std::string_view chunk, bool last)
@@ -1448,6 +1606,28 @@ void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db)
         return;
 
     std::string activity_id{req->getParameter("id")};
+
+    // Permission check: user must be able to read the activity
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto activity = db.get_activity_by_id(activity_id);
+    if (!activity)
+    {
+        send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    auto dept_access = db.list_role_dept_access(current_user->role);
+    if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity, claims))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
     auto mails = db.list_sent_mails(activity_id);
 
     nlohmann::json arr = nlohmann::json::array();
@@ -1840,6 +2020,9 @@ static nlohmann::json role_perm_to_json(const RolePermission &rp)
         {"can_write_own_dept", rp.can_write_own_dept},
         {"can_read_all_depts", rp.can_read_all_depts},
         {"can_write_all_depts", rp.can_write_all_depts},
+        {"activity_read_scope", rp.activity_read_scope},
+        {"activity_create_scope", rp.activity_create_scope},
+        {"activity_edit_scope", rp.activity_edit_scope},
         {"mail_send_scope", rp.mail_send_scope},
         {"mail_templates_scope", rp.mail_templates_scope},
         {"user_dept_scope", rp.user_dept_scope},
@@ -2117,6 +2300,39 @@ void handle_post_role_move(HttpRes *res, HttpReq *req, Database &db)
         } });
 }
 
+// POST /admin/roles/reorder
+void handle_post_roles_reorder(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_admin(res, req, db))
+        return;
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (!j.is_object() || !j.contains("order") || !j["order"].is_array()) {
+            send_json(res, 400, R"({"error":"Erwarte {order: [...]}"})");
+            return;
+        }
+        std::vector<std::string> names;
+        for (const auto &item : j["order"]) {
+            if (!item.is_string()) {
+                send_json(res, 400, R"({"error":"order muss ein Array von Strings sein"})");
+                return;
+            }
+            names.push_back(item.get<std::string>());
+        }
+        try {
+            db.reorder_roles(names);
+            send_json(res, 200, R"({"ok":true})");
+        } catch (std::exception &e) {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
+}
+
 // DELETE /admin/roles/:name
 void handle_delete_role(HttpRes *res, HttpReq *req, Database &db)
 {
@@ -2130,20 +2346,35 @@ void handle_delete_role(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
 
-    try
-    {
-        bool ok = db.delete_role(name);
-        if (!ok)
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db, name](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        std::string transfer_users_to;
+        bool del_users = false;
+
+        if (!buf->empty())
         {
-            send_json(res, 404, R"({"error":"Rolle nicht gefunden"})");
-            return;
+            auto j = nlohmann::json::parse(*buf, nullptr, false);
+            if (j.is_object())
+            {
+                if (j.contains("transfer_users_to") && j["transfer_users_to"].is_string())
+                    transfer_users_to = j["transfer_users_to"].get<std::string>();
+                if (j.contains("delete_users") && j["delete_users"].is_boolean())
+                    del_users = j["delete_users"].get<bool>();
+            }
         }
-        send_json(res, 200, R"({"ok":true})");
-    }
-    catch (std::exception &e)
-    {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
-    }
+
+        try {
+            bool ok = db.delete_role(name, transfer_users_to, del_users);
+            if (!ok) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
+            send_json(res, 200, R"({"ok":true})");
+        } catch (std::exception &e) {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
 }
 
 // GET /admin/role-permissions
@@ -2219,17 +2450,23 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 403, R"({"error":"Die Berechtigungen der Admin-Rolle können nicht geändert werden"})");
             return;
         }
-        bool can_read_own_dept = j.value("can_read_own_dept", true);
-        bool can_write_own_dept = j.value("can_write_own_dept", false);
-        bool can_read_all_depts = j.value("can_read_all_depts", false);
-        bool can_write_all_depts = j.value("can_write_all_depts", false);
+        std::string activity_read_scope = j.value("activity_read_scope", "none");
+        std::string activity_create_scope = j.value("activity_create_scope", "none");
+        std::string activity_edit_scope = j.value("activity_edit_scope", "none");
         std::string mail_send_scope = j.value("mail_send_scope", "none");
         std::string mail_templates_scope = j.value("mail_templates_scope", "none");
         std::string user_dept_scope = j.value("user_dept_scope", "none");
         std::string user_role_scope = j.value("user_role_scope", "none");
+
+        bool can_read_own_dept = activity_read_scope == "same_dept" || activity_read_scope == "all";
+        bool can_read_all_depts = activity_read_scope == "all";
+        bool can_write_own_dept = activity_create_scope == "own_dept" || activity_create_scope == "all";
+        bool can_write_all_depts = activity_create_scope == "all";
+
         try {
             bool ok = db.update_role_permission(role, can_read_own_dept, can_write_own_dept,
                                                 can_read_all_depts, can_write_all_depts,
+                                                activity_read_scope, activity_create_scope, activity_edit_scope,
                                                 mail_send_scope, mail_templates_scope,
                                                 user_dept_scope, user_role_scope);
             if (!ok) {

@@ -68,6 +68,7 @@ void handle_get_roles(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_role(HttpRes *res, HttpReq *req, Database &db);
 void handle_patch_role(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_role_move(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_roles_reorder(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_role(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_role_permissions(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db);
