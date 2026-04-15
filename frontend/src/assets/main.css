@@ -350,10 +350,14 @@ body {
 	font-size: 0.78rem;
 	font-weight: 600;
 }
-.badge-admin { background: #fef3c7; color: #92400e; }
-.badge-stufenleiter { background: #dbeafe; color: #1e40af; }
-.badge-leiter { background: #d1fae5; color: #065f46; }
-.badge-pio { background: #f3f4f6; color: #6b7280; }
+.badge-admin {
+	background: #fef3c7;
+	color: #92400e;
+}
+.role-badge:not(.badge-admin) {
+	background: #e5e7eb;
+	color: #374151;
+}
 
 .card-meta {
 	display: flex;

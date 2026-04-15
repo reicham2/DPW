@@ -82,12 +82,17 @@ onMounted(() => document.addEventListener('mousedown', onClickOutside));
 onUnmounted(() => document.removeEventListener('mousedown', onClickOutside));
 
 function roleBadgeClass(role: UserRole) {
-	return {
-		'badge-admin': role === 'admin',
-		'badge-stufenleiter': role === 'Stufenleiter',
-		'badge-leiter': role === 'Leiter',
-		'badge-pio': role === 'Pio',
-	};
+	if (role === 'admin') {
+		return 'badge-admin';
+	}
+
+	const normalized = role
+		.toLowerCase()
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.replace(/[^a-z0-9]+/g, '-');
+
+	return `badge-role-${normalized}`;
 }
 </script>
 
