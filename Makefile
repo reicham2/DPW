@@ -1,3 +1,7 @@
+# ── Pinned dependency versions ───────────────────────────────────────────────
+UWEBSOCKETS_VERSION := v20.62.0
+USOCKETS_VERSION    := v0.8.8
+
 .PHONY: up down build rebuild logs logs-backend logs-frontend logs-db \
        restart restart-backend restart-frontend restart-db \
 	db-reset db-seed ps clean build-backend-debug rebuild-backend-debug \
@@ -78,16 +82,15 @@ ps:
 clean:
 	docker compose down -v --rmi local --remove-orphans
 
-# ── Submodule Deps aktualisieren ──────────────────────────────────────────────
-UWS_TAG  ?= v20.62.0
-USOCK_TAG ?= v0.8.8
-
+# ── Backend-Deps aktualisieren ───────────────────────────────────────────────
 update-deps:
-	cd backend/deps/uWebSockets && git fetch --tags && git -c advice.detachedHead=false checkout $(UWS_TAG)
-	cd backend/deps/uSockets && git fetch --tags && git -c advice.detachedHead=false checkout $(USOCK_TAG)
-	@echo "✅ uWebSockets $(UWS_TAG), uSockets $(USOCK_TAG)"
+	rm -rf backend/deps/uWebSockets backend/deps/uSockets
+	git -c advice.detachedHead=false clone --depth 1 --branch $(UWEBSOCKETS_VERSION) https://github.com/uNetworking/uWebSockets.git backend/deps/uWebSockets
+	git -c advice.detachedHead=false clone --depth 1 --branch $(USOCKETS_VERSION) https://github.com/uNetworking/uSockets.git backend/deps/uSockets
+	rm -rf backend/deps/uWebSockets/.git backend/deps/uSockets/.git
+	@echo "✅ Deps aktualisiert (uWebSockets $(UWEBSOCKETS_VERSION), uSockets $(USOCKETS_VERSION))"
 
-# ── Komplett-Rebuild (Cache löschen + Deps aktualisieren) ────────────────────
+# ── Komplett-Rebuild (Cache löschen) ─────────────────────────────────────────
 full-rebuild: update-deps
 	docker builder prune --all -f
 	docker compose build --no-cache
