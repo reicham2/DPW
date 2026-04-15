@@ -117,7 +117,7 @@ function roleBadgeClass(role: UserRole) {
   <header class="header">
     <h1>Benutzerverwaltung</h1>
     <div class="header-right">
-      <span v-if="!isAdmin" class="dept-badge">Abteilung: {{ currentUser?.department ?? '—' }}</span>
+      <span v-if="!isAdmin" class="card-dept-badge">Stufe: {{ currentUser?.department ?? '—' }}</span>
       <span class="user-count">{{ users.length }} Benutzer</span>
     </div>
   </header>
@@ -127,17 +127,14 @@ function roleBadgeClass(role: UserRole) {
     <div v-else-if="error" class="error-msg"><ErrorAlert :error="error" /></div>
     <template v-else>
       <!-- Department filter (admin only; Stufenleiter is locked to own dept) -->
-      <div v-if="isAdmin" class="filter-bar">
-        <label class="filter-label">Abteilung:</label>
-        <div class="dept-pills">
-          <button
-            v-for="d in ['Alle', 'Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']"
-            :key="d"
-            class="dept-pill"
-            :class="{ 'dept-pill--active': filterDept === d }"
-            @click="filterDept = d as any"
-          >{{ d }}</button>
-        </div>
+      <div v-if="isAdmin" class="filter-tabs" style="margin-bottom: 16px">
+        <button
+          v-for="d in ['Alle', 'Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']"
+          :key="d"
+          class="filter-tab"
+          :class="{ 'filter-tab--active': filterDept === d }"
+          @click="filterDept = d as any"
+        >{{ d }}</button>
       </div>
 
       <!-- Users table -->
@@ -147,7 +144,7 @@ function roleBadgeClass(role: UserRole) {
             <tr>
               <th>Name</th>
               <th>E-Mail</th>
-              <th>Abteilung</th>
+              <th>Stufe</th>
               <th>Rolle</th>
               <th></th>
             </tr>
@@ -186,7 +183,7 @@ function roleBadgeClass(role: UserRole) {
         </div>
 
         <div class="form-group">
-          <label class="form-label">Abteilung</label>
+          <label class="form-label">Stufe</label>
           <select v-if="isAdmin" v-model="editForm.department" class="form-input">
             <option value="">Keine Angabe</option>
             <option v-for="d in DEPARTMENTS.filter(Boolean)" :key="d" :value="d">{{ d }}</option>
@@ -233,14 +230,6 @@ function roleBadgeClass(role: UserRole) {
   align-items: center;
   gap: 10px;
 }
-.dept-badge {
-  font-size: 0.82rem;
-  font-weight: 600;
-  background: #dbeafe;
-  color: #1e40af;
-  padding: 3px 12px;
-  border-radius: 999px;
-}
 .user-count {
   font-size: 0.85rem;
   color: #6b7280;
@@ -259,41 +248,6 @@ function roleBadgeClass(role: UserRole) {
   color: #6b7280;
 }
 .error-msg { color: #dc2626; }
-
-/* Filter */
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.filter-label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #374151;
-}
-.dept-pills {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.dept-pill {
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 1.5px solid #d1d5db;
-  background: #fff;
-  font-size: 0.82rem;
-  cursor: pointer;
-  color: #374151;
-  transition: background 0.12s, border-color 0.12s;
-}
-.dept-pill:hover { background: #f3f4f6; }
-.dept-pill--active {
-  background: #1a56db;
-  border-color: #1a56db;
-  color: #fff;
-}
 
 /* Table */
 .table-wrap {
@@ -328,19 +282,6 @@ function roleBadgeClass(role: UserRole) {
 .td-name { font-weight: 500; }
 .td-email { color: #6b7280; font-size: 0.85rem; }
 .td-empty { text-align: center; color: #9ca3af; padding: 32px; }
-
-/* Role badges */
-.role-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-.badge-admin { background: #fef3c7; color: #92400e; }
-.badge-stufenleiter { background: #dbeafe; color: #1e40af; }
-.badge-leiter { background: #d1fae5; color: #065f46; }
-.badge-pio { background: #f3f4f6; color: #6b7280; }
 
 /* Edit button */
 .btn-edit {
