@@ -1,18 +1,13 @@
 # syntax=docker/dockerfile:1
 
 # ---- Stage 1: Build --------------------------------------------------------
-FROM ubuntu:24.04 AS build
+FROM buildpack-deps:noble AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  build-essential \
-  ccache \
   cmake \
-  libssl-dev \
-  zlib1g-dev \
+  ccache \
   libuv1-dev \
   libpq-dev \
-  libcurl4-openssl-dev \
-  ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
