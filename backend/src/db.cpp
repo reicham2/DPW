@@ -1384,7 +1384,9 @@ std::vector<RolePermission> Database::list_role_permissions()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT role, can_read_own_dept, can_write_own_dept, mail_send_scope, "
+                           "SELECT role, can_read_own_dept, can_write_own_dept, "
+                           "       can_read_all_depts, can_write_all_depts, "
+                           "       mail_send_scope, "
                            "       mail_templates_scope, user_dept_scope, user_role_scope "
                            "FROM role_permissions ORDER BY role");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1407,7 +1409,9 @@ std::optional<RolePermission> Database::get_role_permission(const std::string &r
     ensure_connected();
     const char *params[] = {role.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT role, can_read_own_dept, can_write_own_dept, mail_send_scope, "
+                                 "SELECT role, can_read_own_dept, can_write_own_dept, "
+                                 "       can_read_all_depts, can_write_all_depts, "
+                                 "       mail_send_scope, "
                                  "       mail_templates_scope, user_dept_scope, user_role_scope "
                                  "FROM role_permissions WHERE role = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);

@@ -40,6 +40,28 @@ void set_cors(HttpRes *res)
     res->writeHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
 }
 
+// URL-decode a percent-encoded string (e.g. "W%C3%B6lfe" → "Wölfe")
+static std::string url_decode(const std::string &src)
+{
+    std::string out;
+    out.reserve(src.size());
+    for (size_t i = 0; i < src.size(); ++i)
+    {
+        if (src[i] == '%' && i + 2 < src.size())
+        {
+            unsigned int ch = 0;
+            if (sscanf(src.c_str() + i + 1, "%2x", &ch) == 1)
+            {
+                out += static_cast<char>(ch);
+                i += 2;
+                continue;
+            }
+        }
+        out += (src[i] == '+') ? ' ' : src[i];
+    }
+    return out;
+}
+
 // ── Debug token support ─────────────────────────────────────────────────────
 // In debug mode, accepts "debug:<user_id>" as a token. Returns TokenClaims
 // with oid = user_id so that get_user_by_oid-based lookups still work.
@@ -1163,7 +1185,7 @@ void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db)
     TokenClaims claims;
     if (!require_auth(res, req, claims))
         return;
-    std::string department{req->getParameter(0)};
+    std::string department = url_decode(std::string{req->getParameter(0)});
     try
     {
         auto tpl = db.get_mail_template_by_department(department);
@@ -1202,7 +1224,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
         return;
     }
 
-    std::string department{req->getParameter(0)};
+    std::string department = url_decode(std::string{req->getParameter(0)});
 
     // Permission check: mail_templates_scope controls access
     auto current_user = resolve_user(db, claims);
@@ -1833,7 +1855,7 @@ void handle_post_department(HttpRes *res, HttpReq *req, Database &db)
 // PATCH /admin/departments/:name
 void handle_patch_department(HttpRes *res, HttpReq *req, Database &db)
 {
-    std::string name{req->getParameter("name")};
+    std::string name = url_decode(std::string{req->getParameter("name")});
     if (!require_admin(res, req, db))
         return;
     auto buf = std::make_shared<std::string>();
@@ -1859,7 +1881,7 @@ void handle_patch_department(HttpRes *res, HttpReq *req, Database &db)
 // DELETE /admin/departments/:name
 void handle_delete_department(HttpRes *res, HttpReq *req, Database &db)
 {
-    std::string name{req->getParameter("name")};
+    std::string name = url_decode(std::string{req->getParameter("name")});
     if (!require_admin(res, req, db))
         return;
 
@@ -1952,7 +1974,7 @@ void handle_post_role(HttpRes *res, HttpReq *req, Database &db)
 // PATCH /admin/roles/:name
 void handle_patch_role(HttpRes *res, HttpReq *req, Database &db)
 {
-    std::string name{req->getParameter("name")};
+    std::string name = url_decode(std::string{req->getParameter("name")});
     if (!require_admin(res, req, db))
         return;
 
@@ -1985,7 +2007,7 @@ void handle_patch_role(HttpRes *res, HttpReq *req, Database &db)
 // DELETE /admin/roles/:name
 void handle_delete_role(HttpRes *res, HttpReq *req, Database &db)
 {
-    std::string name{req->getParameter("name")};
+    std::string name = url_decode(std::string{req->getParameter("name")});
     if (!require_admin(res, req, db))
         return;
 
