@@ -32,6 +32,7 @@ const {
   fetchDepartments,
   createRole,
   updateRole,
+  moveRole,
   deleteRole,
   updateRolePermission,
   fetchRoleDeptAccess,
@@ -57,7 +58,8 @@ const deptAccess = ref<RoleDeptAccess[]>([])
 
 function isProtected(name: string) { return name === 'admin' }
 
-const sortedRoles = computed(() => [...roles.value].sort((a, b) => a.name.localeCompare(b.name, 'de')))
+const sortedRoles = computed(() => [...roles.value].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de')))
+const movableRoles = computed(() => sortedRoles.value.filter(r => !isProtected(r.name)))
 
 onMounted(async () => {
   loading.value = true
@@ -122,6 +124,22 @@ async function handleDeleteRole(name: string) {
     await fetchMyPermissions()
   } catch (e) { error.value = String(e) }
   finally { saving.value = null }
+}
+
+async function handleMoveRole(name: string, direction: 'up' | 'down') {
+  saving.value = `role-move-${name}-${direction}`
+  error.value = null
+  try {
+    await moveRole(name, direction)
+    await fetchAll()
+  } catch (e) { error.value = String(e) }
+  finally { saving.value = null }
+}
+
+function canMoveRole(name: string, direction: 'up' | 'down') {
+  const index = movableRoles.value.findIndex(r => r.name === name)
+  if (index === -1) return false
+  return direction === 'up' ? index > 0 : index < movableRoles.value.length - 1
 }
 
 // ── Dept access level helper ────────────────────────────────────────────────
@@ -248,6 +266,8 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
                 <span class="role-badge" :style="{ background: r.color + '22', color: r.color }">{{ r.name }}</span>
               </div>
               <div v-if="!isProtected(r.name)" class="item-actions" @click.stop>
+                <button class="btn-order" :disabled="!canMoveRole(r.name, 'up') || saving?.startsWith(`role-move-${r.name}`)" @click="handleMoveRole(r.name, 'up')">↑</button>
+                <button class="btn-order" :disabled="!canMoveRole(r.name, 'down') || saving?.startsWith(`role-move-${r.name}`)" @click="handleMoveRole(r.name, 'down')">↓</button>
                 <button class="btn-edit" @click="startEditRole(r)">Bearbeiten</button>
                 <button class="btn-delete" @click="handleDeleteRole(r.name)">Löschen</button>
               </div>
@@ -449,6 +469,12 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
   padding: 5px 12px; border-radius: 6px; border: 1.5px solid #d1d5db; background: #fff;
   font-size: 0.82rem; cursor: pointer; color: #374151;
 }
+.btn-order {
+  width: 30px; height: 28px; border-radius: 6px; border: 1.5px solid #d1d5db; background: #fff;
+  font-size: 0.82rem; cursor: pointer; color: #374151;
+}
+.btn-order:hover:not(:disabled) { background: #f3f4f6; }
+.btn-order:disabled { opacity: 0.4; cursor: default; }
 .btn-edit:hover, .btn-cancel:hover { background: #f3f4f6; }
 .btn-delete {
   padding: 5px 12px; border-radius: 6px; border: 1.5px solid #fca5a5; background: #fff;

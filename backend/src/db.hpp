@@ -12,7 +12,7 @@ struct UserRecord
     std::string email;
     std::string display_name;
     std::optional<std::string> department;
-    std::string role; // 'admin' | 'Stufenleiter' | 'Leiter' | 'Pio'
+    std::string role;
     std::string created_at;
     std::string updated_at;
 };
@@ -50,6 +50,7 @@ struct RoleRecord
 {
     std::string name;
     std::string color;
+    int sort_order;
 };
 
 struct RolePermission
@@ -166,6 +167,7 @@ public:
     std::optional<RoleRecord> create_role(const std::string &name, const std::string &color);
     std::optional<RoleRecord> update_role(const std::string &name, const std::string &new_name,
                                           const std::string &color);
+    bool move_role(const std::string &name, bool move_up);
     bool delete_role(const std::string &name);
 
     // Role permissions

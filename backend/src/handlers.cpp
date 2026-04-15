@@ -691,7 +691,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
         return;
     std::string id{req->getParameter(0)};
 
-    // admin: always; Stufenleiter: own dept; Leiter+Pio: if verantwortlich (Pio also own dept).
+    // Permission checks are resolved dynamically from role permissions and department access.
     auto current_user = resolve_user(db, claims);
     if (!current_user)
     {
@@ -1027,6 +1027,19 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
                 current_perm->user_role_scope != "own_dept" &&
                 current_perm->user_role_scope != "own") {
                 role = target->role;
+            }
+            else if (current_user->role != "admin" && role != target->role) {
+                auto roles = db.list_roles();
+                int current_role_index = -1;
+                int new_role_index = -1;
+                for (size_t i = 0; i < roles.size(); ++i) {
+                    if (roles[i].name == current_user->role) current_role_index = static_cast<int>(i);
+                    if (roles[i].name == role) new_role_index = static_cast<int>(i);
+                }
+                if (current_role_index < 0 || new_role_index < 0 || new_role_index <= current_role_index) {
+                    send_json(res, 403, R"({"error":"Diese Rolle darf nicht vergeben werden"})");
+                    return;
+                }
             }
 
             // Cannot change department if dept scope is not enough
@@ -2011,7 +2024,7 @@ void handle_get_roles(HttpRes *res, HttpReq *req, Database &db)
         auto roles = db.list_roles();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &r : roles)
-            arr.push_back({{"name", r.name}, {"color", r.color}});
+            arr.push_back({{"name", r.name}, {"color", r.color}, {"sort_order", r.sort_order}});
         send_json(res, 200, arr.dump());
     }
     catch (std::exception &e)
@@ -2039,7 +2052,7 @@ void handle_post_role(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto r = db.create_role(name, color);
             if (!r) { send_json(res, 409, R"({"error":"Rolle existiert bereits"})"); return; }
-            send_json(res, 201, nlohmann::json{{"name", r->name}, {"color", r->color}}.dump());
+            send_json(res, 201, nlohmann::json{{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}}.dump());
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });
@@ -2071,7 +2084,42 @@ void handle_patch_role(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto r = db.update_role(name, new_name, color);
             if (!r) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
-            send_json(res, 200, nlohmann::json{{"name", r->name}, {"color", r->color}}.dump());
+            send_json(res, 200, nlohmann::json{{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}}.dump());
+        } catch (std::exception &e) {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
+}
+
+// POST /admin/roles/:name/move
+void handle_post_role_move(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string name = url_decode(std::string{req->getParameter("name")});
+    if (!require_admin(res, req, db))
+        return;
+
+    if (name == "admin")
+    {
+        send_json(res, 403, R"({"error":"Die Admin-Rolle bleibt immer zuoberst"})");
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db, name](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (!j.is_object()) { send_json(res, 400, R"({"error":"Ungültiges JSON"})"); return; }
+        std::string direction = j.value("direction", "");
+        if (direction != "up" && direction != "down") {
+            send_json(res, 400, R"({"error":"direction muss up oder down sein"})");
+            return;
+        }
+        try {
+            bool ok = db.move_role(name, direction == "up");
+            if (!ok) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
+            send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });

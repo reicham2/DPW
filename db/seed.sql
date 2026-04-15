@@ -12,10 +12,12 @@ INSERT INTO departments (name, color) VALUES
     ('Biber',  '#7c3aed')
 ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO roles (name, color) VALUES
-    ('Stufenleiter',  '#1e40af'),
-    ('Leiter',        '#065f46'),
-    ('Pio',           '#6b7280')
+UPDATE roles SET sort_order = 4 WHERE name = 'Mitglied';
+
+INSERT INTO roles (name, color, sort_order) VALUES
+    ('Stufenleiter',  '#1e40af', 1),
+    ('Leiter',        '#065f46', 2),
+    ('Pio',           '#6b7280', 3)
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) VALUES

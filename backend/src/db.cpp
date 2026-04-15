@@ -1273,6 +1273,7 @@ RoleRecord Database::row_to_role(PGresult *res, int row)
     RoleRecord r;
     r.name = col("name") ? col("name") : "";
     r.color = col("color") ? col("color") : "#6b7280";
+    r.sort_order = col("sort_order") ? std::stoi(col("sort_order")) : 0;
     return r;
 }
 
@@ -1280,7 +1281,7 @@ std::vector<RoleRecord> Database::list_roles()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT name, color FROM roles ORDER BY name");
+                           "SELECT name, color, sort_order FROM roles ORDER BY sort_order, name");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
         std::string err = PQresultErrorMessage(res);
@@ -1302,11 +1303,18 @@ std::optional<RoleRecord> Database::create_role(const std::string &name, const s
     exec_or_throw(conn_, "BEGIN", "create_role BEGIN");
     try
     {
-        const char *params[2] = {name.c_str(), color.c_str()};
+        PGresult *max_res = PQexec(conn_, "SELECT COALESCE(MAX(sort_order), 0) FROM roles");
+        int next_sort_order = 1;
+        if (PQresultStatus(max_res) == PGRES_TUPLES_OK && PQntuples(max_res) > 0)
+            next_sort_order = std::stoi(PQgetvalue(max_res, 0, 0)) + 1;
+        PQclear(max_res);
+
+        std::string sort_order_str = std::to_string(next_sort_order);
+        const char *params[3] = {name.c_str(), color.c_str(), sort_order_str.c_str()};
         PGresult *res = PQexecParams(conn_,
-                                     "INSERT INTO roles (name, color) VALUES ($1, $2) "
-                                     "RETURNING name, color",
-                                     2, nullptr, params, nullptr, nullptr, 0);
+                                     "INSERT INTO roles (name, color, sort_order) VALUES ($1, $2, $3::integer) "
+                                     "RETURNING name, color, sort_order",
+                                     3, nullptr, params, nullptr, nullptr, 0);
         if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
         {
             PQclear(res);
@@ -1340,7 +1348,7 @@ std::optional<RoleRecord> Database::update_role(const std::string &name, const s
     const char *params[3] = {new_name.c_str(), color.c_str(), name.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "UPDATE roles SET name = $1, color = $2 WHERE name = $3 "
-                                 "RETURNING name, color",
+                                 "RETURNING name, color, sort_order",
                                  3, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
@@ -1352,17 +1360,126 @@ std::optional<RoleRecord> Database::update_role(const std::string &name, const s
     return r;
 }
 
+bool Database::move_role(const std::string &name, bool move_up)
+{
+    ensure_connected();
+    exec_or_throw(conn_, "BEGIN", "move_role BEGIN");
+    try
+    {
+        const char *params[1] = {name.c_str()};
+        PGresult *current_res = PQexecParams(conn_,
+                                             "SELECT sort_order FROM roles WHERE name = $1",
+                                             1, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(current_res) != PGRES_TUPLES_OK || PQntuples(current_res) == 0)
+        {
+            PQclear(current_res);
+            PQexec(conn_, "ROLLBACK");
+            return false;
+        }
+        int current_order = std::stoi(PQgetvalue(current_res, 0, 0));
+        PQclear(current_res);
+
+        if (name == "admin")
+        {
+            PQexec(conn_, "ROLLBACK");
+            return false;
+        }
+
+        std::string direction_sql = move_up ? "<" : ">";
+        std::string order_sql = move_up ? "DESC" : "ASC";
+        std::string current_order_str = std::to_string(current_order);
+        const char *swap_params[1] = {current_order_str.c_str()};
+        PGresult *swap_res = PQexecParams(conn_,
+                                          ("SELECT name, sort_order FROM roles WHERE name <> 'admin' AND sort_order " + direction_sql + " $1::integer ORDER BY sort_order " + order_sql + " LIMIT 1").c_str(),
+                                          1, nullptr, swap_params, nullptr, nullptr, 0);
+        if (PQresultStatus(swap_res) != PGRES_TUPLES_OK || PQntuples(swap_res) == 0)
+        {
+            PQclear(swap_res);
+            PGresult *commit = PQexec(conn_, "COMMIT");
+            PQclear(commit);
+            return true;
+        }
+        std::string other_name = PQgetvalue(swap_res, 0, 0);
+        int other_order = std::stoi(PQgetvalue(swap_res, 0, 1));
+        PQclear(swap_res);
+
+        std::string neg_current = std::to_string(-current_order - 1000);
+        const char *tmp_params1[2] = {neg_current.c_str(), name.c_str()};
+        PGresult *tmp1 = PQexecParams(conn_,
+                                      "UPDATE roles SET sort_order = $1::integer WHERE name = $2",
+                                      2, nullptr, tmp_params1, nullptr, nullptr, 0);
+        PQclear(tmp1);
+
+        std::string current_to_other = std::to_string(current_order);
+        const char *tmp_params2[2] = {current_to_other.c_str(), other_name.c_str()};
+        PGresult *tmp2 = PQexecParams(conn_,
+                                      "UPDATE roles SET sort_order = $1::integer WHERE name = $2",
+                                      2, nullptr, tmp_params2, nullptr, nullptr, 0);
+        PQclear(tmp2);
+
+        std::string other_to_current = std::to_string(other_order);
+        const char *tmp_params3[2] = {other_to_current.c_str(), name.c_str()};
+        PGresult *tmp3 = PQexecParams(conn_,
+                                      "UPDATE roles SET sort_order = $1::integer WHERE name = $2",
+                                      2, nullptr, tmp_params3, nullptr, nullptr, 0);
+        PQclear(tmp3);
+
+        exec_or_throw(conn_, "COMMIT", "move_role COMMIT");
+        return true;
+    }
+    catch (...)
+    {
+        PQexec(conn_, "ROLLBACK");
+        throw;
+    }
+}
+
 bool Database::delete_role(const std::string &name)
 {
     ensure_connected();
-    const char *params[1] = {name.c_str()};
-    PGresult *res = PQexecParams(conn_,
-                                 "DELETE FROM roles WHERE name = $1",
-                                 1, nullptr, params, nullptr, nullptr, 0);
-    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK &&
-              std::string(PQcmdTuples(res)) == "1";
-    PQclear(res);
-    return ok;
+    exec_or_throw(conn_, "BEGIN", "delete_role BEGIN");
+    try
+    {
+        const char *params[1] = {name.c_str()};
+        PGresult *order_res = PQexecParams(conn_,
+                                           "SELECT sort_order FROM roles WHERE name = $1",
+                                           1, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(order_res) != PGRES_TUPLES_OK || PQntuples(order_res) == 0)
+        {
+            PQclear(order_res);
+            PQexec(conn_, "ROLLBACK");
+            return false;
+        }
+        int deleted_order = std::stoi(PQgetvalue(order_res, 0, 0));
+        PQclear(order_res);
+
+        PGresult *res = PQexecParams(conn_,
+                                     "DELETE FROM roles WHERE name = $1",
+                                     1, nullptr, params, nullptr, nullptr, 0);
+        bool ok = PQresultStatus(res) == PGRES_COMMAND_OK &&
+                  std::string(PQcmdTuples(res)) == "1";
+        PQclear(res);
+        if (!ok)
+        {
+            PQexec(conn_, "ROLLBACK");
+            return false;
+        }
+
+        std::string deleted_order_str = std::to_string(deleted_order);
+        const char *shift_params[1] = {deleted_order_str.c_str()};
+        PGresult *shift_res = PQexecParams(conn_,
+                                           "UPDATE roles SET sort_order = sort_order - 1 WHERE sort_order > $1::integer",
+                                           1, nullptr, shift_params, nullptr, nullptr, 0);
+        PQclear(shift_res);
+
+        exec_or_throw(conn_, "COMMIT", "delete_role COMMIT");
+        return true;
+    }
+    catch (...)
+    {
+        PQexec(conn_, "ROLLBACK");
+        throw;
+    }
 }
 
 // ── Role permissions ────────────────────────────────────────────────────────

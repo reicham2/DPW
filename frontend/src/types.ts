@@ -130,6 +130,7 @@ export interface DepartmentRecord {
 export interface RoleRecord {
 	name: string;
 	color: string;
+	sort_order: number;
 }
 
 export interface RolePermission {

@@ -117,6 +117,19 @@ async function deleteRole(name: string) {
 	if (!res.ok) throw new Error(await res.text());
 }
 
+async function moveRole(name: string, direction: 'up' | 'down') {
+	const token = await getIdToken();
+	const res = await fetch(`/api/admin/roles/${encodeURIComponent(name)}/move`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`,
+		},
+		body: JSON.stringify({ direction }),
+	});
+	if (!res.ok) throw new Error(await res.text());
+}
+
 // ── Role Permissions ────────────────────────────────────────────────────────
 
 async function fetchRolePermissions() {
@@ -262,6 +275,7 @@ export function usePermissions() {
 		deleteDepartment,
 		createRole,
 		updateRole,
+		moveRole,
 		deleteRole,
 		updateRolePermission,
 		fetchRoleDeptAccess,

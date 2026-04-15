@@ -12,6 +12,7 @@ CREATE TABLE departments (
 CREATE TABLE roles (
     name       TEXT PRIMARY KEY,
     color      TEXT NOT NULL DEFAULT '#6b7280',
+    sort_order INTEGER NOT NULL UNIQUE CHECK (sort_order >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -19,9 +20,9 @@ CREATE TABLE roles (
 INSERT INTO departments (name, color) VALUES
     ('Allgemein', '#6b7280');
 
-INSERT INTO roles (name, color) VALUES
-    ('admin',    '#92400e'),
-    ('Mitglied', '#6b7280');
+INSERT INTO roles (name, color, sort_order) VALUES
+    ('admin',    '#92400e', 0),
+    ('Mitglied', '#6b7280', 1);
 
 -- ── Core tables ─────────────────────────────────────────────────────────────
 

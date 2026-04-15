@@ -12,7 +12,8 @@ const router = useRouter()
 const { departments: deptRecords, roles: roleRecords, fetchDepartments, fetchRoles, myPermissions, fetchMyPermissions, canManageUsers, canManageSystem } = usePermissions()
 
 const DEPARTMENTS = computed(() => deptRecords.value.map(d => d.name))
-const ROLES = computed(() => roleRecords.value.map(r => r.name))
+const orderedRoles = computed(() => [...roleRecords.value].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de')))
+const ROLES = computed(() => orderedRoles.value.map(r => r.name))
 
 const canSeeAllDepts = computed(() => myPermissions.value?.user_dept_scope === 'all')
 const canEditDepts = computed(() => {
@@ -98,6 +99,16 @@ const filtered = computed(() => {
     list = list.filter(u => u.department === filterDept.value)
   }
   return list
+})
+
+const assignableRoles = computed(() => {
+  if (!editingUser.value || !currentUser.value) return ROLES.value
+  if (currentUser.value.role === 'admin') return ROLES.value
+
+  const currentIndex = orderedRoles.value.findIndex(r => r.name === currentUser.value?.role)
+  return orderedRoles.value
+    .filter((role, index) => index > currentIndex || role.name === editingUser.value?.role)
+    .map(r => r.name)
 })
 
 function openEdit(u: User) {
@@ -320,7 +331,7 @@ function roleBadgeStyle(role: UserRole) {
         <div v-if="canEditRoles" class="form-group">
           <label class="form-label">Rolle</label>
           <select v-model="editForm.role" class="form-input">
-            <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
+            <option v-for="r in assignableRoles" :key="r" :value="r">{{ r }}</option>
           </select>
         </div>
 
