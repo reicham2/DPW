@@ -11,9 +11,13 @@
 
 			<div v-if="open" class="avatar-dropdown">
 				<div class="avatar-dropdown-header">
-					<span class="avatar-dropdown-name">{{ user.display_name }}</span>				<span class="role-badge" :class="roleBadgeClass(user.role)">{{ user.role }}</span>					<span v-if="user.department" class="avatar-dropdown-dept">{{
-						user.department
-					}}</span>
+					<span class="avatar-dropdown-name">{{ user.display_name }}</span>
+					<div class="avatar-dropdown-badges">
+						<span class="role-badge" :class="roleBadgeClass(user.role)">{{ user.role }}</span>
+						<span v-if="user.department" class="avatar-dropdown-dept">{{
+							user.department
+						}}</span>
+					</div>
 					<span class="avatar-dropdown-email">{{ user.email }}</span>
 				</div>
 				<div class="avatar-dropdown-divider" />
@@ -151,6 +155,18 @@ function roleBadgeClass(role: UserRole) {
 	font-size: 0.95rem;
 	color: #1a202c;
 }
+.avatar-dropdown-badges {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	margin-top: 2px;
+}
+.avatar-dropdown-badges .role-badge {
+	display: inline-block;
+	font-size: 0.72rem;
+	padding: 1px 7px;
+	margin: 0;
+}
 .avatar-dropdown-dept {
 	display: inline-block;
 	font-size: 0.72rem;
@@ -159,7 +175,7 @@ function roleBadgeClass(role: UserRole) {
 	color: #1a56db;
 	border-radius: 4px;
 	padding: 1px 7px;
-	margin-top: 2px;
+	margin-top: 0;
 	width: fit-content;
 }
 .avatar-dropdown-email {
