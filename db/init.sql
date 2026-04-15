@@ -1,12 +1,31 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TYPE department_enum AS ENUM (
-    'Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber'
+-- ── Dynamic departments & roles ─────────────────────────────────────────────
+
+CREATE TABLE departments (
+    name       TEXT PRIMARY KEY,
+    color      TEXT NOT NULL DEFAULT '#6b7280',
+    sort_order INT  NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TYPE user_role AS ENUM (
-    'admin', 'Stufenleiter', 'Leiter', 'Pio'
+CREATE TABLE roles (
+    name       TEXT PRIMARY KEY,
+    color      TEXT NOT NULL DEFAULT '#6b7280',
+    sort_order INT  NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+INSERT INTO departments (name, color, sort_order) VALUES
+    ('Allgemein', '#6b7280', 0);
+
+INSERT INTO roles (name, color, sort_order) VALUES
+    ('admin',    '#92400e', 0),
+    ('Mitglied', '#6b7280', 1);
+
+-- ── Core tables ─────────────────────────────────────────────────────────────
 
 CREATE TABLE activities (
     id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -17,7 +36,7 @@ CREATE TABLE activities (
     goal             TEXT        NOT NULL,
     location         TEXT        NOT NULL,
     responsible      TEXT[]      NOT NULL DEFAULT '{}',
-    department       department_enum,
+    department       TEXT        REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL,
     material         JSONB       NOT NULL DEFAULT '[]',
     siko_text        TEXT,
     bad_weather_info TEXT,
@@ -54,8 +73,8 @@ CREATE TABLE users (
     microsoft_oid TEXT        NOT NULL UNIQUE,
     email         TEXT        NOT NULL,
     display_name  TEXT        NOT NULL,
-    department    department_enum,
-    role          user_role   NOT NULL DEFAULT 'Leiter',
+    department    TEXT        REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL,
+    role          TEXT        NOT NULL DEFAULT 'Mitglied' REFERENCES roles(name) ON UPDATE CASCADE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -68,26 +87,22 @@ CREATE INDEX idx_users_microsoft_oid ON users (microsoft_oid);
 
 -- Mail templates (one per department)
 CREATE TABLE mail_templates (
-    id          UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
-    department  department_enum NOT NULL UNIQUE,
-    subject     TEXT            NOT NULL DEFAULT '',
-    body        TEXT            NOT NULL DEFAULT '',
-    recipients  TEXT[]          NOT NULL DEFAULT '{}',
-    created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    department  TEXT        NOT NULL UNIQUE REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    subject     TEXT        NOT NULL DEFAULT '',
+    body        TEXT        NOT NULL DEFAULT '',
+    recipients  TEXT[]      NOT NULL DEFAULT '{}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TRIGGER trg_mail_templates_updated_at
     BEFORE UPDATE ON mail_templates
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
--- Seed default (empty) templates for every department
+-- Seed default (empty) template for default department
 INSERT INTO mail_templates (department, subject, body, recipients) VALUES
-    ('Leiter', '', '', '{}'),
-    ('Pio',    '', '', '{}'),
-    ('Pfadi',  '', '', '{}'),
-    ('Wölfe',  '', '', '{}'),
-    ('Biber',  '', '', '{}');
+    ('Allgemein', '', '', '{}');
 
 -- Sent mail log (audit trail)
 CREATE TABLE sent_mails (
@@ -127,3 +142,44 @@ CREATE TABLE attachments (
 );
 
 CREATE INDEX idx_attachments_activity_id ON attachments (activity_id);
+
+-- ── Role permissions ────────────────────────────────────────────────────────
+
+CREATE TABLE role_permissions (
+    role                 TEXT PRIMARY KEY REFERENCES roles(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    can_read_own_dept    BOOLEAN NOT NULL DEFAULT true,
+    can_write_own_dept   BOOLEAN NOT NULL DEFAULT false,
+    can_read_all_depts   BOOLEAN NOT NULL DEFAULT false,
+    can_write_all_depts  BOOLEAN NOT NULL DEFAULT false,
+    mail_send_scope      TEXT    NOT NULL DEFAULT 'none'
+        CHECK (mail_send_scope IN ('none', 'own', 'same_dept', 'all')),
+    mail_templates_scope TEXT    NOT NULL DEFAULT 'none'
+        CHECK (mail_templates_scope IN ('none', 'own_dept', 'all')),
+    user_dept_scope      TEXT    NOT NULL DEFAULT 'none'
+        CHECK (user_dept_scope IN ('none', 'own', 'own_dept', 'all')),
+    user_role_scope      TEXT    NOT NULL DEFAULT 'none'
+        CHECK (user_role_scope IN ('none', 'own', 'own_dept', 'all'))
+);
+
+-- Cross-department access per role (beyond own department)
+CREATE TABLE role_dept_access (
+    role       TEXT NOT NULL REFERENCES roles(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    department TEXT NOT NULL REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    can_read   BOOLEAN NOT NULL DEFAULT false,
+    can_write  BOOLEAN NOT NULL DEFAULT false,
+    PRIMARY KEY (role, department)
+);
+
+-- Seed default role permissions
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) VALUES
+    ('admin',    true, true, true,  true,  'all', 'all', 'all', 'all'),
+    ('Mitglied', true, true, false, false, 'own', 'none', 'none', 'none');
+
+-- Triggers for departments & roles updated_at
+CREATE TRIGGER trg_departments_updated_at
+    BEFORE UPDATE ON departments
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TRIGGER trg_roles_updated_at
+    BEFORE UPDATE ON roles
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
