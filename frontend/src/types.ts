@@ -125,13 +125,11 @@ export interface Attachment {
 export interface DepartmentRecord {
 	name: string;
 	color: string;
-	sort_order: number;
 }
 
 export interface RoleRecord {
 	name: string;
 	color: string;
-	sort_order: number;
 }
 
 export interface RolePermission {

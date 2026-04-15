@@ -19,9 +19,9 @@ const error = ref<string | null>(null)
 const saving = ref(false)
 
 const editingName = ref<string | null>(null)
-const editForm = ref({ name: '', color: '#6b7280', sort_order: 0 })
+const editForm = ref({ name: '', color: '#6b7280' })
 const showAdd = ref(false)
-const addForm = ref({ name: '', color: '#6b7280', sort_order: 0 })
+const addForm = ref({ name: '', color: '#6b7280' })
 
 // ── Delete flow state ───────────────────────────────────────────────────────
 const deleteTarget = ref<string | null>(null)
@@ -46,9 +46,9 @@ onMounted(async () => {
   }
 })
 
-function startEdit(dept: { name: string; color: string; sort_order: number }) {
+function startEdit(dept: { name: string; color: string }) {
   editingName.value = dept.name
-  editForm.value = { name: dept.name, color: dept.color, sort_order: dept.sort_order }
+  editForm.value = { name: dept.name, color: dept.color }
 }
 
 function cancelEdit() {
@@ -77,7 +77,7 @@ async function handleAdd() {
   try {
     await createDepartment(addForm.value)
     await fetchDepartments()
-    addForm.value = { name: '', color: '#6b7280', sort_order: departments.value.length }
+    addForm.value = { name: '', color: '#6b7280' }
     showAdd.value = false
   } catch (e) {
     error.value = String(e)
@@ -153,7 +153,6 @@ async function confirmDelete() {
               <div class="edit-row">
                 <input v-model="editForm.name" class="form-input" placeholder="Name" required />
                 <input v-model="editForm.color" type="color" class="color-input" />
-                <input v-model.number="editForm.sort_order" type="number" class="sort-input" placeholder="#" />
               </div>
               <div class="edit-actions">
                 <button type="submit" class="btn-save" :disabled="saving">Speichern</button>
@@ -166,7 +165,6 @@ async function confirmDelete() {
               <span class="color-dot" :style="{ background: dept.color }" />
               <span class="item-name">{{ dept.name }}</span>
               <span v-if="isDefault(dept.name)" class="protected-hint">Standard</span>
-              <span class="item-sort">#{{ dept.sort_order }}</span>
               <div class="item-actions">
                 <button class="btn-edit" @click="startEdit(dept)">Bearbeiten</button>
                 <button v-if="!isDefault(dept.name)" class="btn-delete" @click="startDelete(dept.name)">Löschen</button>
@@ -181,7 +179,6 @@ async function confirmDelete() {
           <div class="edit-row">
             <input v-model="addForm.name" class="form-input" placeholder="Neuer Name" required />
             <input v-model="addForm.color" type="color" class="color-input" />
-            <input v-model.number="addForm.sort_order" type="number" class="sort-input" placeholder="#" />
           </div>
           <div class="edit-actions">
             <button type="submit" class="btn-save" :disabled="saving">Hinzufügen</button>
@@ -189,7 +186,7 @@ async function confirmDelete() {
           </div>
         </form>
       </div>
-      <button v-else class="btn-add" @click="showAdd = true; addForm.sort_order = departments.length">
+      <button v-else class="btn-add" @click="showAdd = true">
         + Stufe hinzufügen
       </button>
     </template>
@@ -283,7 +280,6 @@ async function confirmDelete() {
 .item-row { display: flex; align-items: center; gap: 12px; }
 .color-dot { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(0,0,0,0.1); }
 .item-name { font-weight: 600; font-size: 0.95rem; color: #1a202c; flex: 1; }
-.item-sort { font-size: 0.78rem; color: #9ca3af; min-width: 30px; }
 .item-actions { display: flex; gap: 6px; }
 .protected-hint { font-size: 0.75rem; color: #9ca3af; font-style: italic; }
 
@@ -295,7 +291,6 @@ async function confirmDelete() {
 }
 .form-input:focus { border-color: #1a56db; }
 .color-input { width: 36px; height: 36px; padding: 0; border: 1.5px solid #d1d5db; border-radius: 6px; cursor: pointer; }
-.sort-input { width: 56px; padding: 7px 6px; border: 1.5px solid #d1d5db; border-radius: 6px; font-size: 0.88rem; text-align: center; }
 .edit-actions { display: flex; gap: 8px; }
 
 .btn-edit, .btn-cancel {

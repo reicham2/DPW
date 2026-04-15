@@ -5,7 +5,6 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE departments (
     name       TEXT PRIMARY KEY,
     color      TEXT NOT NULL DEFAULT '#6b7280',
-    sort_order INT  NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -13,17 +12,16 @@ CREATE TABLE departments (
 CREATE TABLE roles (
     name       TEXT PRIMARY KEY,
     color      TEXT NOT NULL DEFAULT '#6b7280',
-    sort_order INT  NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO departments (name, color, sort_order) VALUES
-    ('Allgemein', '#6b7280', 0);
+INSERT INTO departments (name, color) VALUES
+    ('Allgemein', '#6b7280');
 
-INSERT INTO roles (name, color, sort_order) VALUES
-    ('admin',    '#92400e', 0),
-    ('Mitglied', '#6b7280', 1);
+INSERT INTO roles (name, color) VALUES
+    ('admin',    '#92400e'),
+    ('Mitglied', '#6b7280');
 
 -- ── Core tables ─────────────────────────────────────────────────────────────
 

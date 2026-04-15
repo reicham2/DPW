@@ -43,9 +43,9 @@ const saving = ref<string | null>(null)
 
 // Role CRUD
 const editingRole = ref<string | null>(null)
-const editForm = ref({ name: '', color: '#6b7280', sort_order: 0 })
+const editForm = ref({ name: '', color: '#6b7280' })
 const showAdd = ref(false)
-const addForm = ref({ name: '', color: '#6b7280', sort_order: 0 })
+const addForm = ref({ name: '', color: '#6b7280' })
 
 // Collapsible role settings
 const openRole = ref<string | null>(null)
@@ -77,9 +77,9 @@ function toggleOpen(name: string) {
 
 // ── Role CRUD ───────────────────────────────────────────────────────────────
 
-function startEditRole(r: { name: string; color: string; sort_order: number }) {
+function startEditRole(r: { name: string; color: string }) {
   editingRole.value = r.name
-  editForm.value = { name: r.name, color: r.color, sort_order: r.sort_order }
+  editForm.value = { name: r.name, color: r.color }
 }
 
 async function saveRoleEdit() {
@@ -101,7 +101,7 @@ async function handleAddRole() {
   try {
     await createRole(addForm.value)
     await fetchAll()
-    addForm.value = { name: '', color: '#6b7280', sort_order: roles.value.length }
+    addForm.value = { name: '', color: '#6b7280' }
     showAdd.value = false
   } catch (e) { error.value = String(e) }
   finally { saving.value = null }
@@ -188,7 +188,6 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
               <div class="edit-row">
                 <input v-model="editForm.name" class="form-input" required />
                 <input v-model="editForm.color" type="color" class="color-input" />
-                <input v-model.number="editForm.sort_order" type="number" class="sort-input" />
               </div>
               <div class="edit-actions">
                 <button type="submit" class="btn-save" :disabled="saving === 'role-edit'">Speichern</button>
@@ -322,7 +321,6 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
           <div class="edit-row">
             <input v-model="addForm.name" class="form-input" placeholder="Neuer Rollenname" required />
             <input v-model="addForm.color" type="color" class="color-input" />
-            <input v-model.number="addForm.sort_order" type="number" class="sort-input" />
           </div>
           <div class="edit-actions">
             <button type="submit" class="btn-save" :disabled="saving === 'role-add'">Hinzufügen</button>
@@ -330,7 +328,7 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
           </div>
         </form>
       </div>
-      <button v-else class="btn-add" @click="showAdd = true; addForm.sort_order = roles.length">
+      <button v-else class="btn-add" @click="showAdd = true">
         + Rolle hinzufügen
       </button>
     </template>
@@ -416,7 +414,6 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
 }
 .form-input:focus { border-color: #1a56db; }
 .color-input { width: 36px; height: 36px; padding: 0; border: 1.5px solid #d1d5db; border-radius: 6px; cursor: pointer; }
-.sort-input { width: 56px; padding: 7px 6px; border: 1.5px solid #d1d5db; border-radius: 6px; font-size: 0.88rem; text-align: center; }
 .edit-actions { display: flex; gap: 8px; }
 
 .btn-edit, .btn-cancel {

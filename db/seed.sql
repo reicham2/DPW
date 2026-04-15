@@ -4,18 +4,18 @@
 -- ============================================================================
 
 -- ── Stufen & Rollen ─────────────────────────────────────────────────────────
-INSERT INTO departments (name, color, sort_order) VALUES
-    ('Leiter', '#065f46', 1),
-    ('Pio',    '#6b7280', 2),
-    ('Pfadi',  '#1e40af', 3),
-    ('Wölfe',  '#92400e', 4),
-    ('Biber',  '#7c3aed', 5)
+INSERT INTO departments (name, color) VALUES
+    ('Leiter', '#065f46'),
+    ('Pio',    '#6b7280'),
+    ('Pfadi',  '#1e40af'),
+    ('Wölfe',  '#92400e'),
+    ('Biber',  '#7c3aed')
 ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO roles (name, color, sort_order) VALUES
-    ('Stufenleiter',  '#1e40af', 1),
-    ('Leiter',        '#065f46', 2),
-    ('Pio',           '#6b7280', 3)
+INSERT INTO roles (name, color) VALUES
+    ('Stufenleiter',  '#1e40af'),
+    ('Leiter',        '#065f46'),
+    ('Pio',           '#6b7280')
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) VALUES

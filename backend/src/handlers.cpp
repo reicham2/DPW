@@ -242,7 +242,7 @@ void handle_get_departments(HttpRes *res, HttpReq * /*req*/, Database &db)
         auto depts = db.list_departments();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &d : depts)
-            arr.push_back({{"name", d.name}, {"color", d.color}, {"sort_order", d.sort_order}});
+            arr.push_back({{"name", d.name}, {"color", d.color}});
         send_json(res, 200, arr.dump());
     }
     catch (std::exception &e)
@@ -1842,11 +1842,10 @@ void handle_post_department(HttpRes *res, HttpReq *req, Database &db)
         std::string name = j.value("name", "");
         if (name.empty()) { send_json(res, 400, R"({"error":"name erforderlich"})"); return; }
         std::string color = j.value("color", "#6b7280");
-        int sort_order = j.value("sort_order", 0);
         try {
-            auto d = db.create_department(name, color, sort_order);
+            auto d = db.create_department(name, color);
             if (!d) { send_json(res, 409, R"({"error":"Abteilung existiert bereits"})"); return; }
-            send_json(res, 201, nlohmann::json{{"name", d->name}, {"color", d->color}, {"sort_order", d->sort_order}}.dump());
+            send_json(res, 201, nlohmann::json{{"name", d->name}, {"color", d->color}}.dump());
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });
@@ -1868,11 +1867,10 @@ void handle_patch_department(HttpRes *res, HttpReq *req, Database &db)
         if (!j.is_object()) { send_json(res, 400, R"({"error":"Ungültiges JSON"})"); return; }
         std::string new_name = j.value("name", name);
         std::string color = j.value("color", "#6b7280");
-        int sort_order = j.value("sort_order", 0);
         try {
-            auto d = db.update_department(name, new_name, color, sort_order);
+            auto d = db.update_department(name, new_name, color);
             if (!d) { send_json(res, 404, R"({"error":"Abteilung nicht gefunden"})"); return; }
-            send_json(res, 200, nlohmann::json{{"name", d->name}, {"color", d->color}, {"sort_order", d->sort_order}}.dump());
+            send_json(res, 200, nlohmann::json{{"name", d->name}, {"color", d->color}}.dump());
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });
@@ -1936,7 +1934,7 @@ void handle_get_roles(HttpRes *res, HttpReq *req, Database &db)
         auto roles = db.list_roles();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &r : roles)
-            arr.push_back({{"name", r.name}, {"color", r.color}, {"sort_order", r.sort_order}});
+            arr.push_back({{"name", r.name}, {"color", r.color}});
         send_json(res, 200, arr.dump());
     }
     catch (std::exception &e)
@@ -1961,11 +1959,10 @@ void handle_post_role(HttpRes *res, HttpReq *req, Database &db)
         std::string name = j.value("name", "");
         if (name.empty()) { send_json(res, 400, R"({"error":"name erforderlich"})"); return; }
         std::string color = j.value("color", "#6b7280");
-        int sort_order = j.value("sort_order", 0);
         try {
-            auto r = db.create_role(name, color, sort_order);
+            auto r = db.create_role(name, color);
             if (!r) { send_json(res, 409, R"({"error":"Rolle existiert bereits"})"); return; }
-            send_json(res, 201, nlohmann::json{{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}}.dump());
+            send_json(res, 201, nlohmann::json{{"name", r->name}, {"color", r->color}}.dump());
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });
@@ -1994,11 +1991,10 @@ void handle_patch_role(HttpRes *res, HttpReq *req, Database &db)
         if (!j.is_object()) { send_json(res, 400, R"({"error":"Ungültiges JSON"})"); return; }
         std::string new_name = j.value("name", name);
         std::string color = j.value("color", "#6b7280");
-        int sort_order = j.value("sort_order", 0);
         try {
-            auto r = db.update_role(name, new_name, color, sort_order);
+            auto r = db.update_role(name, new_name, color);
             if (!r) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
-            send_json(res, 200, nlohmann::json{{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}}.dump());
+            send_json(res, 200, nlohmann::json{{"name", r->name}, {"color", r->color}}.dump());
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });

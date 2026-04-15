@@ -1069,7 +1069,6 @@ DepartmentRecord Database::row_to_department(PGresult *res, int row)
     DepartmentRecord d;
     d.name = col("name") ? col("name") : "";
     d.color = col("color") ? col("color") : "#6b7280";
-    d.sort_order = col("sort_order") ? std::stoi(col("sort_order")) : 0;
     return d;
 }
 
@@ -1077,7 +1076,7 @@ std::vector<DepartmentRecord> Database::list_departments()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT name, color, sort_order FROM departments ORDER BY sort_order, name");
+                           "SELECT name, color FROM departments ORDER BY name");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
         std::string err = PQresultErrorMessage(res);
@@ -1093,15 +1092,14 @@ std::vector<DepartmentRecord> Database::list_departments()
     return out;
 }
 
-std::optional<DepartmentRecord> Database::create_department(const std::string &name, const std::string &color, int sort_order)
+std::optional<DepartmentRecord> Database::create_department(const std::string &name, const std::string &color)
 {
     ensure_connected();
-    std::string so = std::to_string(sort_order);
-    const char *params[3] = {name.c_str(), color.c_str(), so.c_str()};
+    const char *params[2] = {name.c_str(), color.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO departments (name, color, sort_order) VALUES ($1, $2, $3::int) "
-                                 "RETURNING name, color, sort_order",
-                                 3, nullptr, params, nullptr, nullptr, 0);
+                                 "INSERT INTO departments (name, color) VALUES ($1, $2) "
+                                 "RETURNING name, color",
+                                 2, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         PQclear(res);
@@ -1113,15 +1111,14 @@ std::optional<DepartmentRecord> Database::create_department(const std::string &n
 }
 
 std::optional<DepartmentRecord> Database::update_department(const std::string &name, const std::string &new_name,
-                                                            const std::string &color, int sort_order)
+                                                            const std::string &color)
 {
     ensure_connected();
-    std::string so = std::to_string(sort_order);
-    const char *params[4] = {new_name.c_str(), color.c_str(), so.c_str(), name.c_str()};
+    const char *params[3] = {new_name.c_str(), color.c_str(), name.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "UPDATE departments SET name = $1, color = $2, sort_order = $3::int WHERE name = $4 "
-                                 "RETURNING name, color, sort_order",
-                                 4, nullptr, params, nullptr, nullptr, 0);
+                                 "UPDATE departments SET name = $1, color = $2 WHERE name = $3 "
+                                 "RETURNING name, color",
+                                 3, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         PQclear(res);
@@ -1261,7 +1258,6 @@ RoleRecord Database::row_to_role(PGresult *res, int row)
     RoleRecord r;
     r.name = col("name") ? col("name") : "";
     r.color = col("color") ? col("color") : "#6b7280";
-    r.sort_order = col("sort_order") ? std::stoi(col("sort_order")) : 0;
     return r;
 }
 
@@ -1269,7 +1265,7 @@ std::vector<RoleRecord> Database::list_roles()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT name, color, sort_order FROM roles ORDER BY sort_order, name");
+                           "SELECT name, color FROM roles ORDER BY name");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
         std::string err = PQresultErrorMessage(res);
@@ -1285,18 +1281,17 @@ std::vector<RoleRecord> Database::list_roles()
     return out;
 }
 
-std::optional<RoleRecord> Database::create_role(const std::string &name, const std::string &color, int sort_order)
+std::optional<RoleRecord> Database::create_role(const std::string &name, const std::string &color)
 {
     ensure_connected();
     exec_or_throw(conn_, "BEGIN", "create_role BEGIN");
     try
     {
-        std::string so = std::to_string(sort_order);
-        const char *params[3] = {name.c_str(), color.c_str(), so.c_str()};
+        const char *params[2] = {name.c_str(), color.c_str()};
         PGresult *res = PQexecParams(conn_,
-                                     "INSERT INTO roles (name, color, sort_order) VALUES ($1, $2, $3::int) "
-                                     "RETURNING name, color, sort_order",
-                                     3, nullptr, params, nullptr, nullptr, 0);
+                                     "INSERT INTO roles (name, color) VALUES ($1, $2) "
+                                     "RETURNING name, color",
+                                     2, nullptr, params, nullptr, nullptr, 0);
         if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
         {
             PQclear(res);
@@ -1324,15 +1319,14 @@ std::optional<RoleRecord> Database::create_role(const std::string &name, const s
 }
 
 std::optional<RoleRecord> Database::update_role(const std::string &name, const std::string &new_name,
-                                                const std::string &color, int sort_order)
+                                                const std::string &color)
 {
     ensure_connected();
-    std::string so = std::to_string(sort_order);
-    const char *params[4] = {new_name.c_str(), color.c_str(), so.c_str(), name.c_str()};
+    const char *params[3] = {new_name.c_str(), color.c_str(), name.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "UPDATE roles SET name = $1, color = $2, sort_order = $3::int WHERE name = $4 "
-                                 "RETURNING name, color, sort_order",
-                                 4, nullptr, params, nullptr, nullptr, 0);
+                                 "UPDATE roles SET name = $1, color = $2 WHERE name = $3 "
+                                 "RETURNING name, color",
+                                 3, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         PQclear(res);

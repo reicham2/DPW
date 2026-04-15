@@ -44,14 +44,12 @@ struct DepartmentRecord
 {
     std::string name;
     std::string color;
-    int sort_order;
 };
 
 struct RoleRecord
 {
     std::string name;
     std::string color;
-    int sort_order;
 };
 
 struct RolePermission
@@ -151,9 +149,9 @@ public:
 
     // Departments CRUD
     std::vector<DepartmentRecord> list_departments();
-    std::optional<DepartmentRecord> create_department(const std::string &name, const std::string &color, int sort_order);
+    std::optional<DepartmentRecord> create_department(const std::string &name, const std::string &color);
     std::optional<DepartmentRecord> update_department(const std::string &name, const std::string &new_name,
-                                                      const std::string &color, int sort_order);
+                                                      const std::string &color);
     bool delete_department(const std::string &name);
     bool delete_department_with_transfers(const std::string &name,
                                           const std::string &transfer_activities_to,
@@ -163,9 +161,9 @@ public:
 
     // Roles CRUD
     std::vector<RoleRecord> list_roles();
-    std::optional<RoleRecord> create_role(const std::string &name, const std::string &color, int sort_order);
+    std::optional<RoleRecord> create_role(const std::string &name, const std::string &color);
     std::optional<RoleRecord> update_role(const std::string &name, const std::string &new_name,
-                                          const std::string &color, int sort_order);
+                                          const std::string &color);
     bool delete_role(const std::string &name);
 
     // Role permissions
