@@ -13,10 +13,8 @@
 				<div class="avatar-dropdown-header">
 					<span class="avatar-dropdown-name">{{ user.display_name }}</span>
 					<div class="avatar-dropdown-badges">
-						<span class="role-badge" :class="roleBadgeClass(user.role)">{{ user.role }}</span>
-						<span v-if="user.department" class="avatar-dropdown-dept">{{
-							user.department
-						}}</span>
+						<RoleBadge :role="user.role" />
+						<DepartmentBadge :department="user.department" />
 					</div>
 					<span class="avatar-dropdown-email">{{ user.email }}</span>
 				</div>
@@ -41,11 +39,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { user, login, logout } from '../composables/useAuth';
-import type { UserRole } from '../types';
+import { user, logout } from '../composables/useAuth';
+import RoleBadge from './RoleBadge.vue';
+import DepartmentBadge from './DepartmentBadge.vue';
 
 const open = ref(false);
-const loggingIn = ref(false);
 const wrapRef = ref<HTMLElement | null>(null);
 
 const initials = computed(() => {
@@ -57,15 +55,6 @@ const initials = computed(() => {
 		.map((w) => w[0].toUpperCase())
 		.join('');
 });
-
-async function handleLogin() {
-	loggingIn.value = true;
-	try {
-		await login();
-	} finally {
-		loggingIn.value = false;
-	}
-}
 
 async function handleLogout() {
 	open.value = false;
@@ -80,20 +69,6 @@ function onClickOutside(e: MouseEvent) {
 
 onMounted(() => document.addEventListener('mousedown', onClickOutside));
 onUnmounted(() => document.removeEventListener('mousedown', onClickOutside));
-
-function roleBadgeClass(role: UserRole) {
-	if (role === 'admin') {
-		return 'badge-admin';
-	}
-
-	const normalized = role
-		.toLowerCase()
-		.normalize('NFD')
-		.replace(/[\u0300-\u036f]/g, '')
-		.replace(/[^a-z0-9]+/g, '-');
-
-	return `badge-role-${normalized}`;
-}
 </script>
 
 <style scoped>
@@ -165,23 +140,7 @@ function roleBadgeClass(role: UserRole) {
 	gap: 6px;
 	align-items: center;
 	margin-top: 2px;
-}
-.avatar-dropdown-badges .role-badge {
-	display: inline-block;
-	font-size: 0.72rem;
-	padding: 1px 7px;
-	margin: 0;
-}
-.avatar-dropdown-dept {
-	display: inline-block;
-	font-size: 0.72rem;
-	font-weight: 600;
-	background: #e8f0fe;
-	color: #1a56db;
-	border-radius: 4px;
-	padding: 1px 7px;
-	margin-top: 0;
-	width: fit-content;
+	flex-wrap: wrap;
 }
 .avatar-dropdown-email {
 	font-size: 0.78rem;

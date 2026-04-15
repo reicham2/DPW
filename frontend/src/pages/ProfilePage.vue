@@ -22,22 +22,19 @@
 
         <div class="form-group">
           <label class="form-label" for="department">Stufe</label>
-          <select
+          <BadgeSelect
             v-if="canChangeDepartment"
-            id="department"
-            v-model="form.department"
-            class="form-input"
-          >
-            <option value="">Keine Angabe</option>
-            <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
-          </select>
-          <input
-            v-else
-            class="form-input form-input--readonly"
-            type="text"
-            :value="form.department || 'Keine Angabe'"
-            readonly
+            kind="department"
+            :items="deptItems"
+            allow-empty
+            placeholder="Keine Angabe"
+            :model-value="form.department || null"
+            @update:model-value="(v) => form.department = (v ?? '')"
           />
+          <div v-else class="profile-dept-readonly">
+            <DepartmentBadge v-if="form.department" :department="form.department" />
+            <span v-else class="profile-dept-empty">Keine Angabe</span>
+          </div>
           <p v-if="!canChangeDepartment" class="form-hint">
             Stufe kann nur von einem Admin geändert werden.
           </p>
@@ -64,7 +61,9 @@ import { ref, computed, onMounted } from 'vue'
 import { user, getIdToken } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from '../components/ErrorAlert.vue'
-import type { Department, User } from '../types'
+import BadgeSelect from '../components/BadgeSelect.vue'
+import DepartmentBadge from '../components/DepartmentBadge.vue'
+import type { User } from '../types'
 
 const { myPermissions, fetchMyPermissions, departments: deptRecords, fetchDepartments } = usePermissions()
 
@@ -73,7 +72,7 @@ const canChangeDepartment = computed(() => {
   return scope === 'own' || scope === 'own_dept' || scope === 'all'
 })
 
-const departments = computed(() => deptRecords.value.map(d => d.name))
+const deptItems = computed(() => deptRecords.value.map(d => ({ value: d.name })))
 
 const form = ref({
   display_name: user.value?.display_name ?? '',
@@ -231,6 +230,19 @@ async function save() {
   font-size: 0.78rem;
   color: #9ca3af;
   margin: 2px 0 0;
+}
+.profile-dept-readonly {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+.profile-dept-empty {
+  color: #6b7280;
+  font-size: 0.88rem;
 }
 .profile-error {
   color: #dc2626;

@@ -4,6 +4,9 @@ import { user as currentUser, getIdToken } from '../composables/useAuth'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import DepartmentManager from '../components/DepartmentManager.vue'
 import RoleManager from '../components/RoleManager.vue'
+import RoleBadge from '../components/RoleBadge.vue'
+import DepartmentBadge from '../components/DepartmentBadge.vue'
+import BadgeSelect from '../components/BadgeSelect.vue'
 import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
 import type { User, Department, UserRole } from '../types'
@@ -193,11 +196,8 @@ function closeDeleteConfirm() {
   deleteTarget.value = null
 }
 
-function roleBadgeStyle(role: UserRole) {
-  const rec = roleRecords.value.find(r => r.name === role)
-  if (!rec) return {}
-  return { background: rec.color + '22', color: rec.color }
-}
+const deptItems = computed(() => deptRecords.value.map(d => ({ value: d.name })))
+const roleItems = computed(() => assignableRoles.value.map(name => ({ value: name })))
 </script>
 
 <template>
@@ -236,7 +236,11 @@ function roleBadgeStyle(role: UserRole) {
   <main v-if="activeTab === 'users'" class="main">
     <div class="tab-header">
       <div class="tab-header-left">
-        <span v-if="!canSeeAllDepts" class="dept-badge">Stufe: {{ currentUser?.department ?? '—' }}</span>
+        <template v-if="!canSeeAllDepts">
+          <span class="dept-label">Stufe:</span>
+          <DepartmentBadge v-if="currentUser?.department" :department="currentUser.department" />
+          <span v-else>—</span>
+        </template>
       </div>
       <span class="user-count">{{ filtered.length }} Benutzer</span>
     </div>
@@ -249,17 +253,20 @@ function roleBadgeStyle(role: UserRole) {
         <label class="filter-label">Stufe:</label>
         <div class="dept-pills">
           <button
-            class="dept-pill"
-            :class="{ 'dept-pill--active': filterDept === 'Alle' }"
+            type="button"
+            class="dept-pill-btn"
+            :class="{ 'dept-pill-btn--active': filterDept === 'Alle' }"
             @click="filterDept = 'Alle'"
           >Alle</button>
           <button
             v-for="d in DEPARTMENTS"
             :key="d"
-            class="dept-pill"
-            :class="{ 'dept-pill--active': filterDept === d }"
+            type="button"
+            class="dept-pill-btn dept-pill-btn--bare"
             @click="filterDept = d as any"
-          >{{ d }}</button>
+          >
+            <DepartmentBadge :department="d" :active="filterDept === d" />
+          </button>
         </div>
       </div>
 
@@ -279,9 +286,12 @@ function roleBadgeStyle(role: UserRole) {
             <tr v-for="u in filtered" :key="u.id">
               <td class="td-name">{{ u.display_name }}</td>
               <td class="td-email">{{ u.email }}</td>
-              <td>{{ u.department ?? '—' }}</td>
               <td>
-                <span class="role-badge" :style="roleBadgeStyle(u.role)">{{ u.role }}</span>
+                <DepartmentBadge v-if="u.department" :department="u.department" />
+                <span v-else>—</span>
+              </td>
+              <td>
+                <RoleBadge :role="u.role" />
               </td>
               <td>
                 <div class="item-actions">
@@ -320,19 +330,28 @@ function roleBadgeStyle(role: UserRole) {
 
         <div class="form-group">
           <label class="form-label">Stufe</label>
-          <select v-if="canEditDepts" v-model="editForm.department" class="form-input">
-            <option value="">Keine Angabe</option>
-            <option v-for="d in DEPARTMENTS" :key="d" :value="d">{{ d }}</option>
-          </select>
+          <BadgeSelect
+            v-if="canEditDepts"
+            kind="department"
+            :items="deptItems"
+            allow-empty
+            placeholder="Keine Angabe"
+            :model-value="editForm.department || null"
+            @update:model-value="(v: string | null) => editForm.department = (v ?? '') as any"
+          />
           <input v-else class="form-input form-input--readonly" type="text"
             :value="editForm.department || 'Keine Angabe'" readonly />
         </div>
 
         <div v-if="canEditRoles" class="form-group">
           <label class="form-label">Rolle</label>
-          <select v-model="editForm.role" class="form-input">
-            <option v-for="r in assignableRoles" :key="r" :value="r">{{ r }}</option>
-          </select>
+          <BadgeSelect
+            kind="role"
+            :items="roleItems"
+            placeholder="Rolle wählen…"
+            :model-value="editForm.role"
+            @update:model-value="(v: string | null) => editForm.role = (v ?? '') as any"
+          />
         </div>
 
         <ErrorAlert :error="saveError" />
@@ -463,8 +482,9 @@ function roleBadgeStyle(role: UserRole) {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
 }
-.dept-pill {
+.dept-pill-btn {
   padding: 4px 12px;
   border-radius: 999px;
   border: 1.5px solid #d1d5db;
@@ -474,11 +494,22 @@ function roleBadgeStyle(role: UserRole) {
   color: #374151;
   transition: background 0.12s, border-color 0.12s;
 }
-.dept-pill:hover { background: #f3f4f6; }
-.dept-pill--active {
+.dept-pill-btn:hover { background: #f3f4f6; }
+.dept-pill-btn--active {
   background: #1a56db;
   border-color: #1a56db;
   color: #fff;
+}
+.dept-pill-btn--bare {
+  padding: 2px;
+  border: none;
+  background: transparent;
+}
+.dept-pill-btn--bare:hover { background: transparent; }
+.dept-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
 }
 
 /* Table */
@@ -514,15 +545,6 @@ function roleBadgeStyle(role: UserRole) {
 .td-name { font-weight: 500; }
 .td-email { color: #6b7280; font-size: 0.85rem; }
 .td-empty { text-align: center; color: #9ca3af; padding: 32px; }
-
-/* Role badges */
-.role-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
 
 .item-actions {
   display: flex;

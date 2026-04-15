@@ -2002,23 +2002,15 @@ void handle_delete_department(HttpRes *res, HttpReq *req, Database &db)
 }
 
 // GET /admin/roles
+//
+// Any authenticated user can list roles — role name + color are required
+// throughout the UI to render consistent role badges (avatar dropdown, etc.).
+// CRUD on roles remains gated via the per-handler permission checks below.
 void handle_get_roles(HttpRes *res, HttpReq *req, Database &db)
 {
     TokenClaims claims;
     if (!require_auth(res, req, claims))
         return;
-    auto current_user = resolve_user(db, claims);
-    if (!current_user)
-    {
-        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-        return;
-    }
-    auto perm = db.get_role_permission(current_user->role);
-    if (!perm || perm->user_role_scope == "none")
-    {
-        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-        return;
-    }
     try
     {
         auto roles = db.list_roles();

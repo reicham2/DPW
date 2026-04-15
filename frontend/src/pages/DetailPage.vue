@@ -8,6 +8,8 @@ import { user } from '../composables/useAuth';
 import { wsSend, wsRegister } from '../composables/useWebSocket';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
+import DepartmentBadge from '../components/DepartmentBadge.vue';
+import BadgeSelect from '../components/BadgeSelect.vue';
 
 
 const route = useRoute();
@@ -483,32 +485,11 @@ function onLocationBlur() {
 }
 
 // ---- Department dropdown ----------------------------------------------------
-const departmentSearch = ref('');
-const showDepartmentDropdown = ref(false);
-
 const editWritableDepts = computed(() => writableDepts(user.value?.department));
 const deptFieldDisabled = computed(() => editWritableDepts.value.length <= 1);
-
-const filteredDepartments = computed(() => {
-	const q = departmentSearch.value.toLowerCase();
-	return editWritableDepts.value.filter(
-		(dep) => q === '' || dep.toLowerCase().includes(q),
-	);
-});
-
-function selectDepartment(dep: string) {
-	editDepartment.value = dep as Department;
-	departmentSearch.value = '';
-	showDepartmentDropdown.value = false;
-	(document.activeElement as HTMLElement)?.blur();
-}
-
-function onDepartmentBlur() {
-	setTimeout(() => {
-		showDepartmentDropdown.value = false;
-		departmentSearch.value = '';
-	}, 200);
-}
+const editDeptItems = computed(() =>
+	editWritableDepts.value.map((d) => ({ value: d })),
+);
 
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
@@ -1062,7 +1043,10 @@ async function doDelete() {
 					</div>
 					<div class="detail-field">
 						<span class="detail-label">Stufe</span>
-						<span class="detail-value">{{ activity.department || '—' }}</span>
+						<span class="detail-value">
+							<DepartmentBadge v-if="activity.department" :department="activity.department" />
+							<template v-else>—</template>
+						</span>
 					</div>
 				</div>
 			</div>
@@ -1310,27 +1294,14 @@ async function doDelete() {
 				</div>
 				<div class="form-group">
 					<label>Stufe</label>
-					<div class="user-search-wrapper">
-						<input
-							type="text"
-							:value="editDepartment || departmentSearch"
-							@input="departmentSearch = ($event.target as HTMLInputElement).value; editDepartment = '' as any; showDepartmentDropdown = true; markDirty('department')"
-							@focus="showDepartmentDropdown = true"
-							@blur="onDepartmentBlur"
-							placeholder="Stufe wählen…"
-							:disabled="isLockedByOther('location') || deptFieldDisabled"
-						/>
-						<div v-if="showDepartmentDropdown && filteredDepartments.length" class="user-dropdown">
-							<div
-								v-for="dep in filteredDepartments"
-								:key="dep"
-								class="user-dropdown-item"
-								@mousedown.prevent="selectDepartment(dep)"
-							>
-								{{ dep }}
-							</div>
-						</div>
-					</div>
+					<BadgeSelect
+						kind="department"
+						:items="editDeptItems"
+						placeholder="Stufe wählen…"
+						:disabled="isLockedByOther('location') || deptFieldDisabled"
+						:model-value="editDepartment || null"
+						@update:model-value="(v) => { editDepartment = (v ?? '') as Department | ''; markDirty('department'); }"
+					/>
 					<span v-if="savedFields['department']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['department']">💾</span>
 				</div>
 			</div>
@@ -1679,7 +1650,10 @@ async function doDelete() {
 				</div>
 				<div class="activity-preview-popup__row">
 					<span class="detail-label">Stufe</span>
-					<span>{{ previewActivity.department || '—' }}</span>
+					<span>
+						<DepartmentBadge v-if="previewActivity.department" :department="previewActivity.department" />
+						<template v-else>—</template>
+					</span>
 				</div>
 				<div class="activity-preview-popup__row">
 					<span class="detail-label">Verantwortlich</span>

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from '../components/ErrorAlert.vue'
+import BadgeSelect from '../components/BadgeSelect.vue'
 import { user } from '../composables/useAuth'
 import type { Department } from '../types'
 
@@ -22,6 +23,7 @@ const loaded     = ref(false)
 
 const availableDepts = computed(() => writableDepts(user.value?.department))
 const onlyOneDept = computed(() => availableDepts.value.length === 1)
+const availableDeptItems = computed(() => availableDepts.value.map(d => ({ value: d })))
 
 onMounted(async () => {
   await Promise.all([fetchDepartments(), fetchMyPermissions()])
@@ -101,10 +103,14 @@ async function submit() {
       <!-- Stufe -->
       <div class="form-group">
         <label for="department">Stufe</label>
-        <select id="department" v-model="department" :disabled="onlyOneDept" required>
-          <option value="" disabled>Stufe wählen…</option>
-          <option v-for="dep in availableDepts" :key="dep" :value="dep">{{ dep }}</option>
-        </select>
+        <BadgeSelect
+          kind="department"
+          :items="availableDeptItems"
+          :disabled="onlyOneDept"
+          placeholder="Stufe wählen…"
+          :model-value="department || null"
+          @update:model-value="(v) => department = (v ?? '') as Department | ''"
+        />
       </div>
 
       <!-- Error -->

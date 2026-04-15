@@ -6,6 +6,7 @@ import { useMailTemplates } from '../composables/useMailTemplates';
 import { useContactSearch } from '../composables/useContactSearch';
 import { user } from '../composables/useAuth';
 import ErrorAlert from '../components/ErrorAlert.vue';
+import DepartmentBadge from '../components/DepartmentBadge.vue';
 import type { Activity, Department, SentMail } from '../types';
 
 const route = useRoute()
@@ -439,9 +440,7 @@ function closeMailViewer() {
 			<form class="detail-form" @submit.prevent="handleSend">
 			<!-- Activity info -->
 			<div class="mail-activity-info">
-				<span class="card-dept-badge" v-if="activity.department">{{
-					activity.department
-				}}</span>
+				<DepartmentBadge :department="activity.department" />
 				<strong>{{ activity.title }}</strong>
 			</div>
 

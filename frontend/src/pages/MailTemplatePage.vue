@@ -5,6 +5,7 @@ import { useContactSearch } from '../composables/useContactSearch'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
 import { wsSend, wsRegister, useWebSocket } from '../composables/useWebSocket'
+import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { Department, EditSection } from '../types'
 
 const { departments: deptRecords, fetchDepartments, myPermissions, fetchMyPermissions } = usePermissions()
@@ -493,10 +494,11 @@ function onRecipientKeydown(e: KeyboardEvent) {
       <button
         v-for="dept in visibleDepartments"
         :key="dept"
-        class="filter-tab"
-        :class="{ 'filter-tab--active': activeDept === dept }"
+        class="filter-tab filter-tab--badge"
         @click="loadDept(dept)"
-      >{{ dept }}</button>
+      >
+        <DepartmentBadge :department="dept" :active="activeDept === dept" />
+      </button>
     </div>
 
     <p v-if="loading" class="loading">Laden...</p>

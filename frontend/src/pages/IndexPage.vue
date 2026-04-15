@@ -4,6 +4,7 @@ import { useActivities } from '../composables/useActivities'
 import { usePermissions } from '../composables/usePermissions'
 import { user } from '../composables/useAuth'
 import ActivityList from '../components/ActivityList.vue'
+import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { Activity, Department, MaterialItem } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
 
@@ -244,10 +245,11 @@ const earlierCount = computed(() => {
         <button
           v-for="dep in DEPARTMENTS"
           :key="dep"
-          class="filter-tab"
-          :class="{ 'filter-tab--active': activedept === dep }"
+          class="filter-tab filter-tab--badge"
           @click="activedept = dep"
-        >{{ dep }}</button>
+        >
+          <DepartmentBadge :department="dep" :active="activedept === dep" />
+        </button>
       </div>
     </div>
 

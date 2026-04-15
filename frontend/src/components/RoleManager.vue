@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from './ErrorAlert.vue'
+import RoleBadge from './RoleBadge.vue'
 import type { RolePermission, RoleDeptAccess } from '../types'
 
 const SCOPE_OPTIONS_MAIL_SEND = [
@@ -263,7 +264,7 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
             <div class="role-title-row">
               <div class="role-title-left">
                 <span class="collapse-icon">{{ openRole === r.name ? '▾' : '▸' }}</span>
-                <span class="role-badge" :style="{ background: r.color + '22', color: r.color }">{{ r.name }}</span>
+                <RoleBadge :role="r.name" />
               </div>
               <div v-if="!isProtected(r.name)" class="item-actions" @click.stop>
                 <button class="btn-order" :disabled="!canMoveRole(r.name, 'up') || saving?.startsWith(`role-move-${r.name}`)" @click="handleMoveRole(r.name, 'up')">↑</button>
@@ -397,7 +398,6 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
 .role-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .role-title-left { display: flex; align-items: center; gap: 8px; }
 .collapse-icon { font-size: 0.85rem; color: #6b7280; width: 16px; user-select: none; }
-.role-badge { display: inline-block; padding: 3px 14px; border-radius: 999px; font-size: 0.85rem; font-weight: 700; }
 .protected-hint { font-size: 0.75rem; color: #9ca3af; font-style: italic; }
 .protected-perms-hint { font-size: 0.85rem; color: #9ca3af; font-style: italic; margin: 14px 0 0; }
 .item-actions { display: flex; gap: 6px; }
