@@ -275,7 +275,7 @@ std::vector<Activity> Database::list_activities()
     ensure_connected();
     PGresult *res = PQexec(conn_,
                            "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
-                           "       department::text, material, siko_text, "
+                           "       department, material, siko_text, "
                            "       bad_weather_info, created_at, updated_at "
                            "FROM activities ORDER BY date DESC, start_time");
 
@@ -303,7 +303,7 @@ std::optional<Activity> Database::get_activity_by_id(const std::string &id)
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                 "       department::text, material, siko_text, "
+                                 "       department, material, siko_text, "
                                  "       bad_weather_info, created_at, updated_at "
                                  "FROM activities WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -406,9 +406,9 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
                                    "INSERT INTO activities "
                                    "(title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info) "
                                    "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
-                                   "$8::department_enum, $9::jsonb, $10, $11) "
+                                   "$8, $9::jsonb, $10, $11) "
                                    "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                   "department::text, material, siko_text, "
+                                   "department, material, siko_text, "
                                    "bad_weather_info, created_at, updated_at",
                                    11, nullptr, p2, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
@@ -463,11 +463,11 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                                    "UPDATE activities SET "
                                    "title=$1, date=$2::date, start_time=$3, end_time=$4, "
                                    "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
-                                   "department=$8::department_enum, material=$9::jsonb, "
+                                   "department=$8, material=$9::jsonb, "
                                    "siko_text=$10, bad_weather_info=$11 "
                                    "WHERE id=$12 "
                                    "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                   "department::text, material, siko_text, "
+                                   "department, material, siko_text, "
                                    "bad_weather_info, created_at, updated_at",
                                    12, nullptr, p, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
@@ -529,7 +529,7 @@ UserRecord Database::row_to_user(PGresult *res, int row)
     u.microsoft_oid = col("microsoft_oid") ? col("microsoft_oid") : "";
     u.email = col("email") ? col("email") : "";
     u.display_name = col("display_name") ? col("display_name") : "";
-    u.role = col("role") ? col("role") : "Leiter";
+    u.role = col("role") ? col("role") : "Mitglied";
     u.created_at = col("created_at") ? col("created_at") : "";
     u.updated_at = col("updated_at") ? col("updated_at") : "";
     if (col("department"))
@@ -543,7 +543,7 @@ std::vector<UserRecord> Database::list_users()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at "
+                           "SELECT id, microsoft_oid, email, display_name, department, role, created_at, updated_at "
                            "FROM users ORDER BY display_name");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -579,7 +579,7 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
         on_conflict =
             "ON CONFLICT (microsoft_oid) DO UPDATE "
             "SET email = EXCLUDED.email, role = '" +
-            initial_role + "'::user_role, updated_at = NOW() ";
+            initial_role + "', updated_at = NOW() ";
     }
     else
     {
@@ -591,9 +591,9 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
     std::string sql =
         "INSERT INTO users (microsoft_oid, email, display_name, department, role) "
         "VALUES ($1, $2, $3, '" +
-        initial_dept + "'::department_enum, '" + initial_role + "'::user_role) " +
+        initial_dept + "', '" + initial_role + "') " +
         on_conflict +
-        "RETURNING id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at";
+        "RETURNING id, microsoft_oid, email, display_name, department, role, created_at, updated_at";
 
     const char *params[3] = {oid.c_str(), email.c_str(), display_name.c_str()};
     PGresult *res = PQexecParams(conn_, sql.c_str(), 3, nullptr, params, nullptr, nullptr, 0);
@@ -615,7 +615,7 @@ std::optional<UserRecord> Database::get_user_by_oid(const std::string &oid)
     ensure_connected();
     const char *params[1] = {oid.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at "
+                                 "SELECT id, microsoft_oid, email, display_name, department, role, created_at, updated_at "
                                  "FROM users WHERE microsoft_oid = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
@@ -636,7 +636,7 @@ std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
     ensure_connected();
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at "
+                                 "SELECT id, microsoft_oid, email, display_name, department, role, created_at, updated_at "
                                  "FROM users WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
@@ -661,9 +661,9 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
 
     std::string sql =
         "UPDATE users SET display_name = $1, department = " +
-        (department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
+        (department ? ("'" + dept_str + "'") : std::string("NULL")) +
         " WHERE microsoft_oid = $2 "
-        "RETURNING id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at";
+        "RETURNING id, microsoft_oid, email, display_name, department, role, created_at, updated_at";
 
     const char *params[2] = {display_name.c_str(), oid.c_str()};
     PGresult *res = PQexecParams(conn_, sql.c_str(), 2, nullptr, params, nullptr, nullptr, 0);
@@ -690,10 +690,10 @@ std::optional<UserRecord> Database::update_user_admin(const std::string &id,
 
     std::string sql =
         "UPDATE users SET display_name = $1, department = " +
-        (department ? ("'" + dept_str + "'::department_enum") : std::string("NULL")) +
-        ", role = $2::user_role"
+        (department ? ("'" + dept_str + "'") : std::string("NULL")) +
+        ", role = $2"
         " WHERE id = $3 "
-        "RETURNING id, microsoft_oid, email, display_name, department::text, role::text, created_at, updated_at";
+        "RETURNING id, microsoft_oid, email, display_name, department, role, created_at, updated_at";
 
     const char *params[3] = {display_name.c_str(), role.c_str(), id.c_str()};
     PGresult *res = PQexecParams(conn_, sql.c_str(), 3, nullptr, params, nullptr, nullptr, 0);
@@ -735,7 +735,7 @@ std::vector<MailTemplate> Database::list_mail_templates()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT id, department::text, subject, body, recipients, created_at, updated_at "
+                           "SELECT id, department, subject, body, recipients, created_at, updated_at "
                            "FROM mail_templates ORDER BY department");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -758,8 +758,8 @@ std::optional<MailTemplate> Database::get_mail_template_by_department(const std:
     ensure_connected();
     const char *params[1] = {department.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, department::text, subject, body, recipients, created_at, updated_at "
-                                 "FROM mail_templates WHERE department = $1::department_enum",
+                                 "SELECT id, department, subject, body, recipients, created_at, updated_at "
+                                 "FROM mail_templates WHERE department = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
@@ -790,9 +790,9 @@ std::optional<MailTemplate> Database::upsert_mail_template(const std::string &de
     const char *params[4] = {department.c_str(), subject.c_str(), body.c_str(), recipients_arr.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO mail_templates (department, subject, body, recipients) "
-                                 "VALUES ($1::department_enum, $2, $3, $4::text[]) "
+                                 "VALUES ($1, $2, $3, $4::text[]) "
                                  "ON CONFLICT (department) DO UPDATE SET subject = EXCLUDED.subject, body = EXCLUDED.body, recipients = EXCLUDED.recipients "
-                                 "RETURNING id, department::text, subject, body, recipients, created_at, updated_at",
+                                 "RETURNING id, department, subject, body, recipients, created_at, updated_at",
                                  4, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
@@ -1050,6 +1050,470 @@ bool Database::delete_attachment(const std::string &id)
     PGresult *res = PQexecParams(conn_,
                                  "DELETE FROM attachments WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+// ── Departments CRUD ────────────────────────────────────────────────────────
+
+DepartmentRecord Database::row_to_department(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    DepartmentRecord d;
+    d.name = col("name") ? col("name") : "";
+    d.color = col("color") ? col("color") : "#6b7280";
+    d.sort_order = col("sort_order") ? std::stoi(col("sort_order")) : 0;
+    return d;
+}
+
+std::vector<DepartmentRecord> Database::list_departments()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+                           "SELECT name, color, sort_order FROM departments ORDER BY sort_order, name");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_departments: " + err);
+    }
+    std::vector<DepartmentRecord> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_department(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<DepartmentRecord> Database::create_department(const std::string &name, const std::string &color, int sort_order)
+{
+    ensure_connected();
+    std::string so = std::to_string(sort_order);
+    const char *params[3] = {name.c_str(), color.c_str(), so.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO departments (name, color, sort_order) VALUES ($1, $2, $3::int) "
+                                 "RETURNING name, color, sort_order",
+                                 3, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto d = row_to_department(res, 0);
+    PQclear(res);
+    return d;
+}
+
+std::optional<DepartmentRecord> Database::update_department(const std::string &name, const std::string &new_name,
+                                                            const std::string &color, int sort_order)
+{
+    ensure_connected();
+    std::string so = std::to_string(sort_order);
+    const char *params[4] = {new_name.c_str(), color.c_str(), so.c_str(), name.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE departments SET name = $1, color = $2, sort_order = $3::int WHERE name = $4 "
+                                 "RETURNING name, color, sort_order",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto d = row_to_department(res, 0);
+    PQclear(res);
+    return d;
+}
+
+bool Database::delete_department(const std::string &name)
+{
+    ensure_connected();
+    const char *params[1] = {name.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM departments WHERE name = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK &&
+              std::string(PQcmdTuples(res)) == "1";
+    PQclear(res);
+    return ok;
+}
+
+bool Database::delete_department_with_transfers(
+    const std::string &name,
+    const std::string &transfer_activities_to,
+    bool delete_activities,
+    const std::string &transfer_users_to,
+    bool delete_users)
+{
+    ensure_connected();
+
+    PGresult *r = PQexec(conn_, "BEGIN");
+    PQclear(r);
+
+    try
+    {
+        // Transfer or delete activities
+        if (!transfer_activities_to.empty())
+        {
+            const char *p[2] = {transfer_activities_to.c_str(), name.c_str()};
+            r = PQexecParams(conn_,
+                             "UPDATE activities SET department = $1 WHERE department = $2",
+                             2, nullptr, p, nullptr, nullptr, 0);
+            if (PQresultStatus(r) != PGRES_COMMAND_OK)
+            {
+                std::string err = PQerrorMessage(conn_);
+                PQclear(r);
+                throw std::runtime_error(err);
+            }
+            PQclear(r);
+        }
+        else if (delete_activities)
+        {
+            const char *p[1] = {name.c_str()};
+            r = PQexecParams(conn_,
+                             "DELETE FROM activities WHERE department = $1",
+                             1, nullptr, p, nullptr, nullptr, 0);
+            if (PQresultStatus(r) != PGRES_COMMAND_OK)
+            {
+                std::string err = PQerrorMessage(conn_);
+                PQclear(r);
+                throw std::runtime_error(err);
+            }
+            PQclear(r);
+        }
+
+        // Transfer or delete users
+        if (!transfer_users_to.empty())
+        {
+            const char *p[2] = {transfer_users_to.c_str(), name.c_str()};
+            r = PQexecParams(conn_,
+                             "UPDATE users SET department = $1 WHERE department = $2",
+                             2, nullptr, p, nullptr, nullptr, 0);
+            if (PQresultStatus(r) != PGRES_COMMAND_OK)
+            {
+                std::string err = PQerrorMessage(conn_);
+                PQclear(r);
+                throw std::runtime_error(err);
+            }
+            PQclear(r);
+        }
+        else if (delete_users)
+        {
+            const char *p[1] = {name.c_str()};
+            r = PQexecParams(conn_,
+                             "DELETE FROM users WHERE department = $1",
+                             1, nullptr, p, nullptr, nullptr, 0);
+            if (PQresultStatus(r) != PGRES_COMMAND_OK)
+            {
+                std::string err = PQerrorMessage(conn_);
+                PQclear(r);
+                throw std::runtime_error(err);
+            }
+            PQclear(r);
+        }
+
+        // Delete the department (cascades to mail_templates, role_dept_access)
+        const char *p[1] = {name.c_str()};
+        r = PQexecParams(conn_,
+                         "DELETE FROM departments WHERE name = $1",
+                         1, nullptr, p, nullptr, nullptr, 0);
+        bool ok = PQresultStatus(r) == PGRES_COMMAND_OK &&
+                  std::string(PQcmdTuples(r)) == "1";
+        PQclear(r);
+
+        if (!ok)
+        {
+            PGresult *rb = PQexec(conn_, "ROLLBACK");
+            PQclear(rb);
+            return false;
+        }
+
+        r = PQexec(conn_, "COMMIT");
+        PQclear(r);
+        return true;
+    }
+    catch (...)
+    {
+        PGresult *rb = PQexec(conn_, "ROLLBACK");
+        PQclear(rb);
+        throw;
+    }
+}
+
+// ── Roles CRUD ──────────────────────────────────────────────────────────────
+
+RoleRecord Database::row_to_role(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    RoleRecord r;
+    r.name = col("name") ? col("name") : "";
+    r.color = col("color") ? col("color") : "#6b7280";
+    r.sort_order = col("sort_order") ? std::stoi(col("sort_order")) : 0;
+    return r;
+}
+
+std::vector<RoleRecord> Database::list_roles()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+                           "SELECT name, color, sort_order FROM roles ORDER BY sort_order, name");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_roles: " + err);
+    }
+    std::vector<RoleRecord> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_role(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<RoleRecord> Database::create_role(const std::string &name, const std::string &color, int sort_order)
+{
+    ensure_connected();
+    exec_or_throw(conn_, "BEGIN", "create_role BEGIN");
+    try
+    {
+        std::string so = std::to_string(sort_order);
+        const char *params[3] = {name.c_str(), color.c_str(), so.c_str()};
+        PGresult *res = PQexecParams(conn_,
+                                     "INSERT INTO roles (name, color, sort_order) VALUES ($1, $2, $3::int) "
+                                     "RETURNING name, color, sort_order",
+                                     3, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+        {
+            PQclear(res);
+            PQexec(conn_, "ROLLBACK");
+            return std::nullopt;
+        }
+        auto r = row_to_role(res, 0);
+        PQclear(res);
+
+        // Also create default role_permissions entry
+        const char *rp_params[1] = {name.c_str()};
+        PGresult *rp = PQexecParams(conn_,
+                                    "INSERT INTO role_permissions (role) VALUES ($1) ON CONFLICT DO NOTHING",
+                                    1, nullptr, rp_params, nullptr, nullptr, 0);
+        PQclear(rp);
+
+        exec_or_throw(conn_, "COMMIT", "create_role COMMIT");
+        return r;
+    }
+    catch (...)
+    {
+        PQexec(conn_, "ROLLBACK");
+        throw;
+    }
+}
+
+std::optional<RoleRecord> Database::update_role(const std::string &name, const std::string &new_name,
+                                                const std::string &color, int sort_order)
+{
+    ensure_connected();
+    std::string so = std::to_string(sort_order);
+    const char *params[4] = {new_name.c_str(), color.c_str(), so.c_str(), name.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE roles SET name = $1, color = $2, sort_order = $3::int WHERE name = $4 "
+                                 "RETURNING name, color, sort_order",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto r = row_to_role(res, 0);
+    PQclear(res);
+    return r;
+}
+
+bool Database::delete_role(const std::string &name)
+{
+    ensure_connected();
+    const char *params[1] = {name.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM roles WHERE name = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK &&
+              std::string(PQcmdTuples(res)) == "1";
+    PQclear(res);
+    return ok;
+}
+
+// ── Role permissions ────────────────────────────────────────────────────────
+
+RolePermission Database::row_to_role_perm(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    RolePermission rp;
+    rp.role = col("role") ? col("role") : "";
+    rp.can_read_own_dept = col("can_read_own_dept") && std::string(col("can_read_own_dept")) == "t";
+    rp.can_write_own_dept = col("can_write_own_dept") && std::string(col("can_write_own_dept")) == "t";
+    rp.can_read_all_depts = col("can_read_all_depts") && std::string(col("can_read_all_depts")) == "t";
+    rp.can_write_all_depts = col("can_write_all_depts") && std::string(col("can_write_all_depts")) == "t";
+    rp.mail_send_scope = col("mail_send_scope") ? col("mail_send_scope") : "none";
+    rp.mail_templates_scope = col("mail_templates_scope") ? col("mail_templates_scope") : "none";
+    rp.user_dept_scope = col("user_dept_scope") ? col("user_dept_scope") : "none";
+    rp.user_role_scope = col("user_role_scope") ? col("user_role_scope") : "none";
+    return rp;
+}
+
+std::vector<RolePermission> Database::list_role_permissions()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+                           "SELECT role, can_read_own_dept, can_write_own_dept, mail_send_scope, "
+                           "       mail_templates_scope, user_dept_scope, user_role_scope "
+                           "FROM role_permissions ORDER BY role");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_role_permissions: " + err);
+    }
+    std::vector<RolePermission> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_role_perm(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<RolePermission> Database::get_role_permission(const std::string &role)
+{
+    ensure_connected();
+    const char *params[] = {role.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT role, can_read_own_dept, can_write_own_dept, mail_send_scope, "
+                                 "       mail_templates_scope, user_dept_scope, user_role_scope "
+                                 "FROM role_permissions WHERE role = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("get_role_permission: " + err);
+    }
+    std::optional<RolePermission> out;
+    if (PQntuples(res) > 0)
+        out = row_to_role_perm(res, 0);
+    PQclear(res);
+    return out;
+}
+
+bool Database::update_role_permission(const std::string &role,
+                                      bool can_read_own_dept,
+                                      bool can_write_own_dept,
+                                      bool can_read_all_depts,
+                                      bool can_write_all_depts,
+                                      const std::string &mail_send_scope,
+                                      const std::string &mail_templates_scope,
+                                      const std::string &user_dept_scope,
+                                      const std::string &user_role_scope)
+{
+    ensure_connected();
+    const char *p1 = role.c_str();
+    const char *p2 = can_read_own_dept ? "true" : "false";
+    const char *p3 = can_write_own_dept ? "true" : "false";
+    const char *p4 = can_read_all_depts ? "true" : "false";
+    const char *p5 = can_write_all_depts ? "true" : "false";
+    const char *p6 = mail_send_scope.c_str();
+    const char *p7 = mail_templates_scope.c_str();
+    const char *p8 = user_dept_scope.c_str();
+    const char *p9 = user_role_scope.c_str();
+    const char *params[9] = {p1, p2, p3, p4, p5, p6, p7, p8, p9};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, "
+                                 "can_read_all_depts, can_write_all_depts, "
+                                 "mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) "
+                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9) "
+                                 "ON CONFLICT (role) DO UPDATE SET "
+                                 "can_read_own_dept = $2::boolean, can_write_own_dept = $3::boolean, "
+                                 "can_read_all_depts = $4::boolean, can_write_all_depts = $5::boolean, "
+                                 "mail_send_scope = $6, mail_templates_scope = $7, "
+                                 "user_dept_scope = $8, user_role_scope = $9",
+                                 9, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+// ── Role department access ──────────────────────────────────────────────────
+
+RoleDeptAccess Database::row_to_role_dept_access(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    RoleDeptAccess rda;
+    rda.role = col("role") ? col("role") : "";
+    rda.department = col("department") ? col("department") : "";
+    rda.can_read = col("can_read") && std::string(col("can_read")) == "t";
+    rda.can_write = col("can_write") && std::string(col("can_write")) == "t";
+    return rda;
+}
+
+std::vector<RoleDeptAccess> Database::list_role_dept_access(const std::string &role)
+{
+    ensure_connected();
+    const char *params[1] = {role.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT role, department, can_read, can_write "
+                                 "FROM role_dept_access WHERE role = $1 ORDER BY department",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    std::vector<RoleDeptAccess> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_role_dept_access(res, i));
+    PQclear(res);
+    return out;
+}
+
+bool Database::set_role_dept_access(const std::string &role, const std::string &department,
+                                    bool can_read, bool can_write)
+{
+    ensure_connected();
+    const char *r = can_read ? "true" : "false";
+    const char *w = can_write ? "true" : "false";
+    const char *params[4] = {role.c_str(), department.c_str(), r, w};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO role_dept_access (role, department, can_read, can_write) "
+                                 "VALUES ($1, $2, $3::boolean, $4::boolean) "
+                                 "ON CONFLICT (role, department) DO UPDATE SET can_read = $3::boolean, can_write = $4::boolean",
+                                 4, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;
