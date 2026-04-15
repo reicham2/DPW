@@ -150,6 +150,12 @@ CREATE TABLE role_permissions (
     can_write_own_dept   BOOLEAN NOT NULL DEFAULT false,
     can_read_all_depts   BOOLEAN NOT NULL DEFAULT false,
     can_write_all_depts  BOOLEAN NOT NULL DEFAULT false,
+    activity_read_scope  TEXT    NOT NULL DEFAULT 'none'
+        CHECK (activity_read_scope IN ('none', 'same_dept', 'all')),
+    activity_create_scope TEXT   NOT NULL DEFAULT 'none'
+        CHECK (activity_create_scope IN ('none', 'own_dept', 'all')),
+    activity_edit_scope  TEXT    NOT NULL DEFAULT 'none'
+        CHECK (activity_edit_scope IN ('none', 'own', 'same_dept', 'all')),
     mail_send_scope      TEXT    NOT NULL DEFAULT 'none'
         CHECK (mail_send_scope IN ('none', 'own', 'same_dept', 'all')),
     mail_templates_scope TEXT    NOT NULL DEFAULT 'none'
@@ -170,9 +176,9 @@ CREATE TABLE role_dept_access (
 );
 
 -- Seed default role permissions
-INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) VALUES
-    ('admin',    true, true, true,  true,  'all', 'all', 'all', 'all'),
-    ('Mitglied', true, true, false, false, 'own', 'none', 'none', 'none');
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) VALUES
+    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all'),
+    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'none', 'none');
 
 -- Triggers for departments & roles updated_at
 CREATE TRIGGER trg_departments_updated_at
