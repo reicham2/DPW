@@ -6,6 +6,7 @@ import type {
 	RolePermission,
 	RoleDeptAccess,
 	MyPermissions,
+	Activity,
 } from '../types';
 
 const departments = ref<DepartmentRecord[]>([]);
@@ -130,6 +131,19 @@ async function moveRole(name: string, direction: 'up' | 'down') {
 	if (!res.ok) throw new Error(await res.text());
 }
 
+async function reorderRoles(order: string[]) {
+	const token = await getIdToken();
+	const res = await fetch('/api/admin/roles/reorder', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`,
+		},
+		body: JSON.stringify({ order }),
+	});
+	if (!res.ok) throw new Error(await res.text());
+}
+
 // ── Role Permissions ────────────────────────────────────────────────────────
 
 async function fetchRolePermissions() {
@@ -198,21 +212,49 @@ async function fetchMyPermissions() {
 function canReadDept(dept: string, userDept?: string | null): boolean {
 	const p = myPermissions.value;
 	if (!p) return false;
-	if (p.can_read_all_depts) return true;
-	if (p.can_read_own_dept && userDept && userDept === dept) return true;
+	if (p.activity_read_scope === 'all') return true;
+	if (p.activity_read_scope === 'same_dept' && userDept && userDept === dept)
+		return true;
 	return (
 		p.dept_access?.some((d) => d.department === dept && d.can_read) ?? false
 	);
 }
 
-function canWriteDept(dept: string, userDept?: string | null): boolean {
+function canCreateDept(dept: string, userDept?: string | null): boolean {
 	const p = myPermissions.value;
 	if (!p) return false;
-	if (p.can_write_all_depts) return true;
-	if (p.can_write_own_dept && userDept && userDept === dept) return true;
+	if (p.activity_create_scope === 'all') return true;
+	if (p.activity_create_scope === 'own_dept' && userDept && userDept === dept)
+		return true;
 	return (
 		p.dept_access?.some((d) => d.department === dept && d.can_write) ?? false
 	);
+}
+
+function canReadActivity(
+	activity: Activity,
+	userDisplayName?: string | null,
+	userDept?: string | null,
+): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	if (p.activity_read_scope === 'all') return true;
+	if (
+		p.activity_read_scope === 'same_dept' &&
+		activity.department &&
+		userDept &&
+		activity.department === userDept
+	) {
+		return true;
+	}
+	if (activity.department) {
+		return (
+			p.dept_access?.some(
+				(d) => d.department === activity.department && d.can_read,
+			) ?? false
+		);
+	}
+	return p.activity_read_scope !== 'none';
 }
 
 function canManageUsers(): boolean {
@@ -228,6 +270,7 @@ function canManageSystem(): boolean {
 }
 
 function readableDepts(userDept: string | null | undefined): string[] {
+	const p = myPermissions.value;
 	return departments.value
 		.map((d) => d.name)
 		.filter((name) => canReadDept(name, userDept));
@@ -236,7 +279,7 @@ function readableDepts(userDept: string | null | undefined): string[] {
 function writableDepts(userDept: string | null | undefined): string[] {
 	return departments.value
 		.map((d) => d.name)
-		.filter((name) => canWriteDept(name, userDept));
+		.filter((name) => canCreateDept(name, userDept));
 }
 
 // ── Fetch all ───────────────────────────────────────────────────────────────
@@ -276,12 +319,14 @@ export function usePermissions() {
 		createRole,
 		updateRole,
 		moveRole,
+		reorderRoles,
 		deleteRole,
 		updateRolePermission,
 		fetchRoleDeptAccess,
 		updateRoleDeptAccess,
 		canReadDept,
-		canWriteDept,
+		canCreateDept,
+		canReadActivity,
 		canManageUsers,
 		canManageSystem,
 		readableDepts,

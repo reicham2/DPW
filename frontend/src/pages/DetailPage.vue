@@ -34,7 +34,7 @@ const {
 	predefinedLocations,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
-const { myPermissions, fetchMyPermissions, canWriteDept, writableDepts, canReadDept } = usePermissions();
+const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity } = usePermissions();
 
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
@@ -160,23 +160,29 @@ function unlockSection(section: EditSection, event?: FocusEvent) {
 // ---- Load ------------------------------------------------------------------
 const canView = computed(() => {
 	if (!user.value || !activity.value) return true; // don't block during loading
-	const dept = activity.value.department;
-	if (!dept) return true; // activities without department are visible to all
-	return canReadDept(dept, user.value.department);
+	return canReadActivity(activity.value, user.value.display_name, user.value.department);
 });
 
-const canEdit = computed(() => {
+function canEditByScope(scope: 'none' | 'own' | 'same_dept' | 'all') {
 	if (!user.value || !activity.value) return false;
-	const dept = activity.value.department;
-	if (dept && canWriteDept(dept, user.value.department)) return true;
-	return activity.value.responsible.includes(user.value.display_name) && myPermissions.value?.can_write_own_dept;
+	if (scope === 'all') return true;
+	if (scope === 'same_dept') {
+		return !!activity.value.department && activity.value.department === user.value.department;
+	}
+	if (scope === 'own') {
+		return activity.value.responsible.includes(user.value.display_name);
+	}
+	return false;
+}
+
+const canEdit = computed(() => {
+	const scope = myPermissions.value?.activity_edit_scope ?? 'none';
+	return canEditByScope(scope);
 });
 
 const canDelete = computed(() => {
-	if (!user.value || !activity.value) return false;
-	const dept = activity.value.department;
-	if (dept && canWriteDept(dept, user.value.department)) return true;
-	return activity.value.responsible.includes(user.value.display_name) && myPermissions.value?.can_write_own_dept;
+	const scope = myPermissions.value?.activity_edit_scope ?? 'none';
+	return canEditByScope(scope);
 });
 
 const canMail = computed(() => {
@@ -983,12 +989,21 @@ async function doDelete() {
 				📧 Mail
 			</button>
 			<button
-				v-if="activity && canEdit"
+				v-if="activity && mode === 'view'"
 				class="btn-toggle"
-				:class="mode === 'edit' ? 'btn-mail' : 'btn-primary'"
+				:class="'btn-primary'"
+				:disabled="!canEdit"
+				:title="canEdit ? 'Aktivität bearbeiten' : 'Keine Berechtigung zum Bearbeiten'"
 				@click="mode === 'view' ? enterEdit() : (mode = 'view')"
 			>
-				{{ mode === 'view' ? '✏️ Bearbeiten' : '👁️ Ansicht' }}
+				✏️ Bearbeiten
+			</button>
+			<button
+				v-else-if="activity && mode === 'edit'"
+				class="btn-toggle btn-mail"
+				@click="mode = 'view'"
+			>
+				👁️ Ansicht
 			</button>
 		</div>
 	</header>

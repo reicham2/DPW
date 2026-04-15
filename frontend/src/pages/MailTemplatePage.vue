@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMailTemplates } from '../composables/useMailTemplates'
 import { useContactSearch } from '../composables/useContactSearch'
 import { user } from '../composables/useAuth'
@@ -231,8 +232,14 @@ useWebSocket((e) => {
 })
 
 // ---- Load + mount -----------------------------------------------------------
+const router = useRouter()
 onMounted(async () => {
   await Promise.all([fetchDepartments(), fetchTemplates(), fetchMyPermissions()])
+  // No access: redirect
+  if (!myPermissions.value || myPermissions.value.mail_templates_scope === 'none') {
+    router.replace('/')
+    return
+  }
   // Set activeDept to first visible department if current is not visible
   const visDepts = visibleDepartments.value
   if (visDepts.length && !visDepts.includes(activeDept.value)) {

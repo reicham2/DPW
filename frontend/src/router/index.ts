@@ -21,7 +21,7 @@ export const router = createRouter({
 	],
 });
 
-router.beforeEach(async () => {
+router.beforeEach(async (to) => {
 	// Wait for auth to initialise before any navigation decision
 	if (authLoading.value) {
 		await new Promise<void>((resolve) => {
@@ -33,6 +33,9 @@ router.beforeEach(async () => {
 			}, 50);
 		});
 	}
-	// If not logged in, App.vue shows the login overlay — no redirect needed here
+	// Redirect to home if not logged in and trying to access a protected route
+	if (!user.value && to.path !== '/') {
+		return '/';
+	}
 	return true;
 });

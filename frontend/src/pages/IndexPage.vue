@@ -8,7 +8,7 @@ import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { Activity, Department, MaterialItem } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
 
-const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadDept, canWriteDept, readableDepts, writableDepts } = usePermissions()
+const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadActivity, readableDepts, writableDepts } = usePermissions()
 const DEPARTMENTS = computed<Department[]>(() => readableDepts(user.value?.department))
 
 const { activities, loading, error, connected, fetchActivities } = useActivities()
@@ -86,8 +86,7 @@ const filteredEntries = computed<ListEntry[]>(() => {
   let list = activities.value
 
   // Filter by readable departments (client-side safety net)
-  const readable = new Set(DEPARTMENTS.value)
-  list = list.filter(a => !a.department || readable.has(a.department))
+  list = list.filter(a => user.value ? canReadActivity(a, user.value.display_name, user.value.department) : false)
 
   // Department filter
   if (activedept.value !== 'Alle') {
@@ -158,8 +157,7 @@ const filteredEntries = computed<ListEntry[]>(() => {
 const baseList = computed(() => {
   let list = activities.value
   // Filter by readable departments
-  const readable = new Set(DEPARTMENTS.value)
-  list = list.filter(a => !a.department || readable.has(a.department))
+  list = list.filter(a => user.value ? canReadActivity(a, user.value.display_name, user.value.department) : false)
   if (activedept.value !== 'Alle') list = list.filter(a => a.department === activedept.value)
   const q = search.value.trim().toLowerCase()
   if (q) {

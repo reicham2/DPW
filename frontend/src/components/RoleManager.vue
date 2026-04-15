@@ -1,15 +1,32 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from './ErrorAlert.vue'
 import RoleBadge from './RoleBadge.vue'
+import { getIdToken } from '../composables/useAuth'
 import type { RolePermission, RoleDeptAccess } from '../types'
 
 const SCOPE_OPTIONS_MAIL_SEND = [
   { value: 'none', label: 'Kein Versand' },
   { value: 'own', label: 'Nur eigene Aktivitäten' },
   { value: 'same_dept', label: 'Alle in eigener Stufe' },
-  { value: 'all', label: 'Überall' },
+  { value: 'all', label: 'Alle' },
+]
+const SCOPE_OPTIONS_ACTIVITY_EDIT = [
+  { value: 'none', label: 'Keine Bearbeitung' },
+  { value: 'own', label: 'Nur eigene Aktivitäten' },
+  { value: 'same_dept', label: 'Alle in eigener Stufe' },
+  { value: 'all', label: 'Alle' },
+]
+const SCOPE_OPTIONS_ACTIVITY_READ = [
+  { value: 'none', label: 'Kein Zugriff' },
+  { value: 'same_dept', label: 'Alle in eigener Stufe' },
+  { value: 'all', label: 'Alle' },
+]
+const SCOPE_OPTIONS_ACTIVITY_CREATE = [
+  { value: 'none', label: 'Kein Zugriff' },
+  { value: 'own_dept', label: 'In eigener Stufe' },
+  { value: 'all', label: 'Alle' },
 ]
 const SCOPE_OPTIONS_MAIL_TPL = [
   { value: 'none', label: 'Kein Zugriff' },
@@ -34,6 +51,7 @@ const {
   createRole,
   updateRole,
   moveRole,
+  reorderRoles,
   deleteRole,
   updateRolePermission,
   fetchRoleDeptAccess,
@@ -57,10 +75,141 @@ const openRole = ref<string | null>(null)
 const expandedDeptAccess = ref<string | null>(null)
 const deptAccess = ref<RoleDeptAccess[]>([])
 
+// ── Delete flow state ────────────────────────────────────────────────────────
+const deleteTarget = ref<string | null>(null)
+const deleteStep = ref<1 | 2>(1)
+const userAction = ref<'transfer' | 'delete'>('transfer')
+const userTransferTo = ref('')
+const otherRoles = computed(() => sortedRoles.value.filter(r => r.name !== deleteTarget.value && r.name !== 'admin'))
+
 function isProtected(name: string) { return name === 'admin' }
 
 const sortedRoles = computed(() => [...roles.value].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de')))
 const movableRoles = computed(() => sortedRoles.value.filter(r => !isProtected(r.name)))
+
+// ── Drag & Drop (clone-based with TransitionGroup) ───────────────────────────
+
+const draggedRole = ref<string | null>(null)
+const localOrder = ref<string[]>([])
+
+// Keep localOrder in sync with server data when not dragging
+watch(sortedRoles, (val) => {
+  if (!draggedRole.value) {
+    localOrder.value = val.map(r => r.name)
+  }
+}, { immediate: true })
+
+const displayRoles = computed(() => {
+  if (localOrder.value.length === 0) return sortedRoles.value
+  return localOrder.value
+    .map(name => sortedRoles.value.find(r => r.name === name))
+    .filter((r): r is (typeof sortedRoles.value)[number] => !!r)
+})
+
+let cloneEl: HTMLElement | null = null
+let grabOffsetY = 0
+
+function onHandleDown(e: PointerEvent, roleName: string) {
+  if (isProtected(roleName)) return
+
+  openRole.value = null
+  expandedDeptAccess.value = null
+
+  const cardEl = (e.target as HTMLElement).closest('.role-card') as HTMLElement
+  if (!cardEl) return
+
+  const rect = cardEl.getBoundingClientRect()
+  grabOffsetY = e.clientY - rect.top
+
+  // Init local order from current sorted state
+  localOrder.value = sortedRoles.value.map(r => r.name)
+  draggedRole.value = roleName
+
+  // Create floating clone
+  cloneEl = cardEl.cloneNode(true) as HTMLElement
+  cloneEl.style.cssText = [
+    `position: fixed`,
+    `left: ${rect.left}px`,
+    `top: ${rect.top}px`,
+    `width: ${rect.width}px`,
+    `z-index: 1000`,
+    `box-shadow: 0 12px 40px rgba(0,0,0,0.22)`,
+    `pointer-events: none`,
+    `border-radius: 12px`,
+    `border: 2px solid #1a56db`,
+    `background: #fff`,
+    `margin: 0`,
+    `transition: none`,
+  ].join(';')
+  document.body.appendChild(cloneEl)
+
+  document.addEventListener('pointermove', onPointerMove)
+  document.addEventListener('pointerup', onPointerUp)
+  e.preventDefault()
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!cloneEl || !draggedRole.value) return
+
+  cloneEl.style.top = `${e.clientY - grabOffsetY}px`
+
+  const container = document.querySelector('.role-list-container') as HTMLElement
+  if (!container) return
+
+  const cards = Array.from(container.children) as HTMLElement[]
+  const dragged = draggedRole.value
+
+  // Collect midpoints of non-dragged, non-protected cards from DOM (using data-role)
+  const others: { name: string; midY: number }[] = []
+  for (const card of cards) {
+    const name = card.dataset.role
+    if (!name || name === dragged || isProtected(name)) continue
+    const rect = card.getBoundingClientRect()
+    others.push({ name, midY: rect.top + rect.height / 2 })
+  }
+
+  // Determine insertion point among visible non-dragged/non-protected cards
+  let insertAt = others.length
+  for (let i = 0; i < others.length; i++) {
+    if (e.clientY < others[i].midY) {
+      insertAt = i
+      break
+    }
+  }
+
+  // Rebuild full order: protected first, then movable with dragged inserted
+  const order = [...localOrder.value]
+  const protectedNames = order.filter(n => isProtected(n))
+  const movable = others.map(o => o.name) // actual DOM-visible order
+  movable.splice(insertAt, 0, dragged)
+  const newOrder = [...protectedNames, ...movable]
+
+  if (newOrder.some((n, i) => n !== localOrder.value[i])) {
+    localOrder.value = newOrder
+  }
+}
+
+async function onPointerUp() {
+  document.removeEventListener('pointermove', onPointerMove)
+  document.removeEventListener('pointerup', onPointerUp)
+
+  if (cloneEl) {
+    cloneEl.remove()
+    cloneEl = null
+  }
+
+  const newOrder = localOrder.value.filter(n => !isProtected(n))
+  draggedRole.value = null
+
+  // Persist to backend
+  saving.value = 'role-reorder'
+  error.value = null
+  try {
+    await reorderRoles(newOrder)
+    await fetchAll()
+  } catch (e) { error.value = String(e) }
+  finally { saving.value = null }
+}
 
 onMounted(async () => {
   loading.value = true
@@ -116,11 +265,38 @@ async function handleAddRole() {
 }
 
 async function handleDeleteRole(name: string) {
-  if (!confirm(`Rolle "${name}" wirklich löschen?`)) return
+  deleteTarget.value = name
+  deleteStep.value = 1
+  userAction.value = 'transfer'
+  userTransferTo.value = otherRoles.value[0]?.name ?? ''
+}
+
+function cancelDelete() {
+  deleteTarget.value = null
+}
+
+function proceedToConfirm() {
+  if (userAction.value === 'transfer' && !userTransferTo.value) return
+  deleteStep.value = 2
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value) return
   saving.value = 'role-del'
   error.value = null
   try {
-    await deleteRole(name)
+    const token = await getIdToken()
+    const body: any = {}
+    if (userAction.value === 'transfer') body.transfer_users_to = userTransferTo.value
+    else body.delete_users = true
+
+    const res = await fetch(`/api/admin/roles/${encodeURIComponent(deleteTarget.value)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error(await res.text())
+    deleteTarget.value = null
     await fetchAll()
     await fetchMyPermissions()
   } catch (e) { error.value = String(e) }
@@ -143,41 +319,75 @@ function canMoveRole(name: string, direction: 'up' | 'down') {
   return direction === 'up' ? index > 0 : index < movableRoles.value.length - 1
 }
 
-// ── Dept access level helper ────────────────────────────────────────────────
-
-type DeptAccessLevel = 'none' | 'read' | 'readwrite'
-
-function getDeptAccessLevel(perm: RolePermission, scope: 'own' | 'all'): DeptAccessLevel {
-  const read = scope === 'own' ? perm.can_read_own_dept : perm.can_read_all_depts
-  const write = scope === 'own' ? perm.can_write_own_dept : perm.can_write_all_depts
-  if (write) return 'readwrite'
-  if (read) return 'read'
-  return 'none'
-}
-
-async function setDeptAccessLevel(role: string, scope: 'own' | 'all', level: DeptAccessLevel) {
-  const perm = getPermForRole(role)
-  if (!perm) return
-  const read = level === 'read' || level === 'readwrite'
-  const write = level === 'readwrite'
-  const readField = scope === 'own' ? 'can_read_own_dept' : 'can_read_all_depts'
-  const writeField = scope === 'own' ? 'can_write_own_dept' : 'can_write_all_depts'
-  saving.value = `${role}-${scope}-access`
-  error.value = null
-  try {
-    const updated = { ...perm, [readField]: read, [writeField]: write }
-    await updateRolePermission(updated)
-    await fetchRolePermissions()
-    await fetchMyPermissions()
-  } catch (e) { error.value = String(e) }
-  finally { saving.value = null }
-}
-
 const SCOPE_OPTIONS_DEPT_ACCESS = [
   { value: 'none', label: 'Kein Zugriff' },
   { value: 'read', label: 'Nur lesen' },
   { value: 'readwrite', label: 'Lesen und erstellen' },
 ]
+
+// ── Cascade: global scope overrides dept access display ─────────────────────
+
+const activeRolePerm = computed(() =>
+  expandedDeptAccess.value ? getPermForRole(expandedDeptAccess.value) : undefined
+)
+const globalReadAll = computed(() => activeRolePerm.value?.activity_read_scope === 'all')
+const globalCreateAll = computed(() => activeRolePerm.value?.activity_create_scope === 'all')
+
+function effectiveDeptLevel(dept: string): 'none' | 'read' | 'readwrite' {
+  const actual = getDeptAccessLevel(dept)
+  if (globalCreateAll.value) return 'readwrite'
+  if (globalReadAll.value) return actual === 'readwrite' ? 'readwrite' : 'read'
+  return actual
+}
+
+// ── Scope contradiction constraints ─────────────────────────────────────────
+
+const RANK_READ: Record<string, number> = { none: 0, same_dept: 1, all: 2 }
+
+function readRankOf(role: string): number {
+  return RANK_READ[getPermForRole(role)?.activity_read_scope ?? 'none'] ?? 0
+}
+
+function minReadRankFor(role: string): number {
+  const perm = getPermForRole(role)
+  if (!perm) return 0
+  let min = 0
+  min = Math.max(min, RANK_READ[perm.activity_edit_scope] ?? 0)
+  min = Math.max(min, RANK_READ[perm.mail_send_scope] ?? 0)
+  if (perm.activity_create_scope !== 'none') min = Math.max(min, 1) // same_dept minimum
+  return min
+}
+
+function isReadOptionDisabled(role: string, value: string): boolean {
+  return (RANK_READ[value] ?? 0) < minReadRankFor(role)
+}
+
+function isActionOptionDisabled(role: string, value: string): boolean {
+  if (value === 'none') return false
+  return (RANK_READ[value] ?? 0) > readRankOf(role)
+}
+
+function isCreateOptionDisabled(role: string, value: string): boolean {
+  if (value === 'none') return false
+  return readRankOf(role) === 0
+}
+
+function readConstraintHint(role: string): string | null {
+  if (minReadRankFor(role) <= 0) return null
+  return 'Bearbeiten, Erstellen und Mailversand setzen eine Mindest-Lesestufe voraus. Reduziere zuerst die abhängigen Berechtigungen.'
+}
+
+function actionConstraintHint(role: string): string | null {
+  const max = readRankOf(role)
+  if (max >= 2) return null
+  if (max <= 0) return 'Erfordert Lese-Berechtigung. Setze zuerst «Aktivitäten lesen» auf mindestens «Alle in eigener Stufe».'
+  return 'Kann die Lese-Berechtigung nicht überschreiten. Erhöhe zuerst «Aktivitäten lesen».'
+}
+
+function createConstraintHint(role: string): string | null {
+  if (readRankOf(role) > 0) return null
+  return 'Erfordert Lese-Berechtigung. Setze zuerst «Aktivitäten lesen» auf mindestens «Alle in eigener Stufe».'
+}
 
 // ── Permission editing ──────────────────────────────────────────────────────
 
@@ -213,17 +423,24 @@ function getDeptAccess(dept: string): { can_read: boolean; can_write: boolean } 
   return { can_read: a?.can_read ?? false, can_write: a?.can_write ?? false }
 }
 
-async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can_write') {
+function getDeptAccessLevel(dept: string): 'none' | 'read' | 'readwrite' {
   const current = getDeptAccess(dept)
-  const newVal = field === 'can_read' ? !current.can_read : !current.can_write
-  saving.value = `access-${role}-${dept}-${field}`
+  if (current.can_write) return 'readwrite'
+  if (current.can_read) return 'read'
+  return 'none'
+}
+
+async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'read' | 'readwrite') {
+  const can_read = level === 'read' || level === 'readwrite'
+  const can_write = level === 'readwrite'
+  saving.value = `access-${role}-${dept}`
   error.value = null
   try {
     await updateRoleDeptAccess({
       role,
       department: dept,
-      can_read: field === 'can_read' ? newVal : current.can_read,
-      can_write: field === 'can_write' ? newVal : current.can_write,
+      can_read,
+      can_write,
     })
     deptAccess.value = await fetchRoleDeptAccess(role)
     await fetchMyPermissions()
@@ -243,7 +460,11 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
     <ErrorAlert :error="error" />
 
     <template v-if="!loading">
-      <div v-for="r in sortedRoles" :key="r.name" class="role-card">
+      <TransitionGroup name="role-list" tag="div" class="role-list-container">
+        <div v-for="r in displayRoles" :key="r.name"
+          class="role-card"
+          :data-role="r.name"
+          :class="{ 'role-card--placeholder': draggedRole === r.name }">
         <!-- Role header -->
         <div class="role-card-header" @click="editingRole !== r.name && toggleOpen(r.name)">
           <template v-if="editingRole === r.name">
@@ -263,12 +484,13 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
           <template v-else>
             <div class="role-title-row">
               <div class="role-title-left">
+                <span v-if="!isProtected(r.name)" class="drag-handle"
+                  @pointerdown="onHandleDown($event, r.name)"
+                  title="Reihenfolge ändern">⠿</span>
                 <span class="collapse-icon">{{ openRole === r.name ? '▾' : '▸' }}</span>
                 <RoleBadge :role="r.name" />
               </div>
               <div v-if="!isProtected(r.name)" class="item-actions" @click.stop>
-                <button class="btn-order" :disabled="!canMoveRole(r.name, 'up') || saving?.startsWith(`role-move-${r.name}`)" @click="handleMoveRole(r.name, 'up')">↑</button>
-                <button class="btn-order" :disabled="!canMoveRole(r.name, 'down') || saving?.startsWith(`role-move-${r.name}`)" @click="handleMoveRole(r.name, 'down')">↓</button>
                 <button class="btn-edit" @click="startEditRole(r)">Bearbeiten</button>
                 <button class="btn-delete" @click="handleDeleteRole(r.name)">Löschen</button>
               </div>
@@ -283,26 +505,61 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
             <p v-if="isProtected(r.name)" class="protected-perms-hint">Die Admin-Rolle hat immer alle Berechtigungen und kann nicht verändert werden.</p>
             <template v-else>
             <div class="perm-row">
-              <div class="perm-info"><span class="perm-label">Eigene Stufe</span></div>
-              <select class="scope-select" :value="getDeptAccessLevel(getPermForRole(r.name)!, 'own')"
-                @change="setDeptAccessLevel(r.name, 'own', ($event.target as HTMLSelectElement).value as DeptAccessLevel)">
-                <option v-for="o in SCOPE_OPTIONS_DEPT_ACCESS" :key="o.value" :value="o.value">{{ o.label }}</option>
-              </select>
+              <div class="perm-info"><span class="perm-label">Aktivitäten lesen</span></div>
+              <div class="scope-select-wrap">
+                <span v-if="readConstraintHint(r.name)" class="scope-hint-icon">
+                  ?
+                  <span class="scope-hint-tooltip">{{ readConstraintHint(r.name) }}</span>
+                </span>
+                <select class="scope-select" :value="getPermForRole(r.name)!.activity_read_scope"
+                  @change="updatePerm(r.name, 'activity_read_scope', ($event.target as HTMLSelectElement).value)">
+                  <option v-for="o in SCOPE_OPTIONS_ACTIVITY_READ" :key="o.value" :value="o.value"
+                    :disabled="isReadOptionDisabled(r.name, o.value)">{{ o.label }}</option>
+                </select>
+              </div>
             </div>
             <div class="perm-row">
-              <div class="perm-info"><span class="perm-label">Alle Stufen</span></div>
-              <select class="scope-select" :value="getDeptAccessLevel(getPermForRole(r.name)!, 'all')"
-                @change="setDeptAccessLevel(r.name, 'all', ($event.target as HTMLSelectElement).value as DeptAccessLevel)">
-                <option v-for="o in SCOPE_OPTIONS_DEPT_ACCESS" :key="o.value" :value="o.value">{{ o.label }}</option>
-              </select>
+              <div class="perm-info"><span class="perm-label">Aktivitäten erstellen</span></div>
+              <div class="scope-select-wrap">
+                <span v-if="createConstraintHint(r.name)" class="scope-hint-icon">
+                  ?
+                  <span class="scope-hint-tooltip">{{ createConstraintHint(r.name) }}</span>
+                </span>
+                <select class="scope-select" :value="getPermForRole(r.name)!.activity_create_scope"
+                  @change="updatePerm(r.name, 'activity_create_scope', ($event.target as HTMLSelectElement).value)">
+                  <option v-for="o in SCOPE_OPTIONS_ACTIVITY_CREATE" :key="o.value" :value="o.value"
+                    :disabled="isCreateOptionDisabled(r.name, o.value)">{{ o.label }}</option>
+                </select>
+              </div>
             </div>
 
             <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Aktivitäten bearbeiten</span></div>
+              <div class="scope-select-wrap">
+                <span v-if="actionConstraintHint(r.name)" class="scope-hint-icon">
+                  ?
+                  <span class="scope-hint-tooltip">{{ actionConstraintHint(r.name) }}</span>
+                </span>
+                <select class="scope-select" :value="getPermForRole(r.name)!.activity_edit_scope"
+                  @change="updatePerm(r.name, 'activity_edit_scope', ($event.target as HTMLSelectElement).value)">
+                  <option v-for="o in SCOPE_OPTIONS_ACTIVITY_EDIT" :key="o.value" :value="o.value"
+                    :disabled="isActionOptionDisabled(r.name, o.value)">{{ o.label }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="perm-row">
               <div class="perm-info"><span class="perm-label">Mailversand</span></div>
-              <select class="scope-select" :value="getPermForRole(r.name)!.mail_send_scope"
-                @change="updatePerm(r.name, 'mail_send_scope', ($event.target as HTMLSelectElement).value)">
-                <option v-for="o in SCOPE_OPTIONS_MAIL_SEND" :key="o.value" :value="o.value">{{ o.label }}</option>
-              </select>
+              <div class="scope-select-wrap">
+                <span v-if="actionConstraintHint(r.name)" class="scope-hint-icon">
+                  ?
+                  <span class="scope-hint-tooltip">{{ actionConstraintHint(r.name) }}</span>
+                </span>
+                <select class="scope-select" :value="getPermForRole(r.name)!.mail_send_scope"
+                  @change="updatePerm(r.name, 'mail_send_scope', ($event.target as HTMLSelectElement).value)">
+                  <option v-for="o in SCOPE_OPTIONS_MAIL_SEND" :key="o.value" :value="o.value"
+                    :disabled="isActionOptionDisabled(r.name, o.value)">{{ o.label }}</option>
+                </select>
+              </div>
             </div>
             <div class="perm-row">
               <div class="perm-info"><span class="perm-label">Mail-Vorlagen</span></div>
@@ -334,35 +591,37 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
               {{ expandedDeptAccess === r.name ? '▾' : '▸' }} Zugriff auf andere Stufen
             </button>
             <template v-if="expandedDeptAccess === r.name">
+              <div v-if="globalCreateAll" class="scope-override-hint">
+                ℹ️ Globale Erstellberechtigung <strong>Alle</strong> gilt für alle Stufen — Mindest-Zugriff ist «Lesen und erstellen».
+              </div>
+              <div v-else-if="globalReadAll" class="scope-override-hint">
+                ℹ️ Globale Leseberechtigung <strong>Alle</strong> gilt für alle Stufen — Mindest-Zugriff ist «Nur lesen».
+              </div>
               <div class="dept-access-grid">
                 <div class="perm-grid-header">
                   <span class="perm-grid-label">Stufe</span>
-                  <span class="perm-grid-col">Lesen</span>
-                  <span class="perm-grid-col">Erstellen</span>
+                  <span class="perm-grid-col">Zugriff</span>
                 </div>
                 <div v-for="dept in departments" :key="dept.name" class="perm-grid-row">
                   <span class="perm-grid-label">
                     <span class="color-dot" :style="{ background: dept.color }" />
                     {{ dept.name }}
                   </span>
-                  <label class="toggle-cell">
-                    <input type="checkbox" :checked="getDeptAccess(dept.name).can_read"
-                      :disabled="saving?.startsWith(`access-${r.name}-${dept.name}`)"
-                      @change="toggleAccess(r.name, dept.name, 'can_read')" />
-                    <span class="toggle-slider" />
-                  </label>
-                  <label class="toggle-cell">
-                    <input type="checkbox" :checked="getDeptAccess(dept.name).can_write"
-                      :disabled="saving?.startsWith(`access-${r.name}-${dept.name}`)"
-                      @change="toggleAccess(r.name, dept.name, 'can_write')" />
-                    <span class="toggle-slider" />
-                  </label>
+                  <select class="scope-select"
+                    :value="effectiveDeptLevel(dept.name)"
+                    :disabled="saving?.startsWith(`access-${r.name}-${dept.name}`)"
+                    @change="setDeptAccessLevel(r.name, dept.name, ($event.target as HTMLSelectElement).value as 'none' | 'read' | 'readwrite')">
+                    <option value="none" :disabled="globalReadAll || globalCreateAll">Kein Zugriff</option>
+                    <option value="read" :disabled="globalCreateAll">Nur lesen</option>
+                    <option value="readwrite">Lesen und erstellen</option>
+                  </select>
                 </div>
               </div>
             </template>
           </div>
         </template>
-      </div>
+        </div>
+      </TransitionGroup>
 
       <!-- Add role -->
       <div v-if="showAdd" class="add-form-wrap">
@@ -381,6 +640,60 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
         + Rolle hinzufügen
       </button>
     </template>
+
+    <!-- Delete modal: step 1 – transfer options -->
+    <div v-if="deleteTarget && deleteStep === 1" class="modal-backdrop" @click.self="cancelDelete">
+      <div class="modal">
+        <h2 class="modal-title">Rolle «{{ deleteTarget }}» löschen</h2>
+        <p class="modal-desc">Wähle, was mit den Benutzern dieser Rolle geschehen soll.</p>
+
+        <div class="delete-section">
+          <h3 class="delete-section-title">Benutzer</h3>
+          <label class="radio-row">
+            <input type="radio" v-model="userAction" value="transfer" />
+            <span>An andere Rolle verschieben:</span>
+          </label>
+          <select v-if="userAction === 'transfer'" v-model="userTransferTo" class="form-input modal-select">
+            <option v-for="r in otherRoles" :key="r.name" :value="r.name">{{ r.name }}</option>
+          </select>
+          <label class="radio-row">
+            <input type="radio" v-model="userAction" value="delete" />
+            <span>Alle Benutzer dieser Rolle löschen</span>
+          </label>
+        </div>
+
+        <p class="delete-note">Berechtigungen und Stufen-Zugriffe dieser Rolle werden automatisch gelöscht.</p>
+
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="cancelDelete">Abbrechen</button>
+          <button class="btn-danger" @click="proceedToConfirm">Weiter</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete modal: step 2 – final confirmation -->
+    <div v-if="deleteTarget && deleteStep === 2" class="modal-backdrop" @click.self="cancelDelete">
+      <div class="modal modal--danger">
+        <h2 class="modal-title modal-title--danger">⚠️ Rolle endgültig löschen?</h2>
+        <p class="modal-desc">Folgende Aktionen werden ausgeführt:</p>
+
+        <ul class="confirm-list">
+          <li>Rolle <strong>«{{ deleteTarget }}»</strong> wird unwiderruflich gelöscht.</li>
+          <li v-if="userAction === 'transfer'">
+            Benutzer → verschoben zu <strong>«{{ userTransferTo }}»</strong>
+          </li>
+          <li v-else>Alle Benutzer dieser Rolle werden <strong>gelöscht</strong>.</li>
+          <li>Berechtigungen und Stufen-Zugriffe werden <strong>gelöscht</strong>.</li>
+        </ul>
+
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="deleteStep = 1">Zurück</button>
+          <button class="btn-danger" :disabled="saving === 'role-del'" @click="confirmDelete">
+            {{ saving === 'role-del' ? 'Löschen...' : 'Endgültig löschen' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -393,11 +706,26 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
 .role-card {
   background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.07);
   padding: 20px 24px; margin-bottom: 16px;
+  border: 2px solid transparent;
+}
+.role-card--placeholder {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+.role-list-move {
+  transition: transform 0.3s ease;
 }
 .role-card-header { cursor: pointer; }
 .role-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .role-title-left { display: flex; align-items: center; gap: 8px; }
 .collapse-icon { font-size: 0.85rem; color: #6b7280; width: 16px; user-select: none; }
+.drag-handle {
+  cursor: grab; font-size: 1.1rem; color: #9ca3af; user-select: none;
+  display: inline-flex; align-items: center; width: 18px; letter-spacing: -1px;
+  touch-action: none;
+}
+.drag-handle:hover { color: #6b7280; }
+.drag-handle:active { cursor: grabbing; color: #374151; }
 .protected-hint { font-size: 0.75rem; color: #9ca3af; font-style: italic; }
 .protected-perms-hint { font-size: 0.85rem; color: #9ca3af; font-style: italic; margin: 14px 0 0; }
 .item-actions { display: flex; gap: 6px; }
@@ -426,7 +754,7 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
 
 .dept-access-grid { margin-top: 10px; }
 .perm-grid-header, .perm-grid-row {
-  display: grid; grid-template-columns: 1fr 80px 80px; align-items: center; padding: 8px 0;
+  display: grid; grid-template-columns: 1fr 220px; align-items: center; padding: 8px 0;
 }
 .perm-grid-header {
   border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 2px;
@@ -439,20 +767,29 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
 .perm-grid-row:last-child { border-bottom: none; }
 .perm-grid-label { font-size: 0.88rem; color: #374151; font-weight: 500; display: flex; align-items: center; gap: 8px; }
 .color-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; border: 1.5px solid rgba(0,0,0,0.1); }
+.scope-override-hint {
+  font-size: 0.82rem; color: #374151; background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 6px; padding: 7px 10px; margin-bottom: 8px;
+}
 
-.toggle-cell { display: flex; justify-content: center; align-items: center; cursor: pointer; flex-shrink: 0; }
-.toggle-cell input { display: none; }
-.toggle-slider {
-  width: 36px; height: 20px; background: #d1d5db; border-radius: 999px;
-  position: relative; transition: background 0.2s;
+.scope-select-wrap { display: flex; align-items: center; gap: 6px; }
+.scope-hint-icon {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; background: #e5e7eb; color: #6b7280;
+  font-size: 0.7rem; font-weight: 700; cursor: help; flex-shrink: 0; user-select: none;
 }
-.toggle-slider::after {
-  content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
-  background: #fff; border-radius: 50%; transition: transform 0.2s;
+.scope-hint-icon:hover { background: #d1d5db; color: #374151; }
+.scope-hint-tooltip {
+  display: none; position: absolute; left: 0; bottom: calc(100% + 8px);
+  width: 260px; padding: 8px 10px; background: #1f2937; color: #f9fafb;
+  font-size: 0.78rem; font-weight: 400; border-radius: 6px; z-index: 20;
+  line-height: 1.4; white-space: normal; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
-.toggle-cell input:checked + .toggle-slider { background: #1a56db; }
-.toggle-cell input:checked + .toggle-slider::after { transform: translateX(16px); }
-.toggle-cell input:disabled + .toggle-slider { opacity: 0.5; }
+.scope-hint-tooltip::after {
+  content: ''; position: absolute; top: 100%; left: 6px;
+  border: 5px solid transparent; border-top-color: #1f2937;
+}
+.scope-hint-icon:hover .scope-hint-tooltip { display: block; }
 
 .role-title-left--editing { flex: 1; min-width: 0; }
 .form-input {
@@ -469,12 +806,6 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
   padding: 5px 12px; border-radius: 6px; border: 1.5px solid #d1d5db; background: #fff;
   font-size: 0.82rem; cursor: pointer; color: #374151;
 }
-.btn-order {
-  width: 30px; height: 28px; border-radius: 6px; border: 1.5px solid #d1d5db; background: #fff;
-  font-size: 0.82rem; cursor: pointer; color: #374151;
-}
-.btn-order:hover:not(:disabled) { background: #f3f4f6; }
-.btn-order:disabled { opacity: 0.4; cursor: default; }
 .btn-edit:hover, .btn-cancel:hover { background: #f3f4f6; }
 .btn-delete {
   padding: 5px 12px; border-radius: 6px; border: 1.5px solid #fca5a5; background: #fff;
@@ -499,4 +830,40 @@ async function toggleAccess(role: string, dept: string, field: 'can_read' | 'can
 }
 .add-form { display: flex; flex-direction: column; gap: 10px; }
 .add-row { display: flex; gap: 8px; align-items: center; }
+
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal {
+  background: #fff; border-radius: 16px; padding: 28px 32px;
+  width: 100%; max-width: 500px; box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+}
+.modal--danger { border: 2px solid #fca5a5; }
+.modal-title { font-size: 1.1rem; font-weight: 700; color: #1a202c; margin: 0 0 6px; }
+.modal-title--danger { color: #dc2626; }
+.modal-desc { font-size: 0.88rem; color: #6b7280; margin: 0 0 18px; }
+
+.delete-section { margin-bottom: 18px; }
+.delete-section-title { font-size: 0.88rem; font-weight: 700; color: #374151; margin: 0 0 8px; }
+.radio-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  font-size: 0.88rem; color: #374151; cursor: pointer;
+}
+.modal-select { margin: 4px 0 4px 24px; max-width: 220px; }
+.delete-note { font-size: 0.82rem; color: #9ca3af; font-style: italic; margin: 0 0 18px; }
+
+.confirm-list {
+  list-style: disc; padding-left: 20px; font-size: 0.88rem; color: #374151;
+  margin: 0 0 20px; line-height: 1.7;
+}
+
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.btn-danger {
+  padding: 8px 18px; border-radius: 8px; border: none;
+  background: #dc2626; color: #fff; font-size: 0.88rem; font-weight: 600; cursor: pointer;
+}
+.btn-danger:hover:not(:disabled) { background: #b91c1c; }
+.btn-danger:disabled { opacity: 0.6; }
 </style>

@@ -135,10 +135,9 @@ export interface RoleRecord {
 
 export interface RolePermission {
 	role: string;
-	can_read_own_dept: boolean;
-	can_write_own_dept: boolean;
-	can_read_all_depts: boolean;
-	can_write_all_depts: boolean;
+	activity_read_scope: 'none' | 'same_dept' | 'all';
+	activity_create_scope: 'none' | 'own_dept' | 'all';
+	activity_edit_scope: 'none' | 'own' | 'same_dept' | 'all';
 	mail_send_scope: 'none' | 'own' | 'same_dept' | 'all';
 	mail_templates_scope: 'none' | 'own_dept' | 'all';
 	user_dept_scope: 'none' | 'own' | 'own_dept' | 'all';
