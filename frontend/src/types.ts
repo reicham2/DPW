@@ -1,5 +1,5 @@
-export type Department = 'Leiter' | 'Pio' | 'Pfadi' | 'Wölfe' | 'Biber';
-export type UserRole = 'admin' | 'Stufenleiter' | 'Leiter' | 'Pio';
+export type Department = string;
+export type UserRole = string;
 
 export interface Program {
 	id: string;
@@ -120,4 +120,39 @@ export interface Attachment {
 	filename: string;
 	content_type: string;
 	created_at: string;
+}
+
+export interface DepartmentRecord {
+	name: string;
+	color: string;
+	sort_order: number;
+}
+
+export interface RoleRecord {
+	name: string;
+	color: string;
+	sort_order: number;
+}
+
+export interface RolePermission {
+	role: string;
+	can_read_own_dept: boolean;
+	can_write_own_dept: boolean;
+	can_read_all_depts: boolean;
+	can_write_all_depts: boolean;
+	mail_send_scope: 'none' | 'own' | 'same_dept' | 'all';
+	mail_templates_scope: 'none' | 'own_dept' | 'all';
+	user_dept_scope: 'none' | 'own' | 'own_dept' | 'all';
+	user_role_scope: 'none' | 'own' | 'own_dept' | 'all';
+}
+
+export interface MyPermissions extends RolePermission {
+	dept_access: { department: string; can_read: boolean; can_write: boolean }[];
+}
+
+export interface RoleDeptAccess {
+	role: string;
+	department: string;
+	can_read: boolean;
+	can_write: boolean;
 }

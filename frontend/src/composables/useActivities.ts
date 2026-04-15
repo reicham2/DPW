@@ -85,7 +85,10 @@ export function useActivities() {
 	async function fetchDepartments(): Promise<void> {
 		try {
 			const res = await apiFetch(`${BASE}/departments`);
-			if (res.ok) departments.value = (await res.json()) as Department[];
+			if (res.ok) {
+				const data = await res.json();
+				departments.value = data.map((d: any) => d.name ?? d) as Department[];
+			}
 		} catch {
 			/* non-critical */
 		}
