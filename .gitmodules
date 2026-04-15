@@ -1,6 +1,0 @@
-[submodule "backend/deps/uWebSockets"]
-	path = backend/deps/uWebSockets
-	url = https://github.com/uNetworking/uWebSockets.git
-[submodule "backend/deps/uSockets"]
-	path = backend/deps/uSockets
-	url = https://github.com/uNetworking/uSockets.git

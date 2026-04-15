@@ -8,9 +8,11 @@ find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(CURL REQUIRED)
 
-# Vendored dependencies in deps/
-set(UWS_DIR ${CMAKE_SOURCE_DIR}/deps/uWebSockets)
-set(USOCKETS_DIR ${CMAKE_SOURCE_DIR}/deps/uSockets)
+find_package(CURL REQUIRED)
+
+# Local cached deps
+set(UWEBSOCKETS_DIR ${CMAKE_SOURCE_DIR}/deps/uWebSockets)
+set(USOCKETS_DIR    ${CMAKE_SOURCE_DIR}/deps/uSockets)
 
 # Find libpq
 find_library(PQ_LIB pq REQUIRED)
@@ -47,7 +49,7 @@ add_executable(server
 target_include_directories(server PRIVATE
     src/
     deps/
-    ${UWS_DIR}/src
+    ${UWEBSOCKETS_DIR}/src
     ${USOCKETS_DIR}/src
     ${PQ_INCLUDE}
     ${UV_INCLUDE}
@@ -73,7 +75,7 @@ target_compile_options(server PRIVATE -O2 -Wall -Wextra -Wno-nonnull)
 # Precompile heavy headers (json.hpp ~25k lines, uWS App.h)
 target_precompile_headers(server PRIVATE
     "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/deps/json.hpp>"
-    "$<$<COMPILE_LANGUAGE:CXX>:${UWS_DIR}/src/App.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:${UWEBSOCKETS_DIR}/src/App.h>"
     "$<$<COMPILE_LANGUAGE:CXX>:<string$<ANGLE-R>>"
     "$<$<COMPILE_LANGUAGE:CXX>:<vector$<ANGLE-R>>"
     "$<$<COMPILE_LANGUAGE:CXX>:<optional$<ANGLE-R>>"
