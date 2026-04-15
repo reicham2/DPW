@@ -45,6 +45,7 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db);
 
 // Admin endpoints (admin role required)
 void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_admin_user(HttpRes *res, HttpReq *req, Database &db);
 
 // Debug-only endpoints (only active when DEBUG=true)
 void handle_debug_get_users(HttpRes *res, HttpReq *req, Database &db);

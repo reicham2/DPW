@@ -151,12 +151,11 @@ async function confirmDelete() {
       <div class="item-list">
         <div v-for="dept in sortedDepartments" :key="dept.name" class="item-card">
           <template v-if="editingName === dept.name">
-            <form class="edit-form" @submit.prevent="saveEdit">
-              <div class="edit-row">
-                <input v-model="editForm.name" class="form-input" placeholder="Name" required />
-                <input v-model="editForm.color" type="color" class="color-input" />
-              </div>
-              <div class="edit-actions">
+            <form class="item-row" @submit.prevent="saveEdit">
+              <input v-model="editForm.color" type="color" class="color-input" />
+              <input v-model="editForm.name" class="form-input" placeholder="Name" required />
+              <span v-if="isDefault(dept.name)" class="protected-hint">Standard</span>
+              <div class="item-actions">
                 <button type="submit" class="btn-save" :disabled="saving">Speichern</button>
                 <button type="button" class="btn-cancel" @click="cancelEdit">Abbrechen</button>
               </div>
@@ -177,12 +176,12 @@ async function confirmDelete() {
       </div>
 
       <div v-if="showAdd" class="add-form-wrap">
-        <form class="edit-form" @submit.prevent="handleAdd">
-          <div class="edit-row">
+        <form class="add-form" @submit.prevent="handleAdd">
+          <div class="add-row">
             <input v-model="addForm.name" class="form-input" placeholder="Neuer Name" required />
             <input v-model="addForm.color" type="color" class="color-input" />
           </div>
-          <div class="edit-actions">
+          <div class="item-actions">
             <button type="submit" class="btn-save" :disabled="saving">Hinzufügen</button>
             <button type="button" class="btn-cancel" @click="showAdd = false">Abbrechen</button>
           </div>
@@ -285,10 +284,8 @@ async function confirmDelete() {
 .item-actions { display: flex; gap: 6px; }
 .protected-hint { font-size: 0.75rem; color: #9ca3af; font-style: italic; }
 
-.edit-form { display: flex; flex-direction: column; gap: 10px; }
-.edit-row { display: flex; gap: 8px; align-items: center; }
 .form-input {
-  flex: 1; padding: 7px 10px; border: 1.5px solid #d1d5db; border-radius: 6px;
+  flex: 1; min-width: 0; padding: 7px 10px; border: 1.5px solid #d1d5db; border-radius: 6px;
   font-size: 0.9rem; outline: none;
 }
 .form-input:focus { border-color: #1a56db; }
@@ -296,7 +293,6 @@ async function confirmDelete() {
 .color-input::-webkit-color-swatch-wrapper { padding: 0; }
 .color-input::-webkit-color-swatch { border: none; border-radius: 6px; }
 .color-input::-moz-color-swatch { border: none; border-radius: 6px; }
-.edit-actions { display: flex; gap: 8px; }
 
 .btn-edit, .btn-cancel {
   padding: 5px 12px; border-radius: 6px; border: 1.5px solid #d1d5db; background: #fff;
@@ -324,6 +320,8 @@ async function confirmDelete() {
   margin-top: 12px; background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.06);
   padding: 14px 18px;
 }
+.add-form { display: flex; flex-direction: column; gap: 10px; }
+.add-row { display: flex; gap: 8px; align-items: center; }
 
 /* Modal */
 .modal-backdrop {

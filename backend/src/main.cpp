@@ -61,6 +61,8 @@ int main()
          // Admin endpoints
          .patch("/admin/users/:id", [&](auto *res, auto *req)
                 { handle_patch_admin_user(res, req, db); })
+         .del("/admin/users/:id", [&](auto *res, auto *req)
+              { handle_delete_admin_user(res, req, db); })
 
          // Permission management (admin only)
          .get("/admin/roles", [&](auto *res, auto *req)

@@ -122,6 +122,8 @@ public:
                                                 const std::string &display_name,
                                                 const std::optional<std::string> &department,
                                                 const std::string &role);
+    // Admin: delete a user by id.
+    bool delete_user(const std::string &id);
 
     // Mail templates
     std::vector<MailTemplate> list_mail_templates();

@@ -119,6 +119,27 @@ async function saveEdit() {
   }
 }
 
+async function deleteUser() {
+  if (!editingUser.value) return
+  if (!confirm(`Benutzer "${editingUser.value.display_name}" wirklich löschen?`)) return
+  saving.value = true
+  saveError.value = null
+  try {
+    const token = await getIdToken()
+    const res = await fetch(`/api/admin/users/${editingUser.value.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(await res.text())
+    users.value = users.value.filter(u => u.id !== editingUser.value!.id)
+    closeEdit()
+  } catch (e) {
+    saveError.value = String(e)
+  } finally {
+    saving.value = false
+  }
+}
+
 function roleBadgeStyle(role: UserRole) {
   const rec = roleRecords.value.find(r => r.name === role)
   if (!rec) return {}
@@ -261,10 +282,15 @@ function roleBadgeStyle(role: UserRole) {
         <ErrorAlert :error="saveError" />
 
         <div class="modal-actions">
-          <button type="button" class="btn-cancel" @click="closeEdit">Abbrechen</button>
-          <button type="submit" class="btn-primary" :disabled="saving">
-            {{ saving ? 'Speichern...' : 'Speichern' }}
+          <button type="button" class="btn-danger" @click="deleteUser" :disabled="saving || editingUser?.id === currentUser?.id">
+            Löschen
           </button>
+          <div class="modal-actions-right">
+            <button type="button" class="btn-cancel" @click="closeEdit">Abbrechen</button>
+            <button type="submit" class="btn-primary" :disabled="saving">
+              {{ saving ? 'Speichern...' : 'Speichern' }}
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -505,10 +531,27 @@ function roleBadgeStyle(role: UserRole) {
 }
 .modal-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 10px;
   margin-top: 4px;
 }
+.modal-actions-right {
+  display: flex;
+  gap: 10px;
+}
+.btn-danger {
+  padding: 9px 20px;
+  border-radius: 8px;
+  border: 1.5px solid #fca5a5;
+  background: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #dc2626;
+  transition: background 0.12s;
+}
+.btn-danger:hover:not(:disabled) { background: #fef2f2; }
+.btn-danger:disabled { opacity: 0.4; cursor: default; }
 .btn-cancel {
   padding: 9px 20px;
   border-radius: 8px;

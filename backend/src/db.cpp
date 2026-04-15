@@ -708,6 +708,21 @@ std::optional<UserRecord> Database::update_user_admin(const std::string &id,
     return u;
 }
 
+// ---- delete_user ------------------------------------------------------------
+
+bool Database::delete_user(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM users WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK &&
+              std::string(PQcmdTuples(res)) == "1";
+    PQclear(res);
+    return ok;
+}
+
 // ---- Mail template helpers --------------------------------------------------
 
 MailTemplate Database::row_to_mail_template(PGresult *res, int row)

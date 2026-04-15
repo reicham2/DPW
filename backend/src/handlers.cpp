@@ -1064,6 +1064,77 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
         } });
 }
 
+// ---- DELETE /admin/users/:id ------------------------------------------------
+
+void handle_delete_admin_user(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto current_perm = db.get_role_permission(current_user->role);
+    if (!current_perm || (current_perm->user_dept_scope == "none" && current_perm->user_role_scope == "none"))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string target_id{req->getParameter(0)};
+
+    // Cannot delete yourself
+    if (target_id == current_user->id)
+    {
+        send_json(res, 400, R"({"error":"Du kannst dich nicht selbst löschen"})");
+        return;
+    }
+
+    // Scope check
+    if (current_perm->user_dept_scope == "own_dept" || current_perm->user_role_scope == "own_dept")
+    {
+        auto target = db.get_user_by_id(target_id);
+        if (!target)
+        {
+            send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
+            return;
+        }
+        if (!current_user->department || !target->department ||
+            *target->department != *current_user->department)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+    }
+
+    if (db.delete_user(target_id))
+    {
+        send_json(res, 200, R"({"ok":true})");
+    }
+    else
+    {
+        send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
+    }
+}
+
 // ---- PATCH /me --------------------------------------------------------------
 
 void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
