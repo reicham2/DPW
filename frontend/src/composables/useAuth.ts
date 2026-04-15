@@ -1,11 +1,12 @@
 import { ref } from 'vue';
 import type { PublicClientApplication, AccountInfo } from '@azure/msal-browser';
 import type { User } from '../types';
+import { config } from '../config';
 
 const msalConfig = {
 	auth: {
-		clientId: import.meta.env.VITE_MSAL_CLIENT_ID as string,
-		authority: `https://login.microsoftonline.com/${import.meta.env.VITE_MSAL_TENANT_ID as string}`,
+		clientId: config.MSAL_CLIENT_ID,
+		authority: `https://login.microsoftonline.com/${config.MSAL_TENANT_ID}`,
 		redirectUri: window.location.origin,
 	},
 	cache: {
@@ -112,7 +113,7 @@ export async function logout(): Promise<void> {
 	user.value = null;
 }
 
-export const isDebug = import.meta.env.VITE_DEBUG === 'true';
+export const isDebug = config.DEBUG;
 
 export async function debugLogin(userId: string): Promise<void> {
 	loginError.value = null;
