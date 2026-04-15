@@ -11,8 +11,7 @@
 
 			<div v-if="open" class="avatar-dropdown">
 				<div class="avatar-dropdown-header">
-					<span class="avatar-dropdown-name">{{ user.display_name }}</span>
-					<span v-if="user.department" class="avatar-dropdown-dept">{{
+					<span class="avatar-dropdown-name">{{ user.display_name }}</span>				<span class="role-badge" :class="roleBadgeClass(user.role)">{{ user.role }}</span>					<span v-if="user.department" class="avatar-dropdown-dept">{{
 						user.department
 					}}</span>
 					<span class="avatar-dropdown-email">{{ user.email }}</span>
@@ -39,6 +38,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { user, login, logout } from '../composables/useAuth';
+import type { UserRole } from '../types';
 
 const open = ref(false);
 const loggingIn = ref(false);
@@ -76,6 +76,15 @@ function onClickOutside(e: MouseEvent) {
 
 onMounted(() => document.addEventListener('mousedown', onClickOutside));
 onUnmounted(() => document.removeEventListener('mousedown', onClickOutside));
+
+function roleBadgeClass(role: UserRole) {
+	return {
+		'badge-admin': role === 'admin',
+		'badge-stufenleiter': role === 'Stufenleiter',
+		'badge-leiter': role === 'Leiter',
+		'badge-pio': role === 'Pio',
+	};
+}
 </script>
 
 <style scoped>
