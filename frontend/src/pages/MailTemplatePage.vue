@@ -5,7 +5,7 @@ import { useMailTemplates } from '../composables/useMailTemplates'
 import { useContactSearch } from '../composables/useContactSearch'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
-import { wsSend, wsRegister, useWebSocket } from '../composables/useWebSocket'
+import { wsSend, wsRegister, wsJoin, wsLeave, useWebSocket } from '../composables/useWebSocket'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { Department, EditSection } from '../types'
 
@@ -248,7 +248,7 @@ onMounted(async () => {
   loadDept(activeDept.value)
   if (user.value) {
     wsRegister(user.value.display_name, user.value.microsoft_oid)
-    wsSend({ type: 'join', activity_id: tplId() })
+    wsJoin(tplId())
   }
   startAutoSaveInterval()
 })
@@ -257,12 +257,12 @@ onUnmounted(() => {
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   if (savedTimer) clearTimeout(savedTimer)
   stopAutoSaveInterval()
-  wsSend({ type: 'leave', activity_id: tplId() })
+  wsLeave()
 })
 
 function loadDept(dept: Department) {
   // Leave previous template room
-  wsSend({ type: 'leave', activity_id: tplId() })
+  wsLeave()
   myLockedSection.value = null
   sectionLocks.value = new Map()
   activeEditors.value = []
@@ -280,7 +280,7 @@ function loadDept(dept: Department) {
   })
 
   // Join new template room
-  wsSend({ type: 'join', activity_id: tplId() })
+  wsJoin(tplId())
 }
 
 function onEditorInput() {

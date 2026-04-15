@@ -5,7 +5,7 @@ import { useActivities } from '../composables/useActivities';
 import { useUsers } from '../composables/useUsers';
 import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
-import { wsSend, wsRegister } from '../composables/useWebSocket';
+import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
@@ -212,7 +212,7 @@ onMounted(async () => {
 	// Register identity and join this activity for collaborative editing
 	if (user.value) {
 		wsRegister(user.value.display_name, user.value.microsoft_oid);
-		wsSend({ type: 'join', activity_id: id });
+		wsJoin(id);
 	}
 
 	// Scroll to focused element (e.g. material) via ?focus=material_2
@@ -235,7 +235,7 @@ onUnmounted(() => {
 	if (savedTimer) clearTimeout(savedTimer);
 	stopAutoSaveInterval();
 	// Leave the activity and unlock any held section
-	wsSend({ type: 'leave', activity_id: id });
+	wsLeave();
 	document.title = 'DPWeb Aktivitäten';
 });
 

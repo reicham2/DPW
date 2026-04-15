@@ -15,6 +15,9 @@ static std::string env(const char *key, const char *def = "")
 
 int main()
 {
+     // Disable stdout buffering so logs appear immediately in Docker
+     setvbuf(stdout, nullptr, _IONBF, 0);
+
      curl_global_init(CURL_GLOBAL_DEFAULT);
 
      std::string conn_str =

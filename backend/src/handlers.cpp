@@ -296,7 +296,7 @@ static bool is_activity_responsible(const Activity &activity, const UserRecord &
 
 static bool can_read_activity(const RolePermission &perm, const UserRecord &user,
                               const std::vector<RoleDeptAccess> &dept_access,
-                              const Activity &activity, const TokenClaims &/*claims*/)
+                              const Activity &activity, const TokenClaims & /*claims*/)
 {
     if (perm.activity_read_scope == "all")
         return true;
