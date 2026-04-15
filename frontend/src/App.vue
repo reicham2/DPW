@@ -8,8 +8,8 @@
         </router-link>
         <div v-if="user" class="global-nav-links">
           <router-link to="/" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }">Aktivitäten</router-link>
-          <router-link v-if="isAdmin || isStufenleiter" to="/mail-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/mail-templates' }">Mail-Vorlagen</router-link>
-          <router-link v-if="isAdmin || isStufenleiter" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
+          <router-link v-if="showMailTemplates" to="/mail-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/mail-templates' }">Mail-Vorlagen</router-link>
+          <router-link v-if="showAdmin" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
         </div>
         <div class="global-nav-right">
           <a href="https://github.com/reicham2/DPW/wiki" target="_blank" rel="noopener noreferrer" class="global-nav-help" title="Hilfe">
@@ -78,16 +78,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import UserAvatar from './components/UserAvatar.vue'
 import BugReportButton from './components/BugReportButton.vue'
 import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
+import { usePermissions } from './composables/usePermissions'
 import type { User } from './types'
 
 const route = useRoute()
-const isAdmin = computed(() => user.value?.role === 'admin')
-const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
+const { myPermissions, fetchMyPermissions } = usePermissions()
+
+const showMailTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
+const showAdmin = computed(() => {
+  const p = myPermissions.value
+  if (!p) return false
+  return (p.user_dept_scope && p.user_dept_scope !== 'none') ||
+         (p.user_role_scope && p.user_role_scope !== 'none')
+})
 
 const loggingIn = ref(false)
 const debugUsers = ref<User[]>([])
@@ -120,6 +128,10 @@ onMounted(() => {
   initAuth()
   loadDebugUsers()
 })
+
+watch(user, (u) => {
+  if (u) fetchMyPermissions().catch(() => {})
+}, { immediate: true })
 </script>
 
 <style scoped>

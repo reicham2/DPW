@@ -3,10 +3,13 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useMailTemplates } from '../composables/useMailTemplates'
 import { useContactSearch } from '../composables/useContactSearch'
 import { user } from '../composables/useAuth'
+import { usePermissions } from '../composables/usePermissions'
 import { wsSend, wsRegister, useWebSocket } from '../composables/useWebSocket'
 import type { Department, EditSection } from '../types'
 
-const ALL_DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
+const { departments: deptRecords, fetchDepartments, myPermissions, fetchMyPermissions } = usePermissions()
+
+const ALL_DEPARTMENTS = computed<Department[]>(() => deptRecords.value.map(d => d.name))
 
 const TEMPLATE_VARIABLES = [
   { var: '{{titel}}',            desc: 'Titel der Aktivität' },
@@ -28,21 +31,25 @@ const TEMPLATE_VARIABLES = [
 const { fetchTemplates, saveTemplate, templates, loading, error } = useMailTemplates()
 import ErrorAlert from '../components/ErrorAlert.vue'
 
-const isAdmin        = computed(() => user.value?.role === 'admin')
-const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
+const canEditAll = computed(() => myPermissions.value?.mail_templates_scope === 'all')
+const canEditOwnDept = computed(() => {
+  const scope = myPermissions.value?.mail_templates_scope
+  return scope === 'own_dept' || scope === 'all'
+})
 
 const visibleDepartments = computed<Department[]>(() => {
-  if (isStufenleiter.value) {
+  if (canEditAll.value) return ALL_DEPARTMENTS.value
+  if (canEditOwnDept.value) {
     const own = user.value?.department as Department | undefined
-    return own ? ALL_DEPARTMENTS.filter(d => d === own) : []
+    return own ? ALL_DEPARTMENTS.value.filter(d => d === own) : []
   }
-  return ALL_DEPARTMENTS
+  return []
 })
 
 const activeDept = ref<Department>(
-  isStufenleiter.value && user.value?.department
+  user.value?.department
     ? user.value.department as Department
-    : 'Pfadi'
+    : '' as Department
 )
 
 const subject = ref('')
@@ -224,7 +231,12 @@ useWebSocket((e) => {
 
 // ---- Load + mount -----------------------------------------------------------
 onMounted(async () => {
-  await fetchTemplates()
+  await Promise.all([fetchDepartments(), fetchTemplates(), fetchMyPermissions()])
+  // Set activeDept to first visible department if current is not visible
+  const visDepts = visibleDepartments.value
+  if (visDepts.length && !visDepts.includes(activeDept.value)) {
+    activeDept.value = visDepts[0]
+  }
   loadDept(activeDept.value)
   if (user.value) {
     wsRegister(user.value.display_name, user.value.microsoft_oid)

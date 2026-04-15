@@ -1,23 +1,28 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useActivities } from '../composables/useActivities'
+import { usePermissions } from '../composables/usePermissions'
 import { user } from '../composables/useAuth'
 import ActivityList from '../components/ActivityList.vue'
 import type { Activity, Department, MaterialItem } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
 
-const DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
+const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadDept } = usePermissions()
+const DEPARTMENTS = computed<Department[]>(() => deptRecords.value.map(d => d.name))
 
 const { activities, loading, error, connected, fetchActivities } = useActivities()
 
-const isAdmin        = computed(() => user.value?.role === 'admin')
-const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
-const isPio          = computed(() => user.value?.role === 'Pio')
+// Permission-based: can user see multiple departments?
+const canReadMultipleDepts = computed(() => {
+  const p = myPermissions.value
+  if (!p) return false
+  if (p.can_read_all_depts) return true
+  const accessCount = (p.dept_access ?? []).filter(d => d.can_read).length
+  return accessCount > 0 // has cross-dept access
+})
 
 const search = ref('')
-const activedept = ref<Department | 'Alle'>(
-  isPio.value ? (user.value?.department ?? 'Alle') : (user.value?.department ?? 'Alle')
-)
+const activedept = ref<Department | 'Alle'>(user.value?.department ?? 'Alle')
 
 // Date range filter inputs (manual)
 const dateFrom = ref('')
@@ -62,7 +67,11 @@ function loadEarlier() {
   extraEarlier.value += STEP
 }
 
-onMounted(fetchActivities)
+onMounted(() => {
+  fetchActivities()
+  fetchDeptRecords()
+  fetchMyPermissions()
+})
 
 // "Meine Verantwortung" — enriched list entry
 interface ListEntry {
@@ -216,8 +225,8 @@ const earlierCount = computed(() => {
         >👤 Meine Verantwortung</button>
       </div>
 
-      <!-- Pio only sees their own dept; others can filter freely -->
-      <div v-if="!isPio" class="filter-tabs">
+      <!-- Show department filter tabs if user can read multiple departments -->
+      <div v-if="canReadMultipleDepts" class="filter-tabs">
         <button
           class="filter-tab"
           :class="{ 'filter-tab--active': activedept === 'Alle' }"

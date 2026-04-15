@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useActivities } from '../composables/useActivities';
 import { useUsers } from '../composables/useUsers';
+import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
 import { wsSend, wsRegister } from '../composables/useWebSocket';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
@@ -31,6 +32,7 @@ const {
 	predefinedLocations,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
+const { myPermissions, fetchMyPermissions, canWriteDept } = usePermissions();
 
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
@@ -156,42 +158,30 @@ function unlockSection(section: EditSection, event?: FocusEvent) {
 // ---- Load ------------------------------------------------------------------
 const canEdit = computed(() => {
 	if (!user.value || !activity.value) return false;
-	const role = user.value.role;
-	if (role === 'admin') return true;
-	if (role === 'Stufenleiter') {
-		if (!!user.value.department && activity.value.department === user.value.department) return true;
-		return activity.value.responsible.includes(user.value.display_name);
-	}
-	// Leiter and Pio: only if verantwortlich (Pio also limited to own dept — enforced by backend)
-	return activity.value.responsible.includes(user.value.display_name);
+	const dept = activity.value.department;
+	if (dept && canWriteDept(dept, user.value.department)) return true;
+	return activity.value.responsible.includes(user.value.display_name) && myPermissions.value?.can_write_own_dept;
 });
 
 const canDelete = computed(() => {
 	if (!user.value || !activity.value) return false;
-	const role = user.value.role;
-	if (role === 'admin') return true;
-	if (role === 'Stufenleiter') {
-		if (!!user.value.department && activity.value.department === user.value.department) return true;
-		return activity.value.responsible.includes(user.value.display_name);
-	}
-	// Leiter and Pio: only if verantwortlich
-	return activity.value.responsible.includes(user.value.display_name);
+	const dept = activity.value.department;
+	if (dept && canWriteDept(dept, user.value.department)) return true;
+	return activity.value.responsible.includes(user.value.display_name) && myPermissions.value?.can_write_own_dept;
 });
 
 const canMail = computed(() => {
 	if (!user.value || !activity.value) return false;
-	const role = user.value.role;
-	if (role === 'admin') return true;
-	if (role === 'Stufenleiter') {
-		if (!!user.value.department && activity.value.department === user.value.department) return true;
-		return activity.value.responsible.includes(user.value.display_name);
-	}
-	// Leiter and Pio: only if verantwortlich
-	return activity.value.responsible.includes(user.value.display_name);
+	const p = myPermissions.value;
+	if (!p) return false;
+	if (p.mail_send_scope === 'all') return true;
+	if (p.mail_send_scope === 'same_dept' && activity.value.department === user.value.department) return true;
+	if (p.mail_send_scope === 'own' && activity.value.responsible.includes(user.value.display_name)) return true;
+	return false;
 });
 
 onMounted(async () => {
-	await Promise.all([fetchDepartments(), fetchUsers(), fetchLocations(), fetchActivities()]);
+	await Promise.all([fetchDepartments(), fetchUsers(), fetchLocations(), fetchActivities(), fetchMyPermissions()]);
 	activity.value = await fetchActivity(id);
 	if (activity.value) {
 		document.title = `${activity.value.title} – DPWeb`;

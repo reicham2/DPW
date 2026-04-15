@@ -62,12 +62,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { user, getIdToken } from '../composables/useAuth'
+import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import type { Department, User } from '../types'
 
-const canChangeDepartment = computed(() => user.value?.role === 'admin')
+const { myPermissions, fetchMyPermissions, departments: deptRecords, fetchDepartments } = usePermissions()
 
-const departments: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
+const canChangeDepartment = computed(() => {
+  const scope = myPermissions.value?.user_dept_scope
+  return scope === 'own' || scope === 'own_dept' || scope === 'all'
+})
+
+const departments = computed(() => deptRecords.value.map(d => d.name))
 
 const form = ref({
   display_name: user.value?.display_name ?? '',
@@ -87,7 +93,8 @@ const initials = computed(() => {
     .join('')
 })
 
-onMounted(() => {
+onMounted(async () => {
+  await Promise.all([fetchMyPermissions(), fetchDepartments()])
   if (user.value) {
     form.value.display_name = user.value.display_name
     form.value.department   = user.value.department ?? ''
