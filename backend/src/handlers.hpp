@@ -18,7 +18,10 @@ bool require_auth(HttpRes *res, HttpReq *req, TokenClaims &out_claims);
 // On failure sends a 401 response and returns empty string.
 std::string auth_token_from_header(HttpRes *res, const std::string &auth_header);
 
-void handle_get_departments(HttpRes *res, HttpReq *req);
+void handle_get_departments(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_department(HttpRes *res, HttpReq *req, Database &db);
+void handle_patch_department(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_department(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activities(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activity(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
@@ -56,3 +59,16 @@ void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db);
 
 // Bug report (creates GitHub issue)
 void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db);
+
+// Current user permissions (authenticated)
+void handle_get_my_permissions(HttpRes *res, HttpReq *req, Database &db);
+
+// Permission management (admin only)
+void handle_get_roles(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_role(HttpRes *res, HttpReq *req, Database &db);
+void handle_patch_role(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_role(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_role_permissions(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_role_dept_access(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_role_dept_access(HttpRes *res, HttpReq *req, Database &db);
