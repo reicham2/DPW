@@ -51,7 +51,12 @@ onMounted(async () => {
   if (myPermissions.value?.user_dept_scope === 'own_dept') {
     filterDept.value = (currentUser.value?.department ?? 'Alle') as any
   }
-  await Promise.all([fetchUsers(), fetchDepartments(), fetchRoles()])
+
+  const tasks = [fetchUsers(), fetchDepartments()]
+  if (canEditRoles.value || canSeePermissionsTab.value) {
+    tasks.push(fetchRoles())
+  }
+  await Promise.all(tasks)
 })
 
 async function fetchUsers() {
