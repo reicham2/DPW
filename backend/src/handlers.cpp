@@ -936,52 +936,6 @@ void handle_debug_get_users(HttpRes *res, HttpReq * /*req*/, Database &db)
     }
 }
 
-// POST /auth/debug-login — login as any existing user by ID (debug mode only)
-void handle_debug_login(HttpRes *res, HttpReq * /*req*/, Database &db)
-{
-    if (!is_debug_mode())
-    {
-        send_json(res, 404, R"({"error":"Nicht gefunden"})");
-        return;
-    }
-
-    auto buf = std::make_shared<std::string>();
-    res->onAborted([] {});
-    res->onData([res, buf, &db](std::string_view chunk, bool last)
-                {
-        buf->append(chunk.data(), chunk.size());
-        if (!last) return;
-
-        try
-        {
-            auto j = nlohmann::json::parse(*buf, nullptr, false);
-            if (j.is_discarded())
-            {
-                send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
-                return;
-            }
-            std::string user_id;
-            if (j.contains("user_id") && j["user_id"].is_string())
-                user_id = j["user_id"].get<std::string>();
-            if (user_id.empty())
-            {
-                send_json(res, 400, R"({"error":"Benutzer-ID ist erforderlich"})");;
-                return;
-            }
-            auto user = db.get_user_by_id(user_id);
-            if (!user)
-            {
-                send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
-                return;
-            }
-            send_json(res, 200, user_to_json(*user).dump());
-        }
-        catch (std::exception &e)
-        {
-            send_json(res, 400, nlohmann::json{{"error", e.what()}}.dump());
-        } });
-}
-
 // ---- PATCH /admin/users/:id -------------------------------------------------
 
 void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
@@ -2037,8 +1991,21 @@ void handle_delete_department(HttpRes *res, HttpReq *req, Database &db)
 // GET /admin/roles
 void handle_get_roles(HttpRes *res, HttpReq *req, Database &db)
 {
-    if (!require_admin(res, req, db))
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
         return;
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->user_role_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
     try
     {
         auto roles = db.list_roles();

@@ -45,8 +45,6 @@ int main()
          // Auth + user endpoints
          .post("/auth/me", [&](auto *res, auto *req)
                { handle_post_auth_me(res, req, db); })
-         .post("/auth/debug-login", [&](auto *res, auto *req)
-               { handle_debug_login(res, req, db); })
          .get("/me", [&](auto *res, auto *req)
               { handle_get_me(res, req, db); })
          .get("/users", [&](auto *res, auto *req)
