@@ -16,7 +16,7 @@ const TEMPLATE_VARIABLES = [
   { var: '{{endzeit}}',          desc: 'Endzeit (HH:MM)' },
   { var: '{{ort}}',              desc: 'Veranstaltungsort' },
   { var: '{{verantwortlich}}',   desc: 'Verantwortliche Person' },
-  { var: '{{abteilung}}',        desc: 'Abteilung / Stufe' },
+  { var: '{{abteilung}}',        desc: 'Stufe' },
   { var: '{{ziel}}',             desc: 'Ziel der Aktivität' },
   { var: '{{material}}',         desc: 'Materialliste (kommagetrennt)' },
   { var: '{{schlechtwetter}}',   desc: 'Schlechtwetter-Info' },

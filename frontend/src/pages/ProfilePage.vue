@@ -21,7 +21,7 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="department">Abteilung</label>
+          <label class="form-label" for="department">Stufe</label>
           <select
             v-if="canChangeDepartment"
             id="department"
@@ -39,7 +39,7 @@
             readonly
           />
           <p v-if="!canChangeDepartment" class="form-hint">
-            Abteilung kann nur von einem Admin geändert werden.
+            Stufe kann nur von einem Admin geändert werden.
           </p>
         </div>
 
