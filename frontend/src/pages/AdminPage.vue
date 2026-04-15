@@ -17,11 +17,11 @@ const ROLES = computed(() => roleRecords.value.map(r => r.name))
 const canSeeAllDepts = computed(() => myPermissions.value?.user_dept_scope === 'all')
 const canEditDepts = computed(() => {
   const scope = myPermissions.value?.user_dept_scope
-  return scope === 'all' || scope === 'own_dept'
+  return scope === 'all' || scope === 'own_dept' || scope === 'own'
 })
 const canEditRoles = computed(() => {
   const scope = myPermissions.value?.user_role_scope
-  return scope === 'all' || scope === 'own_dept'
+  return scope === 'all' || scope === 'own_dept' || scope === 'own'
 })
 const canSeePermissionsTab = computed(() => canManageSystem())
 
@@ -37,6 +37,7 @@ const editingUser = ref<User | null>(null)
 const editForm = ref({ display_name: '', department: '' as Department | '', role: '' as UserRole })
 const saving = ref(false)
 const saveError = ref<string | null>(null)
+const deleteTarget = ref<User | null>(null)
 
 const filterDept = ref<Department | 'Alle'>('Alle')
 
@@ -70,9 +71,28 @@ async function fetchUsers() {
   }
 }
 
+function canManageTargetUser(u: User) {
+  const p = myPermissions.value
+  const me = currentUser.value
+  if (!p || !me) return false
+
+  if (p.user_dept_scope === 'all' || p.user_role_scope === 'all') return true
+
+  const isSelf = u.id === me.id
+  if (p.user_dept_scope === 'own' || p.user_role_scope === 'own') return isSelf
+
+  const sameDept = !!(u.department && me.department && u.department === me.department)
+  if (p.user_dept_scope === 'own_dept' || p.user_role_scope === 'own_dept') return sameDept
+
+  return false
+}
+
 const filtered = computed(() => {
-  if (filterDept.value === 'Alle') return users.value
-  return users.value.filter(u => u.department === filterDept.value)
+  let list = users.value.filter(canManageTargetUser)
+  if (filterDept.value !== 'Alle') {
+    list = list.filter(u => u.department === filterDept.value)
+  }
+  return list
 })
 
 function openEdit(u: User) {
@@ -129,24 +149,32 @@ async function saveEdit() {
 }
 
 async function deleteUser() {
-  if (!editingUser.value) return
-  if (!confirm(`Benutzer "${editingUser.value.display_name}" wirklich löschen?`)) return
+  if (!deleteTarget.value) return
   saving.value = true
   saveError.value = null
   try {
     const token = await getIdToken()
-    const res = await fetch(`/api/admin/users/${editingUser.value.id}`, {
+    const res = await fetch(`/api/admin/users/${deleteTarget.value.id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error(await res.text())
-    users.value = users.value.filter(u => u.id !== editingUser.value!.id)
-    closeEdit()
+    users.value = users.value.filter(u => u.id !== deleteTarget.value!.id)
+    deleteTarget.value = null
   } catch (e) {
     saveError.value = String(e)
   } finally {
     saving.value = false
   }
+}
+
+function openDeleteConfirm(u: User) {
+  deleteTarget.value = u
+  saveError.value = null
+}
+
+function closeDeleteConfirm() {
+  deleteTarget.value = null
 }
 
 function roleBadgeStyle(role: UserRole) {
@@ -240,7 +268,10 @@ function roleBadgeStyle(role: UserRole) {
                 <span class="role-badge" :style="roleBadgeStyle(u.role)">{{ u.role }}</span>
               </td>
               <td>
-                <button class="btn-edit" @click="openEdit(u)">Bearbeiten</button>
+                <div class="item-actions">
+                  <button class="btn-edit" @click="openEdit(u)">Bearbeiten</button>
+                  <button class="btn-delete" :disabled="u.id === currentUser?.id" @click="openDeleteConfirm(u)">Löschen</button>
+                </div>
               </td>
             </tr>
             <tr v-if="filtered.length === 0">
@@ -291,17 +322,30 @@ function roleBadgeStyle(role: UserRole) {
         <ErrorAlert :error="saveError" />
 
         <div class="modal-actions">
-          <button type="button" class="btn-danger" @click="deleteUser" :disabled="saving || editingUser?.id === currentUser?.id">
-            Löschen
+          <button type="button" class="btn-cancel" @click="closeEdit">Abbrechen</button>
+          <button type="submit" class="btn-primary" :disabled="saving">
+            {{ saving ? 'Speichern...' : 'Speichern' }}
           </button>
-          <div class="modal-actions-right">
-            <button type="button" class="btn-cancel" @click="closeEdit">Abbrechen</button>
-            <button type="submit" class="btn-primary" :disabled="saving">
-              {{ saving ? 'Speichern...' : 'Speichern' }}
-            </button>
-          </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Delete confirmation modal -->
+  <div v-if="deleteTarget" class="modal-backdrop" @click.self="closeDeleteConfirm">
+    <div class="modal modal--danger">
+      <h2 class="modal-title modal-title--danger">Benutzer löschen</h2>
+      <p class="modal-email">{{ deleteTarget.display_name }} ({{ deleteTarget.email }})</p>
+      <p class="modal-warning">Dieser Benutzer wird dauerhaft gelöscht. Verantwortlichkeiten in Aktivitäten bleiben zur Nachverfolgbarkeit bestehen.</p>
+
+      <ErrorAlert :error="saveError" />
+
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" @click="closeDeleteConfirm">Abbrechen</button>
+        <button type="button" class="btn-danger" :disabled="saving || deleteTarget.id === currentUser?.id" @click="deleteUser">
+          {{ saving ? 'Löschen...' : 'Löschen' }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -464,6 +508,11 @@ function roleBadgeStyle(role: UserRole) {
   font-weight: 600;
 }
 
+.item-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* Edit button */
 .btn-edit {
   padding: 5px 14px;
@@ -476,6 +525,18 @@ function roleBadgeStyle(role: UserRole) {
   transition: background 0.12s;
 }
 .btn-edit:hover { background: #f3f4f6; }
+
+.btn-delete {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1.5px solid #fca5a5;
+  background: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: #dc2626;
+}
+.btn-delete:hover:not(:disabled) { background: #fef2f2; }
+.btn-delete:disabled { opacity: 0.45; cursor: default; }
 
 /* Modal */
 .modal-backdrop {
@@ -495,16 +556,23 @@ function roleBadgeStyle(role: UserRole) {
   max-width: 420px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.18);
 }
+.modal--danger { border: 2px solid #fca5a5; }
 .modal-title {
   font-size: 1.15rem;
   font-weight: 700;
   margin: 0 0 4px;
   color: #1a202c;
 }
+.modal-title--danger { color: #dc2626; }
 .modal-email {
   font-size: 0.85rem;
   color: #6b7280;
   margin: 0 0 20px;
+}
+.modal-warning {
+  font-size: 0.88rem;
+  color: #6b7280;
+  margin: 0 0 16px;
 }
 .modal-form {
   display: flex;

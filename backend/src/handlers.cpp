@@ -1028,13 +1028,26 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
 
         // Check scope-based restrictions
         std::string role = j.value("role", "Mitglied");
+        std::optional<std::string> department;
+        if (j.contains("department") && j["department"].is_string())
+            department = j["department"].get<std::string>();
+
         if (current_perm) {
             auto target = db.get_user_by_id(target_id);
             if (!target) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
-            // own_dept scope: can only edit users in own department
+
+            // own scope: only own user record
+            if (current_perm->user_dept_scope == "own" || current_perm->user_role_scope == "own") {
+                if (target_id != current_user->id) {
+                    send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                    return;
+                }
+            }
+
+            // own_dept scope: only users in same department
             if (current_perm->user_dept_scope == "own_dept" || current_perm->user_role_scope == "own_dept") {
                 if (!current_user->department || !target->department ||
                     *target->department != *current_user->department) {
@@ -1042,15 +1055,21 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
                     return;
                 }
             }
-            // Cannot change role if user_role_scope is not 'all' and not 'own_dept'
-            if (current_perm->user_role_scope != "all" && current_perm->user_role_scope != "own_dept") {
-                role = target->role; // keep existing role
+
+            // Cannot change role if role scope is not enough
+            if (current_perm->user_role_scope != "all" &&
+                current_perm->user_role_scope != "own_dept" &&
+                current_perm->user_role_scope != "own") {
+                role = target->role;
+            }
+
+            // Cannot change department if dept scope is not enough
+            if (current_perm->user_dept_scope != "all" &&
+                current_perm->user_dept_scope != "own_dept" &&
+                current_perm->user_dept_scope != "own") {
+                department = target->department;
             }
         }
-
-        std::optional<std::string> department;
-        if (j.contains("department") && j["department"].is_string())
-            department = j["department"].get<std::string>();
 
         try {
             auto user = db.update_user_admin(target_id, display_name, department, role);
@@ -1108,15 +1127,23 @@ void handle_delete_admin_user(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
 
-    // Scope check
+    auto target = db.get_user_by_id(target_id);
+    if (!target)
+    {
+        send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
+        return;
+    }
+
+    // own scope: only own user record (self-delete still blocked above)
+    if (current_perm->user_dept_scope == "own" || current_perm->user_role_scope == "own")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    // own_dept scope: only users in same department
     if (current_perm->user_dept_scope == "own_dept" || current_perm->user_role_scope == "own_dept")
     {
-        auto target = db.get_user_by_id(target_id);
-        if (!target)
-        {
-            send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
-            return;
-        }
         if (!current_user->department || !target->department ||
             *target->department != *current_user->department)
         {

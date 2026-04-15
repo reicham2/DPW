@@ -1562,6 +1562,13 @@ body {
 .btn-mail:hover {
 	background: #cce5ff;
 }
+.btn-mail:disabled {
+	opacity: 0.5;
+	cursor: default;
+	background: #eef2f7;
+	color: #7a8a9a;
+	border-color: #c7d2de;
+}
 
 .mail-activity-info {
 	display: flex;

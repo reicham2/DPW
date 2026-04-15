@@ -994,6 +994,14 @@ async function doDelete() {
 				>📧 Mail</router-link
 			>
 			<button
+				v-else-if="activity && mode === 'view'"
+				class="btn-mail"
+				disabled
+				title="Kein Zugriff auf Mailversand"
+			>
+				📧 Mail
+			</button>
+			<button
 				v-if="activity && canEdit"
 				class="btn-toggle"
 				:class="mode === 'edit' ? 'btn-mail' : 'btn-primary'"
