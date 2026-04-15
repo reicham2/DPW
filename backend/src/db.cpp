@@ -1035,7 +1035,7 @@ std::optional<AttachmentData> Database::get_attachment_data(const std::string &i
     ensure_connected();
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT filename, content_type, data FROM attachments WHERE id = $1",
+                                 "SELECT activity_id, filename, content_type, data FROM attachments WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
@@ -1043,12 +1043,13 @@ std::optional<AttachmentData> Database::get_attachment_data(const std::string &i
         return std::nullopt;
     }
     AttachmentData ad;
-    ad.filename = PQgetvalue(res, 0, 0);
-    ad.content_type = PQgetvalue(res, 0, 1);
+    ad.activity_id = PQgetvalue(res, 0, 0);
+    ad.filename = PQgetvalue(res, 0, 1);
+    ad.content_type = PQgetvalue(res, 0, 2);
     // data column is bytea returned as hex-escaped text; use PQunescapeBytea
     size_t len = 0;
     unsigned char *unescaped = PQunescapeBytea(
-        reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, 2)), &len);
+        reinterpret_cast<const unsigned char *>(PQgetvalue(res, 0, 3)), &len);
     if (unescaped)
     {
         ad.data.assign(unescaped, unescaped + len);
@@ -1434,7 +1435,65 @@ bool Database::move_role(const std::string &name, bool move_up)
     }
 }
 
-bool Database::delete_role(const std::string &name)
+bool Database::reorder_roles(const std::vector<std::string> &ordered_names)
+{
+    ensure_connected();
+    exec_or_throw(conn_, "BEGIN", "reorder_roles BEGIN");
+    try
+    {
+        // First pass: set all non-admin roles to high temp values to avoid UNIQUE conflicts
+        int tmp = 10000;
+        for (const auto &name : ordered_names)
+        {
+            if (name == "admin")
+                continue;
+            std::string tmp_str = std::to_string(tmp);
+            const char *params[2] = {tmp_str.c_str(), name.c_str()};
+            PGresult *r = PQexecParams(conn_,
+                                       "UPDATE roles SET sort_order = $1::integer WHERE name = $2",
+                                       2, nullptr, params, nullptr, nullptr, 0);
+            if (PQresultStatus(r) != PGRES_COMMAND_OK)
+            {
+                std::string err = PQerrorMessage(conn_);
+                PQclear(r);
+                throw std::runtime_error("reorder_roles tmp: " + err);
+            }
+            PQclear(r);
+            ++tmp;
+        }
+        // Second pass: assign correct sort_order values
+        int order = 1;
+        for (const auto &name : ordered_names)
+        {
+            if (name == "admin")
+                continue;
+            std::string order_str = std::to_string(order);
+            const char *params[2] = {order_str.c_str(), name.c_str()};
+            PGresult *r = PQexecParams(conn_,
+                                       "UPDATE roles SET sort_order = $1::integer WHERE name = $2",
+                                       2, nullptr, params, nullptr, nullptr, 0);
+            if (PQresultStatus(r) != PGRES_COMMAND_OK)
+            {
+                std::string err = PQerrorMessage(conn_);
+                PQclear(r);
+                throw std::runtime_error("reorder_roles set: " + err);
+            }
+            PQclear(r);
+            ++order;
+        }
+        exec_or_throw(conn_, "COMMIT", "reorder_roles COMMIT");
+        return true;
+    }
+    catch (...)
+    {
+        PQexec(conn_, "ROLLBACK");
+        throw;
+    }
+}
+
+bool Database::delete_role(const std::string &name,
+                           const std::string &transfer_users_to,
+                           bool delete_users)
 {
     ensure_connected();
     exec_or_throw(conn_, "BEGIN", "delete_role BEGIN");
@@ -1452,6 +1511,32 @@ bool Database::delete_role(const std::string &name)
         }
         int deleted_order = std::stoi(PQgetvalue(order_res, 0, 0));
         PQclear(order_res);
+
+        // Transfer or delete users
+        if (!transfer_users_to.empty())
+        {
+            const char *xfer_params[2] = {transfer_users_to.c_str(), name.c_str()};
+            PGresult *xfer = PQexecParams(conn_,
+                                          "UPDATE users SET role = $1 WHERE role = $2",
+                                          2, nullptr, xfer_params, nullptr, nullptr, 0);
+            PQclear(xfer);
+        }
+        else if (delete_users)
+        {
+            PGresult *del = PQexecParams(conn_,
+                                         "DELETE FROM users WHERE role = $1",
+                                         1, nullptr, params, nullptr, nullptr, 0);
+            PQclear(del);
+        }
+        else
+        {
+            // Default: set users to 'Mitglied'
+            const char *def_params[2] = {"Mitglied", name.c_str()};
+            PGresult *def = PQexecParams(conn_,
+                                         "UPDATE users SET role = $1 WHERE role = $2",
+                                         2, nullptr, def_params, nullptr, nullptr, 0);
+            PQclear(def);
+        }
 
         PGresult *res = PQexecParams(conn_,
                                      "DELETE FROM roles WHERE name = $1",
@@ -1499,6 +1584,9 @@ RolePermission Database::row_to_role_perm(PGresult *res, int row)
     rp.can_write_own_dept = col("can_write_own_dept") && std::string(col("can_write_own_dept")) == "t";
     rp.can_read_all_depts = col("can_read_all_depts") && std::string(col("can_read_all_depts")) == "t";
     rp.can_write_all_depts = col("can_write_all_depts") && std::string(col("can_write_all_depts")) == "t";
+    rp.activity_read_scope = col("activity_read_scope") ? col("activity_read_scope") : "none";
+    rp.activity_create_scope = col("activity_create_scope") ? col("activity_create_scope") : "none";
+    rp.activity_edit_scope = col("activity_edit_scope") ? col("activity_edit_scope") : "none";
     rp.mail_send_scope = col("mail_send_scope") ? col("mail_send_scope") : "none";
     rp.mail_templates_scope = col("mail_templates_scope") ? col("mail_templates_scope") : "none";
     rp.user_dept_scope = col("user_dept_scope") ? col("user_dept_scope") : "none";
@@ -1512,6 +1600,8 @@ std::vector<RolePermission> Database::list_role_permissions()
     PGresult *res = PQexec(conn_,
                            "SELECT role, can_read_own_dept, can_write_own_dept, "
                            "       can_read_all_depts, can_write_all_depts, "
+                           "       activity_read_scope, activity_create_scope, "
+                           "       activity_edit_scope, "
                            "       mail_send_scope, "
                            "       mail_templates_scope, user_dept_scope, user_role_scope "
                            "FROM role_permissions ORDER BY role");
@@ -1537,6 +1627,8 @@ std::optional<RolePermission> Database::get_role_permission(const std::string &r
     PGresult *res = PQexecParams(conn_,
                                  "SELECT role, can_read_own_dept, can_write_own_dept, "
                                  "       can_read_all_depts, can_write_all_depts, "
+                                 "       activity_read_scope, activity_create_scope, "
+                                 "       activity_edit_scope, "
                                  "       mail_send_scope, "
                                  "       mail_templates_scope, user_dept_scope, user_role_scope "
                                  "FROM role_permissions WHERE role = $1",
@@ -1559,6 +1651,9 @@ bool Database::update_role_permission(const std::string &role,
                                       bool can_write_own_dept,
                                       bool can_read_all_depts,
                                       bool can_write_all_depts,
+                                      const std::string &activity_read_scope,
+                                      const std::string &activity_create_scope,
+                                      const std::string &activity_edit_scope,
                                       const std::string &mail_send_scope,
                                       const std::string &mail_templates_scope,
                                       const std::string &user_dept_scope,
@@ -1570,22 +1665,25 @@ bool Database::update_role_permission(const std::string &role,
     const char *p3 = can_write_own_dept ? "true" : "false";
     const char *p4 = can_read_all_depts ? "true" : "false";
     const char *p5 = can_write_all_depts ? "true" : "false";
-    const char *p6 = mail_send_scope.c_str();
-    const char *p7 = mail_templates_scope.c_str();
-    const char *p8 = user_dept_scope.c_str();
-    const char *p9 = user_role_scope.c_str();
-    const char *params[9] = {p1, p2, p3, p4, p5, p6, p7, p8, p9};
+    const char *p6 = activity_read_scope.c_str();
+    const char *p7 = activity_create_scope.c_str();
+    const char *p8 = activity_edit_scope.c_str();
+    const char *p9 = mail_send_scope.c_str();
+    const char *p10 = mail_templates_scope.c_str();
+    const char *p11 = user_dept_scope.c_str();
+    const char *p12 = user_role_scope.c_str();
+    const char *params[12] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, "
                                  "can_read_all_depts, can_write_all_depts, "
-                                 "mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) "
-                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9) "
+                                 "activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) "
+                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9, $10, $11, $12) "
                                  "ON CONFLICT (role) DO UPDATE SET "
                                  "can_read_own_dept = $2::boolean, can_write_own_dept = $3::boolean, "
                                  "can_read_all_depts = $4::boolean, can_write_all_depts = $5::boolean, "
-                                 "mail_send_scope = $6, mail_templates_scope = $7, "
-                                 "user_dept_scope = $8, user_role_scope = $9",
-                                 9, nullptr, params, nullptr, nullptr, 0);
+                                 "activity_read_scope = $6, activity_create_scope = $7, activity_edit_scope = $8, "
+                                 "mail_send_scope = $9, mail_templates_scope = $10, user_dept_scope = $11, user_role_scope = $12",
+                                 12, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;

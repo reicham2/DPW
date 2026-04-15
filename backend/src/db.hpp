@@ -60,10 +60,13 @@ struct RolePermission
     bool can_write_own_dept;
     bool can_read_all_depts;
     bool can_write_all_depts;
-    std::string mail_send_scope;      // none|own|same_dept|all
-    std::string mail_templates_scope; // none|own_dept|all
-    std::string user_dept_scope;      // none|own|own_dept|all
-    std::string user_role_scope;      // none|own|own_dept|all
+    std::string activity_read_scope;   // none|own|same_dept|all
+    std::string activity_create_scope; // none|own_dept|all
+    std::string activity_edit_scope;   // none|own|same_dept|all
+    std::string mail_send_scope;       // none|own|same_dept|all
+    std::string mail_templates_scope;  // none|own_dept|all
+    std::string user_dept_scope;       // none|own|own_dept|all
+    std::string user_role_scope;       // none|own|own_dept|all
 };
 
 struct RoleDeptAccess
@@ -168,7 +171,10 @@ public:
     std::optional<RoleRecord> update_role(const std::string &name, const std::string &new_name,
                                           const std::string &color);
     bool move_role(const std::string &name, bool move_up);
-    bool delete_role(const std::string &name);
+    bool reorder_roles(const std::vector<std::string> &ordered_names);
+    bool delete_role(const std::string &name,
+                     const std::string &transfer_users_to = "",
+                     bool delete_users = false);
 
     // Role permissions
     std::vector<RolePermission> list_role_permissions();
@@ -178,6 +184,9 @@ public:
                                 bool can_write_own_dept,
                                 bool can_read_all_depts,
                                 bool can_write_all_depts,
+                                const std::string &activity_read_scope,
+                                const std::string &activity_create_scope,
+                                const std::string &activity_edit_scope,
                                 const std::string &mail_send_scope,
                                 const std::string &mail_templates_scope,
                                 const std::string &user_dept_scope,
