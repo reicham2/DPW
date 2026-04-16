@@ -6,6 +6,7 @@ import { useUsers } from '../composables/useUsers';
 import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
 import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
+import { useForms } from '../composables/useForms';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
@@ -36,8 +37,11 @@ const {
 const { users, fetchUsers } = useUsers();
 const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper } = usePermissions();
 
+const { fetchForm } = useForms();
+
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
+const showNoFormDialog = ref(false);
 const mode = ref<'view' | 'edit'>('view');
 const dirtyFields = new Set<string>();
 const savedFields = ref<Record<string, number>>({});
@@ -74,9 +78,73 @@ const editSikoText = ref('');
 const editBadWeather = ref('');
 const editPrograms = ref<ProgramInput[]>([]);
 
+interface EditSnapshot {
+	title: string;
+	date: string;
+	startTime: string;
+	endTime: string;
+	goal: string;
+	location: string;
+	responsible: string[];
+	department: Department | '';
+	material: MaterialItem[];
+	sikoText: string;
+	badWeather: string;
+	programs: ProgramInput[];
+}
+
+const editSnapshot = ref<EditSnapshot | null>(null);
+
+function cloneSnapshotMaterial(material: MaterialItem[]): MaterialItem[] {
+	return material.map((m) => ({ name: m.name, responsible: m.responsible ? [...m.responsible] : [] }));
+}
+
+function cloneSnapshotPrograms(programs: ProgramInput[]): ProgramInput[] {
+	return programs.map((p) => ({
+		time: p.time,
+		title: p.title,
+		description: p.description,
+		responsible: [...p.responsible],
+	}));
+}
+
+function captureEditSnapshot() {
+	editSnapshot.value = {
+		title: editTitle.value,
+		date: editDate.value,
+		startTime: editStartTime.value,
+		endTime: editEndTime.value,
+		goal: editGoal.value,
+		location: editLocation.value,
+		responsible: [...editResponsible.value],
+		department: editDepartment.value,
+		material: cloneSnapshotMaterial(editMaterial.value),
+		sikoText: editSikoText.value,
+		badWeather: editBadWeather.value,
+		programs: cloneSnapshotPrograms(editPrograms.value),
+	};
+}
+
+function restoreEditSnapshot() {
+	if (!editSnapshot.value) return;
+	editTitle.value = editSnapshot.value.title;
+	editDate.value = editSnapshot.value.date;
+	editStartTime.value = editSnapshot.value.startTime;
+	editEndTime.value = editSnapshot.value.endTime;
+	editGoal.value = editSnapshot.value.goal;
+	editLocation.value = editSnapshot.value.location;
+	editResponsible.value = [...editSnapshot.value.responsible];
+	editDepartment.value = editSnapshot.value.department;
+	editMaterial.value = cloneSnapshotMaterial(editSnapshot.value.material);
+	editSikoText.value = editSnapshot.value.sikoText;
+	editBadWeather.value = editSnapshot.value.badWeather;
+	editPrograms.value = cloneSnapshotPrograms(editSnapshot.value.programs);
+}
+
 // ---- Attachments state -----------------------------------------------------
 const attachments = ref<Attachment[]>([]);
 const uploadingAttachment = ref(false);
+const editAttachmentIdsSnapshot = ref<string[]>([]);
 const previewAttachment = ref<Attachment | null>(null);
 const previewBlobUrl = ref<string | null>(null);
 const previewLoading = ref(false);
@@ -194,6 +262,15 @@ const canMail = computed(() => {
 	if (p.mail_send_scope === 'own' && activity.value.responsible.includes(user.value.display_name)) return true;
 	return false;
 });
+
+async function handleMailClick() {
+	const existingForm = await fetchForm(id);
+	if (existingForm) {
+		router.push(`/activities/${id}/mail`);
+	} else {
+		showNoFormDialog.value = true;
+	}
+}
 
 const canForms = computed(() => {
 	if (!user.value || !activity.value) return false;
@@ -348,11 +425,49 @@ function enterEdit() {
 	if (!activity.value || !canEdit.value) return;
 	suppressDirtyTracking = true;
 	syncEditFields(activity.value);
+	captureEditSnapshot();
+	editAttachmentIdsSnapshot.value = attachments.value.map(a => a.id);
 	error.value = null;
 	mode.value = 'edit';
 	startAutoSaveInterval();
 	initProgEditors();
-	nextTick(() => { suppressDirtyTracking = false; dirtyFields.clear(); });
+	nextTick(() => {
+		suppressDirtyTracking = false;
+		dirtyFields.clear();
+		savedFields.value = {};
+	});
+}
+
+async function cancelEdit() {
+	if (autoSaveTimer) {
+		clearTimeout(autoSaveTimer);
+		autoSaveTimer = null;
+	}
+	hasPendingChanges = false;
+	stopAutoSaveInterval();
+	suppressDirtyTracking = true;
+
+	// Roll back attachments that were uploaded during this edit session.
+	const snapshot = new Set(editAttachmentIdsSnapshot.value);
+	const addedDuringEdit = attachments.value.filter(a => !snapshot.has(a.id));
+	for (const att of addedDuringEdit) {
+		await deleteAttachment(att.id);
+	}
+	attachments.value = attachments.value.filter(a => snapshot.has(a.id));
+
+	restoreEditSnapshot();
+	initProgEditors();
+	dirtyFields.clear();
+	savedFields.value = {};
+	await doSave();
+	if (!error.value) {
+		mode.value = 'view';
+	}
+	nextTick(() => {
+		suppressDirtyTracking = false;
+		dirtyFields.clear();
+		savedFields.value = {};
+	});
 }
 
 // ---- Material --------------------------------------------------------------
@@ -907,6 +1022,18 @@ function stopAutoSaveInterval() {
 	hasPendingChanges = false;
 }
 
+function flushAutoSave() {
+	if (autoSaveTimer) {
+		clearTimeout(autoSaveTimer);
+		autoSaveTimer = null;
+		doSave();
+	}
+	if (hasPendingChanges) {
+		hasPendingChanges = false;
+		doSave();
+	}
+}
+
 watch(mode, (val) => {
 	if (val !== 'edit') stopAutoSaveInterval();
 });
@@ -976,7 +1103,7 @@ async function doDelete() {
 
 <template>
 	<header class="header">
-		<button class="btn-back" @click="router.push('/')">← Zurück</button>
+		<button class="btn-back" @click="flushAutoSave(); router.push('/')">← Zurück</button>
 		<div class="header-right">
 			<router-link
 				v-if="activity && mode === 'view' && canForms"
@@ -993,13 +1120,14 @@ async function doDelete() {
 			>
 				📋 Formular
 			</button>
-			<router-link
+			<button
 				v-if="activity && mode === 'view' && canMail"
-				:to="`/activities/${id}/mail`"
 				class="btn-mail"
 				title="Mail senden"
-				>📧 Mail</router-link
+				@click="handleMailClick"
 			>
+				📧 Mail
+			</button>
 			<button
 				v-else-if="activity && mode === 'view'"
 				class="btn-mail"
@@ -1642,6 +1770,9 @@ async function doDelete() {
 				>
 					Löschen
 				</button>
+				<button type="button" class="btn-secondary" @click="cancelEdit">
+					Abbrechen
+				</button>
 				<button type="button" class="btn-secondary" @click="mode = 'view'">
 					Schliessen
 				</button>
@@ -1657,6 +1788,22 @@ async function doDelete() {
 			<div class="duplicate-dialog__actions">
 				<button type="button" class="btn-secondary" @click="onDuplicateSkip">Überspringen</button>
 				<button type="button" class="btn-primary" @click="onDuplicateReplace">Ersetzen</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- No-form dialog -->
+	<div v-if="showNoFormDialog" class="modal-backdrop" @click.self="showNoFormDialog = false">
+		<div class="modal modal--info">
+			<h2 class="modal-title modal-title--info">Kein Formular vorhanden</h2>
+			<p class="modal-warning">
+				Für diese Aktivität wurde noch kein Anmeldeformular erstellt.
+				Möchtest du zuerst ein Formular erstellen?
+			</p>
+			<div class="modal-actions">
+				<button class="btn-cancel" @click="showNoFormDialog = false">Abbrechen</button>
+				<button class="btn-cancel" @click="showNoFormDialog = false; router.push(`/activities/${id}/mail`)">Mail erstellen</button>
+				<button class="btn-info" @click="showNoFormDialog = false; router.push(`/activities/${id}/forms`)">Formular erstellen</button>
 			</div>
 		</div>
 	</div>

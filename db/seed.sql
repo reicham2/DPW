@@ -21,9 +21,10 @@ INSERT INTO roles (name, color, sort_order) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope) VALUES
-    ('Stufenleiter',  true, true, false, false, 'same_dept', 'own_dept', 'same_dept', 'same_dept', 'own_dept', 'same_dept', 'own_dept', 'own_dept', 'own_dept'),
+    ('admin',         true, true, true, true,   'all',       'all',      'all',       'all',       'all',      'all',       'all',      'all',      'all'),
+    ('Stufenleiter',  true, true, false, false, 'same_dept', 'same_dept', 'same_dept', 'same_dept', 'own_dept', 'same_dept', 'own_dept', 'own_dept', 'own_dept'),
     ('Leiter',        true, true, false, false, 'same_dept', 'own_dept', 'own',       'own',       'none',     'own',       'none',     'none',     'none'),
-    ('Pio',           true, false, false, false, 'same_dept', 'none',     'none',      'none',      'none',     'none',      'none',     'none',     'none')
+    ('Pio',           true, false, false, false, 'same_dept', 'none',     'own',       'own',       'none',     'none',      'none',     'none',     'none')
 ON CONFLICT (role) DO NOTHING;
 
 INSERT INTO mail_templates (department, subject, body, recipients) VALUES
@@ -123,7 +124,98 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      'Leiter',
      '[]'::jsonb,
      NULL,
-     NULL);
+     NULL),
+
+    -- Pfadi: Wanderung (in 4 Tagen)
+    ('b0000000-0000-0000-0000-000000000007',
+     'Wanderung Säntis',
+     CURRENT_DATE + INTERVAL '4 days',
+     '08:00', '16:00',
+     'Alpine Tour und Naturkunde',
+     'Appenzell, Säntis',
+     ARRAY['Stufen Leiter'],
+     'Pfadi',
+     '[{"name": "Topomaps", "responsible": ["Stufen Leiter"]}, {"name": "Erste-Hilfe-Rucksack", "responsible": []}, {"name": "Proviant für 8h", "responsible": ["Leiter Eins"]}]'::jsonb,
+     'Sanitäter: Stufen Leiter (Handy stets erreichbar). Notfall Alpine Rettung: 1414',
+     'Alternativ: Schloss Appenzell besichtiging'),
+
+    -- Wölfe: Kochkurs (in 6 Tagen)
+    ('b0000000-0000-0000-0000-000000000008',
+     'Pizza selber backen',
+     CURRENT_DATE + INTERVAL '6 days',
+     '15:00', '18:30',
+     'Teig kneten und Pizza belegen',
+     'Schulhaus Dorf',
+     ARRAY['Leiter Zwei'],
+     'Wölfe',
+     '[{"name": "Mehl (5kg)", "responsible": ["Leiter Zwei"]}, {"name": "Belag (Käse, Tomaten, Salami)", "responsible": ["Leiter Zwei"]}, {"name": "Pizzaschaufel (3x)", "responsible": []}]'::jsonb,
+     NULL,
+     'Backofen im Schulhaus Küche'),
+
+    -- Biber: Badetag (in 8 Tagen)
+    ('b0000000-0000-0000-0000-000000000009',
+     'Badetag im Freibad',
+     CURRENT_DATE + INTERVAL '8 days',
+     '14:00', '16:30',
+     'Schwimmen und Plantschen lernen',
+     'Freibad Grünwald',
+     ARRAY['Leiter Drei'],
+     'Biber',
+     '[{"name": "Schwimmleuchten (10x)", "responsible": []}, {"name": "Schwimmflügel-Set", "responsible": ["Leiter Drei"]}, {"name": "Mikrofon Badeverbot-Info", "responsible": []}]'::jsonb,
+     'Bademeister vor Ort, Erste Hilfe durch Leiter Drei',
+     'Nur bei Schönwetter'),
+
+    -- Pio: Felsklettern (in 9 Tagen)
+    ('b0000000-0000-0000-0000-000000000010',
+     'Felsklettern: Seile und Sicherung',
+     CURRENT_DATE + INTERVAL '9 days',
+     '09:00', '17:00',
+     'Klettertechniken und Sicherheit trainieren',
+     'Alpstein',
+     ARRAY['Pio Eins'],
+     'Pio',
+     '[{"name": "Klettergurt (4x)", "responsible": ["Pio Eins"]}, {"name": "Kletterseile 50m", "responsible": ["Pio Eins"]}, {"name": "Karabiner-Set", "responsible": []}, {"name": "Sturzpuffer", "responsible": []}]'::jsonb,
+     'Seilschaft max 2 Personen. Notfall: Bergwacht 140. Leiter Pio Eins begleitet.',
+     'Nur bei stabiler Wetterlage'),
+
+    -- Pfadi: Übernachtung im Tipi (in 11 Tagen)
+    ('b0000000-0000-0000-0000-000000000011',
+     'Tipi-Nacht',
+     CURRENT_DATE + INTERVAL '11 days',
+     '17:00', '09:00',
+     'Draußen übernachten und Lagerfeuer genießen',
+     'Naturlehrgebiet Eggenberg',
+     ARRAY['Leiter Eins', 'Stufen Leiter'],
+     'Pfadi',
+     '[{"name": "Tipis (2x)", "responsible": ["Leiter Eins"]}, {"name": "Schlafsäcke (8x)", "responsible": []}, {"name": "Isomatten (10x)", "responsible": ["Stufen Leiter"]}, {"name": "Brennholz", "responsible": []}, {"name": "Grill & Töpfe", "responsible": ["Leiter Eins"]}]'::jsonb,
+     'Nachtbereitschaft: Leiter Eins hat GPS-Tracker. Notfallnummer vor Ort ausgehängt.',
+     'Bei Gewitter: Übernachtung im Pfadiheim alternate'),
+
+    -- Wölfe & Pfadi gemeinsam: Waldspiele (in 12 Tagen, LOCATION OVERLAP TEST 1)
+    ('b0000000-0000-0000-0000-000000000012',
+     'Waldspiele kombiniert (Pfadi & Wölfe)',
+     CURRENT_DATE + INTERVAL '12 days',
+     '10:00', '12:30',
+     'Gemeinsame Waldspiele und Verbandsgeist',
+     'Waldlichtung Hüttenberg',
+     ARRAY['Stufen Leiter', 'Leiter Zwei'],
+     'Pfadi',
+     '[{"name": "Fahnen (4x)", "responsible": ["Stufen Leiter"]}, {"name": "Pfeifen (3x)", "responsible": ["Leiter Zwei"]}, {"name": "Urkunden", "responsible": []}]'::jsonb,
+     NULL,
+     NULL),
+
+    -- Wölfe: Nachmittagstraining (in 12 Tagen, LOCATION OVERLAP TEST 2 - gleiche Zeit + Ort, andere Abteilung)
+    ('b0000000-0000-0000-0000-000000000013',
+     'Wölfe-Nachmittagstraining',
+     CURRENT_DATE + INTERVAL '12 days',
+     '10:00', '12:30',
+     'Gerätetraining auf dem Sportplatz',
+     'Waldlichtung Hüttenberg',
+     ARRAY['Leiter Zwei'],
+     'Wölfe',
+     '[{"name": "Springseile (5x)", "responsible": []}, {"name": "Hütchen (20x)", "responsible": ["Leiter Zwei"]}, {"name": "Fußbälle (3x)", "responsible": []}]'::jsonb,
+     NULL,
+     'Zeitgleich mit Pfadi-Waldspiel – koordinierte Aktivitäten');
 
 -- ── Programm-Einträge ───────────────────────────────────────────────────────
 
@@ -147,6 +239,61 @@ INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
     ('b0000000-0000-0000-0000-000000000003', '14:20', 'Schatzsuche',       'Hinweise suchen und Rätsel lösen',             ARRAY['Leiter Zwei']),
     ('b0000000-0000-0000-0000-000000000003', '15:45', 'Schatz öffnen',     'Gemeinsam den Schatz öffnen',                  ARRAY['Leiter Zwei']),
     ('b0000000-0000-0000-0000-000000000003', '16:00', 'Zvieri',            'Zvieri und Verabschiedung',                    ARRAY['Leiter Zwei']);
+
+-- Programme für "Wanderung Säntis"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000007', '08:00', 'Treffpunkt & Start', 'Ausrüstungskontrolle und Kurzbriefing',        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', '09:00', 'Start Wanderung',   'Asphalt bis äis Berghütte',                   ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', '12:00', 'Gipfel & Picknick',  'Mittagspause mit Aussicht',                    ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', '14:00', 'Abstieg',           'Zurück zum Startpunkt',                        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', '16:00', 'Debrief & Ende',    'Erlebnisse teilen, Abfahrt',                   ARRAY['Stufen Leiter']);
+
+-- Programme für "Pizza selber backen"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000008', '15:00', 'Einstieg',          'Pizzageschichte und Teig-Zutaten erklären',    ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008', '15:15', 'Teig kneten',       'Jedes Kind knetet seinen Teig',                ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008', '16:00', 'Formen & Belegen',  'Pizza-Formen verzieren und belegen',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008', '16:30', 'Backen & Essen',    'Im Ofen backen und gemeinsam essen',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008', '18:00', 'Aufräumen & Tschüss', 'Küche putzen und bis bald',                   ARRAY['Leiter Zwei']);
+
+-- Programme für "Badetag im Freibad"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000009', '14:00', 'Umzug & Belegung',  'Umzug ins Freibad, Platz suchen',              ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009', '14:15', 'Sicherheitsbriefing', 'Regeln erklären und Wassergewöhnung',        ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009', '14:45', 'Freischwimmen',    'Freies Spielen im Wasser und Becken',         ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009', '15:45', 'Flaschenbad',       'Erfrischungen und Snack am Beckenrand',        ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009', '16:15', 'Umzug & Ende',      'Zurück zur Sammelstelle',                      ARRAY['Leiter Drei']);
+
+-- Programme für "Felsklettern: Seile und Sicherung"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000010', '09:00', 'Anmarsch & Setup',  'Zu Kletterplatz gehen, Ausrüstung aufbauen',   ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '10:00', 'Theorie Knoten',    'Kletterknoten und Sicherung üben',             ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '11:00', 'Erste Kletter',     'Beginners an easy Via mit Sicherung',          ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '12:30', 'Mittagspause',      'Proviant und Aussicht genießen',               ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '13:30', 'Fortgeschrittene',  'Schwierigere Routen für Erfahrene',            ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '16:00', 'Abbau & Rückweg',   'Material packen und Debrief',                  ARRAY['Pio Eins']);
+
+-- Programme für "Tipi-Nacht"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000011', '17:00', 'Anreise & Aufbau', 'Tipis aufbauen und Schlafplätze herrichten',  ARRAY['Leiter Eins', 'Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011', '18:00', 'Feuer & Essen',    'Lagerfeuer entzünden und Abendessen kochen',   ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000011', '19:00', 'Lagerfeuer-Programm', 'Geschichten, Lieder, Spiele ums Feuer',     ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011', '21:00', 'Zubettmachen',     'Runterfahren und Schlafen gehen',              ARRAY['Leiter Eins', 'Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011', '09:00', 'Frühstück & Abbau', 'Frühstück zubereiten und Tipis abbauen',      ARRAY['Stufen Leiter']);
+
+-- Programme für "Waldspiele kombiniert (Pfadi & Wölfe)"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000012', '10:00', 'Begrüssung',       'Verbands- und Gruppengeist aktivieren',        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000012', '10:15', 'Gemischte Spiele', 'Alters-Mix: Staffeln und Teamspiele',          ARRAY['Stufen Leiter', 'Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000012', '11:30', 'Prämierung',       'Sieger küren und Urkunden verteilen',          ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000012', '12:00', 'Zvieri & Ende',    'Gemeinsamer Zvieri',                           ARRAY['Stufen Leiter']);
+
+-- Programme für "Wölfe-Nachmittagstraining"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000013', '10:00', 'Aufwärmspiel',     'Fangis und Ballgewöhnung',                     ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013', '10:15', 'Koordinations-Parcours', 'Hütchen-Slalom und Sprünge',                  ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013', '11:00', 'Freispiel & Tore', 'Mannschaftsspiele auf Kleinfeldern',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013', '11:45', 'Cool-down',        'Dehnübungen und Abklatschen',                  ARRAY['Leiter Zwei']);
 
 -- Mail-Templates mit Beispielinhalt
 UPDATE mail_templates SET

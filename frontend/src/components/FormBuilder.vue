@@ -22,29 +22,36 @@
 		<!-- Form Header -->
 		<div class="builder-section">
 			<label class="field-label">{{ titleLabel }}</label>
-			<input
-				v-model="localTitle"
-				type="text"
-				class="field-input"
-				:placeholder="titlePlaceholder"
-				@input="markDirty"
-			/>
+			<div class="input-save-wrap">
+				<input
+					ref="titleInputRef"
+					v-model="localTitle"
+					type="text"
+					class="field-input"
+					:class="{ 'field-input--invalid': titleError }"
+					:placeholder="titlePlaceholder"
+					@input="markDirty('title')"
+				/>
+				<span v-if="savedFields['title']" class="field-saved-icon" :key="savedFields['title']">💾</span>
+			</div>
+			<p v-if="titleError" class="validation-hint">{{ titleError }}</p>
 			<label class="field-label mt-3">Modus</label>
 			<div class="mode-toggle">
 				<button
 					:class="['mode-btn', localFormType === 'registration' ? 'active' : '']"
 					type="button"
-					@click="localFormType = 'registration'; markDirty()"
+					@click="localFormType = 'registration'; markDirty('mode')"
 				>
 					Anmeldung
 				</button>
 				<button
 					:class="['mode-btn', localFormType === 'deregistration' ? 'active' : '']"
 					type="button"
-					@click="localFormType = 'deregistration'; markDirty()"
+					@click="localFormType = 'deregistration'; markDirty('mode')"
 				>
 					Abmeldung
 				</button>
+				<span v-if="savedFields['mode']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['mode']">💾</span>
 			</div>
 		</div>
 
@@ -62,7 +69,8 @@
 			<div
 				v-for="(q, idx) in localQuestions"
 				:key="idx"
-				:class="['question-card', isFromTemplate(idx) ? 'question-card--template' : '']"
+				:ref="el => setQuestionCardRef(el, idx)"
+				:class="['question-card', isFromTemplate(idx) ? 'question-card--template' : '', choiceErrorIndex === idx ? 'question-card--invalid' : '']"
 			>
 				<div class="question-header">
 					<div class="question-badges">
@@ -103,38 +111,44 @@
 
 				<!-- Section type -->
 				<template v-if="q.question_type === 'section'">
-					<input
-						v-model="q.question_text"
-						class="field-input"
-						placeholder="Abschnitts-Titel"
-						@input="markDirty"
-					/>
+					<div class="input-save-wrap">
+						<input
+							v-model="q.question_text"
+							class="field-input"
+							placeholder="Abschnitts-Titel"
+							@input="markDirty(`q${idx}`)"
+						/>
+						<span v-if="savedFields[`q${idx}`]" class="field-saved-icon" :key="savedFields[`q${idx}`]">💾</span>
+					</div>
 					<input
 						v-model="q.metadata.subtitle"
 						class="field-input mt-1"
 						placeholder="Untertitel (optional)"
-						@input="markDirty"
+						@input="markDirty(`q${idx}`)"
 					/>
 				</template>
 
 				<!-- All other types -->
 				<template v-else>
-					<input
-						v-model="q.question_text"
-						class="field-input"
-						placeholder="Frage"
-						@input="markDirty"
-					/>
+					<div class="input-save-wrap">
+						<input
+							v-model="q.question_text"
+							class="field-input"
+							placeholder="Frage"
+							@input="markDirty(`q${idx}`)"
+						/>
+						<span v-if="savedFields[`q${idx}`]" class="field-saved-icon" :key="savedFields[`q${idx}`]">💾</span>
+					</div>
 					<div class="question-options-row">
 						<label class="checkbox-label">
-							<input v-model="q.is_required" type="checkbox" @change="markDirty" />
+							<input v-model="q.is_required" type="checkbox" @change="markDirty(`q${idx}`)" />
 							Pflichtfeld
 						</label>
 
 						<!-- text_input extras -->
 						<template v-if="q.question_type === 'text_input'">
 							<label class="checkbox-label ml-3">
-								<input v-model="q.metadata.multiline" type="checkbox" @change="markDirty" />
+								<input v-model="q.metadata.multiline" type="checkbox" @change="markDirty(`q${idx}`)" />
 								Mehrzeilig
 							</label>
 						</template>
@@ -152,7 +166,7 @@
 									v-model="opt.label"
 									class="field-input choice-input"
 									:placeholder="`Option ${oi + 1}`"
-									@input="markDirty"
+										@input="markDirty(`q${idx}`)"
 								/>
 								<button
 									type="button"
@@ -191,16 +205,16 @@
 
 		<!-- Actions -->
 		<div class="builder-actions">
-			<button type="button" class="btn-secondary" @click="cancelAutoSave(); $emit('cancel')">Abbrechen</button>
+			<button type="button" class="btn-secondary" @click="revertAndCancel">Abbrechen</button>
 			<button
 				type="button"
 				class="btn-primary"
-				:disabled="!canSave"
 				@click="save"
 			>
 				{{ isEdit ? 'Speichern' : 'Erstellen' }}
 			</button>
 		</div>
+		<p v-if="saveError" class="validation-hint validation-hint--global">{{ saveError }}</p>
 
 		<!-- Template change warning modal -->
 		<div v-if="showTemplateWarning" class="modal-backdrop" @click.self="cancelTemplateChange">
@@ -250,12 +264,39 @@ const props = withDefaults(
 
 const emit = defineEmits<{
 	(e: 'save', payload: SignupFormInput): void;
+	(e: 'autosave', payload: SignupFormInput): void;
 	(e: 'cancel'): void;
 }>();
+
+const savedFields = ref<Record<string, number>>({});
+let savedTimer: ReturnType<typeof setTimeout> | null = null;
+const dirtyFieldSet = new Set<string>();
+
+const titleInputRef = ref<HTMLInputElement | null>(null);
+const titleError = ref<string | null>(null);
+const saveError = ref<string | null>(null);
+const choiceErrorIndex = ref<number | null>(null);
+const questionCardRefs = ref<Array<HTMLElement | null>>([]);
+
+function setQuestionCardRef(el: Element | null, idx: number) {
+	questionCardRefs.value[idx] = (el as HTMLElement | null);
+}
+
+function showSavedIndicator() {
+	if (savedTimer) clearTimeout(savedTimer);
+	const snap: Record<string, number> = {};
+	for (const f of dirtyFieldSet) snap[f] = Date.now();
+	dirtyFieldSet.clear();
+	savedFields.value = snap;
+	savedTimer = setTimeout(() => { savedFields.value = {}; }, 2000);
+}
 
 // Form field state
 const localTitle = ref(props.initial?.title ?? '');
 const localFormType = ref<FormType>(props.initial?.form_type ?? 'registration');
+const initialTitle = ref(localTitle.value);
+const initialFormType = ref<FormType>(localFormType.value);
+const initialQuestionsJson = ref('[]');
 
 // Template picker
 const { templates: availableTemplates, fetchTemplates } = useFormTemplates();
@@ -278,6 +319,7 @@ onMounted(async () => {
 			}
 		}
 	}
+	resetInitialSnapshot();
 });
 
 watch(
@@ -291,12 +333,17 @@ watch(
 					applyTemplate(defaultTpl.id, false);
 				}
 			}
+			resetInitialSnapshot();
 		}
 	},
 );
 
-function markDirty() {
+function markDirty(field?: string) {
 	isDirty.value = true;
+	titleError.value = null;
+	saveError.value = null;
+	choiceErrorIndex.value = null;
+	if (field) dirtyFieldSet.add(field);
 	if (props.isEdit) scheduleAutoSave();
 }
 
@@ -382,6 +429,16 @@ function applyTemplate(id: string, hadPriorTemplate: boolean) {
 	reorderPositions();
 }
 
+function cloneTrackedQuestions(questions: TrackedQuestion[]): TrackedQuestion[] {
+	return questions.map((q) => ({
+		...q,
+		metadata: {
+			...(q.metadata ?? {}),
+			choices: q.metadata?.choices ? q.metadata.choices.map((c) => ({ ...c })) : undefined,
+		},
+	}));
+}
+
 function cloneQuestions(): TrackedQuestion[] {
 	if (!props.initial?.questions) return [];
 	return props.initial.questions.map((q) => ({
@@ -396,6 +453,14 @@ function cloneQuestions(): TrackedQuestion[] {
 
 const localQuestions = ref<TrackedQuestion[]>(cloneQuestions());
 
+function resetInitialSnapshot() {
+	initialTitle.value = localTitle.value;
+	initialFormType.value = localFormType.value;
+	initialQuestionsJson.value = JSON.stringify(cloneTrackedQuestions(localQuestions.value));
+}
+
+resetInitialSnapshot();
+
 watch(
 	() => props.initial,
 	() => {
@@ -403,6 +468,7 @@ watch(
 		localFormType.value = props.initial?.form_type ?? 'registration';
 		localQuestions.value = cloneQuestions();
 		isDirty.value = false;
+		resetInitialSnapshot();
 	},
 );
 
@@ -480,6 +546,14 @@ const hasChoiceErrors = computed(() =>
 
 const canSave = computed(() => localTitle.value.trim() && !hasChoiceErrors.value);
 
+function firstChoiceErrorIndex(): number {
+	return localQuestions.value.findIndex(
+		(q) =>
+			['single_choice', 'multiple_choice', 'dropdown'].includes(q.question_type) &&
+			(!q.metadata.choices?.length || q.metadata.choices.every((c) => !c.label.trim())),
+	);
+}
+
 function buildPayload(): SignupFormInput {
 	reorderPositions();
 	const cleanQuestions: FormQuestionInput[] = localQuestions.value.map(({ _fromTemplate, ...rest }) => rest);
@@ -490,11 +564,48 @@ function buildPayload(): SignupFormInput {
 	};
 }
 
-const { scheduleAutoSave, flushAutoSave, cancelAutoSave } = useAutosave(() => {
-	if (canSave.value) emit('save', buildPayload());
+const { scheduleAutoSave, flushAutoSave, cancelAutoSave } = useAutosave(async () => {
+	if (canSave.value) {
+		emit('autosave', buildPayload());
+		showSavedIndicator();
+	}
 });
 
+function revertAndCancel() {
+	cancelAutoSave();
+	localTitle.value = initialTitle.value;
+	localFormType.value = initialFormType.value;
+	localQuestions.value = JSON.parse(initialQuestionsJson.value);
+	isDirty.value = false;
+	dirtyFieldSet.clear();
+	savedFields.value = {};
+	if (props.isEdit) {
+		emit('autosave', buildPayload());
+	}
+	emit('cancel');
+}
+
 function save() {
+	titleError.value = null;
+	saveError.value = null;
+	choiceErrorIndex.value = null;
+
+	if (!localTitle.value.trim()) {
+		titleError.value = 'Bitte einen Titel eingeben.';
+		saveError.value = 'Bitte fülle den Titel aus.';
+		titleInputRef.value?.focus();
+		titleInputRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		return;
+	}
+
+	const badChoiceIdx = firstChoiceErrorIndex();
+	if (badChoiceIdx >= 0) {
+		choiceErrorIndex.value = badChoiceIdx;
+		saveError.value = 'Mindestens eine Auswahlfrage hat keine gültige Option.';
+		questionCardRefs.value[badChoiceIdx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		return;
+	}
+
 	emit('save', buildPayload());
 }
 
@@ -552,6 +663,16 @@ defineExpose({ flushAutoSave });
 	box-sizing: border-box;
 }
 .field-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.field-input--invalid { border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,0.15); }
+.validation-hint {
+	margin: 0.35rem 0 0;
+	font-size: 0.8rem;
+	color: #b91c1c;
+}
+.validation-hint--global {
+	margin-top: -0.35rem;
+	text-align: right;
+}
 
 .mode-toggle {
 	display: flex;
@@ -586,6 +707,11 @@ defineExpose({ flushAutoSave });
 	padding: 0.75rem 1rem;
 	margin-bottom: 0.625rem;
 	background: #fafafa;
+}
+
+.question-card--invalid {
+	border-color: #dc2626;
+	box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
 }
 
 .question-card--template {

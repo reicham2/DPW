@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import type { MailTemplate, Department, SentMail } from '../types';
+import type { MailTemplate, Department, SentMail, MailDraft } from '../types';
 import { getIdToken, getGraphAccessToken } from './useAuth';
 
 const BASE = '/api';
@@ -131,6 +131,51 @@ export function useMailTemplates() {
 		}
 	}
 
+	async function fetchDraft(activityId: string): Promise<MailDraft | null> {
+		try {
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/mail-draft`,
+			);
+			if (res.status === 404) return null;
+			if (!res.ok) return null;
+			return (await res.json()) as MailDraft;
+		} catch {
+			return null;
+		}
+	}
+
+	async function saveDraft(
+		activityId: string,
+		recipients: string[],
+		subject: string,
+		bodyHtml: string,
+	): Promise<MailDraft | null> {
+		try {
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/mail-draft`,
+				{
+					method: 'PUT',
+					body: JSON.stringify({ recipients, subject, body_html: bodyHtml }),
+				},
+			);
+			if (!res.ok) return null;
+			return (await res.json()) as MailDraft;
+		} catch {
+			return null;
+		}
+	}
+
+	async function deleteDraft(activityId: string): Promise<void> {
+		try {
+			await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/mail-draft`,
+				{ method: 'DELETE' },
+			);
+		} catch {
+			// ignore
+		}
+	}
+
 	return {
 		templates,
 		loading,
@@ -141,5 +186,8 @@ export function useMailTemplates() {
 		saveTemplate,
 		sendMail,
 		fetchSentMails,
+		fetchDraft,
+		saveDraft,
+		deleteDraft,
 	};
 }

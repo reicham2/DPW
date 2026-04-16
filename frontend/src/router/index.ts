@@ -24,7 +24,7 @@ export const router = createRouter({
 		{ path: '/profile', component: ProfilePage },
 		{ path: '/admin', component: AdminPage },
 		// Public form page — no auth required
-		{ path: '/forms/:activityId', component: FormPublicPage, meta: { public: true } },
+		{ path: '/forms/:slug', component: FormPublicPage, meta: { public: true } },
 	],
 });
 
@@ -41,7 +41,8 @@ router.beforeEach(async (to) => {
 		});
 	}
 	// Redirect to home if not logged in and trying to access a protected route
-	if (!user.value && to.path !== '/') {
+	// Allow public routes (marked with meta.public) and home page
+	if (!user.value && !to.meta.public && to.path !== '/') {
 		return '/';
 	}
 	return true;

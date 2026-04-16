@@ -7,7 +7,7 @@ import { getIdToken } from '../composables/useAuth'
 import type { RolePermission, RoleDeptAccess } from '../types'
 
 const SCOPE_OPTIONS_MAIL_SEND = [
-  { value: 'none', label: 'Kein Versand' },
+  { value: 'none', label: 'Kein Zugriff' },
   { value: 'own', label: 'Nur eigene Aktivitäten' },
   { value: 'same_dept', label: 'Alle in eigener Stufe' },
   { value: 'all', label: 'Alle' },
