@@ -197,6 +197,50 @@ public:
     bool set_role_dept_access(const std::string &role, const std::string &department,
                               bool can_read, bool can_write);
 
+    // ── Forms ────────────────────────────────────────────────────────────────
+
+    // Form CRUD (one form per activity)
+    std::optional<SignupForm> get_form_for_activity(const std::string &activity_id);
+    std::optional<SignupForm> create_form(const std::string &activity_id,
+                                         const std::string &form_type,
+                                         const std::string &title,
+                                         const std::string &created_by,
+                                         const std::vector<FormQuestion> &questions);
+    std::optional<SignupForm> update_form(const std::string &activity_id,
+                                         const std::string &form_type,
+                                         const std::string &title,
+                                         const std::vector<FormQuestion> &questions);
+    bool delete_form(const std::string &activity_id);
+
+    // Public form access (no auth)
+    std::optional<SignupForm> get_form_by_id(const std::string &form_id);
+
+    // Responses
+    std::optional<FormResponse> submit_response(const std::string &form_id,
+                                                const std::string &submission_mode,
+                                                const std::string &user_agent,
+                                                const std::string &ip_address,
+                                                const std::vector<std::pair<std::string, std::string>> &answers);
+    std::vector<FormResponse> list_responses(const std::string &form_id);
+    std::optional<FormResponse> get_response(const std::string &response_id);
+    bool delete_response(const std::string &response_id);
+
+    // Stats
+    nlohmann::json get_form_stats(const std::string &form_id);
+
+    // Templates
+    std::vector<FormTemplate> list_form_templates(const std::string &department);
+    std::optional<FormTemplate> create_form_template(const std::string &name,
+                                                     const std::string &department,
+                                                     const std::string &form_type,
+                                                     const nlohmann::json &template_config,
+                                                     const std::string &created_by);
+    std::optional<FormTemplate> update_form_template(const std::string &id,
+                                                     const std::string &name,
+                                                     const std::string &form_type,
+                                                     const nlohmann::json &template_config);
+    bool delete_form_template(const std::string &id);
+
 private:
     PGconn *conn_{nullptr};
     void ensure_connected();
@@ -217,4 +261,11 @@ private:
     static std::vector<std::string> parse_pg_array(const char *raw);
     static std::string format_material_param(const std::vector<std::string> &material);
     static std::string format_material_items_param(const std::vector<MaterialItem> &items);
+
+    FormQuestion row_to_form_question(PGresult *res, int row);
+    SignupForm row_to_signup_form(PGresult *res, int row);
+    FormResponse row_to_form_response(PGresult *res, int row);
+    FormTemplate row_to_form_template(PGresult *res, int row);
+    void attach_questions(std::vector<SignupForm> &forms);
+    void attach_questions_single(SignupForm &f);
 };

@@ -6,6 +6,9 @@ import ProfilePage from '../pages/ProfilePage.vue';
 import MailComposerPage from '../pages/MailComposerPage.vue';
 import MailTemplatePage from '../pages/MailTemplatePage.vue';
 import AdminPage from '../pages/AdminPage.vue';
+import FormPublicPage from '../pages/FormPublicPage.vue';
+import ActivityFormsPage from '../pages/ActivityFormsPage.vue';
+import FormTemplatePage from '../pages/FormTemplatePage.vue';
 import { user, authLoading } from '../composables/useAuth';
 
 export const router = createRouter({
@@ -15,9 +18,13 @@ export const router = createRouter({
 		{ path: '/activities/new', component: CreatePage },
 		{ path: '/activities/:id', component: DetailPage },
 		{ path: '/activities/:id/mail', component: MailComposerPage },
+		{ path: '/activities/:id/forms', component: ActivityFormsPage },
 		{ path: '/mail-templates', component: MailTemplatePage },
+		{ path: '/form-templates', component: FormTemplatePage },
 		{ path: '/profile', component: ProfilePage },
 		{ path: '/admin', component: AdminPage },
+		// Public form page — no auth required
+		{ path: '/forms/:activityId', component: FormPublicPage, meta: { public: true } },
 	],
 });
 

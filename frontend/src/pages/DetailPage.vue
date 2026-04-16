@@ -195,6 +195,13 @@ const canMail = computed(() => {
 	return false;
 });
 
+const canForms = computed(() => {
+	if (!user.value || !activity.value) return false;
+	const dept = activity.value.department;
+	if (dept && canReadDept(dept, user.value.department)) return true;
+	return activity.value.responsible.includes(user.value.display_name);
+});
+
 onMounted(async () => {
 	await Promise.all([fetchDepartments(), fetchUsers(), fetchLocations(), fetchActivities(), fetchMyPermissions()]);
 	activity.value = await fetchActivity(id);
@@ -974,6 +981,13 @@ async function doDelete() {
 		<button class="btn-back" @click="router.push('/')">← Zurück</button>
 		<div class="header-right">
 			<router-link
+				v-if="activity && mode === 'view' && canForms"
+				:to="`/activities/${id}/forms`"
+				class="btn-mail"
+				title="Formular verwalten"
+				>📋 Formular</router-link
+			>
+			<router-link
 				v-if="activity && mode === 'view' && canMail"
 				:to="`/activities/${id}/mail`"
 				class="btn-mail"
@@ -1169,6 +1183,7 @@ async function doDelete() {
 					{{ new Date(activity.updated_at).toLocaleString('de-DE') }}</span
 				>
 			</div>
+
 		</div>
 
 		<!-- =============================================================== EDIT -->

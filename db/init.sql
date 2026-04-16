@@ -188,3 +188,70 @@ CREATE TRIGGER trg_departments_updated_at
 CREATE TRIGGER trg_roles_updated_at
     BEFORE UPDATE ON roles
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── Forms system ─────────────────────────────────────────────────────────────
+
+CREATE TABLE signup_forms (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    form_type   TEXT        NOT NULL CHECK (form_type IN ('registration', 'deregistration')),
+    title       TEXT        NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by  UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE (activity_id)
+);
+
+CREATE TRIGGER trg_signup_forms_updated_at
+    BEFORE UPDATE ON signup_forms
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TABLE form_questions (
+    id            UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_id       UUID    NOT NULL REFERENCES signup_forms(id) ON DELETE CASCADE,
+    question_text TEXT    NOT NULL,
+    question_type TEXT    NOT NULL CHECK (question_type IN ('section', 'text_input', 'single_choice', 'multiple_choice', 'dropdown')),
+    position      INTEGER NOT NULL,
+    is_required   BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata      JSONB   NOT NULL DEFAULT '{}',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE form_responses (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_id         UUID        NOT NULL REFERENCES signup_forms(id) ON DELETE CASCADE,
+    submission_mode TEXT        NOT NULL CHECK (submission_mode IN ('registration', 'deregistration')),
+    submitted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    user_agent      TEXT,
+    ip_address      TEXT
+);
+
+CREATE TABLE response_answers (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    response_id UUID NOT NULL REFERENCES form_responses(id) ON DELETE CASCADE,
+    question_id UUID NOT NULL REFERENCES form_questions(id) ON DELETE CASCADE,
+    answer_value TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE form_templates (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            TEXT        NOT NULL,
+    department      TEXT        NOT NULL REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    form_type       TEXT        NOT NULL CHECK (form_type IN ('registration', 'deregistration')),
+    template_config JSONB       NOT NULL DEFAULT '[]',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE (department, form_type, name)
+);
+
+CREATE TRIGGER trg_form_templates_updated_at
+    BEFORE UPDATE ON form_templates
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX idx_signup_forms_activity    ON signup_forms(activity_id);
+CREATE INDEX idx_form_questions_form      ON form_questions(form_id);
+CREATE INDEX idx_form_responses_form      ON form_responses(form_id);
+CREATE INDEX idx_response_answers_resp    ON response_answers(response_id);
+CREATE INDEX idx_form_templates_dept      ON form_templates(department);

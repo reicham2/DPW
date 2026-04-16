@@ -63,6 +63,30 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db);
 // Current user permissions (authenticated)
 void handle_get_my_permissions(HttpRes *res, HttpReq *req, Database &db);
 
+// ── Forms ────────────────────────────────────────────────────────────────────
+
+// Admin: form CRUD per activity
+void handle_get_activity_form(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_activity_form(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_activity_form(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_activity_form(HttpRes *res, HttpReq *req, Database &db);
+
+// Admin: responses & stats
+void handle_get_form_responses(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_form_response(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_form_response(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_form_stats(HttpRes *res, HttpReq *req, Database &db);
+
+// Public (no auth)
+void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db);
+
+// Admin: form templates
+void handle_get_form_templates(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_form_template(HttpRes *res, HttpReq *req, Database &db);
+
 // Permission management (admin only)
 void handle_get_roles(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_role(HttpRes *res, HttpReq *req, Database &db);

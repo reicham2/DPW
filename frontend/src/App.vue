@@ -1,5 +1,10 @@
 <template>
   <div>
+    <!-- Public routes (e.g. /forms/:id) render without nav and without auth -->
+    <template v-if="isPublicRoute">
+      <router-view />
+    </template>
+    <template v-else>
     <nav class="global-nav">
       <div class="global-nav-inner">
         <router-link to="/" class="global-nav-logo">
@@ -9,6 +14,7 @@
         <div v-if="user" class="global-nav-links">
           <router-link to="/" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }">Aktivitäten</router-link>
           <router-link v-if="showMailTemplates" to="/mail-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/mail-templates' }">Mail-Vorlagen</router-link>
+          <router-link v-if="showFormTemplates" to="/form-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/form-templates' }">Formular-Vorlagen</router-link>
           <router-link v-if="showAdmin" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
         </div>
         <div class="global-nav-right">
@@ -74,6 +80,7 @@
       <router-view />
       <BugReportButton />
     </div>
+    </template>
   </div>
 </template>
 
@@ -90,6 +97,8 @@ const route = useRoute()
 const { myPermissions, fetchMyPermissions } = usePermissions()
 
 const showMailTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
+const showFormTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
+const isPublicRoute = computed(() => !!route.meta?.public)
 const showAdmin = computed(() => {
   const p = myPermissions.value
   if (!p) return false
