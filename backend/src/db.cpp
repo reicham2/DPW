@@ -2110,68 +2110,47 @@ nlohmann::json Database::get_form_stats(const std::string &form_id)
 
 // ── Form Templates ────────────────────────────────────────────────────────────
 
-std::vector<FormTemplate> Database::list_form_templates(const std::string &department)
+std::optional<FormTemplate> Database::get_form_template(const std::string &department)
 {
     ensure_connected();
     const char *params[1] = {department.c_str()};
     PGresult *res = PQexecParams(conn_,
         "SELECT id, name, department, form_type, template_config, created_by::text, created_at, updated_at "
-        "FROM form_templates WHERE department = $1 ORDER BY name",
+        "FROM form_templates WHERE department = $1",
         1, nullptr, params, nullptr, nullptr, 0);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) { PQclear(res); return {}; }
-    int n = PQntuples(res);
-    std::vector<FormTemplate> out;
-    out.reserve(n);
-    for (int i = 0; i < n; ++i)
-        out.push_back(row_to_form_template(res, i));
-    PQclear(res);
-    return out;
-}
-
-std::optional<FormTemplate> Database::create_form_template(const std::string &name,
-                                                            const std::string &department,
-                                                            const std::string &form_type,
-                                                            const nlohmann::json &template_config,
-                                                            const std::string &created_by)
-{
-    ensure_connected();
-    std::string cfg_str = template_config.dump();
-    const char *params[5] = {name.c_str(), department.c_str(), form_type.c_str(), cfg_str.c_str(), created_by.c_str()};
-    PGresult *res = PQexecParams(conn_,
-        "INSERT INTO form_templates (name, department, form_type, template_config, created_by) "
-        "VALUES ($1, $2, $3, $4::jsonb, $5::uuid) "
-        "RETURNING id, name, department, form_type, template_config, created_by::text, created_at, updated_at",
-        5, nullptr, params, nullptr, nullptr, 0);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) { PQclear(res); return std::nullopt; }
-    FormTemplate t = row_to_form_template(res, 0);
-    PQclear(res);
-    return t;
-}
-
-std::optional<FormTemplate> Database::update_form_template(const std::string &id,
-                                                            const std::string &name,
-                                                            const std::string &form_type,
-                                                            const nlohmann::json &template_config)
-{
-    ensure_connected();
-    std::string cfg_str = template_config.dump();
-    const char *params[4] = {id.c_str(), name.c_str(), form_type.c_str(), cfg_str.c_str()};
-    PGresult *res = PQexecParams(conn_,
-        "UPDATE form_templates SET name=$2, form_type=$3, template_config=$4::jsonb WHERE id=$1 "
-        "RETURNING id, name, department, form_type, template_config, created_by::text, created_at, updated_at",
-        4, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) { PQclear(res); return std::nullopt; }
     FormTemplate t = row_to_form_template(res, 0);
     PQclear(res);
     return t;
 }
 
-bool Database::delete_form_template(const std::string &id)
+std::optional<FormTemplate> Database::save_form_template(const std::string &department,
+                                                          const std::string &name,
+                                                          const std::string &form_type,
+                                                          const nlohmann::json &template_config,
+                                                          const std::string &created_by)
 {
     ensure_connected();
-    const char *params[1] = {id.c_str()};
+    std::string cfg_str = template_config.dump();
+    const char *params[5] = {department.c_str(), name.c_str(), form_type.c_str(), cfg_str.c_str(), created_by.c_str()};
     PGresult *res = PQexecParams(conn_,
-        "DELETE FROM form_templates WHERE id = $1",
+        "INSERT INTO form_templates (department, name, form_type, template_config, created_by) "
+        "VALUES ($1, $2, $3, $4::jsonb, $5::uuid) "
+        "ON CONFLICT (department) DO UPDATE SET name=$2, form_type=$3, template_config=$4::jsonb "
+        "RETURNING id, name, department, form_type, template_config, created_by::text, created_at, updated_at",
+        5, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) { PQclear(res); return std::nullopt; }
+    FormTemplate t = row_to_form_template(res, 0);
+    PQclear(res);
+    return t;
+}
+
+bool Database::delete_form_template(const std::string &department)
+{
+    ensure_connected();
+    const char *params[1] = {department.c_str()};
+    PGresult *res = PQexecParams(conn_,
+        "DELETE FROM form_templates WHERE department = $1",
         1, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);

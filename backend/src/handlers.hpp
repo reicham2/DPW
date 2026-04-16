@@ -81,9 +81,8 @@ void handle_get_form_stats(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db);
 
-// Admin: form templates
-void handle_get_form_templates(HttpRes *res, HttpReq *req, Database &db);
-void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db);
+// Admin: form templates (one per department)
+void handle_get_form_template(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_form_template(HttpRes *res, HttpReq *req, Database &db);
 

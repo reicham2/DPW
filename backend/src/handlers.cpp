@@ -3064,81 +3064,25 @@ void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db)
 
 // ---- GET /form-templates?department=... -------------------------------------
 
-void handle_get_form_templates(HttpRes *res, HttpReq *req, Database &db)
+void handle_get_form_template(HttpRes *res, HttpReq *req, Database &db)
 {
     TokenClaims claims;
     if (!require_auth(res, req, claims)) return;
 
-    std::string department = url_decode(std::string{req->getQuery("department")});
+    std::string department = url_decode(std::string{req->getParameter(0)});
     try
     {
         auto current_user = resolve_user(db, claims);
         if (!current_user) { send_json(res, 403, R"({"error":"Keine Berechtigung"})"); return; }
 
-        auto templates = db.list_form_templates(department);
-        nlohmann::json arr = nlohmann::json::array();
-        for (auto &t : templates)
-            arr.push_back(form_template_to_json(t));
-        send_json(res, 200, arr.dump());
+        auto tpl = db.get_form_template(department);
+        if (!tpl) { send_json(res, 404, R"({"error":"Keine Vorlage"})"); return; }
+        send_json(res, 200, form_template_to_json(*tpl).dump());
     }
     catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); }
 }
 
-// ---- POST /form-templates ---------------------------------------------------
-
-void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db)
-{
-    std::string auth_header{req->getHeader("authorization")};
-    std::string token = extract_bearer_token(auth_header);
-    if (token.empty()) { send_json(res, 401, R"({"error":"Nicht autorisiert"})"); return; }
-    TokenClaims claims;
-    try { claims = validate_token(token); }
-    catch (std::exception &e) { send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump()); return; }
-
-    auto current_user = resolve_user(db, claims);
-    if (!current_user) { send_json(res, 403, R"({"error":"Keine Berechtigung"})"); return; }
-    auto perm = db.get_role_permission(current_user->role);
-    if (!perm || perm->mail_templates_scope == "none")
-    {
-        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-        return;
-    }
-
-    std::string user_id = current_user->id;
-    auto buf = std::make_shared<std::string>();
-    res->onAborted([] {});
-    res->onData([res, buf, user_id, current_user, perm, &db](std::string_view chunk, bool last) {
-        buf->append(chunk.data(), chunk.size());
-        if (!last) return;
-        auto j = nlohmann::json::parse(*buf, nullptr, false);
-        if (j.is_discarded()) { send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})"); return; }
-
-        std::string name = j.value("name", "");
-        std::string department = j.value("department", "");
-        std::string form_type = j.value("form_type", "registration");
-        nlohmann::json config = j.contains("template_config") ? j["template_config"] : nlohmann::json::array();
-
-        if (name.empty() || department.empty()) {
-            send_json(res, 400, R"({"error":"name und department erforderlich"})");
-            return;
-        }
-        // Scope check: own_dept only allows own department
-        if (perm->mail_templates_scope == "own_dept")
-        {
-            if (!current_user->department || *current_user->department != department) {
-                send_json(res, 403, R"({"error":"Keine Berechtigung f\u00fcr dieses Department"})");
-                return;
-            }
-        }
-        try {
-            auto tpl = db.create_form_template(name, department, form_type, config, user_id);
-            if (!tpl) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
-            send_json(res, 201, form_template_to_json(*tpl).dump());
-        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); }
-    });
-}
-
-// ---- PUT /form-templates/:id ------------------------------------------------
+// ---- PUT /form-templates/:department (upsert) -------------------------------
 
 void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db)
 {
@@ -3149,7 +3093,7 @@ void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db)
     try { claims = validate_token(token); }
     catch (std::exception &e) { send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump()); return; }
 
-    std::string tpl_id{req->getParameter(0)};
+    std::string department = url_decode(std::string{req->getParameter(0)});
 
     auto current_user = resolve_user(db, claims);
     if (!current_user) { send_json(res, 403, R"({"error":"Keine Berechtigung"})"); return; }
@@ -3159,10 +3103,19 @@ void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db)
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
     }
+    // Scope check
+    if (perm->mail_templates_scope == "own_dept")
+    {
+        if (!current_user->department || *current_user->department != department) {
+            send_json(res, 403, R"({"error":"Keine Berechtigung f\u00fcr dieses Department"})");
+            return;
+        }
+    }
 
+    std::string user_id = current_user->id;
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, tpl_id, &db](std::string_view chunk, bool last) {
+    res->onData([res, buf, department, user_id, &db](std::string_view chunk, bool last) {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
         auto j = nlohmann::json::parse(*buf, nullptr, false);
@@ -3173,21 +3126,21 @@ void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db)
         nlohmann::json config = j.contains("template_config") ? j["template_config"] : nlohmann::json::array();
 
         try {
-            auto tpl = db.update_form_template(tpl_id, name, form_type, config);
-            if (!tpl) { send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})"); return; }
+            auto tpl = db.save_form_template(department, name, form_type, config, user_id);
+            if (!tpl) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
             send_json(res, 200, form_template_to_json(*tpl).dump());
         } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); }
     });
 }
 
-// ---- DELETE /form-templates/:id ---------------------------------------------
+// ---- DELETE /form-templates/:department -------------------------------------
 
 void handle_delete_form_template(HttpRes *res, HttpReq *req, Database &db)
 {
     TokenClaims claims;
     if (!require_auth(res, req, claims)) return;
 
-    std::string tpl_id{req->getParameter(0)};
+    std::string department = url_decode(std::string{req->getParameter(0)});
     try
     {
         auto current_user = resolve_user(db, claims);
@@ -3198,7 +3151,7 @@ void handle_delete_form_template(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-        bool ok = db.delete_form_template(tpl_id);
+        bool ok = db.delete_form_template(department);
         if (!ok) { send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})"); return; }
         send_json(res, 200, R"({"ok":true})");
     }

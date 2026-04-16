@@ -243,7 +243,7 @@ CREATE TABLE form_templates (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE (department, form_type, name)
+    UNIQUE (department)
 );
 
 CREATE TRIGGER trg_form_templates_updated_at
