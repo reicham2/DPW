@@ -160,3 +160,159 @@ UPDATE mail_templates SET
     body = '<p>Liebe Eltern</p><p>Die nächste Wölfe-Aktivität steht an:</p><p>📅 {{datum_kurz}}<br>🕐 {{startzeit}} – {{endzeit}}<br>📍 {{ort}}</p><p>Mitbringen: wetterfeste Kleidung, Zvieri</p><p>Bis bald!<br>Das Wölfe-Team<br>{{absender_name}}</p>',
     recipients = ARRAY['eltern-woelfe@pfadihue.ch']
 WHERE department = 'Wölfe';
+
+-- ── Formular-Vorlagen ───────────────────────────────────────────────────────
+
+-- Pfadi: Standard-Anmeldung (is_default = true)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000001',
+     'Standard-Anmeldung Pfadi',
+     'Pfadi',
+     'registration',
+     true,
+     '[
+        {"question_text": "Angaben zum Kind", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Bitte vollständig ausfüllen"}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Pfadiname", "question_type": "text_input", "position": 2, "is_required": false, "metadata": {}},
+        {"question_text": "T-Shirt Grösse", "question_type": "dropdown", "position": 3, "is_required": true, "metadata": {"choices": [{"id": "xs", "label": "XS"}, {"id": "s", "label": "S"}, {"id": "m", "label": "M"}, {"id": "l", "label": "L"}, {"id": "xl", "label": "XL"}]}},
+        {"question_text": "Kontakt", "question_type": "section", "position": 4, "is_required": false, "metadata": {"subtitle": "Erreichbare Person während der Aktivität"}},
+        {"question_text": "Telefon Eltern", "question_type": "text_input", "position": 5, "is_required": true, "metadata": {}},
+        {"question_text": "E-Mail", "question_type": "text_input", "position": 6, "is_required": true, "metadata": {}},
+        {"question_text": "Verpflegung", "question_type": "single_choice", "position": 7, "is_required": true, "metadata": {"choices": [{"id": "normal", "label": "Normal"}, {"id": "vegetarisch", "label": "Vegetarisch"}, {"id": "vegan", "label": "Vegan"}, {"id": "laktosefrei", "label": "Laktosefrei"}]}},
+        {"question_text": "Allergien / Unverträglichkeiten", "question_type": "text_input", "position": 8, "is_required": false, "metadata": {"multiline": true}},
+        {"question_text": "Welche Aktivitäten bevorzugt dein Kind?", "question_type": "multiple_choice", "position": 9, "is_required": false, "metadata": {"choices": [{"id": "wandern", "label": "Wandern"}, {"id": "pioniertechnik", "label": "Pioniertechnik"}, {"id": "kochen", "label": "Kochen"}, {"id": "spiele", "label": "Spiele"}, {"id": "basteln", "label": "Basteln"}]}},
+        {"question_text": "Bemerkungen", "question_type": "text_input", "position": 10, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Pfadi: Abmeldung
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000002',
+     'Standard-Abmeldung Pfadi',
+     'Pfadi',
+     'deregistration',
+     false,
+     '[
+        {"question_text": "Abmeldung", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Bitte den Grund angeben"}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Grund der Abmeldung", "question_type": "dropdown", "position": 2, "is_required": true, "metadata": {"choices": [{"id": "krank", "label": "Krankheit"}, {"id": "ferien", "label": "Ferien"}, {"id": "andere", "label": "Andere Verpflichtung"}, {"id": "sonstiges", "label": "Sonstiges"}]}},
+        {"question_text": "Details", "question_type": "text_input", "position": 3, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Wölfe: Standard-Anmeldung (is_default = true)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000003',
+     'Standard-Anmeldung Wölfe',
+     'Wölfe',
+     'registration',
+     true,
+     '[
+        {"question_text": "Angaben zum Wolf", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": ""}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Geburtsdatum", "question_type": "text_input", "position": 2, "is_required": true, "metadata": {}},
+        {"question_text": "Liebste Farbe", "question_type": "dropdown", "position": 3, "is_required": false, "metadata": {"choices": [{"id": "rot", "label": "Rot"}, {"id": "blau", "label": "Blau"}, {"id": "gruen", "label": "Grün"}, {"id": "gelb", "label": "Gelb"}]}},
+        {"question_text": "Kontakt Eltern", "question_type": "section", "position": 4, "is_required": false, "metadata": {}},
+        {"question_text": "Telefon", "question_type": "text_input", "position": 5, "is_required": true, "metadata": {}},
+        {"question_text": "Essgewohnheiten", "question_type": "single_choice", "position": 6, "is_required": true, "metadata": {"choices": [{"id": "alles", "label": "Isst alles"}, {"id": "vegetarisch", "label": "Vegetarisch"}, {"id": "other", "label": "Anderes (bitte angeben)"}]}},
+        {"question_text": "Besonderes", "question_type": "text_input", "position": 7, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Pio: Standard-Anmeldung (is_default = true)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000004',
+     'Standard-Anmeldung Pio',
+     'Pio',
+     'registration',
+     true,
+     '[
+        {"question_text": "Persönliche Angaben", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Für den Biwak"}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Alter", "question_type": "text_input", "position": 2, "is_required": true, "metadata": {}},
+        {"question_text": "Erfahrung Outdoor", "question_type": "dropdown", "position": 3, "is_required": true, "metadata": {"choices": [{"id": "keine", "label": "Keine"}, {"id": "wenig", "label": "Wenig"}, {"id": "mittel", "label": "Mittel"}, {"id": "viel", "label": "Viel"}]}},
+        {"question_text": "Transportmittel zum Treffpunkt", "question_type": "single_choice", "position": 4, "is_required": true, "metadata": {"choices": [{"id": "selbst", "label": "Komme selbst"}, {"id": "eltern", "label": "Werde gebracht"}, {"id": "oev", "label": "ÖV"}]}},
+        {"question_text": "Was möchtest du lernen?", "question_type": "multiple_choice", "position": 5, "is_required": false, "metadata": {"choices": [{"id": "feuer", "label": "Feuermachen"}, {"id": "orientierung", "label": "Orientierung"}, {"id": "seiltech", "label": "Seiltechnik"}, {"id": "kochen", "label": "Outdoor-Kochen"}, {"id": "erste_hilfe", "label": "Erste Hilfe"}]}},
+        {"question_text": "Medizinische Hinweise", "question_type": "text_input", "position": 6, "is_required": false, "metadata": {"multiline": true}},
+        {"question_text": "Notfallkontakt Telefon", "question_type": "text_input", "position": 7, "is_required": true, "metadata": {}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Biber: Standard-Anmeldung (is_default = true)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000005',
+     'Standard-Anmeldung Biber',
+     'Biber',
+     'registration',
+     true,
+     '[
+        {"question_text": "Angaben zum Biber", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Wird von den Eltern ausgefüllt"}},
+        {"question_text": "Vorname & Name des Kindes", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Geburtsdatum", "question_type": "text_input", "position": 2, "is_required": true, "metadata": {}},
+        {"question_text": "Name Elternteil", "question_type": "text_input", "position": 3, "is_required": true, "metadata": {}},
+        {"question_text": "Telefon", "question_type": "text_input", "position": 4, "is_required": true, "metadata": {}},
+        {"question_text": "Darf fotografiert werden?", "question_type": "single_choice", "position": 5, "is_required": true, "metadata": {"choices": [{"id": "ja", "label": "Ja"}, {"id": "nein", "label": "Nein"}]}},
+        {"question_text": "Bemerkungen", "question_type": "text_input", "position": 6, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Leiter: Lager-Anmeldung (kein Standard)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000006',
+     'Lager-Anmeldung Leiter',
+     'Leiter',
+     'registration',
+     false,
+     '[
+        {"question_text": "Lager-Anmeldung", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Sommerlager 2026"}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Verfügbarkeit", "question_type": "dropdown", "position": 2, "is_required": true, "metadata": {"choices": [{"id": "ganz", "label": "Ganzes Lager"}, {"id": "erste_haelfte", "label": "Erste Hälfte"}, {"id": "zweite_haelfte", "label": "Zweite Hälfte"}, {"id": "tageweise", "label": "Nur tageweise"}]}},
+        {"question_text": "Funktion im Lager", "question_type": "single_choice", "position": 3, "is_required": true, "metadata": {"choices": [{"id": "lagerleitung", "label": "Lagerleitung"}, {"id": "kuechenchef", "label": "Küchenchef"}, {"id": "leiter", "label": "Leiter/in"}, {"id": "helfer", "label": "Helfer/in"}]}},
+        {"question_text": "Kursbestätigungen", "question_type": "multiple_choice", "position": 4, "is_required": false, "metadata": {"choices": [{"id": "glk", "label": "GLK"}, {"id": "slk", "label": "SLK"}, {"id": "pano", "label": "Panorama"}, {"id": "lpk", "label": "LPK"}, {"id": "coach", "label": "Coach-Kurs"}]}},
+        {"question_text": "Bemerkungen", "question_type": "text_input", "position": 5, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- ── Test-Formulare für bestehende Aktivitäten ───────────────────────────────
+
+-- Formular für "Geländespiel im Wald" (Pfadi, vergangen) – mit Antworten
+INSERT INTO signup_forms (id, activity_id, form_type, title, created_by) VALUES
+    ('d0000000-0000-0000-0000-000000000001',
+     'b0000000-0000-0000-0000-000000000001',
+     'registration',
+     'Anmeldung Geländespiel',
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (activity_id) DO NOTHING;
+
+INSERT INTO form_questions (form_id, question_text, question_type, position, is_required, metadata) VALUES
+    ('d0000000-0000-0000-0000-000000000001', 'Angaben', 'section', 0, false, '{"subtitle": "Bitte ausfüllen"}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000001', 'Vorname & Name', 'text_input', 1, true, '{}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000001', 'Pfadiname', 'text_input', 2, false, '{}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000001', 'T-Shirt Grösse', 'dropdown', 3, true, '{"choices": [{"id": "xs", "label": "XS"}, {"id": "s", "label": "S"}, {"id": "m", "label": "M"}, {"id": "l", "label": "L"}, {"id": "xl", "label": "XL"}]}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000001', 'Verpflegung', 'single_choice', 4, true, '{"choices": [{"id": "normal", "label": "Normal"}, {"id": "vegetarisch", "label": "Vegetarisch"}, {"id": "vegan", "label": "Vegan"}]}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000001', 'Aktivitäten', 'multiple_choice', 5, false, '{"choices": [{"id": "wandern", "label": "Wandern"}, {"id": "pioniertechnik", "label": "Pioniertechnik"}, {"id": "spiele", "label": "Spiele"}]}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000001', 'Bemerkungen', 'text_input', 6, false, '{"multiline": true}'::jsonb)
+ON CONFLICT DO NOTHING;
+
+-- Formular für "Schatzsuche" (Wölfe) – Anmeldung
+INSERT INTO signup_forms (id, activity_id, form_type, title, created_by) VALUES
+    ('d0000000-0000-0000-0000-000000000002',
+     'b0000000-0000-0000-0000-000000000003',
+     'registration',
+     'Anmeldung Schatzsuche',
+     'a0000000-0000-0000-0000-000000000004')
+ON CONFLICT (activity_id) DO NOTHING;
+
+INSERT INTO form_questions (form_id, question_text, question_type, position, is_required, metadata) VALUES
+    ('d0000000-0000-0000-0000-000000000002', 'Angaben', 'section', 0, false, '{"subtitle": "Für die Schatzsuche"}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000002', 'Vorname & Name', 'text_input', 1, true, '{}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000002', 'Liebste Farbe', 'dropdown', 2, false, '{"choices": [{"id": "rot", "label": "Rot"}, {"id": "blau", "label": "Blau"}, {"id": "gruen", "label": "Grün"}, {"id": "gelb", "label": "Gelb"}]}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000002', 'Telefon Eltern', 'text_input', 3, true, '{}'::jsonb),
+    ('d0000000-0000-0000-0000-000000000002', 'Darf fotografiert werden?', 'single_choice', 4, true, '{"choices": [{"id": "ja", "label": "Ja"}, {"id": "nein", "label": "Nein"}]}'::jsonb)
+ON CONFLICT DO NOTHING;

@@ -240,11 +240,17 @@ CREATE TABLE form_templates (
     department      TEXT        NOT NULL REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
     form_type       TEXT        NOT NULL CHECK (form_type IN ('registration', 'deregistration')),
     template_config JSONB       NOT NULL DEFAULT '[]',
+    is_default      BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE (department, form_type, name)
 );
+
+-- Ensure at most one default template per department
+CREATE UNIQUE INDEX idx_form_templates_default
+    ON form_templates (department)
+    WHERE is_default = TRUE;
 
 CREATE TRIGGER trg_form_templates_updated_at
     BEFORE UPDATE ON form_templates
