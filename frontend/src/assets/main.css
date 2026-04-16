@@ -1571,6 +1571,35 @@ body {
 	font-size: 0.95rem;
 }
 
+.form-link-section {
+	margin-top: 4px;
+}
+.form-link-section label {
+	font-weight: 600;
+	font-size: 0.9rem;
+	margin-bottom: 4px;
+	display: block;
+}
+.form-link-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+.form-link-input {
+	flex: 1;
+	padding: 8px 12px;
+	font-size: 0.85rem;
+	font-family: monospace;
+	border: 1px solid #d1d5db;
+	border-radius: 8px;
+	background: #f3f4f6;
+	color: #374151;
+}
+.btn-copy {
+	white-space: nowrap;
+	min-width: 110px;
+}
+
 .mail-from {
 	background: #f3f4f6 !important;
 	color: #6b7280 !important;

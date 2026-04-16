@@ -1,6 +1,6 @@
 <template>
 	<header class="header">
-		<button class="btn-back" @click="router.push(`/activities/${activityId}`)">← Zurück</button>
+		<button class="btn-back" @click="goBack">← Zurück</button>
 		<h1>Formular</h1>
 	</header>
 
@@ -31,6 +31,7 @@
 					<h2 class="page-title">{{ editingForm ? 'Formular bearbeiten' : 'Formular erstellen' }}</h2>
 				</div>
 				<FormBuilder
+					ref="formBuilderRef"
 					:initial="editingForm ?? templateInitial"
 					:is-edit="!!editingForm"
 					:department="activityDepartment"
@@ -170,6 +171,8 @@ import { useRoute, useRouter } from 'vue-router';
 import type { SignupForm, SignupFormInput, FormResponse, FormQuestionInput, FormType } from '../types';
 import { useForms, useFormTemplates } from '../composables/useForms';
 import { useActivities } from '../composables/useActivities';
+import { usePermissions } from '../composables/usePermissions';
+import { user } from '../composables/useAuth';
 import FormBuilder from '../components/FormBuilder.vue';
 import FormStats from '../components/FormStats.vue';
 
@@ -194,10 +197,12 @@ const {
 } = useForms();
 
 const { fetchActivity } = useActivities();
+const { canForms, fetchMyPermissions } = usePermissions();
 const { templates: deptTemplates, fetchTemplates: fetchDeptTemplates } = useFormTemplates();
 
 const activityDepartment = ref<string | undefined>(undefined);
 
+const formBuilderRef = ref<InstanceType<typeof FormBuilder> | null>(null);
 const showBuilder = ref(false);
 const editingForm = ref<SignupForm | null>(null);
 const showDeleteModal = ref(false);
@@ -216,8 +221,16 @@ const tabs = [
 ];
 
 onMounted(async () => {
+	await fetchMyPermissions();
 	const act = await fetchActivity(activityId);
 	activityDepartment.value = act?.department ?? undefined;
+
+	// Permission gate: redirect if no form access
+	if (act && user.value && !canForms(act, user.value.display_name, user.value.department)) {
+		router.replace(`/activities/${activityId}`);
+		return;
+	}
+
 	const existingForm = await fetchForm(activityId);
 
 	// If no form exists, auto-open builder pre-filled with department template
@@ -271,6 +284,13 @@ function openCreate() {
 function openEdit() {
 	editingForm.value = form.value;
 	showBuilder.value = true;
+}
+
+function goBack() {
+	if (showBuilder.value && formBuilderRef.value) {
+		formBuilderRef.value.flushAutoSave();
+	}
+	router.push(`/activities/${activityId}`);
 }
 
 function cancelBuilder() {

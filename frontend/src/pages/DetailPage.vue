@@ -34,7 +34,7 @@ const {
 	predefinedLocations,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
-const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity } = usePermissions();
+const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper } = usePermissions();
 
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
@@ -197,9 +197,7 @@ const canMail = computed(() => {
 
 const canForms = computed(() => {
 	if (!user.value || !activity.value) return false;
-	const dept = activity.value.department;
-	if (dept && canReadDept(dept, user.value.department)) return true;
-	return activity.value.responsible.includes(user.value.display_name);
+	return canFormsHelper(activity.value, user.value.display_name, user.value.department);
 });
 
 onMounted(async () => {
@@ -987,6 +985,14 @@ async function doDelete() {
 				title="Formular verwalten"
 				>📋 Formular</router-link
 			>
+			<button
+				v-else-if="activity && mode === 'view'"
+				class="btn-mail"
+				disabled
+				title="Kein Zugriff auf Formulare"
+			>
+				📋 Formular
+			</button>
 			<router-link
 				v-if="activity && mode === 'view' && canMail"
 				:to="`/activities/${id}/mail`"

@@ -191,7 +191,7 @@
 
 		<!-- Actions -->
 		<div class="builder-actions">
-			<button type="button" class="btn-secondary" @click="$emit('cancel')">Abbrechen</button>
+			<button type="button" class="btn-secondary" @click="cancelAutoSave(); $emit('cancel')">Abbrechen</button>
 			<button
 				type="button"
 				class="btn-primary"
@@ -228,6 +228,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import type { SignupForm, SignupFormInput, FormQuestionInput, FormTemplate, QuestionType, FormType } from '../types';
 import { useFormTemplates } from '../composables/useForms';
+import { useAutosave } from '../composables/useAutosave';
 
 interface TrackedQuestion extends FormQuestionInput {
 	_fromTemplate?: boolean; // marks this question as originating from a template
@@ -252,6 +253,7 @@ const emit = defineEmits<{
 	(e: 'cancel'): void;
 }>();
 
+// Form field state
 const localTitle = ref(props.initial?.title ?? '');
 const localFormType = ref<FormType>(props.initial?.form_type ?? 'registration');
 
@@ -295,6 +297,7 @@ watch(
 
 function markDirty() {
 	isDirty.value = true;
+	if (props.isEdit) scheduleAutoSave();
 }
 
 /** Called when the user changes the template dropdown */
@@ -477,16 +480,25 @@ const hasChoiceErrors = computed(() =>
 
 const canSave = computed(() => localTitle.value.trim() && !hasChoiceErrors.value);
 
-function save() {
+function buildPayload(): SignupFormInput {
 	reorderPositions();
-	// Strip internal tracking fields before emitting
 	const cleanQuestions: FormQuestionInput[] = localQuestions.value.map(({ _fromTemplate, ...rest }) => rest);
-	emit('save', {
+	return {
 		form_type: localFormType.value,
 		title: localTitle.value.trim(),
 		questions: cleanQuestions,
-	});
+	};
 }
+
+const { scheduleAutoSave, flushAutoSave, cancelAutoSave } = useAutosave(() => {
+	if (canSave.value) emit('save', buildPayload());
+});
+
+function save() {
+	emit('save', buildPayload());
+}
+
+defineExpose({ flushAutoSave });
 </script>
 
 <style scoped>

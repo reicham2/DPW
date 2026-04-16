@@ -140,6 +140,8 @@ export interface RolePermission {
 	activity_edit_scope: 'none' | 'own' | 'same_dept' | 'all';
 	mail_send_scope: 'none' | 'own' | 'same_dept' | 'all';
 	mail_templates_scope: 'none' | 'own_dept' | 'all';
+	form_scope: 'none' | 'own' | 'same_dept' | 'all';
+	form_templates_scope: 'none' | 'own_dept' | 'all';
 	user_dept_scope: 'none' | 'own' | 'own_dept' | 'all';
 	user_role_scope: 'none' | 'own' | 'own_dept' | 'all';
 }
@@ -158,7 +160,12 @@ export interface RoleDeptAccess {
 // ── Forms ─────────────────────────────────────────────────────────────────────
 
 export type FormType = 'registration' | 'deregistration';
-export type QuestionType = 'section' | 'text_input' | 'single_choice' | 'multiple_choice' | 'dropdown';
+export type QuestionType =
+	| 'section'
+	| 'text_input'
+	| 'single_choice'
+	| 'multiple_choice'
+	| 'dropdown';
 
 export interface ChoiceOption {
 	id: string;
@@ -244,9 +251,12 @@ export interface FormStats {
 	form_type: FormType;
 	total: number;
 	by_mode: Record<string, number>;
-	questions: Record<string, {
-		question_text: string;
-		question_type: QuestionType;
-		answers: Record<string, number>;
-	}>;
+	questions: Record<
+		string,
+		{
+			question_text: string;
+			question_type: QuestionType;
+			answers: Record<string, number>;
+		}
+	>;
 }

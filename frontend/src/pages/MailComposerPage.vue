@@ -6,6 +6,7 @@ import { useMailTemplates } from '../composables/useMailTemplates';
 import { useContactSearch } from '../composables/useContactSearch';
 import { user } from '../composables/useAuth';
 import { usePermissions } from '../composables/usePermissions';
+import { useForms } from '../composables/useForms';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import type { Activity, Department, SentMail } from '../types';
@@ -17,6 +18,7 @@ const activityId = route.params.id as string
 const { fetchActivity } = useActivities()
 const { fetchTemplate, sendMail, sending, error, fetchSentMails } = useMailTemplates()
 const { myPermissions, fetchMyPermissions } = usePermissions()
+const { fetchForm: fetchActivityForm } = useForms()
 
 const activity = ref<Activity | null>(null)
 const subject = ref('')
@@ -41,6 +43,12 @@ const sentMails = ref<SentMail[]>([])
 const showWarning = ref(false)
 const warningConfirmed = ref(false)
 const viewingMail = ref<SentMail | null>(null)
+
+// Form link state
+const hasForm = ref(false)
+const showNoFormDialog = ref(false)
+const formUrl = ref('')
+const linkCopied = ref(false)
 
 function formatDateLong(d: string): string {
   return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
@@ -84,11 +92,33 @@ function replaceTemplateVars(text: string, act: Activity): string {
     absender_email: senderEmail,
     absender_name: senderName,
   }
+  const formLink = `${window.location.origin}/forms/${act.id}`
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
   const textNodes: Text[] = []
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
   for (const node of textNodes) {
     const original = node.nodeValue ?? ''
+    // Handle {{formular_link}} separately – replace with an <a> element
+    if (/\{\{formular_link\}\}/i.test(original)) {
+      const parts = original.split(/\{\{formular_link\}\}/i)
+      const parent = node.parentNode!
+      for (let i = 0; i < parts.length; i++) {
+        // Replace other vars in each text part
+        const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, (m, key) => {
+          const lk = key.toLowerCase()
+          return lk in vars ? vars[lk] : m
+        })
+        if (partText) parent.insertBefore(document.createTextNode(partText), node)
+        if (i < parts.length - 1) {
+          const a = document.createElement('a')
+          a.href = formLink
+          a.textContent = 'Zum Formular'
+          parent.insertBefore(a, node)
+        }
+      }
+      parent.removeChild(node)
+      continue
+    }
     const replaced = original.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
       const lk = key.toLowerCase()
       return lk in vars ? vars[lk] : m
@@ -111,6 +141,19 @@ onMounted(async () => {
     return
   }
   activity.value = act
+
+  // Check if a form exists for this activity
+  const existingForm = await fetchActivityForm(activityId)
+  if (existingForm) {
+    hasForm.value = true
+    formUrl.value = `${window.location.origin}/forms/${activityId}`
+  } else {
+    const skipKey = `dpw_skip_no_form_${activityId}`
+    if (!localStorage.getItem(skipKey)) {
+      showNoFormDialog.value = true
+      return
+    }
+  }
 
   // Load sent mails for this activity
   sentMails.value = await fetchSentMails(activityId)
@@ -365,6 +408,51 @@ function openMailViewer(mail: SentMail) {
 function closeMailViewer() {
 	viewingMail.value = null
 }
+
+function goToCreateForm() {
+	router.push(`/activities/${activityId}/forms`)
+}
+
+async function skipNoFormAndContinue() {
+	localStorage.setItem(`dpw_skip_no_form_${activityId}`, '1')
+	showNoFormDialog.value = false
+	// Continue loading mail composer
+	sentMails.value = await fetchSentMails(activityId)
+	if (sentMails.value.length > 0) {
+		showWarning.value = true
+	}
+	if (activity.value?.department) {
+		const tpl = await fetchTemplate(activity.value.department as Department)
+		if (tpl) {
+			subject.value = replaceTemplateVars(tpl.subject, activity.value)
+			body.value    = replaceTemplateVars(tpl.body, activity.value)
+			if (tpl.recipients?.length) {
+				recipients.value = [...tpl.recipients]
+			}
+		}
+	}
+	nextTick(() => {
+		if (editorRef.value) editorRef.value.innerHTML = body.value
+	})
+}
+
+async function copyFormLink() {
+	try {
+		await navigator.clipboard.writeText(formUrl.value)
+		linkCopied.value = true
+		setTimeout(() => { linkCopied.value = false }, 2000)
+	} catch {
+		// fallback
+		const ta = document.createElement('textarea')
+		ta.value = formUrl.value
+		document.body.appendChild(ta)
+		ta.select()
+		document.execCommand('copy')
+		document.body.removeChild(ta)
+		linkCopied.value = true
+		setTimeout(() => { linkCopied.value = false }, 2000)
+	}
+}
 </script>
 
 <template>
@@ -375,6 +463,23 @@ function closeMailViewer() {
 
 	<main class="main">
 		<ErrorAlert :error="loadError" />
+
+		<!-- No-form dialog -->
+		<div v-if="!loadError && showNoFormDialog" class="mail-warning-overlay">
+			<div class="mail-warning-box">
+				<div class="mail-warning-icon">📋</div>
+				<h2 class="mail-warning-title">Kein Formular vorhanden</h2>
+				<p class="mail-warning-text">
+					Für diese Aktivität wurde noch kein Anmeldeformular erstellt.
+					Möchtest du zuerst ein Formular erstellen?
+				</p>
+				<div class="mail-warning-actions" style="flex-wrap: wrap; gap: 0.5rem;">
+					<button class="btn-secondary" @click="router.back()">Abbrechen</button>
+					<button class="btn-secondary" @click="skipNoFormAndContinue">Nicht mehr fragen &amp; Mail senden</button>
+					<button class="btn-primary" @click="goToCreateForm">Formular erstellen</button>
+				</div>
+			</div>
+		</div>
 
 		<!-- Warning dialog when mails already sent -->
 		<div v-if="!loadError && showWarning && !warningConfirmed" class="mail-warning-overlay">
@@ -450,6 +555,17 @@ function closeMailViewer() {
 			<div class="mail-activity-info">
 				<DepartmentBadge :department="activity.department" />
 				<strong>{{ activity.title }}</strong>
+			</div>
+
+			<!-- Form link -->
+			<div v-if="hasForm" class="form-link-section">
+				<label>Formular-Link</label>
+				<div class="form-link-row">
+					<input type="text" :value="formUrl" readonly class="form-link-input" />
+					<button type="button" class="btn-secondary btn-copy" @click="copyFormLink">
+						{{ linkCopied ? '✓ Kopiert' : '📋 Kopieren' }}
+					</button>
+				</div>
 			</div>
 
 			<!-- From (read-only) -->

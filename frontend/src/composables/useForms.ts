@@ -13,7 +13,10 @@ import { getIdToken } from './useAuth';
 
 const BASE = '/api';
 
-async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+async function apiFetch(
+	url: string,
+	options: RequestInit = {},
+): Promise<Response> {
 	const token = await getIdToken();
 	return fetch(url, {
 		...options,
@@ -38,7 +41,9 @@ export function useForms() {
 		loading.value = true;
 		error.value = null;
 		try {
-			const res = await apiFetch(`${BASE}/activities/${encodeURIComponent(activityId)}/form`);
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form`,
+			);
 			if (res.status === 404) {
 				form.value = null;
 				return null;
@@ -54,13 +59,19 @@ export function useForms() {
 		}
 	}
 
-	async function createForm(activityId: string, payload: SignupFormInput): Promise<SignupForm | null> {
+	async function createForm(
+		activityId: string,
+		payload: SignupFormInput,
+	): Promise<SignupForm | null> {
 		error.value = null;
 		try {
-			const res = await apiFetch(`${BASE}/activities/${encodeURIComponent(activityId)}/form`, {
-				method: 'POST',
-				body: JSON.stringify(payload),
-			});
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form`,
+				{
+					method: 'POST',
+					body: JSON.stringify(payload),
+				},
+			);
 			if (!res.ok) throw new Error(await res.text());
 			form.value = (await res.json()) as SignupForm;
 			return form.value;
@@ -70,13 +81,19 @@ export function useForms() {
 		}
 	}
 
-	async function updateForm(activityId: string, payload: SignupFormInput): Promise<SignupForm | null> {
+	async function updateForm(
+		activityId: string,
+		payload: SignupFormInput,
+	): Promise<SignupForm | null> {
 		error.value = null;
 		try {
-			const res = await apiFetch(`${BASE}/activities/${encodeURIComponent(activityId)}/form`, {
-				method: 'PUT',
-				body: JSON.stringify(payload),
-			});
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form`,
+				{
+					method: 'PUT',
+					body: JSON.stringify(payload),
+				},
+			);
 			if (!res.ok) throw new Error(await res.text());
 			form.value = (await res.json()) as SignupForm;
 			return form.value;
@@ -89,9 +106,12 @@ export function useForms() {
 	async function deleteForm(activityId: string): Promise<boolean> {
 		error.value = null;
 		try {
-			const res = await apiFetch(`${BASE}/activities/${encodeURIComponent(activityId)}/form`, {
-				method: 'DELETE',
-			});
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form`,
+				{
+					method: 'DELETE',
+				},
+			);
 			if (!res.ok) throw new Error(await res.text());
 			form.value = null;
 			return true;
@@ -107,7 +127,9 @@ export function useForms() {
 		loading.value = true;
 		error.value = null;
 		try {
-			const res = await apiFetch(`${BASE}/activities/${encodeURIComponent(activityId)}/form/responses`);
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form/responses`,
+			);
 			if (!res.ok) throw new Error(await res.text());
 			responses.value = (await res.json()) as FormResponse[];
 			return responses.value;
@@ -119,7 +141,10 @@ export function useForms() {
 		}
 	}
 
-	async function fetchResponse(activityId: string, responseId: string): Promise<FormResponse | null> {
+	async function fetchResponse(
+		activityId: string,
+		responseId: string,
+	): Promise<FormResponse | null> {
 		error.value = null;
 		try {
 			const res = await apiFetch(
@@ -134,7 +159,10 @@ export function useForms() {
 		}
 	}
 
-	async function deleteResponse(activityId: string, responseId: string): Promise<boolean> {
+	async function deleteResponse(
+		activityId: string,
+		responseId: string,
+	): Promise<boolean> {
 		error.value = null;
 		try {
 			const res = await apiFetch(
@@ -156,7 +184,9 @@ export function useForms() {
 		loading.value = true;
 		error.value = null;
 		try {
-			const res = await apiFetch(`${BASE}/activities/${encodeURIComponent(activityId)}/form/stats`);
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form/stats`,
+			);
 			if (!res.ok) throw new Error(await res.text());
 			stats.value = (await res.json()) as FormStats;
 			return stats.value;
@@ -170,11 +200,15 @@ export function useForms() {
 
 	// ── Public submission (no auth) ───────────────────────────────────────────
 
-	async function fetchPublicForm(activityId: string): Promise<SignupForm | null> {
+	async function fetchPublicForm(
+		activityId: string,
+	): Promise<SignupForm | null> {
 		loading.value = true;
 		error.value = null;
 		try {
-			const res = await fetch(`${BASE}/forms/${encodeURIComponent(activityId)}`);
+			const res = await fetch(
+				`${BASE}/forms/${encodeURIComponent(activityId)}`,
+			);
 			if (res.status === 404) return null;
 			if (!res.ok) throw new Error(await res.text());
 			form.value = (await res.json()) as SignupForm;
@@ -187,15 +221,21 @@ export function useForms() {
 		}
 	}
 
-	async function submitResponse(activityId: string, payload: FormSubmitPayload): Promise<FormResponse | null> {
+	async function submitResponse(
+		activityId: string,
+		payload: FormSubmitPayload,
+	): Promise<FormResponse | null> {
 		loading.value = true;
 		error.value = null;
 		try {
-			const res = await fetch(`${BASE}/forms/${encodeURIComponent(activityId)}/submit`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
-			});
+			const res = await fetch(
+				`${BASE}/forms/${encodeURIComponent(activityId)}/submit`,
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload),
+				},
+			);
 			if (!res.ok) {
 				const text = await res.text();
 				throw new Error(text || `Fehler: ${res.status}`);
@@ -267,13 +307,24 @@ export function useFormTemplates() {
 			const token = await getIdToken();
 			const res = await fetch(`${BASE}/form-templates`, {
 				method: 'POST',
-				headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name, department, form_type, template_config, is_default }),
+				headers: {
+					Authorization: `Bearer ${token}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					name,
+					department,
+					form_type,
+					template_config,
+					is_default,
+				}),
 			});
 			if (!res.ok) throw new Error(await res.text());
 			const tpl = (await res.json()) as FormTemplate;
 			if (is_default) {
-				templates.value.forEach((t) => { if (t.id !== tpl.id) t.is_default = false; });
+				templates.value.forEach((t) => {
+					if (t.id !== tpl.id) t.is_default = false;
+				});
 			}
 			templates.value.push(tpl);
 			return tpl;
@@ -293,15 +344,28 @@ export function useFormTemplates() {
 		error.value = null;
 		try {
 			const token = await getIdToken();
-			const res = await fetch(`${BASE}/form-templates/${encodeURIComponent(id)}`, {
-				method: 'PUT',
-				headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name, form_type, template_config, is_default }),
-			});
+			const res = await fetch(
+				`${BASE}/form-templates/${encodeURIComponent(id)}`,
+				{
+					method: 'PUT',
+					headers: {
+						Authorization: `Bearer ${token}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						name,
+						form_type,
+						template_config,
+						is_default,
+					}),
+				},
+			);
 			if (!res.ok) throw new Error(await res.text());
 			const tpl = (await res.json()) as FormTemplate;
 			if (is_default) {
-				templates.value.forEach((t) => { if (t.id !== id) t.is_default = false; });
+				templates.value.forEach((t) => {
+					if (t.id !== id) t.is_default = false;
+				});
 			}
 			const idx = templates.value.findIndex((t) => t.id === id);
 			if (idx !== -1) templates.value[idx] = tpl;
@@ -316,10 +380,13 @@ export function useFormTemplates() {
 		error.value = null;
 		try {
 			const token = await getIdToken();
-			const res = await fetch(`${BASE}/form-templates/${encodeURIComponent(id)}`, {
-				method: 'DELETE',
-				headers: { Authorization: `Bearer ${token}` },
-			});
+			const res = await fetch(
+				`${BASE}/form-templates/${encodeURIComponent(id)}`,
+				{
+					method: 'DELETE',
+					headers: { Authorization: `Bearer ${token}` },
+				},
+			);
 			if (!res.ok) throw new Error(await res.text());
 			templates.value = templates.value.filter((t) => t.id !== id);
 			return true;
@@ -329,5 +396,13 @@ export function useFormTemplates() {
 		}
 	}
 
-	return { templates, loading, error, fetchTemplates, createTemplate, updateTemplate, deleteTemplate };
+	return {
+		templates,
+		loading,
+		error,
+		fetchTemplates,
+		createTemplate,
+		updateTemplate,
+		deleteTemplate,
+	};
 }

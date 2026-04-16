@@ -97,7 +97,7 @@ const route = useRoute()
 const { myPermissions, fetchMyPermissions } = usePermissions()
 
 const showMailTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
-const showFormTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
+const showFormTemplates = computed(() => myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none')
 const isPublicRoute = computed(() => !!route.meta?.public)
 const showAdmin = computed(() => {
   const p = myPermissions.value

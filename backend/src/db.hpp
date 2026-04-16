@@ -65,6 +65,8 @@ struct RolePermission
     std::string activity_edit_scope;   // none|own|same_dept|all
     std::string mail_send_scope;       // none|own|same_dept|all
     std::string mail_templates_scope;  // none|own_dept|all
+    std::string form_scope;            // none|own|same_dept|all
+    std::string form_templates_scope;  // none|own_dept|all
     std::string user_dept_scope;       // none|own|own_dept|all
     std::string user_role_scope;       // none|own|own_dept|all
 };
@@ -189,6 +191,8 @@ public:
                                 const std::string &activity_edit_scope,
                                 const std::string &mail_send_scope,
                                 const std::string &mail_templates_scope,
+                                const std::string &form_scope,
+                                const std::string &form_templates_scope,
                                 const std::string &user_dept_scope,
                                 const std::string &user_role_scope);
 
@@ -202,14 +206,14 @@ public:
     // Form CRUD (one form per activity)
     std::optional<SignupForm> get_form_for_activity(const std::string &activity_id);
     std::optional<SignupForm> create_form(const std::string &activity_id,
-                                         const std::string &form_type,
-                                         const std::string &title,
-                                         const std::string &created_by,
-                                         const std::vector<FormQuestion> &questions);
+                                          const std::string &form_type,
+                                          const std::string &title,
+                                          const std::string &created_by,
+                                          const std::vector<FormQuestion> &questions);
     std::optional<SignupForm> update_form(const std::string &activity_id,
-                                         const std::string &form_type,
-                                         const std::string &title,
-                                         const std::vector<FormQuestion> &questions);
+                                          const std::string &form_type,
+                                          const std::string &title,
+                                          const std::vector<FormQuestion> &questions);
     bool delete_form(const std::string &activity_id);
 
     // Public form access (no auth)

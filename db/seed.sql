@@ -20,10 +20,10 @@ INSERT INTO roles (name, color, sort_order) VALUES
     ('Pio',           '#6b7280', 3)
 ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) VALUES
-    ('Stufenleiter',  true, true, false, false, 'same_dept', 'own_dept', 'same_dept', 'same_dept', 'own_dept', 'own_dept', 'own_dept'),
-    ('Leiter',        true, true, false, false, 'same_dept', 'own_dept', 'own',       'own',       'none',     'none',     'none'),
-    ('Pio',           true, false, false, false, 'same_dept', 'none',     'none',      'none',      'none',     'none',     'none')
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope) VALUES
+    ('Stufenleiter',  true, true, false, false, 'same_dept', 'own_dept', 'same_dept', 'same_dept', 'own_dept', 'same_dept', 'own_dept', 'own_dept', 'own_dept'),
+    ('Leiter',        true, true, false, false, 'same_dept', 'own_dept', 'own',       'own',       'none',     'own',       'none',     'none',     'none'),
+    ('Pio',           true, false, false, false, 'same_dept', 'none',     'none',      'none',      'none',     'none',      'none',     'none',     'none')
 ON CONFLICT (role) DO NOTHING;
 
 INSERT INTO mail_templates (department, subject, body, recipients) VALUES
@@ -281,38 +281,4 @@ ON CONFLICT (department, form_type, name) DO NOTHING;
 
 -- ── Test-Formulare für bestehende Aktivitäten ───────────────────────────────
 
--- Formular für "Geländespiel im Wald" (Pfadi, vergangen) – mit Antworten
-INSERT INTO signup_forms (id, activity_id, form_type, title, created_by) VALUES
-    ('d0000000-0000-0000-0000-000000000001',
-     'b0000000-0000-0000-0000-000000000001',
-     'registration',
-     'Anmeldung Geländespiel',
-     'a0000000-0000-0000-0000-000000000001')
-ON CONFLICT (activity_id) DO NOTHING;
-
-INSERT INTO form_questions (form_id, question_text, question_type, position, is_required, metadata) VALUES
-    ('d0000000-0000-0000-0000-000000000001', 'Angaben', 'section', 0, false, '{"subtitle": "Bitte ausfüllen"}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000001', 'Vorname & Name', 'text_input', 1, true, '{}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000001', 'Pfadiname', 'text_input', 2, false, '{}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000001', 'T-Shirt Grösse', 'dropdown', 3, true, '{"choices": [{"id": "xs", "label": "XS"}, {"id": "s", "label": "S"}, {"id": "m", "label": "M"}, {"id": "l", "label": "L"}, {"id": "xl", "label": "XL"}]}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000001', 'Verpflegung', 'single_choice', 4, true, '{"choices": [{"id": "normal", "label": "Normal"}, {"id": "vegetarisch", "label": "Vegetarisch"}, {"id": "vegan", "label": "Vegan"}]}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000001', 'Aktivitäten', 'multiple_choice', 5, false, '{"choices": [{"id": "wandern", "label": "Wandern"}, {"id": "pioniertechnik", "label": "Pioniertechnik"}, {"id": "spiele", "label": "Spiele"}]}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000001', 'Bemerkungen', 'text_input', 6, false, '{"multiline": true}'::jsonb)
-ON CONFLICT DO NOTHING;
-
--- Formular für "Schatzsuche" (Wölfe) – Anmeldung
-INSERT INTO signup_forms (id, activity_id, form_type, title, created_by) VALUES
-    ('d0000000-0000-0000-0000-000000000002',
-     'b0000000-0000-0000-0000-000000000003',
-     'registration',
-     'Anmeldung Schatzsuche',
-     'a0000000-0000-0000-0000-000000000004')
-ON CONFLICT (activity_id) DO NOTHING;
-
-INSERT INTO form_questions (form_id, question_text, question_type, position, is_required, metadata) VALUES
-    ('d0000000-0000-0000-0000-000000000002', 'Angaben', 'section', 0, false, '{"subtitle": "Für die Schatzsuche"}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000002', 'Vorname & Name', 'text_input', 1, true, '{}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000002', 'Liebste Farbe', 'dropdown', 2, false, '{"choices": [{"id": "rot", "label": "Rot"}, {"id": "blau", "label": "Blau"}, {"id": "gruen", "label": "Grün"}, {"id": "gelb", "label": "Gelb"}]}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000002', 'Telefon Eltern', 'text_input', 3, true, '{}'::jsonb),
-    ('d0000000-0000-0000-0000-000000000002', 'Darf fotografiert werden?', 'single_choice', 4, true, '{"choices": [{"id": "ja", "label": "Ja"}, {"id": "nein", "label": "Nein"}]}'::jsonb)
-ON CONFLICT DO NOTHING;
+-- Keine Formulare – diese werden in der App erstellt und gespeichert

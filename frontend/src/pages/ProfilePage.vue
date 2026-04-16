@@ -57,9 +57,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { user, getIdToken } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
+import { useAutosave } from '../composables/useAutosave'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
@@ -92,13 +93,22 @@ const initials = computed(() => {
     .join('')
 })
 
+let initialLoaded = false
+
+const { scheduleAutoSave } = useAutosave(() => save())
+
 onMounted(async () => {
   await Promise.all([fetchMyPermissions(), fetchDepartments()])
   if (user.value) {
     form.value.display_name = user.value.display_name
     form.value.department   = user.value.department ?? ''
   }
+  initialLoaded = true
 })
+
+watch(form, () => {
+  if (initialLoaded) scheduleAutoSave()
+}, { deep: true })
 
 async function save() {
   saving.value = true

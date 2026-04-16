@@ -7,27 +7,17 @@ import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
 import { wsSend, wsRegister, wsJoin, wsLeave, useWebSocket } from '../composables/useWebSocket'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
+import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue'
 import type { Department, EditSection } from '../types'
 
 const { departments: deptRecords, fetchDepartments, myPermissions, fetchMyPermissions } = usePermissions()
 
 const ALL_DEPARTMENTS = computed<Department[]>(() => deptRecords.value.map(d => d.name))
 
-const TEMPLATE_VARIABLES = [
-  { var: '{{titel}}',            desc: 'Titel der Aktivität' },
-  { var: '{{datum}}',            desc: 'Datum lang (z.B. Samstag, 12. April 2026)' },
-  { var: '{{datum_kurz}}',       desc: 'Datum kurz (z.B. 12.04.2026)' },
-  { var: '{{startzeit}}',        desc: 'Startzeit (HH:MM)' },
-  { var: '{{endzeit}}',          desc: 'Endzeit (HH:MM)' },
-  { var: '{{ort}}',              desc: 'Veranstaltungsort' },
-  { var: '{{verantwortlich}}',   desc: 'Verantwortliche Person' },
-  { var: '{{abteilung}}',        desc: 'Stufe' },
-  { var: '{{ziel}}',             desc: 'Ziel der Aktivität' },
-  { var: '{{material}}',         desc: 'Materialliste (kommagetrennt)' },
-  { var: '{{schlechtwetter}}',   desc: 'Schlechtwetter-Info' },
-  { var: '{{programm}}',         desc: 'Programmpunkte (formatiert)' },
+const MAIL_EXTRA_VARS = [
   { var: '{{absender_email}}',   desc: 'E-Mail-Adresse des Absenders' },
   { var: '{{absender_name}}',    desc: 'Voller Name des Absenders (z.B. Leandro Klaus v/o Topo)' },
+  { var: '{{formular_link}}',    desc: 'Link zum Formular der Aktivität (als klickbarer Link)' },
 ]
 
 const { fetchTemplates, saveTemplate, templates, loading, error } = useMailTemplates()
@@ -57,7 +47,6 @@ const activeDept = ref<Department>(
 const subject = ref('')
 const body = ref('')
 const recipients = ref<string[]>([''])
-const showVars = ref(false)
 const editorRef = ref<HTMLElement | null>(null)
 const curFont = ref('Arial')
 const curSize = ref('12')
@@ -618,17 +607,7 @@ function onRecipientKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Variable reference -->
-      <div class="tpl-vars">
-        <button type="button" class="tpl-vars-toggle" @click="showVars = !showVars">
-          {{ showVars ? '▾' : '▸' }} Verfügbare Variablen
-        </button>
-        <div v-if="showVars" class="tpl-vars-list">
-          <div v-for="v in TEMPLATE_VARIABLES" :key="v.var" class="tpl-var-row">
-            <code class="tpl-var-code">{{ v.var }}</code>
-            <span class="tpl-var-desc">{{ v.desc }}</span>
-          </div>
-        </div>
-      </div>
+      <TemplateVarsDropdown :extra-vars="MAIL_EXTRA_VARS" />
 
       <ErrorAlert :error="error" />
     </div>

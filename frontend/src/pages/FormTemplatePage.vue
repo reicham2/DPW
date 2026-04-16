@@ -6,32 +6,19 @@ import { user } from '../composables/useAuth';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import FormBuilder from '../components/FormBuilder.vue';
 import ErrorAlert from '../components/ErrorAlert.vue';
+import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue';
 import type { Department, FormTemplate, SignupForm, SignupFormInput } from '../types';
 
 const { departments: deptRecords, fetchDepartments, myPermissions, fetchMyPermissions } = usePermissions();
 const { templates, loading, error, fetchTemplates, createTemplate, updateTemplate, deleteTemplate } = useFormTemplates();
 
-const TEMPLATE_VARIABLES = [
-	{ var: '{{titel}}',            desc: 'Titel der Aktivität' },
-	{ var: '{{datum}}',            desc: 'Datum lang (z.B. Samstag, 12. April 2026)' },
-	{ var: '{{datum_kurz}}',       desc: 'Datum kurz (z.B. 12.04.2026)' },
-	{ var: '{{startzeit}}',        desc: 'Startzeit (HH:MM)' },
-	{ var: '{{endzeit}}',          desc: 'Endzeit (HH:MM)' },
-	{ var: '{{ort}}',              desc: 'Veranstaltungsort' },
-	{ var: '{{verantwortlich}}',   desc: 'Verantwortliche Person' },
-	{ var: '{{abteilung}}',        desc: 'Stufe' },
-	{ var: '{{ziel}}',             desc: 'Ziel der Aktivität' },
-	{ var: '{{material}}',         desc: 'Materialliste (kommagetrennt)' },
-	{ var: '{{schlechtwetter}}',   desc: 'Schlechtwetter-Info' },
-	{ var: '{{programm}}',         desc: 'Programmpunkte (formatiert)' },
-];
-const showVars = ref(false);
+
 
 const ALL_DEPARTMENTS = computed<Department[]>(() => deptRecords.value.map((d) => d.name));
 
-const canEditAll = computed(() => myPermissions.value?.mail_templates_scope === 'all');
+const canEditAll = computed(() => myPermissions.value?.form_templates_scope === 'all');
 const canEditOwnDept = computed(() => {
-	const s = myPermissions.value?.mail_templates_scope;
+	const s = myPermissions.value?.form_templates_scope;
 	return s === 'own_dept' || s === 'all';
 });
 
@@ -220,20 +207,7 @@ function typeLabel(t: string): string {
 		</template>
 
 		<!-- Variable reference -->
-		<div class="tpl-vars">
-			<button type="button" class="tpl-vars-toggle" @click="showVars = !showVars">
-				{{ showVars ? '▾' : '▸' }} Verfügbare Variablen
-			</button>
-			<p class="tpl-vars-hint">
-				Variablen werden im öffentlichen Formular automatisch mit den Aktivitäts-Daten ersetzt.
-			</p>
-			<div v-if="showVars" class="tpl-vars-list">
-				<div v-for="v in TEMPLATE_VARIABLES" :key="v.var" class="tpl-var-row">
-					<code class="tpl-var-code">{{ v.var }}</code>
-					<span class="tpl-var-desc">{{ v.desc }}</span>
-				</div>
-			</div>
-		</div>
+		<TemplateVarsDropdown hint="Variablen werden im öffentlichen Formular automatisch mit den Aktivitäts-Daten ersetzt." />
 	</main>
 </template>
 
@@ -360,40 +334,5 @@ function typeLabel(t: string): string {
 	color: #9ca3af;
 }
 
-.tpl-vars {
-	margin-top: 2rem;
-	border-top: 1px solid #e5e7eb;
-	padding-top: 1rem;
-}
-.tpl-vars-toggle {
-	background: none;
-	border: none;
-	font-size: 0.85rem;
-	font-weight: 600;
-	color: #374151;
-	cursor: pointer;
-	padding: 0;
-}
-.tpl-vars-toggle:hover { color: #6366f1; }
-.tpl-vars-hint {
-	margin: 0.25rem 0 0;
-	font-size: 0.75rem;
-	color: #9ca3af;
-}
-.tpl-vars-list {
-	margin-top: 0.5rem;
-	display: grid;
-	grid-template-columns: auto 1fr;
-	gap: 0.25rem 1rem;
-	font-size: 0.82rem;
-}
-.tpl-var-code {
-	background: #f3f4f6;
-	padding: 0.1rem 0.35rem;
-	border-radius: 0.2rem;
-	font-size: 0.78rem;
-	color: #6366f1;
-	white-space: nowrap;
-}
-.tpl-var-desc { color: #6b7280; }
+
 </style>
