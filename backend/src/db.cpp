@@ -1800,9 +1800,10 @@ FormTemplate Database::row_to_form_template(PGresult *res, int row)
     const char *cfg = PQgetvalue(res, row, 4);
     t.template_config = nlohmann::json::parse(cfg && *cfg ? cfg : "[]", nullptr, false);
     if (t.template_config.is_discarded()) t.template_config = nlohmann::json::array();
-    t.created_by = PQgetvalue(res, row, 5);
-    t.created_at = PQgetvalue(res, row, 6);
-    t.updated_at = PQgetvalue(res, row, 7);
+    t.is_default = std::string(PQgetvalue(res, row, 5)) == "t";
+    t.created_by = PQgetvalue(res, row, 6);
+    t.created_at = PQgetvalue(res, row, 7);
+    t.updated_at = PQgetvalue(res, row, 8);
     return t;
 }
 
@@ -2115,7 +2116,7 @@ std::vector<FormTemplate> Database::list_form_templates(const std::string &depar
     ensure_connected();
     const char *params[1] = {department.c_str()};
     PGresult *res = PQexecParams(conn_,
-        "SELECT id, name, department, form_type, template_config, created_by::text, created_at, updated_at "
+        "SELECT id, name, department, form_type, template_config, is_default, created_by::text, created_at, updated_at "
         "FROM form_templates WHERE department = $1 ORDER BY name",
         1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK) { PQclear(res); return {}; }
@@ -2132,16 +2133,27 @@ std::optional<FormTemplate> Database::create_form_template(const std::string &na
                                                             const std::string &department,
                                                             const std::string &form_type,
                                                             const nlohmann::json &template_config,
-                                                            const std::string &created_by)
+                                                            const std::string &created_by,
+                                                            bool is_default)
 {
     ensure_connected();
+    // If setting as default, clear any existing default for this department
+    if (is_default)
+    {
+        const char *dp[1] = {department.c_str()};
+        PGresult *dr = PQexecParams(conn_,
+            "UPDATE form_templates SET is_default = false WHERE department = $1 AND is_default = true",
+            1, nullptr, dp, nullptr, nullptr, 0);
+        PQclear(dr);
+    }
     std::string cfg_str = template_config.dump();
-    const char *params[5] = {name.c_str(), department.c_str(), form_type.c_str(), cfg_str.c_str(), created_by.c_str()};
+    const char *def_str = is_default ? "true" : "false";
+    const char *params[6] = {name.c_str(), department.c_str(), form_type.c_str(), cfg_str.c_str(), created_by.c_str(), def_str};
     PGresult *res = PQexecParams(conn_,
-        "INSERT INTO form_templates (name, department, form_type, template_config, created_by) "
-        "VALUES ($1, $2, $3, $4::jsonb, $5::uuid) "
-        "RETURNING id, name, department, form_type, template_config, created_by::text, created_at, updated_at",
-        5, nullptr, params, nullptr, nullptr, 0);
+        "INSERT INTO form_templates (name, department, form_type, template_config, created_by, is_default) "
+        "VALUES ($1, $2, $3, $4::jsonb, $5::uuid, $6::boolean) "
+        "RETURNING id, name, department, form_type, template_config, is_default, created_by::text, created_at, updated_at",
+        6, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK) { PQclear(res); return std::nullopt; }
     FormTemplate t = row_to_form_template(res, 0);
     PQclear(res);
@@ -2151,15 +2163,28 @@ std::optional<FormTemplate> Database::create_form_template(const std::string &na
 std::optional<FormTemplate> Database::update_form_template(const std::string &id,
                                                             const std::string &name,
                                                             const std::string &form_type,
-                                                            const nlohmann::json &template_config)
+                                                            const nlohmann::json &template_config,
+                                                            bool is_default)
 {
     ensure_connected();
+    // If setting as default, clear any existing default for this department
+    if (is_default)
+    {
+        const char *ip[1] = {id.c_str()};
+        PGresult *dr = PQexecParams(conn_,
+            "UPDATE form_templates SET is_default = false "
+            "WHERE department = (SELECT department FROM form_templates WHERE id = $1) "
+            "AND is_default = true AND id != $1",
+            1, nullptr, ip, nullptr, nullptr, 0);
+        PQclear(dr);
+    }
     std::string cfg_str = template_config.dump();
-    const char *params[4] = {id.c_str(), name.c_str(), form_type.c_str(), cfg_str.c_str()};
+    const char *def_str = is_default ? "true" : "false";
+    const char *params[5] = {id.c_str(), name.c_str(), form_type.c_str(), cfg_str.c_str(), def_str};
     PGresult *res = PQexecParams(conn_,
-        "UPDATE form_templates SET name=$2, form_type=$3, template_config=$4::jsonb WHERE id=$1 "
-        "RETURNING id, name, department, form_type, template_config, created_by::text, created_at, updated_at",
-        4, nullptr, params, nullptr, nullptr, 0);
+        "UPDATE form_templates SET name=$2, form_type=$3, template_config=$4::jsonb, is_default=$5::boolean WHERE id=$1 "
+        "RETURNING id, name, department, form_type, template_config, is_default, created_by::text, created_at, updated_at",
+        5, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) { PQclear(res); return std::nullopt; }
     FormTemplate t = row_to_form_template(res, 0);
     PQclear(res);

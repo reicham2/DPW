@@ -156,6 +156,7 @@ struct FormTemplate
     std::string department;
     std::string form_type;
     nlohmann::json template_config; // array of question-like objects
+    bool is_default{false};
     std::string created_by;
     std::string created_at;
     std::string updated_at;
@@ -214,6 +215,7 @@ inline nlohmann::json form_template_to_json(const FormTemplate &t)
     return {
         {"id", t.id},
         {"name", t.name},
+        {"is_default", t.is_default},
         {"department", t.department},
         {"form_type", t.form_type},
         {"template_config", t.template_config},

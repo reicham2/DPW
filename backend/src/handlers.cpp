@@ -3117,6 +3117,7 @@ void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db)
         std::string department = j.value("department", "");
         std::string form_type = j.value("form_type", "registration");
         nlohmann::json config = j.contains("template_config") ? j["template_config"] : nlohmann::json::array();
+        bool is_default = j.value("is_default", false);
 
         if (name.empty() || department.empty()) {
             send_json(res, 400, R"({"error":"name und department erforderlich"})");
@@ -3131,7 +3132,7 @@ void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db)
             }
         }
         try {
-            auto tpl = db.create_form_template(name, department, form_type, config, user_id);
+            auto tpl = db.create_form_template(name, department, form_type, config, user_id, is_default);
             if (!tpl) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
             send_json(res, 201, form_template_to_json(*tpl).dump());
         } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); }
@@ -3171,9 +3172,10 @@ void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db)
         std::string name = j.value("name", "");
         std::string form_type = j.value("form_type", "registration");
         nlohmann::json config = j.contains("template_config") ? j["template_config"] : nlohmann::json::array();
+        bool is_default = j.value("is_default", false);
 
         try {
-            auto tpl = db.update_form_template(tpl_id, name, form_type, config);
+            auto tpl = db.update_form_template(tpl_id, name, form_type, config, is_default);
             if (!tpl) { send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})"); return; }
             send_json(res, 200, form_template_to_json(*tpl).dump());
         } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); }

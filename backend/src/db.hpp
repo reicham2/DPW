@@ -234,11 +234,13 @@ public:
                                                      const std::string &department,
                                                      const std::string &form_type,
                                                      const nlohmann::json &template_config,
-                                                     const std::string &created_by);
+                                                     const std::string &created_by,
+                                                     bool is_default = false);
     std::optional<FormTemplate> update_form_template(const std::string &id,
                                                      const std::string &name,
                                                      const std::string &form_type,
-                                                     const nlohmann::json &template_config);
+                                                     const nlohmann::json &template_config,
+                                                     bool is_default = false);
     bool delete_form_template(const std::string &id);
 
 private:
