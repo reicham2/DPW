@@ -66,6 +66,7 @@ db-reset:
 	@echo "⏳ Warte auf DB (healthcheck) …"
 	@until [ "$$(docker inspect --format='{{.State.Health.Status}}' dpw-db-1 2>/dev/null)" = "healthy" ]; do sleep 1; done
 	@echo "✅ DB bereit (Schema aus init.sql geladen)"
+	docker compose up -d
 
 db-seed: db-reset
 	docker compose exec -T db psql -U activities_user -d activities < db/seed.sql

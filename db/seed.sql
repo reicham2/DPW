@@ -123,7 +123,98 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      'Leiter',
      '[]'::jsonb,
      NULL,
-     NULL);
+     NULL),
+
+    -- Pfadi: Wanderung (in 4 Tagen)
+    ('b0000000-0000-0000-0000-000000000007',
+     'Wanderung Säntis',
+     CURRENT_DATE + INTERVAL '4 days',
+     '08:00', '16:00',
+     'Alpine Tour und Naturkunde',
+     'Appenzell, Säntis',
+     ARRAY['Stufen Leiter'],
+     'Pfadi',
+     '[{"name": "Topomaps", "responsible": ["Stufen Leiter"]}, {"name": "Erste-Hilfe-Rucksack", "responsible": []}, {"name": "Proviant für 8h", "responsible": ["Leiter Eins"]}]'::jsonb,
+     'Sanitäter: Stufen Leiter (Handy stets erreichbar). Notfall Alpine Rettung: 1414',
+     'Alternativ: Schloss Appenzell besichtiging'),
+
+    -- Wölfe: Kochkurs (in 6 Tagen)
+    ('b0000000-0000-0000-0000-000000000008',
+     'Pizza selber backen',
+     CURRENT_DATE + INTERVAL '6 days',
+     '15:00', '18:30',
+     'Teig kneten und Pizza belegen',
+     'Schulhaus Dorf',
+     ARRAY['Leiter Zwei'],
+     'Wölfe',
+     '[{"name": "Mehl (5kg)", "responsible": ["Leiter Zwei"]}, {"name": "Belag (Käse, Tomaten, Salami)", "responsible": ["Leiter Zwei"]}, {"name": "Pizzaschaufel (3x)", "responsible": []}]'::jsonb,
+     NULL,
+     'Backofen im Schulhaus Küche'),
+
+    -- Biber: Badetag (in 8 Tagen)
+    ('b0000000-0000-0000-0000-000000000009',
+     'Badetag im Freibad',
+     CURRENT_DATE + INTERVAL '8 days',
+     '14:00', '16:30',
+     'Schwimmen und Plantschen lernen',
+     'Freibad Grünwald',
+     ARRAY['Leiter Drei'],
+     'Biber',
+     '[{"name": "Schwimmleuchten (10x)", "responsible": []}, {"name": "Schwimmflügel-Set", "responsible": ["Leiter Drei"]}, {"name": "Mikrofon Badeverbot-Info", "responsible": []}]'::jsonb,
+     'Bademeister vor Ort, Erste Hilfe durch Leiter Drei',
+     'Nur bei Schönwetter'),
+
+    -- Pio: Felsklettern (in 9 Tagen)
+    ('b0000000-0000-0000-0000-000000000010',
+     'Felsklettern: Seile und Sicherung',
+     CURRENT_DATE + INTERVAL '9 days',
+     '09:00', '17:00',
+     'Klettertechniken und Sicherheit trainieren',
+     'Alpstein',
+     ARRAY['Pio Eins'],
+     'Pio',
+     '[{"name": "Klettergurt (4x)", "responsible": ["Pio Eins"]}, {"name": "Kletterseile 50m", "responsible": ["Pio Eins"]}, {"name": "Karabiner-Set", "responsible": []}, {"name": "Sturzpuffer", "responsible": []}]'::jsonb,
+     'Seilschaft max 2 Personen. Notfall: Bergwacht 140. Leiter Pio Eins begleitet.',
+     'Nur bei stabiler Wetterlage'),
+
+    -- Pfadi: Übernachtung im Tipi (in 11 Tagen)
+    ('b0000000-0000-0000-0000-000000000011',
+     'Tipi-Nacht',
+     CURRENT_DATE + INTERVAL '11 days',
+     '17:00', '09:00',
+     'Draußen übernachten und Lagerfeuer genießen',
+     'Naturlehrgebiet Eggenberg',
+     ARRAY['Leiter Eins', 'Stufen Leiter'],
+     'Pfadi',
+     '[{"name": "Tipis (2x)", "responsible": ["Leiter Eins"]}, {"name": "Schlafsäcke (8x)", "responsible": []}, {"name": "Isomatten (10x)", "responsible": ["Stufen Leiter"]}, {"name": "Brennholz", "responsible": []}, {"name": "Grill & Töpfe", "responsible": ["Leiter Eins"]}]'::jsonb,
+     'Nachtbereitschaft: Leiter Eins hat GPS-Tracker. Notfallnummer vor Ort ausgehängt.',
+     'Bei Gewitter: Übernachtung im Pfadiheim alternate'),
+
+    -- Wölfe & Pfadi gemeinsam: Waldspiele (in 12 Tagen, LOCATION OVERLAP TEST 1)
+    ('b0000000-0000-0000-0000-000000000012',
+     'Waldspiele kombiniert (Pfadi & Wölfe)',
+     CURRENT_DATE + INTERVAL '12 days',
+     '10:00', '12:30',
+     'Gemeinsame Waldspiele und Verbandsgeist',
+     'Waldlichtung Hüttenberg',
+     ARRAY['Stufen Leiter', 'Leiter Zwei'],
+     'Pfadi',
+     '[{"name": "Fahnen (4x)", "responsible": ["Stufen Leiter"]}, {"name": "Pfeifen (3x)", "responsible": ["Leiter Zwei"]}, {"name": "Urkunden", "responsible": []}]'::jsonb,
+     NULL,
+     NULL),
+
+    -- Wölfe: Nachmittagstraining (in 12 Tagen, LOCATION OVERLAP TEST 2 - gleiche Zeit + Ort, andere Abteilung)
+    ('b0000000-0000-0000-0000-000000000013',
+     'Wölfe-Nachmittagstraining',
+     CURRENT_DATE + INTERVAL '12 days',
+     '10:00', '12:30',
+     'Gerätetraining auf dem Sportplatz',
+     'Waldlichtung Hüttenberg',
+     ARRAY['Leiter Zwei'],
+     'Wölfe',
+     '[{"name": "Springseile (5x)", "responsible": []}, {"name": "Hütchen (20x)", "responsible": ["Leiter Zwei"]}, {"name": "Fußbälle (3x)", "responsible": []}]'::jsonb,
+     NULL,
+     'Zeitgleich mit Pfadi-Waldspiel – koordinierte Aktivitäten');
 
 -- ── Programm-Einträge ───────────────────────────────────────────────────────
 
@@ -148,6 +239,61 @@ INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
     ('b0000000-0000-0000-0000-000000000003', '15:45', 'Schatz öffnen',     'Gemeinsam den Schatz öffnen',                  ARRAY['Leiter Zwei']),
     ('b0000000-0000-0000-0000-000000000003', '16:00', 'Zvieri',            'Zvieri und Verabschiedung',                    ARRAY['Leiter Zwei']);
 
+-- Programme für "Wanderung Säntis"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000007', '08:00', 'Treffpunkt & Start', 'Ausrüstungskontrolle und Kurzbriefing',        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', '09:00', 'Start Wanderung',   'Asphalt bis äis Berghütte',                   ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', '12:00', 'Gipfel & Picknick',  'Mittagspause mit Aussicht',                    ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', '14:00', 'Abstieg',           'Zurück zum Startpunkt',                        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', '16:00', 'Debrief & Ende',    'Erlebnisse teilen, Abfahrt',                   ARRAY['Stufen Leiter']);
+
+-- Programme für "Pizza selber backen"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000008', '15:00', 'Einstieg',          'Pizzageschichte und Teig-Zutaten erklären',    ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008', '15:15', 'Teig kneten',       'Jedes Kind knetet seinen Teig',                ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008', '16:00', 'Formen & Belegen',  'Pizza-Formen verzieren und belegen',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008', '16:30', 'Backen & Essen',    'Im Ofen backen und gemeinsam essen',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008', '18:00', 'Aufräumen & Tschüss', 'Küche putzen und bis bald',                   ARRAY['Leiter Zwei']);
+
+-- Programme für "Badetag im Freibad"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000009', '14:00', 'Umzug & Belegung',  'Umzug ins Freibad, Platz suchen',              ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009', '14:15', 'Sicherheitsbriefing', 'Regeln erklären und Wassergewöhnung',        ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009', '14:45', 'Freischwimmen',    'Freies Spielen im Wasser und Becken',         ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009', '15:45', 'Flaschenbad',       'Erfrischungen und Snack am Beckenrand',        ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009', '16:15', 'Umzug & Ende',      'Zurück zur Sammelstelle',                      ARRAY['Leiter Drei']);
+
+-- Programme für "Felsklettern: Seile und Sicherung"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000010', '09:00', 'Anmarsch & Setup',  'Zu Kletterplatz gehen, Ausrüstung aufbauen',   ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '10:00', 'Theorie Knoten',    'Kletterknoten und Sicherung üben',             ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '11:00', 'Erste Kletter',     'Beginners an easy Via mit Sicherung',          ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '12:30', 'Mittagspause',      'Proviant und Aussicht genießen',               ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '13:30', 'Fortgeschrittene',  'Schwierigere Routen für Erfahrene',            ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', '16:00', 'Abbau & Rückweg',   'Material packen und Debrief',                  ARRAY['Pio Eins']);
+
+-- Programme für "Tipi-Nacht"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000011', '17:00', 'Anreise & Aufbau', 'Tipis aufbauen und Schlafplätze herrichten',  ARRAY['Leiter Eins', 'Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011', '18:00', 'Feuer & Essen',    'Lagerfeuer entzünden und Abendessen kochen',   ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000011', '19:00', 'Lagerfeuer-Programm', 'Geschichten, Lieder, Spiele ums Feuer',     ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011', '21:00', 'Zubettmachen',     'Runterfahren und Schlafen gehen',              ARRAY['Leiter Eins', 'Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011', '09:00', 'Frühstück & Abbau', 'Frühstück zubereiten und Tipis abbauen',      ARRAY['Stufen Leiter']);
+
+-- Programme für "Waldspiele kombiniert (Pfadi & Wölfe)"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000012', '10:00', 'Begrüssung',       'Verbands- und Gruppengeist aktivieren',        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000012', '10:15', 'Gemischte Spiele', 'Alters-Mix: Staffeln und Teamspiele',          ARRAY['Stufen Leiter', 'Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000012', '11:30', 'Prämierung',       'Sieger küren und Urkunden verteilen',          ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000012', '12:00', 'Zvieri & Ende',    'Gemeinsamer Zvieri',                           ARRAY['Stufen Leiter']);
+
+-- Programme für "Wölfe-Nachmittagstraining"
+INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000013', '10:00', 'Aufwärmspiel',     'Fangis und Ballgewöhnung',                     ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013', '10:15', 'Koordinations-Parcours', 'Hütchen-Slalom und Sprünge',                  ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013', '11:00', 'Freispiel & Tore', 'Mannschaftsspiele auf Kleinfeldern',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013', '11:45', 'Cool-down',        'Dehnübungen und Abklatschen',                  ARRAY['Leiter Zwei']);
+
 -- Mail-Templates mit Beispielinhalt
 UPDATE mail_templates SET
     subject = 'Einladung zur Pfadi-Aktivität: {{titel}}',
@@ -160,3 +306,125 @@ UPDATE mail_templates SET
     body = '<p>Liebe Eltern</p><p>Die nächste Wölfe-Aktivität steht an:</p><p>📅 {{datum_kurz}}<br>🕐 {{startzeit}} – {{endzeit}}<br>📍 {{ort}}</p><p>Mitbringen: wetterfeste Kleidung, Zvieri</p><p>Bis bald!<br>Das Wölfe-Team<br>{{absender_name}}</p>',
     recipients = ARRAY['eltern-woelfe@pfadihue.ch']
 WHERE department = 'Wölfe';
+
+-- ── Formular-Vorlagen ───────────────────────────────────────────────────────
+
+-- Pfadi: Standard-Anmeldung (is_default = true)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000001',
+     'Standard-Anmeldung Pfadi',
+     'Pfadi',
+     'registration',
+     true,
+     '[
+        {"question_text": "Angaben zum Kind", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Bitte vollständig ausfüllen"}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Pfadiname", "question_type": "text_input", "position": 2, "is_required": false, "metadata": {}},
+        {"question_text": "T-Shirt Grösse", "question_type": "dropdown", "position": 3, "is_required": true, "metadata": {"choices": [{"id": "xs", "label": "XS"}, {"id": "s", "label": "S"}, {"id": "m", "label": "M"}, {"id": "l", "label": "L"}, {"id": "xl", "label": "XL"}]}},
+        {"question_text": "Kontakt", "question_type": "section", "position": 4, "is_required": false, "metadata": {"subtitle": "Erreichbare Person während der Aktivität"}},
+        {"question_text": "Telefon Eltern", "question_type": "text_input", "position": 5, "is_required": true, "metadata": {}},
+        {"question_text": "E-Mail", "question_type": "text_input", "position": 6, "is_required": true, "metadata": {}},
+        {"question_text": "Verpflegung", "question_type": "single_choice", "position": 7, "is_required": true, "metadata": {"choices": [{"id": "normal", "label": "Normal"}, {"id": "vegetarisch", "label": "Vegetarisch"}, {"id": "vegan", "label": "Vegan"}, {"id": "laktosefrei", "label": "Laktosefrei"}]}},
+        {"question_text": "Allergien / Unverträglichkeiten", "question_type": "text_input", "position": 8, "is_required": false, "metadata": {"multiline": true}},
+        {"question_text": "Welche Aktivitäten bevorzugt dein Kind?", "question_type": "multiple_choice", "position": 9, "is_required": false, "metadata": {"choices": [{"id": "wandern", "label": "Wandern"}, {"id": "pioniertechnik", "label": "Pioniertechnik"}, {"id": "kochen", "label": "Kochen"}, {"id": "spiele", "label": "Spiele"}, {"id": "basteln", "label": "Basteln"}]}},
+        {"question_text": "Bemerkungen", "question_type": "text_input", "position": 10, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Pfadi: Abmeldung
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000002',
+     'Standard-Abmeldung Pfadi',
+     'Pfadi',
+     'deregistration',
+     false,
+     '[
+        {"question_text": "Abmeldung", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Bitte den Grund angeben"}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Grund der Abmeldung", "question_type": "dropdown", "position": 2, "is_required": true, "metadata": {"choices": [{"id": "krank", "label": "Krankheit"}, {"id": "ferien", "label": "Ferien"}, {"id": "andere", "label": "Andere Verpflichtung"}, {"id": "sonstiges", "label": "Sonstiges"}]}},
+        {"question_text": "Details", "question_type": "text_input", "position": 3, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Wölfe: Standard-Anmeldung (is_default = true)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000003',
+     'Standard-Anmeldung Wölfe',
+     'Wölfe',
+     'registration',
+     true,
+     '[
+        {"question_text": "Angaben zum Wolf", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": ""}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Geburtsdatum", "question_type": "text_input", "position": 2, "is_required": true, "metadata": {}},
+        {"question_text": "Liebste Farbe", "question_type": "dropdown", "position": 3, "is_required": false, "metadata": {"choices": [{"id": "rot", "label": "Rot"}, {"id": "blau", "label": "Blau"}, {"id": "gruen", "label": "Grün"}, {"id": "gelb", "label": "Gelb"}]}},
+        {"question_text": "Kontakt Eltern", "question_type": "section", "position": 4, "is_required": false, "metadata": {}},
+        {"question_text": "Telefon", "question_type": "text_input", "position": 5, "is_required": true, "metadata": {}},
+        {"question_text": "Essgewohnheiten", "question_type": "single_choice", "position": 6, "is_required": true, "metadata": {"choices": [{"id": "alles", "label": "Isst alles"}, {"id": "vegetarisch", "label": "Vegetarisch"}, {"id": "other", "label": "Anderes (bitte angeben)"}]}},
+        {"question_text": "Besonderes", "question_type": "text_input", "position": 7, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Pio: Standard-Anmeldung (is_default = true)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000004',
+     'Standard-Anmeldung Pio',
+     'Pio',
+     'registration',
+     true,
+     '[
+        {"question_text": "Persönliche Angaben", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Für den Biwak"}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Alter", "question_type": "text_input", "position": 2, "is_required": true, "metadata": {}},
+        {"question_text": "Erfahrung Outdoor", "question_type": "dropdown", "position": 3, "is_required": true, "metadata": {"choices": [{"id": "keine", "label": "Keine"}, {"id": "wenig", "label": "Wenig"}, {"id": "mittel", "label": "Mittel"}, {"id": "viel", "label": "Viel"}]}},
+        {"question_text": "Transportmittel zum Treffpunkt", "question_type": "single_choice", "position": 4, "is_required": true, "metadata": {"choices": [{"id": "selbst", "label": "Komme selbst"}, {"id": "eltern", "label": "Werde gebracht"}, {"id": "oev", "label": "ÖV"}]}},
+        {"question_text": "Was möchtest du lernen?", "question_type": "multiple_choice", "position": 5, "is_required": false, "metadata": {"choices": [{"id": "feuer", "label": "Feuermachen"}, {"id": "orientierung", "label": "Orientierung"}, {"id": "seiltech", "label": "Seiltechnik"}, {"id": "kochen", "label": "Outdoor-Kochen"}, {"id": "erste_hilfe", "label": "Erste Hilfe"}]}},
+        {"question_text": "Medizinische Hinweise", "question_type": "text_input", "position": 6, "is_required": false, "metadata": {"multiline": true}},
+        {"question_text": "Notfallkontakt Telefon", "question_type": "text_input", "position": 7, "is_required": true, "metadata": {}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Biber: Standard-Anmeldung (is_default = true)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000005',
+     'Standard-Anmeldung Biber',
+     'Biber',
+     'registration',
+     true,
+     '[
+        {"question_text": "Angaben zum Biber", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Wird von den Eltern ausgefüllt"}},
+        {"question_text": "Vorname & Name des Kindes", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Geburtsdatum", "question_type": "text_input", "position": 2, "is_required": true, "metadata": {}},
+        {"question_text": "Name Elternteil", "question_type": "text_input", "position": 3, "is_required": true, "metadata": {}},
+        {"question_text": "Telefon", "question_type": "text_input", "position": 4, "is_required": true, "metadata": {}},
+        {"question_text": "Darf fotografiert werden?", "question_type": "single_choice", "position": 5, "is_required": true, "metadata": {"choices": [{"id": "ja", "label": "Ja"}, {"id": "nein", "label": "Nein"}]}},
+        {"question_text": "Bemerkungen", "question_type": "text_input", "position": 6, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- Leiter: Lager-Anmeldung (kein Standard)
+INSERT INTO form_templates (id, name, department, form_type, is_default, template_config, created_by) VALUES
+    ('c0000000-0000-0000-0000-000000000006',
+     'Lager-Anmeldung Leiter',
+     'Leiter',
+     'registration',
+     false,
+     '[
+        {"question_text": "Lager-Anmeldung", "question_type": "section", "position": 0, "is_required": false, "metadata": {"subtitle": "Sommerlager 2026"}},
+        {"question_text": "Vorname & Name", "question_type": "text_input", "position": 1, "is_required": true, "metadata": {}},
+        {"question_text": "Verfügbarkeit", "question_type": "dropdown", "position": 2, "is_required": true, "metadata": {"choices": [{"id": "ganz", "label": "Ganzes Lager"}, {"id": "erste_haelfte", "label": "Erste Hälfte"}, {"id": "zweite_haelfte", "label": "Zweite Hälfte"}, {"id": "tageweise", "label": "Nur tageweise"}]}},
+        {"question_text": "Funktion im Lager", "question_type": "single_choice", "position": 3, "is_required": true, "metadata": {"choices": [{"id": "lagerleitung", "label": "Lagerleitung"}, {"id": "kuechenchef", "label": "Küchenchef"}, {"id": "leiter", "label": "Leiter/in"}, {"id": "helfer", "label": "Helfer/in"}]}},
+        {"question_text": "Kursbestätigungen", "question_type": "multiple_choice", "position": 4, "is_required": false, "metadata": {"choices": [{"id": "glk", "label": "GLK"}, {"id": "slk", "label": "SLK"}, {"id": "pano", "label": "Panorama"}, {"id": "lpk", "label": "LPK"}, {"id": "coach", "label": "Coach-Kurs"}]}},
+        {"question_text": "Bemerkungen", "question_type": "text_input", "position": 5, "is_required": false, "metadata": {"multiline": true}}
+     ]'::jsonb,
+     'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (department, form_type, name) DO NOTHING;
+
+-- ── Test-Formulare für bestehende Aktivitäten ───────────────────────────────
+
+-- Keine Formulare – diese werden in der App erstellt und gespeichert

@@ -901,6 +901,173 @@ std::vector<SentMail> Database::list_sent_mails(const std::string &activity_id)
     return out;
 }
 
+// ---- Mail drafts ------------------------------------------------------------
+
+MailDraft Database::row_to_mail_draft(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    MailDraft d;
+    d.id = col("id") ? col("id") : "";
+    d.activity_id = col("activity_id") ? col("activity_id") : "";
+    if (col("recipients"))
+        d.recipients = parse_pg_array(col("recipients"));
+    d.subject = col("subject") ? col("subject") : "";
+    d.body_html = col("body_html") ? col("body_html") : "";
+    d.updated_by = col("updated_by") ? col("updated_by") : "";
+    d.updated_at = col("updated_at") ? col("updated_at") : "";
+    return d;
+}
+
+std::optional<MailDraft> Database::get_mail_draft(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, recipients, subject, body_html, updated_by, updated_at "
+                                 "FROM mail_drafts WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    MailDraft d = row_to_mail_draft(res, 0);
+    PQclear(res);
+    return d;
+}
+
+std::optional<MailDraft> Database::upsert_mail_draft(const std::string &activity_id,
+                                                     const std::vector<std::string> &recipients,
+                                                     const std::string &subject,
+                                                     const std::string &body_html,
+                                                     const std::string &updated_by)
+{
+    ensure_connected();
+    std::string recip_arr = "{";
+    for (size_t i = 0; i < recipients.size(); ++i)
+    {
+        if (i > 0)
+            recip_arr += ",";
+        recip_arr += "\"" + recipients[i] + "\"";
+    }
+    recip_arr += "}";
+    const char *params[5] = {activity_id.c_str(), recip_arr.c_str(), subject.c_str(),
+                             body_html.c_str(), updated_by.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO mail_drafts (activity_id, recipients, subject, body_html, updated_by) "
+                                 "VALUES ($1, $2::text[], $3, $4, $5) "
+                                 "ON CONFLICT (activity_id) DO UPDATE SET recipients = EXCLUDED.recipients, "
+                                 "subject = EXCLUDED.subject, body_html = EXCLUDED.body_html, updated_by = EXCLUDED.updated_by "
+                                 "RETURNING id, activity_id, recipients, subject, body_html, updated_by, updated_at",
+                                 5, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        fprintf(stderr, "[upsert_mail_draft] %s\n", err.c_str());
+        return std::nullopt;
+    }
+    MailDraft d = row_to_mail_draft(res, 0);
+    PQclear(res);
+    return d;
+}
+
+bool Database::delete_mail_draft(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM mail_drafts WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+FormDraft Database::row_to_form_draft(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    FormDraft d;
+    d.id = col("id") ? col("id") : "";
+    d.activity_id = col("activity_id") ? col("activity_id") : "";
+    d.form_type = col("form_type") ? col("form_type") : "";
+    d.title = col("title") ? col("title") : "";
+    d.questions_json = col("questions_json") ? col("questions_json") : "[]";
+    d.updated_by = col("updated_by") ? col("updated_by") : "";
+    d.updated_at = col("updated_at") ? col("updated_at") : "";
+    return d;
+}
+
+std::optional<FormDraft> Database::get_form_draft(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, form_type, title, questions_json, updated_by, updated_at "
+                                 "FROM form_drafts WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    FormDraft d = row_to_form_draft(res, 0);
+    PQclear(res);
+    return d;
+}
+
+std::optional<FormDraft> Database::upsert_form_draft(const std::string &activity_id,
+                                                     const std::string &form_type,
+                                                     const std::string &title,
+                                                     const std::string &questions_json,
+                                                     const std::string &updated_by)
+{
+    ensure_connected();
+    const char *params[5] = {activity_id.c_str(), form_type.c_str(), title.c_str(),
+                             questions_json.c_str(), updated_by.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO form_drafts (activity_id, form_type, title, questions_json, updated_by) "
+                                 "VALUES ($1, $2, $3, $4::jsonb, $5) "
+                                 "ON CONFLICT (activity_id) DO UPDATE SET form_type = EXCLUDED.form_type, "
+                                 "title = EXCLUDED.title, questions_json = EXCLUDED.questions_json, updated_by = EXCLUDED.updated_by "
+                                 "RETURNING id, activity_id, form_type, title, questions_json, updated_by, updated_at",
+                                 5, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        fprintf(stderr, "[upsert_form_draft] %s\n", err.c_str());
+        return std::nullopt;
+    }
+    FormDraft d = row_to_form_draft(res, 0);
+    PQclear(res);
+    return d;
+}
+
+bool Database::delete_form_draft(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM form_drafts WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
 // ---- send_mail via Microsoft Graph ------------------------------------------
 
 static size_t graph_write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
@@ -1589,6 +1756,8 @@ RolePermission Database::row_to_role_perm(PGresult *res, int row)
     rp.activity_edit_scope = col("activity_edit_scope") ? col("activity_edit_scope") : "none";
     rp.mail_send_scope = col("mail_send_scope") ? col("mail_send_scope") : "none";
     rp.mail_templates_scope = col("mail_templates_scope") ? col("mail_templates_scope") : "none";
+    rp.form_scope = col("form_scope") ? col("form_scope") : "none";
+    rp.form_templates_scope = col("form_templates_scope") ? col("form_templates_scope") : "none";
     rp.user_dept_scope = col("user_dept_scope") ? col("user_dept_scope") : "none";
     rp.user_role_scope = col("user_role_scope") ? col("user_role_scope") : "none";
     return rp;
@@ -1603,7 +1772,8 @@ std::vector<RolePermission> Database::list_role_permissions()
                            "       activity_read_scope, activity_create_scope, "
                            "       activity_edit_scope, "
                            "       mail_send_scope, "
-                           "       mail_templates_scope, user_dept_scope, user_role_scope "
+                           "       mail_templates_scope, form_scope, form_templates_scope, "
+                           "       user_dept_scope, user_role_scope "
                            "FROM role_permissions ORDER BY role");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
@@ -1630,7 +1800,8 @@ std::optional<RolePermission> Database::get_role_permission(const std::string &r
                                  "       activity_read_scope, activity_create_scope, "
                                  "       activity_edit_scope, "
                                  "       mail_send_scope, "
-                                 "       mail_templates_scope, user_dept_scope, user_role_scope "
+                                 "       mail_templates_scope, form_scope, form_templates_scope, "
+                                 "       user_dept_scope, user_role_scope "
                                  "FROM role_permissions WHERE role = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1656,6 +1827,8 @@ bool Database::update_role_permission(const std::string &role,
                                       const std::string &activity_edit_scope,
                                       const std::string &mail_send_scope,
                                       const std::string &mail_templates_scope,
+                                      const std::string &form_scope,
+                                      const std::string &form_templates_scope,
                                       const std::string &user_dept_scope,
                                       const std::string &user_role_scope)
 {
@@ -1670,20 +1843,26 @@ bool Database::update_role_permission(const std::string &role,
     const char *p8 = activity_edit_scope.c_str();
     const char *p9 = mail_send_scope.c_str();
     const char *p10 = mail_templates_scope.c_str();
-    const char *p11 = user_dept_scope.c_str();
-    const char *p12 = user_role_scope.c_str();
-    const char *params[12] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12};
+    const char *p11 = form_scope.c_str();
+    const char *p12 = form_templates_scope.c_str();
+    const char *p13 = user_dept_scope.c_str();
+    const char *p14 = user_role_scope.c_str();
+    const char *params[14] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, "
                                  "can_read_all_depts, can_write_all_depts, "
-                                 "activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) "
-                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9, $10, $11, $12) "
+                                 "activity_read_scope, activity_create_scope, activity_edit_scope, "
+                                 "mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, "
+                                 "user_dept_scope, user_role_scope) "
+                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9, $10, $11, $12, $13, $14) "
                                  "ON CONFLICT (role) DO UPDATE SET "
                                  "can_read_own_dept = $2::boolean, can_write_own_dept = $3::boolean, "
                                  "can_read_all_depts = $4::boolean, can_write_all_depts = $5::boolean, "
                                  "activity_read_scope = $6, activity_create_scope = $7, activity_edit_scope = $8, "
-                                 "mail_send_scope = $9, mail_templates_scope = $10, user_dept_scope = $11, user_role_scope = $12",
-                                 12, nullptr, params, nullptr, nullptr, 0);
+                                 "mail_send_scope = $9, mail_templates_scope = $10, "
+                                 "form_scope = $11, form_templates_scope = $12, "
+                                 "user_dept_scope = $13, user_role_scope = $14",
+                                 14, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;
@@ -1742,6 +1921,508 @@ bool Database::set_role_dept_access(const std::string &role, const std::string &
                                  "VALUES ($1, $2, $3::boolean, $4::boolean) "
                                  "ON CONFLICT (role, department) DO UPDATE SET can_read = $3::boolean, can_write = $4::boolean",
                                  4, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+// ── Forms ─────────────────────────────────────────────────────────────────────
+
+FormQuestion Database::row_to_form_question(PGresult *res, int row)
+{
+    FormQuestion q;
+    q.id = PQgetvalue(res, row, 0);
+    q.form_id = PQgetvalue(res, row, 1);
+    q.question_text = PQgetvalue(res, row, 2);
+    q.question_type = PQgetvalue(res, row, 3);
+    q.position = std::stoi(PQgetvalue(res, row, 4));
+    q.is_required = std::string(PQgetvalue(res, row, 5)) == "t";
+    const char *meta = PQgetvalue(res, row, 6);
+    q.metadata = nlohmann::json::parse(meta && *meta ? meta : "{}", nullptr, false);
+    if (q.metadata.is_discarded())
+        q.metadata = nlohmann::json::object();
+    q.created_at = PQgetvalue(res, row, 7);
+    return q;
+}
+
+SignupForm Database::row_to_signup_form(PGresult *res, int row)
+{
+    SignupForm f;
+    f.id = PQgetvalue(res, row, 0);
+    f.activity_id = PQgetvalue(res, row, 1);
+    f.public_slug = PQgetvalue(res, row, 2);
+    f.form_type = PQgetvalue(res, row, 3);
+    f.title = PQgetvalue(res, row, 4);
+    f.created_by = PQgetvalue(res, row, 5);
+    f.created_at = PQgetvalue(res, row, 6);
+    f.updated_at = PQgetvalue(res, row, 7);
+    return f;
+}
+
+FormResponse Database::row_to_form_response(PGresult *res, int row)
+{
+    FormResponse r;
+    r.id = PQgetvalue(res, row, 0);
+    r.form_id = PQgetvalue(res, row, 1);
+    r.submission_mode = PQgetvalue(res, row, 2);
+    r.submitted_at = PQgetvalue(res, row, 3);
+    r.user_agent = PQnfields(res) > 4 ? PQgetvalue(res, row, 4) : "";
+    r.ip_address = PQnfields(res) > 5 ? PQgetvalue(res, row, 5) : "";
+    return r;
+}
+
+FormTemplate Database::row_to_form_template(PGresult *res, int row)
+{
+    FormTemplate t;
+    t.id = PQgetvalue(res, row, 0);
+    t.name = PQgetvalue(res, row, 1);
+    t.department = PQgetvalue(res, row, 2);
+    t.form_type = PQgetvalue(res, row, 3);
+    const char *cfg = PQgetvalue(res, row, 4);
+    t.template_config = nlohmann::json::parse(cfg && *cfg ? cfg : "[]", nullptr, false);
+    if (t.template_config.is_discarded())
+        t.template_config = nlohmann::json::array();
+    t.is_default = std::string(PQgetvalue(res, row, 5)) == "t";
+    t.created_by = PQgetvalue(res, row, 6);
+    t.created_at = PQgetvalue(res, row, 7);
+    t.updated_at = PQgetvalue(res, row, 8);
+    return t;
+}
+
+void Database::attach_questions_single(SignupForm &f)
+{
+    ensure_connected();
+    const char *params[1] = {f.id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, form_id, question_text, question_type, position, is_required, metadata, created_at "
+                                 "FROM form_questions WHERE form_id = $1 ORDER BY position",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return;
+    }
+    int n = PQntuples(res);
+    f.questions.reserve(n);
+    for (int i = 0; i < n; ++i)
+        f.questions.push_back(row_to_form_question(res, i));
+    PQclear(res);
+}
+
+std::optional<SignupForm> Database::get_form_for_activity(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, public_slug, form_type, title, created_by::text, created_at, updated_at "
+                                 "FROM signup_forms WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    SignupForm f = row_to_signup_form(res, 0);
+    PQclear(res);
+    attach_questions_single(f);
+    return f;
+}
+
+std::optional<SignupForm> Database::get_form_by_id(const std::string &form_id)
+{
+    ensure_connected();
+    const char *params[1] = {form_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, public_slug, form_type, title, created_by::text, created_at, updated_at "
+                                 "FROM signup_forms WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    SignupForm f = row_to_signup_form(res, 0);
+    PQclear(res);
+    attach_questions_single(f);
+    return f;
+}
+
+std::optional<SignupForm> Database::get_form_for_public_slug(const std::string &public_slug)
+{
+    ensure_connected();
+    const char *params[1] = {public_slug.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, public_slug, form_type, title, created_by::text, created_at, updated_at "
+                                 "FROM signup_forms WHERE public_slug = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    SignupForm f = row_to_signup_form(res, 0);
+    PQclear(res);
+    attach_questions_single(f);
+    return f;
+}
+
+std::optional<SignupForm> Database::create_form(const std::string &activity_id,
+                                                const std::string &form_type,
+                                                const std::string &title,
+                                                const std::string &created_by,
+                                                const std::vector<FormQuestion> &questions)
+{
+    ensure_connected();
+    const char *params[4] = {activity_id.c_str(), form_type.c_str(), title.c_str(), created_by.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO signup_forms (activity_id, form_type, title, created_by) "
+                                 "VALUES ($1, $2, $3, $4::uuid) "
+                                 "RETURNING id, activity_id, public_slug, form_type, title, created_by::text, created_at, updated_at",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    SignupForm f = row_to_signup_form(res, 0);
+    PQclear(res);
+
+    for (const auto &q : questions)
+    {
+        std::string meta_str = q.metadata.dump();
+        std::string pos_str = std::to_string(q.position);
+        const char *req_str = q.is_required ? "true" : "false";
+        const char *qparams[6] = {
+            f.id.c_str(), q.question_text.c_str(), q.question_type.c_str(),
+            pos_str.c_str(), req_str, meta_str.c_str()};
+        PGresult *qres = PQexecParams(conn_,
+                                      "INSERT INTO form_questions (form_id, question_text, question_type, position, is_required, metadata) "
+                                      "VALUES ($1, $2, $3, $4::int, $5::boolean, $6::jsonb) "
+                                      "RETURNING id, form_id, question_text, question_type, position, is_required, metadata, created_at",
+                                      6, nullptr, qparams, nullptr, nullptr, 0);
+        if (PQresultStatus(qres) == PGRES_TUPLES_OK)
+            f.questions.push_back(row_to_form_question(qres, 0));
+        PQclear(qres);
+    }
+    return f;
+}
+
+std::optional<SignupForm> Database::update_form(const std::string &activity_id,
+                                                const std::string &form_type,
+                                                const std::string &title,
+                                                const std::vector<FormQuestion> &questions)
+{
+    ensure_connected();
+    const char *params[3] = {activity_id.c_str(), form_type.c_str(), title.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE signup_forms SET form_type=$2, title=$3 WHERE activity_id=$1 "
+                                 "RETURNING id, activity_id, public_slug, form_type, title, created_by::text, created_at, updated_at",
+                                 3, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    SignupForm f = row_to_signup_form(res, 0);
+    PQclear(res);
+
+    const char *dparams[1] = {f.id.c_str()};
+    PGresult *dres = PQexecParams(conn_,
+                                  "DELETE FROM form_questions WHERE form_id = $1",
+                                  1, nullptr, dparams, nullptr, nullptr, 0);
+    PQclear(dres);
+
+    for (const auto &q : questions)
+    {
+        std::string meta_str = q.metadata.dump();
+        std::string pos_str = std::to_string(q.position);
+        const char *req_str = q.is_required ? "true" : "false";
+        const char *qparams[6] = {
+            f.id.c_str(), q.question_text.c_str(), q.question_type.c_str(),
+            pos_str.c_str(), req_str, meta_str.c_str()};
+        PGresult *qres = PQexecParams(conn_,
+                                      "INSERT INTO form_questions (form_id, question_text, question_type, position, is_required, metadata) "
+                                      "VALUES ($1, $2, $3, $4::int, $5::boolean, $6::jsonb) "
+                                      "RETURNING id, form_id, question_text, question_type, position, is_required, metadata, created_at",
+                                      6, nullptr, qparams, nullptr, nullptr, 0);
+        if (PQresultStatus(qres) == PGRES_TUPLES_OK)
+            f.questions.push_back(row_to_form_question(qres, 0));
+        PQclear(qres);
+    }
+    return f;
+}
+
+bool Database::delete_form(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM signup_forms WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+std::optional<FormResponse> Database::submit_response(const std::string &form_id,
+                                                      const std::string &submission_mode,
+                                                      const std::string &user_agent,
+                                                      const std::string &ip_address,
+                                                      const std::vector<std::pair<std::string, std::string>> &answers)
+{
+    ensure_connected();
+    const char *params[4] = {form_id.c_str(), submission_mode.c_str(),
+                             user_agent.empty() ? nullptr : user_agent.c_str(),
+                             ip_address.empty() ? nullptr : ip_address.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO form_responses (form_id, submission_mode, user_agent, ip_address) "
+                                 "VALUES ($1, $2, $3, $4) "
+                                 "RETURNING id, form_id, submission_mode, submitted_at",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    FormResponse r = row_to_form_response(res, 0);
+    PQclear(res);
+
+    for (const auto &[qid, val] : answers)
+    {
+        const char *aparams[3] = {r.id.c_str(), qid.c_str(), val.c_str()};
+        PGresult *ares = PQexecParams(conn_,
+                                      "INSERT INTO response_answers (response_id, question_id, answer_value) VALUES ($1, $2, $3)",
+                                      3, nullptr, aparams, nullptr, nullptr, 0);
+        PQclear(ares);
+    }
+    r.answers = answers;
+    return r;
+}
+
+std::vector<FormResponse> Database::list_responses(const std::string &form_id)
+{
+    ensure_connected();
+    const char *params[1] = {form_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, form_id, submission_mode, submitted_at FROM form_responses "
+                                 "WHERE form_id = $1 ORDER BY submitted_at DESC",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    int n = PQntuples(res);
+    std::vector<FormResponse> out;
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_form_response(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<FormResponse> Database::get_response(const std::string &response_id)
+{
+    ensure_connected();
+    const char *params[1] = {response_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, form_id, submission_mode, submitted_at FROM form_responses WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    FormResponse r = row_to_form_response(res, 0);
+    PQclear(res);
+
+    const char *aparams[1] = {response_id.c_str()};
+    PGresult *ares = PQexecParams(conn_,
+                                  "SELECT question_id::text, answer_value FROM response_answers WHERE response_id = $1",
+                                  1, nullptr, aparams, nullptr, nullptr, 0);
+    if (PQresultStatus(ares) == PGRES_TUPLES_OK)
+    {
+        int n = PQntuples(ares);
+        r.answers.reserve(n);
+        for (int i = 0; i < n; ++i)
+            r.answers.emplace_back(PQgetvalue(ares, i, 0), PQgetvalue(ares, i, 1));
+    }
+    PQclear(ares);
+    return r;
+}
+
+bool Database::delete_response(const std::string &response_id)
+{
+    ensure_connected();
+    const char *params[1] = {response_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM form_responses WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+nlohmann::json Database::get_form_stats(const std::string &form_id)
+{
+    ensure_connected();
+    nlohmann::json stats;
+
+    const char *params[1] = {form_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT submission_mode, COUNT(*) FROM form_responses WHERE form_id=$1 GROUP BY submission_mode",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    int total = 0;
+    nlohmann::json by_mode = nlohmann::json::object();
+    if (PQresultStatus(res) == PGRES_TUPLES_OK)
+    {
+        for (int i = 0; i < PQntuples(res); ++i)
+        {
+            std::string mode = PQgetvalue(res, i, 0);
+            int cnt = std::stoi(PQgetvalue(res, i, 1));
+            by_mode[mode] = cnt;
+            total += cnt;
+        }
+    }
+    PQclear(res);
+    stats["total"] = total;
+    stats["by_mode"] = by_mode;
+
+    PGresult *qres = PQexecParams(conn_,
+                                  "SELECT fq.id::text, fq.question_text, fq.question_type, ra.answer_value, COUNT(*) "
+                                  "FROM form_questions fq "
+                                  "JOIN response_answers ra ON ra.question_id = fq.id "
+                                  "JOIN form_responses fr ON fr.id = ra.response_id "
+                                  "WHERE fq.form_id = $1 "
+                                  "GROUP BY fq.id, fq.question_text, fq.question_type, ra.answer_value "
+                                  "ORDER BY fq.position",
+                                  1, nullptr, params, nullptr, nullptr, 0);
+    nlohmann::json questions_stats = nlohmann::json::object();
+    if (PQresultStatus(qres) == PGRES_TUPLES_OK)
+    {
+        for (int i = 0; i < PQntuples(qres); ++i)
+        {
+            std::string qid = PQgetvalue(qres, i, 0);
+            std::string qtext = PQgetvalue(qres, i, 1);
+            std::string qtype = PQgetvalue(qres, i, 2);
+            std::string val = PQgetvalue(qres, i, 3);
+            int cnt = std::stoi(PQgetvalue(qres, i, 4));
+            if (!questions_stats.contains(qid))
+            {
+                questions_stats[qid] = {
+                    {"question_text", qtext},
+                    {"question_type", qtype},
+                    {"answers", nlohmann::json::object()}};
+            }
+            questions_stats[qid]["answers"][val] = cnt;
+        }
+    }
+    PQclear(qres);
+    stats["questions"] = questions_stats;
+    return stats;
+}
+
+// ── Form Templates ────────────────────────────────────────────────────────────
+
+std::vector<FormTemplate> Database::list_form_templates(const std::string &department)
+{
+    ensure_connected();
+    const char *params[1] = {department.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, name, department, form_type, template_config, is_default, created_by::text, created_at, updated_at "
+                                 "FROM form_templates WHERE department = $1 ORDER BY name",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    int n = PQntuples(res);
+    std::vector<FormTemplate> out;
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_form_template(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<FormTemplate> Database::create_form_template(const std::string &name,
+                                                           const std::string &department,
+                                                           const std::string &form_type,
+                                                           const nlohmann::json &template_config,
+                                                           const std::string &created_by,
+                                                           bool is_default)
+{
+    ensure_connected();
+    // If setting as default, clear any existing default for this department
+    if (is_default)
+    {
+        const char *dp[1] = {department.c_str()};
+        PGresult *dr = PQexecParams(conn_,
+                                    "UPDATE form_templates SET is_default = false WHERE department = $1 AND is_default = true",
+                                    1, nullptr, dp, nullptr, nullptr, 0);
+        PQclear(dr);
+    }
+    std::string cfg_str = template_config.dump();
+    const char *def_str = is_default ? "true" : "false";
+    const char *params[6] = {name.c_str(), department.c_str(), form_type.c_str(), cfg_str.c_str(), created_by.c_str(), def_str};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO form_templates (name, department, form_type, template_config, created_by, is_default) "
+                                 "VALUES ($1, $2, $3, $4::jsonb, $5::uuid, $6::boolean) "
+                                 "RETURNING id, name, department, form_type, template_config, is_default, created_by::text, created_at, updated_at",
+                                 6, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    FormTemplate t = row_to_form_template(res, 0);
+    PQclear(res);
+    return t;
+}
+
+std::optional<FormTemplate> Database::update_form_template(const std::string &id,
+                                                           const std::string &name,
+                                                           const std::string &form_type,
+                                                           const nlohmann::json &template_config,
+                                                           bool is_default)
+{
+    ensure_connected();
+    // If setting as default, clear any existing default for this department
+    if (is_default)
+    {
+        const char *ip[1] = {id.c_str()};
+        PGresult *dr = PQexecParams(conn_,
+                                    "UPDATE form_templates SET is_default = false "
+                                    "WHERE department = (SELECT department FROM form_templates WHERE id = $1) "
+                                    "AND is_default = true AND id != $1",
+                                    1, nullptr, ip, nullptr, nullptr, 0);
+        PQclear(dr);
+    }
+    std::string cfg_str = template_config.dump();
+    const char *def_str = is_default ? "true" : "false";
+    const char *params[5] = {id.c_str(), name.c_str(), form_type.c_str(), cfg_str.c_str(), def_str};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE form_templates SET name=$2, form_type=$3, template_config=$4::jsonb, is_default=$5::boolean WHERE id=$1 "
+                                 "RETURNING id, name, department, form_type, template_config, is_default, created_by::text, created_at, updated_at",
+                                 5, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    FormTemplate t = row_to_form_template(res, 0);
+    PQclear(res);
+    return t;
+}
+
+bool Database::delete_form_template(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM form_templates WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;

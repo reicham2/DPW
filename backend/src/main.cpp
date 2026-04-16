@@ -138,10 +138,59 @@ int main()
                { handle_post_send_mail(res, req, db); })
          .get("/activities/:id/sent-mails", [&](auto *res, auto *req)
               { handle_get_sent_mails(res, req, db); })
+         .get("/activities/:id/mail-draft", [&](auto *res, auto *req)
+              { handle_get_mail_draft(res, req, db); })
+         .put("/activities/:id/mail-draft", [&](auto *res, auto *req)
+              { handle_put_mail_draft(res, req, db); })
+         .del("/activities/:id/mail-draft", [&](auto *res, auto *req)
+              { handle_delete_mail_draft(res, req, db); })
+         .get("/activities/:id/form-draft", [&](auto *res, auto *req)
+              { handle_get_form_draft(res, req, db); })
+         .put("/activities/:id/form-draft", [&](auto *res, auto *req)
+              { handle_put_form_draft(res, req, db); })
+         .del("/activities/:id/form-draft", [&](auto *res, auto *req)
+              { handle_delete_form_draft(res, req, db); })
 
          // Bug report — creates a GitHub issue
          .post("/bug-report", [&](auto *res, auto *req)
                { handle_post_bug_report(res, req, db); })
+
+         // ── Forms ────────────────────────────────────────────────────────────
+         // Public endpoints (no auth) — must be BEFORE /activities/:id
+         .get("/forms/:slug", [&](auto *res, auto *req)
+              { handle_get_public_form(res, req, db); })
+         .post("/forms/:slug/submit", [&](auto *res, auto *req)
+               { handle_post_form_submit(res, req, db); })
+
+         // Admin: form CRUD per activity
+         .get("/activities/:id/form", [&](auto *res, auto *req)
+              { handle_get_activity_form(res, req, db); })
+         .post("/activities/:id/form", [&](auto *res, auto *req)
+               { handle_post_activity_form(res, req, db); })
+         .put("/activities/:id/form", [&](auto *res, auto *req)
+              { handle_put_activity_form(res, req, db); })
+         .del("/activities/:id/form", [&](auto *res, auto *req)
+              { handle_delete_activity_form(res, req, db); })
+
+         // Admin: responses & stats
+         .get("/activities/:id/form/responses", [&](auto *res, auto *req)
+              { handle_get_form_responses(res, req, db); })
+         .get("/activities/:id/form/responses/:rid", [&](auto *res, auto *req)
+              { handle_get_form_response(res, req, db); })
+         .del("/activities/:id/form/responses/:rid", [&](auto *res, auto *req)
+              { handle_delete_form_response(res, req, db); })
+         .get("/activities/:id/form/stats", [&](auto *res, auto *req)
+              { handle_get_form_stats(res, req, db); })
+
+         // Admin: form templates
+         .get("/form-templates", [&](auto *res, auto *req)
+              { handle_get_form_templates(res, req, db); })
+         .post("/form-templates", [&](auto *res, auto *req)
+               { handle_post_form_template(res, req, db); })
+         .put("/form-templates/:id", [&](auto *res, auto *req)
+              { handle_put_form_template(res, req, db); })
+         .del("/form-templates/:id", [&](auto *res, auto *req)
+              { handle_delete_form_template(res, req, db); })
 
          // WebSocket endpoint
          .ws<WsUserData>("/ws", {.compression = uWS::SHARED_COMPRESSOR,

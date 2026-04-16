@@ -160,6 +160,10 @@ CREATE TABLE role_permissions (
         CHECK (mail_send_scope IN ('none', 'own', 'same_dept', 'all')),
     mail_templates_scope TEXT    NOT NULL DEFAULT 'none'
         CHECK (mail_templates_scope IN ('none', 'own_dept', 'all')),
+    form_scope           TEXT    NOT NULL DEFAULT 'none'
+        CHECK (form_scope IN ('none', 'own', 'same_dept', 'all')),
+    form_templates_scope TEXT    NOT NULL DEFAULT 'none'
+        CHECK (form_templates_scope IN ('none', 'own_dept', 'all')),
     user_dept_scope      TEXT    NOT NULL DEFAULT 'none'
         CHECK (user_dept_scope IN ('none', 'own', 'own_dept', 'all')),
     user_role_scope      TEXT    NOT NULL DEFAULT 'none'
@@ -176,9 +180,9 @@ CREATE TABLE role_dept_access (
 );
 
 -- Seed default role permissions
-INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) VALUES
-    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all'),
-    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'none', 'none');
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope) VALUES
+    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all'),
+    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none');
 
 -- Triggers for departments & roles updated_at
 CREATE TRIGGER trg_departments_updated_at
@@ -188,3 +192,114 @@ CREATE TRIGGER trg_departments_updated_at
 CREATE TRIGGER trg_roles_updated_at
     BEFORE UPDATE ON roles
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── Forms system ─────────────────────────────────────────────────────────────
+
+CREATE TABLE signup_forms (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    public_slug TEXT        NOT NULL UNIQUE DEFAULT substr(encode(gen_random_bytes(12), 'hex'), 1, 20),
+    form_type   TEXT        NOT NULL CHECK (form_type IN ('registration', 'deregistration')),
+    title       TEXT        NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by  UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE (activity_id)
+);
+
+CREATE TRIGGER trg_signup_forms_updated_at
+    BEFORE UPDATE ON signup_forms
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TABLE form_questions (
+    id            UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_id       UUID    NOT NULL REFERENCES signup_forms(id) ON DELETE CASCADE,
+    question_text TEXT    NOT NULL,
+    question_type TEXT    NOT NULL CHECK (question_type IN ('section', 'text_input', 'single_choice', 'multiple_choice', 'dropdown')),
+    position      INTEGER NOT NULL,
+    is_required   BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata      JSONB   NOT NULL DEFAULT '{}',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE form_responses (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_id         UUID        NOT NULL REFERENCES signup_forms(id) ON DELETE CASCADE,
+    submission_mode TEXT        NOT NULL CHECK (submission_mode IN ('registration', 'deregistration')),
+    submitted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    user_agent      TEXT,
+    ip_address      TEXT
+);
+
+CREATE TABLE response_answers (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    response_id UUID NOT NULL REFERENCES form_responses(id) ON DELETE CASCADE,
+    question_id UUID NOT NULL REFERENCES form_questions(id) ON DELETE CASCADE,
+    answer_value TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE form_templates (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            TEXT        NOT NULL,
+    department      TEXT        NOT NULL REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    form_type       TEXT        NOT NULL CHECK (form_type IN ('registration', 'deregistration')),
+    template_config JSONB       NOT NULL DEFAULT '[]',
+    is_default      BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE (department, form_type, name)
+);
+
+-- Ensure at most one default template per department
+CREATE UNIQUE INDEX idx_form_templates_default
+    ON form_templates (department)
+    WHERE is_default = TRUE;
+
+CREATE TRIGGER trg_form_templates_updated_at
+    BEFORE UPDATE ON form_templates
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX idx_signup_forms_activity    ON signup_forms(activity_id);
+CREATE INDEX idx_signup_forms_public_slug ON signup_forms(public_slug);
+CREATE INDEX idx_form_questions_form      ON form_questions(form_id);
+CREATE INDEX idx_form_responses_form      ON form_responses(form_id);
+CREATE INDEX idx_response_answers_resp    ON response_answers(response_id);
+CREATE INDEX idx_form_templates_dept      ON form_templates(department);
+
+-- ── Mail drafts (autosave) ──────────────────────────────────────────────────
+
+CREATE TABLE mail_drafts (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id  UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    recipients   TEXT[]      NOT NULL DEFAULT '{}',
+    subject      TEXT        NOT NULL DEFAULT '',
+    body_html    TEXT        NOT NULL DEFAULT '',
+    updated_by   UUID        REFERENCES users(id) ON DELETE SET NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (activity_id)
+);
+
+CREATE TRIGGER trg_mail_drafts_updated_at
+    BEFORE UPDATE ON mail_drafts
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX idx_mail_drafts_activity ON mail_drafts (activity_id);
+
+CREATE TABLE form_drafts (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id     UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    form_type       TEXT        NOT NULL DEFAULT 'registration',
+    title           TEXT        NOT NULL DEFAULT '',
+    questions_json  JSONB       NOT NULL DEFAULT '[]',
+    updated_by      UUID        REFERENCES users(id) ON DELETE SET NULL,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (activity_id)
+);
+
+CREATE TRIGGER trg_form_drafts_updated_at
+    BEFORE UPDATE ON form_drafts
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX idx_form_drafts_activity ON form_drafts (activity_id);

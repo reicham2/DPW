@@ -114,6 +114,16 @@ export interface SentMail {
 	sent_at: string;
 }
 
+export interface MailDraft {
+	id: string;
+	activity_id: string;
+	recipients: string[];
+	subject: string;
+	body_html: string;
+	updated_by: string;
+	updated_at: string;
+}
+
 export interface Attachment {
 	id: string;
 	activity_id: string;
@@ -140,6 +150,8 @@ export interface RolePermission {
 	activity_edit_scope: 'none' | 'own' | 'same_dept' | 'all';
 	mail_send_scope: 'none' | 'own' | 'same_dept' | 'all';
 	mail_templates_scope: 'none' | 'own_dept' | 'all';
+	form_scope: 'none' | 'own' | 'same_dept' | 'all';
+	form_templates_scope: 'none' | 'own_dept' | 'all';
 	user_dept_scope: 'none' | 'own' | 'own_dept' | 'all';
 	user_role_scope: 'none' | 'own' | 'own_dept' | 'all';
 }
@@ -153,4 +165,109 @@ export interface RoleDeptAccess {
 	department: string;
 	can_read: boolean;
 	can_write: boolean;
+}
+
+// ── Forms ─────────────────────────────────────────────────────────────────────
+
+export type FormType = 'registration' | 'deregistration';
+export type QuestionType =
+	| 'section'
+	| 'text_input'
+	| 'single_choice'
+	| 'multiple_choice'
+	| 'dropdown';
+
+export interface ChoiceOption {
+	id: string;
+	label: string;
+}
+
+export interface QuestionMetadata {
+	// section
+	subtitle?: string;
+	// text_input
+	multiline?: boolean;
+	max_length?: number;
+	// choice types
+	choices?: ChoiceOption[];
+}
+
+export interface FormQuestion {
+	id: string;
+	form_id: string;
+	question_text: string;
+	question_type: QuestionType;
+	position: number;
+	is_required: boolean;
+	metadata: QuestionMetadata;
+	created_at: string;
+}
+
+export interface FormQuestionInput {
+	question_text: string;
+	question_type: QuestionType;
+	position: number;
+	is_required: boolean;
+	metadata: QuestionMetadata;
+}
+
+export interface SignupForm {
+	id: string;
+	activity_id: string;
+	public_slug: string;
+	form_type: FormType;
+	title: string;
+	created_by: string;
+	created_at: string;
+	updated_at: string;
+	questions: FormQuestion[];
+}
+
+export interface SignupFormInput {
+	form_type: FormType;
+	title: string;
+	questions: FormQuestionInput[];
+}
+
+export interface FormResponseAnswer {
+	question_id: string;
+	answer_value: string;
+}
+
+export interface FormResponse {
+	id: string;
+	form_id: string;
+	submission_mode: FormType;
+	submitted_at: string;
+	answers?: FormResponseAnswer[];
+}
+
+export interface FormSubmitPayload {
+	answers: FormResponseAnswer[];
+}
+
+export interface FormTemplate {
+	id: string;
+	name: string;
+	department: string;
+	form_type: FormType;
+	template_config: FormQuestionInput[];
+	is_default: boolean;
+	created_by: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface FormStats {
+	form_type: FormType;
+	total: number;
+	by_mode: Record<string, number>;
+	questions: Record<
+		string,
+		{
+			question_text: string;
+			question_type: QuestionType;
+			answers: Record<string, number>;
+		}
+	>;
 }

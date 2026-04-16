@@ -6,6 +6,7 @@
 #include <memory>
 #include <algorithm>
 #include <ctime>
+#include <map>
 #include <curl/curl.h>
 
 static const std::string PFADI_HUE_GROUP_ID = "17fcb1fa-9fa2-45f2-96cc-3804d7097311";
@@ -282,6 +283,17 @@ static bool can_create_dept(const RolePermission &perm, const UserRecord &user,
     if (perm.activity_create_scope == "own_dept" && user.department && *user.department == dept)
         return true;
     return has_dept_create_access(dept_access, dept);
+}
+
+static bool can_read_dept(const RolePermission &perm, const UserRecord &user,
+                          const std::vector<RoleDeptAccess> &dept_access,
+                          const std::string &dept)
+{
+    if (perm.activity_read_scope == "all")
+        return true;
+    if (perm.activity_read_scope == "same_dept" && user.department && *user.department == dept)
+        return true;
+    return has_dept_read_access(dept_access, dept);
 }
 
 static bool is_activity_responsible(const Activity &activity, const UserRecord &user, const TokenClaims &claims)
@@ -1587,6 +1599,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
                     std::string sender_id = current_user ? current_user->id : "";
                     std::string sender_email = current_user ? current_user->email : from_email;
                     db.log_sent_mail(activity_id, sender_id, sender_email, to_emails, subject, body_html);
+                    db.delete_mail_draft(activity_id);
                 }
                 send_json(res, 200, R"({"status":"sent"})");
             } else {
@@ -1649,6 +1662,301 @@ void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db)
         });
     }
     send_json(res, 200, arr.dump());
+}
+
+// ─── GET /activities/:id/mail-draft ──────────────────────────────────────────
+
+void handle_get_mail_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto activity = db.get_activity_by_id(activity_id);
+    if (!activity)
+    {
+        send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->mail_send_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    auto draft = db.get_mail_draft(activity_id);
+    if (!draft)
+    {
+        send_json(res, 404, R"({"error":"Kein Entwurf vorhanden"})");
+        return;
+    }
+
+    nlohmann::json recip_arr = nlohmann::json::array();
+    for (auto &r : draft->recipients)
+        recip_arr.push_back(r);
+
+    nlohmann::json j = {
+        {"id", draft->id},
+        {"activity_id", draft->activity_id},
+        {"recipients", recip_arr},
+        {"subject", draft->subject},
+        {"body_html", draft->body_html},
+        {"updated_by", draft->updated_by},
+        {"updated_at", draft->updated_at},
+    };
+    send_json(res, 200, j.dump());
+}
+
+// ─── PUT /activities/:id/mail-draft ──────────────────────────────────────────
+
+void handle_put_mail_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->mail_send_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string body_buf;
+    res->onData([res, &db, activity_id, user_id = current_user->id,
+                 body_buf = std::move(body_buf)](std::string_view data, bool last) mutable
+                {
+        body_buf.append(data);
+        if (!last) return;
+
+        nlohmann::json j;
+        try { j = nlohmann::json::parse(body_buf); }
+        catch (...)
+        {
+            send_json(res, 400, R"({"error":"Ungültiges JSON"})");
+            return;
+        }
+
+        std::vector<std::string> recipients;
+        if (j.contains("recipients") && j["recipients"].is_array())
+        {
+            for (auto &r : j["recipients"])
+                if (r.is_string() && !r.get<std::string>().empty())
+                    recipients.push_back(r.get<std::string>());
+        }
+
+        std::string subject = j.value("subject", "");
+        std::string body_html = j.value("body_html", "");
+
+        auto draft = db.upsert_mail_draft(activity_id, recipients, subject, body_html, user_id);
+        if (!draft)
+        {
+            send_json(res, 500, R"({"error":"Entwurf konnte nicht gespeichert werden"})");
+            return;
+        }
+
+        nlohmann::json recip_arr = nlohmann::json::array();
+        for (auto &r : draft->recipients)
+            recip_arr.push_back(r);
+
+        nlohmann::json out = {
+            {"id", draft->id},
+            {"activity_id", draft->activity_id},
+            {"recipients", recip_arr},
+            {"subject", draft->subject},
+            {"body_html", draft->body_html},
+            {"updated_by", draft->updated_by},
+            {"updated_at", draft->updated_at},
+        };
+        send_json(res, 200, out.dump()); });
+
+    res->onAborted([]() {});
+}
+
+// ─── DELETE /activities/:id/mail-draft ───────────────────────────────────────
+
+void handle_delete_mail_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->mail_send_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    db.delete_mail_draft(activity_id);
+    send_json(res, 200, R"({"ok":true})");
+}
+
+// ─── GET /activities/:id/form-draft ─────────────────────────────────────────
+
+void handle_get_form_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto activity = db.get_activity_by_id(activity_id);
+    if (!activity)
+    {
+        send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+        return;
+    }
+
+    auto draft = db.get_form_draft(activity_id);
+    if (!draft)
+    {
+        send_json(res, 404, R"({"error":"Kein Entwurf vorhanden"})");
+        return;
+    }
+
+    nlohmann::json questions;
+    try
+    {
+        questions = nlohmann::json::parse(draft->questions_json);
+    }
+    catch (...)
+    {
+        questions = nlohmann::json::array();
+    }
+
+    nlohmann::json j = {
+        {"id", draft->id},
+        {"activity_id", draft->activity_id},
+        {"form_type", draft->form_type},
+        {"title", draft->title},
+        {"questions", questions},
+        {"updated_by", draft->updated_by},
+        {"updated_at", draft->updated_at},
+    };
+    send_json(res, 200, j.dump());
+}
+
+// ─── PUT /activities/:id/form-draft ─────────────────────────────────────────
+
+void handle_put_form_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string body_buf;
+    res->onData([res, &db, activity_id, user_id = current_user->id,
+                 body_buf = std::move(body_buf)](std::string_view data, bool last) mutable
+                {
+        body_buf.append(data);
+        if (!last) return;
+
+        nlohmann::json j;
+        try { j = nlohmann::json::parse(body_buf); }
+        catch (...)
+        {
+            send_json(res, 400, R"({"error":"Ungültiges JSON"})");
+            return;
+        }
+
+        std::string form_type = j.value("form_type", "registration");
+        std::string title = j.value("title", "");
+        std::string questions_json = "[]";
+        if (j.contains("questions") && j["questions"].is_array())
+            questions_json = j["questions"].dump();
+
+        auto draft = db.upsert_form_draft(activity_id, form_type, title, questions_json, user_id);
+        if (!draft)
+        {
+            send_json(res, 500, R"({"error":"Entwurf konnte nicht gespeichert werden"})");
+            return;
+        }
+
+        nlohmann::json questions;
+        try
+        {
+            questions = nlohmann::json::parse(draft->questions_json);
+        }
+        catch (...)
+        {
+            questions = nlohmann::json::array();
+        }
+
+        nlohmann::json out = {
+            {"id", draft->id},
+            {"activity_id", draft->activity_id},
+            {"form_type", draft->form_type},
+            {"title", draft->title},
+            {"questions", questions},
+            {"updated_by", draft->updated_by},
+            {"updated_at", draft->updated_at},
+        };
+        send_json(res, 200, out.dump()); });
+
+    res->onAborted([]() {});
+}
+
+// ─── DELETE /activities/:id/form-draft ───────────────────────────────────────
+
+void handle_delete_form_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    db.delete_form_draft(activity_id);
+    send_json(res, 200, R"({"ok":true})");
 }
 
 // ─── GitHub API helpers ───────────────────────────────────────────────────────
@@ -2025,6 +2333,8 @@ static nlohmann::json role_perm_to_json(const RolePermission &rp)
         {"activity_edit_scope", rp.activity_edit_scope},
         {"mail_send_scope", rp.mail_send_scope},
         {"mail_templates_scope", rp.mail_templates_scope},
+        {"form_scope", rp.form_scope},
+        {"form_templates_scope", rp.form_templates_scope},
         {"user_dept_scope", rp.user_dept_scope},
         {"user_role_scope", rp.user_role_scope}};
 }
@@ -2455,6 +2765,8 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
         std::string activity_edit_scope = j.value("activity_edit_scope", "none");
         std::string mail_send_scope = j.value("mail_send_scope", "none");
         std::string mail_templates_scope = j.value("mail_templates_scope", "none");
+        std::string form_scope = j.value("form_scope", "none");
+        std::string form_templates_scope = j.value("form_templates_scope", "none");
         std::string user_dept_scope = j.value("user_dept_scope", "none");
         std::string user_role_scope = j.value("user_role_scope", "none");
 
@@ -2468,6 +2780,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
                                                 can_read_all_depts, can_write_all_depts,
                                                 activity_read_scope, activity_create_scope, activity_edit_scope,
                                                 mail_send_scope, mail_templates_scope,
+                                                form_scope, form_templates_scope,
                                                 user_dept_scope, user_role_scope);
             if (!ok) {
                 send_json(res, 404, R"({"error":"Rolle nicht gefunden"})");
@@ -2531,4 +2844,836 @@ void handle_put_role_dept_access(HttpRes *res, HttpReq *req, Database &db)
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
         } });
+}
+
+// ── Forms ─────────────────────────────────────────────────────────────────────
+//
+// Permission model: reuses activity-based dept access.
+//  - Read form / responses / stats: can_read_dept on activity's department
+//  - Create / update / delete form / responses: can_write_dept on activity's department
+//  - Templates: can_write_all_depts (admin) or own department write access
+
+// Helper: check form_scope-based read access for an activity
+static bool can_form_access(Database &db, const RolePermission &perm, const UserRecord &user,
+                            const TokenClaims &claims, const std::string &activity_id, bool /*write*/)
+{
+    if (perm.form_scope == "none")
+        return false;
+    auto act = db.get_activity_by_id(activity_id);
+    if (!act)
+        return false;
+    if (perm.form_scope == "all")
+        return true;
+    if (perm.form_scope == "same_dept" && act->department && user.department && *act->department == *user.department)
+        return true;
+    if (perm.form_scope == "own" && is_activity_responsible(*act, user, claims))
+        return true;
+    return false;
+}
+
+// Helper: resolve activity department from activity_id
+static std::optional<std::string> get_activity_dept(Database &db, const std::string &activity_id)
+{
+    auto act = db.get_activity_by_id(activity_id);
+    if (!act)
+        return std::nullopt;
+    return act->department;
+}
+
+// Helper: parse questions array from JSON
+static std::vector<FormQuestion> parse_questions(const nlohmann::json &arr)
+{
+    std::vector<FormQuestion> questions;
+    if (!arr.is_array())
+        return questions;
+    int pos = 0;
+    for (auto &q : arr)
+    {
+        FormQuestion fq;
+        fq.question_text = q.value("question_text", "");
+        fq.question_type = q.value("question_type", "text_input");
+        fq.position = q.contains("position") ? q["position"].get<int>() : pos;
+        fq.is_required = q.value("is_required", true);
+        fq.metadata = q.contains("metadata") ? q["metadata"] : nlohmann::json::object();
+        questions.push_back(fq);
+        ++pos;
+    }
+    return questions;
+}
+
+// ---- GET /activities/:id/form -----------------------------------------------
+
+void handle_get_activity_form(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter(0)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || !can_form_access(db, *perm, *current_user, claims, activity_id, false))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        auto form = db.get_form_for_activity(activity_id);
+        if (!form)
+        {
+            send_json(res, 404, R"({"error":"Kein Formular gefunden"})");
+            return;
+        }
+        send_json(res, 200, signup_form_to_json(*form).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- POST /activities/:id/form ----------------------------------------------
+
+void handle_post_activity_form(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    std::string activity_id{req->getParameter(0)};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || !can_form_access(db, *perm, *current_user, claims, activity_id, true))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    // Check: exactly one form per activity
+    auto existing = db.get_form_for_activity(activity_id);
+    if (existing)
+    {
+        send_json(res, 409, R"({"error":"Formular existiert bereits f\u00fcr diese Aktivit\u00e4t"})");
+        return;
+    }
+
+    std::string user_id = current_user->id;
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, activity_id, user_id, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) { send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})"); return; }
+        std::string form_type = j.value("form_type", "registration");
+        std::string title = j.value("title", "");
+        if (title.empty()) { send_json(res, 400, R"({"error":"Titel erforderlich"})"); return; }
+        auto questions = parse_questions(j.value("questions", nlohmann::json::array()));
+        try {
+            auto form = db.create_form(activity_id, form_type, title, user_id, questions);
+            if (!form) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
+            send_json(res, 201, signup_form_to_json(*form).dump());
+        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+}
+
+// ---- PUT /activities/:id/form -----------------------------------------------
+
+void handle_put_activity_form(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    std::string activity_id{req->getParameter(0)};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || !can_form_access(db, *perm, *current_user, claims, activity_id, true))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, activity_id, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) { send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})"); return; }
+        std::string form_type = j.value("form_type", "registration");
+        std::string title = j.value("title", "");
+        if (title.empty()) { send_json(res, 400, R"({"error":"Titel erforderlich"})"); return; }
+        auto questions = parse_questions(j.value("questions", nlohmann::json::array()));
+        try {
+            auto form = db.update_form(activity_id, form_type, title, questions);
+            if (!form) { send_json(res, 404, R"({"error":"Formular nicht gefunden"})"); return; }
+            send_json(res, 200, signup_form_to_json(*form).dump());
+        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+}
+
+// ---- DELETE /activities/:id/form --------------------------------------------
+
+void handle_delete_activity_form(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter(0)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || !can_form_access(db, *perm, *current_user, claims, activity_id, true))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        bool ok = db.delete_form(activity_id);
+        if (!ok)
+        {
+            send_json(res, 404, R"({"error":"Formular nicht gefunden"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- GET /activities/:id/form/responses -------------------------------------
+
+void handle_get_form_responses(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter(0)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || !can_form_access(db, *perm, *current_user, claims, activity_id, false))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        auto form = db.get_form_for_activity(activity_id);
+        if (!form)
+        {
+            send_json(res, 404, R"({"error":"Kein Formular gefunden"})");
+            return;
+        }
+
+        auto responses = db.list_responses(form->id);
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto &r : responses)
+            arr.push_back(form_response_to_json(r));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- GET /activities/:id/form/responses/:rid --------------------------------
+
+void handle_get_form_response(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter(0)};
+    std::string response_id{req->getParameter(1)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || !can_form_access(db, *perm, *current_user, claims, activity_id, false))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        auto response = db.get_response(response_id);
+        if (!response)
+        {
+            send_json(res, 404, R"({"error":"Antwort nicht gefunden"})");
+            return;
+        }
+        send_json(res, 200, form_response_to_json(*response, true).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- DELETE /activities/:id/form/responses/:rid -----------------------------
+
+void handle_delete_form_response(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter(0)};
+    std::string response_id{req->getParameter(1)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || !can_form_access(db, *perm, *current_user, claims, activity_id, true))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        bool ok = db.delete_response(response_id);
+        if (!ok)
+        {
+            send_json(res, 404, R"({"error":"Antwort nicht gefunden"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- GET /activities/:id/form/stats -----------------------------------------
+
+void handle_get_form_stats(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter(0)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        auto dept_access = db.list_role_dept_access(current_user->role);
+
+        auto act_dept = get_activity_dept(db, activity_id);
+        bool allowed = false;
+        if (perm)
+        {
+            if (act_dept)
+                allowed = can_read_dept(*perm, *current_user, dept_access, *act_dept);
+            else
+                allowed = perm->can_read_all_depts || perm->can_read_own_dept;
+        }
+        if (!allowed)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        auto form = db.get_form_for_activity(activity_id);
+        if (!form)
+        {
+            send_json(res, 404, R"({"error":"Kein Formular gefunden"})");
+            return;
+        }
+
+        auto stats = db.get_form_stats(form->id);
+        stats["form_type"] = form->form_type;
+        send_json(res, 200, stats.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- GET /forms/:slug (public, no auth) --------------------------------
+
+// ---- Template variable resolution -------------------------------------------
+
+static std::string format_date_long_de(const std::string &iso_date)
+{
+    // "2026-04-15" → "Mittwoch, 15. April 2026"
+    if (iso_date.size() < 10)
+        return iso_date;
+    struct tm t{};
+    t.tm_year = std::stoi(iso_date.substr(0, 4)) - 1900;
+    t.tm_mon = std::stoi(iso_date.substr(5, 2)) - 1;
+    t.tm_mday = std::stoi(iso_date.substr(8, 2));
+    std::mktime(&t);
+    static const char *wdays[] = {"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"};
+    static const char *months[] = {"Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"};
+    std::string r = wdays[t.tm_wday];
+    r += ", ";
+    r += std::to_string(t.tm_mday);
+    r += ". ";
+    r += months[t.tm_mon];
+    r += " ";
+    r += iso_date.substr(0, 4);
+    return r;
+}
+
+static std::string format_date_short_de(const std::string &iso_date)
+{
+    // "2026-04-15" → "15.04.2026"
+    if (iso_date.size() < 10)
+        return iso_date;
+    return iso_date.substr(8, 2) + "." + iso_date.substr(5, 2) + "." + iso_date.substr(0, 4);
+}
+
+static std::string replace_template_vars(const std::string &text, const Activity &act)
+{
+    if (text.find("{{") == std::string::npos)
+        return text;
+    std::map<std::string, std::string> vars;
+    vars["titel"] = act.title;
+    vars["datum"] = format_date_long_de(act.date);
+    vars["datum_kurz"] = format_date_short_de(act.date);
+    vars["startzeit"] = act.start_time;
+    vars["endzeit"] = act.end_time;
+    vars["ort"] = act.location;
+    {
+        std::string r;
+        for (size_t i = 0; i < act.responsible.size(); ++i)
+        {
+            if (i)
+                r += ", ";
+            r += act.responsible[i];
+        }
+        vars["verantwortlich"] = r;
+    }
+    vars["abteilung"] = act.department.value_or("—");
+    vars["ziel"] = act.goal;
+    {
+        std::string m;
+        for (size_t i = 0; i < act.material.size(); ++i)
+        {
+            if (i)
+                m += ", ";
+            m += act.material[i].name;
+        }
+        vars["material"] = m.empty() ? "—" : m;
+    }
+    vars["schlechtwetter"] = act.bad_weather_info.value_or("—");
+    {
+        std::string p;
+        for (auto &pr : act.programs)
+        {
+            if (!p.empty())
+                p += "\n";
+            p += (!pr.time.empty() ? pr.time + " min" : std::string("—"));
+            p += " – " + pr.title;
+            if (!pr.responsible.empty())
+            {
+                std::string rj;
+                for (size_t ri = 0; ri < pr.responsible.size(); ++ri)
+                {
+                    if (ri)
+                        rj += ", ";
+                    rj += pr.responsible[ri];
+                }
+                p += " (" + rj + ")";
+            }
+            if (!pr.description.empty())
+                p += ": " + pr.description;
+        }
+        vars["programm"] = p.empty() ? "—" : p;
+    }
+
+    std::string result = text;
+    for (auto &[key, val] : vars)
+    {
+        std::string placeholder = "{{" + key + "}}";
+        size_t pos = 0;
+        while ((pos = result.find(placeholder, pos)) != std::string::npos)
+        {
+            result.replace(pos, placeholder.size(), val);
+            pos += val.size();
+        }
+    }
+    return result;
+}
+
+void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
+{
+    set_cors(res);
+    std::string public_slug{req->getParameter(0)};
+    try
+    {
+        auto form = db.get_form_for_public_slug(public_slug);
+        if (!form)
+        {
+            send_json(res, 404, R"({"error":"Formular nicht gefunden"})");
+            return;
+        }
+
+        // Resolve template variables in question texts using activity data
+        auto act = db.get_activity_by_id(form->activity_id);
+        if (act)
+        {
+            form->title = replace_template_vars(form->title, *act);
+            for (auto &q : form->questions)
+            {
+                q.question_text = replace_template_vars(q.question_text, *act);
+                // Also resolve subtitle in section metadata
+                if (q.metadata.contains("subtitle") && q.metadata["subtitle"].is_string())
+                {
+                    q.metadata["subtitle"] = replace_template_vars(q.metadata["subtitle"].get<std::string>(), *act);
+                }
+                // Resolve choice labels
+                if (q.metadata.contains("choices") && q.metadata["choices"].is_array())
+                {
+                    for (auto &c : q.metadata["choices"])
+                    {
+                        if (c.contains("label") && c["label"].is_string())
+                        {
+                            c["label"] = replace_template_vars(c["label"].get<std::string>(), *act);
+                        }
+                    }
+                }
+            }
+        }
+
+        send_json(res, 200, signup_form_to_json(*form).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- POST /forms/:slug/submit (public, no auth) -----------------------
+
+void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db)
+{
+    set_cors(res);
+    std::string public_slug{req->getParameter(0)};
+
+    std::string user_agent{req->getHeader("user-agent")};
+    // IP is not available directly via uWS in this context; pass empty
+    std::string ip_address{};
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, public_slug, user_agent, ip_address, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) { send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})"); return; }
+
+        try {
+            auto form = db.get_form_for_public_slug(public_slug);
+            if (!form) { send_json(res, 404, R"({"error":"Formular nicht gefunden"})"); return; }
+
+            // Parse answers: array of { question_id, answer_value }
+            std::vector<std::pair<std::string, std::string>> answers;
+            if (j.contains("answers") && j["answers"].is_array())
+            {
+                for (auto &a : j["answers"])
+                {
+                    std::string qid = a.value("question_id", "");
+                    std::string val = a.value("answer_value", "");
+                    if (!qid.empty())
+                        answers.emplace_back(qid, val);
+                }
+            }
+
+            // Validate required questions
+            for (const auto &q : form->questions)
+            {
+                if (q.question_type == "section" || !q.is_required) continue;
+                bool answered = false;
+                for (auto &[qid, val] : answers)
+                    if (qid == q.id && !val.empty()) { answered = true; break; }
+                if (!answered)
+                {
+                    send_json(res, 400, nlohmann::json{{"error", "Pflichtfeld fehlt: " + q.question_text}}.dump());
+                    return;
+                }
+            }
+
+            auto resp = db.submit_response(form->id, form->form_type, user_agent, ip_address, answers);
+            if (!resp) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
+            send_json(res, 201, form_response_to_json(*resp, true).dump());
+        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+}
+
+// ---- GET /form-templates?department=... -------------------------------------
+
+void handle_get_form_templates(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string department = url_decode(std::string{req->getQuery("department")});
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        auto templates = db.list_form_templates(department);
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto &t : templates)
+            arr.push_back(form_template_to_json(t));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- POST /form-templates ---------------------------------------------------
+
+void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->form_templates_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string user_id = current_user->id;
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, user_id, current_user, perm, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) { send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})"); return; }
+
+        std::string name = j.value("name", "");
+        std::string department = j.value("department", "");
+        std::string form_type = j.value("form_type", "registration");
+        nlohmann::json config = j.contains("template_config") ? j["template_config"] : nlohmann::json::array();
+        bool is_default = j.value("is_default", false);
+
+        if (name.empty() || department.empty()) {
+            send_json(res, 400, R"({"error":"name und department erforderlich"})");
+            return;
+        }
+        // Scope check: own_dept only allows own department
+        if (perm->form_templates_scope == "own_dept")
+        {
+            if (!current_user->department || *current_user->department != department) {
+                send_json(res, 403, R"({"error":"Keine Berechtigung f\u00fcr dieses Department"})");
+                return;
+            }
+        }
+        try {
+            auto tpl = db.create_form_template(name, department, form_type, config, user_id, is_default);
+            if (!tpl) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
+            send_json(res, 201, form_template_to_json(*tpl).dump());
+        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+}
+
+// ---- PUT /form-templates/:id ------------------------------------------------
+
+void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    std::string tpl_id{req->getParameter(0)};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->form_templates_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, tpl_id, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) { send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})"); return; }
+
+        std::string name = j.value("name", "");
+        std::string form_type = j.value("form_type", "registration");
+        nlohmann::json config = j.contains("template_config") ? j["template_config"] : nlohmann::json::array();
+        bool is_default = j.value("is_default", false);
+
+        try {
+            auto tpl = db.update_form_template(tpl_id, name, form_type, config, is_default);
+            if (!tpl) { send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})"); return; }
+            send_json(res, 200, form_template_to_json(*tpl).dump());
+        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+}
+
+// ---- DELETE /form-templates/:id ---------------------------------------------
+
+void handle_delete_form_template(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string tpl_id{req->getParameter(0)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || perm->form_templates_scope == "none")
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        bool ok = db.delete_form_template(tpl_id);
+        if (!ok)
+        {
+            send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
 }

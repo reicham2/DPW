@@ -1571,6 +1571,35 @@ body {
 	font-size: 0.95rem;
 }
 
+.form-link-section {
+	margin-top: 4px;
+}
+.form-link-section label {
+	font-weight: 600;
+	font-size: 0.9rem;
+	margin-bottom: 4px;
+	display: block;
+}
+.form-link-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+.form-link-input {
+	flex: 1;
+	padding: 8px 12px;
+	font-size: 0.85rem;
+	font-family: monospace;
+	border: 1px solid #d1d5db;
+	border-radius: 8px;
+	background: #f3f4f6;
+	color: #374151;
+}
+.btn-copy {
+	white-space: nowrap;
+	min-width: 110px;
+}
+
 .mail-from {
 	background: #f3f4f6 !important;
 	color: #6b7280 !important;
@@ -1934,6 +1963,87 @@ body {
 		padding: 6px 10px;
 		min-height: 36px;
 	}
+}
+
+/* ─── Modal Dialog (shared) ─── */
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.35);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 100;
+}
+.modal {
+	background: #fff;
+	border-radius: 16px;
+	padding: 32px;
+	width: 100%;
+	max-width: 420px;
+	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+}
+.modal--danger {
+	border: 2px solid #fca5a5;
+}
+.modal--info {
+	border: 2px solid #93c5fd;
+}
+.modal-title {
+	font-size: 1.15rem;
+	font-weight: 700;
+	margin: 0 0 4px;
+	color: #1a202c;
+}
+.modal-title--danger {
+	color: #dc2626;
+}
+.modal-title--info {
+	color: #2563eb;
+}
+.modal-email {
+	font-size: 0.85rem;
+	color: #6b7280;
+	margin: 0 0 20px;
+}
+.modal-warning {
+	font-size: 0.88rem;
+	color: #6b7280;
+	margin: 0 0 16px;
+}
+.modal-actions {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 10px;
+	margin-top: 4px;
+}
+.btn-cancel {
+	padding: 9px 20px;
+	border-radius: 8px;
+	border: 1.5px solid #d1d5db;
+	background: #fff;
+	font-size: 0.9rem;
+	cursor: pointer;
+	color: #374151;
+	transition: background 0.12s;
+}
+.btn-cancel:hover {
+	background: #f3f4f6;
+}
+.btn-info {
+	padding: 9px 20px;
+	border-radius: 8px;
+	border: 1.5px solid #93c5fd;
+	background: #fff;
+	font-size: 0.9rem;
+	cursor: pointer;
+	color: #2563eb;
+	font-weight: 600;
+	transition: background 0.12s;
+}
+.btn-info:hover {
+	background: #eff6ff;
 }
 
 /* ─── Mail Warning Dialog ─── */

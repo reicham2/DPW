@@ -57,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { user, getIdToken } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -92,12 +92,15 @@ const initials = computed(() => {
     .join('')
 })
 
+let initialLoaded = false
+
 onMounted(async () => {
   await Promise.all([fetchMyPermissions(), fetchDepartments()])
   if (user.value) {
     form.value.display_name = user.value.display_name
     form.value.department   = user.value.department ?? ''
   }
+  initialLoaded = true
 })
 
 async function save() {

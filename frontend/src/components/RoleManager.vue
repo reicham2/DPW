@@ -7,7 +7,7 @@ import { getIdToken } from '../composables/useAuth'
 import type { RolePermission, RoleDeptAccess } from '../types'
 
 const SCOPE_OPTIONS_MAIL_SEND = [
-  { value: 'none', label: 'Kein Versand' },
+  { value: 'none', label: 'Kein Zugriff' },
   { value: 'own', label: 'Nur eigene Aktivitäten' },
   { value: 'same_dept', label: 'Alle in eigener Stufe' },
   { value: 'all', label: 'Alle' },
@@ -565,6 +565,27 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
               <div class="perm-info"><span class="perm-label">Mail-Vorlagen</span></div>
               <select class="scope-select" :value="getPermForRole(r.name)!.mail_templates_scope"
                 @change="updatePerm(r.name, 'mail_templates_scope', ($event.target as HTMLSelectElement).value)">
+                <option v-for="o in SCOPE_OPTIONS_MAIL_TPL" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Formulare</span></div>
+              <div class="scope-select-wrap">
+                <span v-if="actionConstraintHint(r.name)" class="scope-hint-icon">
+                  ?
+                  <span class="scope-hint-tooltip">{{ actionConstraintHint(r.name) }}</span>
+                </span>
+                <select class="scope-select" :value="getPermForRole(r.name)!.form_scope"
+                  @change="updatePerm(r.name, 'form_scope', ($event.target as HTMLSelectElement).value)">
+                  <option v-for="o in SCOPE_OPTIONS_MAIL_SEND" :key="o.value" :value="o.value"
+                    :disabled="isActionOptionDisabled(r.name, o.value)">{{ o.label }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Formular-Vorlagen</span></div>
+              <select class="scope-select" :value="getPermForRole(r.name)!.form_templates_scope"
+                @change="updatePerm(r.name, 'form_templates_scope', ($event.target as HTMLSelectElement).value)">
                 <option v-for="o in SCOPE_OPTIONS_MAIL_TPL" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
             </div>

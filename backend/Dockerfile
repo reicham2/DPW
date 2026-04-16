@@ -1,14 +1,18 @@
 # syntax=docker/dockerfile:1
 
 # ---- Stage 1: Build --------------------------------------------------------
-FROM buildpack-deps:noble AS build
+FROM alpine:3.21 AS build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
+  build-base \
   cmake \
   ccache \
-  libuv1-dev \
+  openssl-dev \
+  zlib-dev \
+  libuv-dev \
   libpq-dev \
-  && rm -rf /var/lib/apt/lists/*
+  curl-dev \
+  linux-headers
 
 WORKDIR /src
 COPY CMakeLists.txt .
@@ -34,17 +38,18 @@ RUN --mount=type=cache,target=/root/.cache/ccache \
   cmake --build build --parallel "$(nproc)"
 
 # ---- Stage 2: Runtime ------------------------------------------------------
-FROM ubuntu:24.04 AS runtime
+FROM alpine:3.21 AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
   libssl3 \
-  zlib1g \
-  libuv1t64 \
-  libpq5 \
-  libcurl4 \
+  zlib \
+  libuv \
+  libpq \
+  libcurl \
   curl \
   ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  libstdc++ \
+  libgcc
 
 COPY --from=build /src/build/server /usr/local/bin/server
 

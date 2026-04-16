@@ -269,6 +269,36 @@ function canManageSystem(): boolean {
 	return p.user_role_scope === 'all';
 }
 
+function canForms(
+	activity: Activity,
+	userDisplayName?: string | null,
+	userDept?: string | null,
+): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	if (p.form_scope === 'all') return true;
+	if (
+		p.form_scope === 'same_dept' &&
+		activity.department &&
+		userDept &&
+		activity.department === userDept
+	)
+		return true;
+	if (
+		p.form_scope === 'own' &&
+		userDisplayName &&
+		activity.responsible.includes(userDisplayName)
+	)
+		return true;
+	return false;
+}
+
+function canFormTemplates(): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	return p.form_templates_scope !== 'none';
+}
+
 function readableDepts(userDept: string | null | undefined): string[] {
 	const p = myPermissions.value;
 	return departments.value
@@ -329,6 +359,8 @@ export function usePermissions() {
 		canReadActivity,
 		canManageUsers,
 		canManageSystem,
+		canForms,
+		canFormTemplates,
 		readableDepts,
 		writableDepts,
 	};
