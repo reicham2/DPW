@@ -2,39 +2,65 @@
 import { ref, onMounted, computed } from 'vue'
 import { user as currentUser, getIdToken } from '../composables/useAuth'
 import ErrorAlert from '../components/ErrorAlert.vue'
+import DepartmentManager from '../components/DepartmentManager.vue'
+import RoleManager from '../components/RoleManager.vue'
+import RoleBadge from '../components/RoleBadge.vue'
+import DepartmentBadge from '../components/DepartmentBadge.vue'
+import BadgeSelect from '../components/BadgeSelect.vue'
 import { useRouter } from 'vue-router'
+import { usePermissions } from '../composables/usePermissions'
 import type { User, Department, UserRole } from '../types'
 
 const router = useRouter()
+const { departments: deptRecords, roles: roleRecords, fetchDepartments, fetchRoles, myPermissions, fetchMyPermissions, canManageUsers, canManageSystem } = usePermissions()
 
-const DEPARTMENTS: (Department | '')[] = ['', 'Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
-const ROLES: UserRole[] = ['admin', 'Stufenleiter', 'Leiter', 'Pio']
+const DEPARTMENTS = computed(() => deptRecords.value.map(d => d.name))
+const orderedRoles = computed(() => [...roleRecords.value].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de')))
+const ROLES = computed(() => orderedRoles.value.map(r => r.name))
 
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const canSeeAllDepts = computed(() => myPermissions.value?.user_dept_scope === 'all')
+const canEditDepts = computed(() => {
+  const scope = myPermissions.value?.user_dept_scope
+  return scope === 'all' || scope === 'own_dept' || scope === 'own'
+})
+const canEditRoles = computed(() => {
+  const scope = myPermissions.value?.user_role_scope
+  return scope === 'all' || scope === 'own_dept' || scope === 'own'
+})
+const canSeePermissionsTab = computed(() => canManageSystem())
 
+// ── Tab management ──────────────────────────────────────────────────────────
+const activeTab = ref<'users' | 'permissions'>('users')
+
+// ── User management state ───────────────────────────────────────────────────
 const users = ref<User[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
 const editingUser = ref<User | null>(null)
-const editForm = ref({ display_name: '', department: '' as Department | '', role: 'Leiter' as UserRole })
+const editForm = ref({ display_name: '', department: '' as Department | '', role: '' as UserRole })
 const saving = ref(false)
 const saveError = ref<string | null>(null)
+const deleteTarget = ref<User | null>(null)
 
-// Admin sees all depts; Stufenleiter is locked to own dept
-const filterDept = ref<Department | 'Alle'>(
-  currentUser.value?.role === 'Stufenleiter'
-    ? (currentUser.value?.department ?? 'Alle') as any
-    : 'Alle'
-)
+const filterDept = ref<Department | 'Alle'>('Alle')
 
 onMounted(async () => {
-  const role = currentUser.value?.role
-  if (!currentUser.value || (role !== 'admin' && role !== 'Stufenleiter')) {
+  await fetchMyPermissions()
+  if (!currentUser.value || !canManageUsers()) {
     router.replace('/')
     return
   }
-  await fetchUsers()
+  // Lock filter to own dept if user can only manage own dept
+  if (myPermissions.value?.user_dept_scope === 'own_dept') {
+    filterDept.value = (currentUser.value?.department ?? 'Alle') as any
+  }
+
+  const tasks = [fetchUsers(), fetchDepartments()]
+  if (canEditRoles.value || canSeePermissionsTab.value) {
+    tasks.push(fetchRoles())
+  }
+  await Promise.all(tasks)
 })
 
 async function fetchUsers() {
@@ -54,9 +80,38 @@ async function fetchUsers() {
   }
 }
 
+function canManageTargetUser(u: User) {
+  const p = myPermissions.value
+  const me = currentUser.value
+  if (!p || !me) return false
+
+  if (p.user_dept_scope === 'all' || p.user_role_scope === 'all') return true
+
+  const isSelf = u.id === me.id
+  if (p.user_dept_scope === 'own' || p.user_role_scope === 'own') return isSelf
+
+  const sameDept = !!(u.department && me.department && u.department === me.department)
+  if (p.user_dept_scope === 'own_dept' || p.user_role_scope === 'own_dept') return sameDept
+
+  return false
+}
+
 const filtered = computed(() => {
-  if (filterDept.value === 'Alle') return users.value
-  return users.value.filter(u => u.department === filterDept.value)
+  let list = users.value.filter(canManageTargetUser)
+  if (filterDept.value !== 'Alle') {
+    list = list.filter(u => u.department === filterDept.value)
+  }
+  return list
+})
+
+const assignableRoles = computed(() => {
+  if (!editingUser.value || !currentUser.value) return ROLES.value
+  if (currentUser.value.role === 'admin') return ROLES.value
+
+  const currentIndex = orderedRoles.value.findIndex(r => r.name === currentUser.value?.role)
+  return orderedRoles.value
+    .filter((role, index) => index > currentIndex || role.name === editingUser.value?.role)
+    .map(r => r.name)
 })
 
 function openEdit(u: User) {
@@ -95,6 +150,15 @@ async function saveEdit() {
     const updated: User = await res.json()
     const idx = users.value.findIndex(u => u.id === updated.id)
     if (idx !== -1) users.value[idx] = updated
+    if (currentUser.value && currentUser.value.id === updated.id) {
+      currentUser.value = {
+        ...currentUser.value,
+        display_name: updated.display_name,
+        department: updated.department,
+        role: updated.role,
+      }
+      await fetchMyPermissions()
+    }
     closeEdit()
   } catch (e) {
     saveError.value = String(e)
@@ -103,38 +167,107 @@ async function saveEdit() {
   }
 }
 
-function roleBadgeClass(role: UserRole) {
-  return {
-    'badge-admin': role === 'admin',
-    'badge-stufenleiter': role === 'Stufenleiter',
-    'badge-leiter': role === 'Leiter',
-    'badge-pio': role === 'Pio',
+async function deleteUser() {
+  if (!deleteTarget.value) return
+  saving.value = true
+  saveError.value = null
+  try {
+    const token = await getIdToken()
+    const res = await fetch(`/api/admin/users/${deleteTarget.value.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(await res.text())
+    users.value = users.value.filter(u => u.id !== deleteTarget.value!.id)
+    deleteTarget.value = null
+  } catch (e) {
+    saveError.value = String(e)
+  } finally {
+    saving.value = false
   }
 }
+
+function openDeleteConfirm(u: User) {
+  deleteTarget.value = u
+  saveError.value = null
+}
+
+function closeDeleteConfirm() {
+  deleteTarget.value = null
+}
+
+const deptItems = computed(() => deptRecords.value.map(d => ({ value: d.name })))
+const roleItems = computed(() => assignableRoles.value.map(name => ({ value: name })))
 </script>
 
 <template>
   <header class="header">
-    <h1>Benutzerverwaltung</h1>
-    <div class="header-right">
-      <span v-if="!isAdmin" class="card-dept-badge">Stufe: {{ currentUser?.department ?? '—' }}</span>
-      <span class="user-count">{{ users.length }} Benutzer</span>
-    </div>
+    <h1>Administration</h1>
   </header>
 
-  <main class="main">
+  <!-- Tab navigation -->
+  <nav class="tab-bar">
+    <button
+      class="tab-btn"
+      :class="{ 'tab-btn--active': activeTab === 'users' }"
+      @click="activeTab = 'users'"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="5" r="3" />
+        <path d="M2 14c0-2.8 2.7-5 6-5s6 2.2 6 5" />
+      </svg>
+      Benutzerverwaltung
+    </button>
+    <button
+      v-if="canSeePermissionsTab"
+      class="tab-btn"
+      :class="{ 'tab-btn--active': activeTab === 'permissions' }"
+      @click="activeTab = 'permissions'"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="7" width="12" height="7" rx="1.5" />
+        <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+      </svg>
+      Stufen &amp; Rollen
+    </button>
+  </nav>
+
+  <!-- Tab: Benutzerverwaltung -->
+  <main v-if="activeTab === 'users'" class="main">
+    <div class="tab-header">
+      <div class="tab-header-left">
+        <template v-if="!canSeeAllDepts">
+          <span class="dept-label">Stufe:</span>
+          <DepartmentBadge v-if="currentUser?.department" :department="currentUser.department" />
+          <span v-else>—</span>
+        </template>
+      </div>
+      <span class="user-count">{{ filtered.length }} Benutzer</span>
+    </div>
+
     <div v-if="loading" class="loading">Lade Benutzer...</div>
     <div v-else-if="error" class="error-msg"><ErrorAlert :error="error" /></div>
     <template v-else>
-      <!-- Department filter (admin only; Stufenleiter is locked to own dept) -->
-      <div v-if="isAdmin" class="filter-tabs" style="margin-bottom: 16px">
-        <button
-          v-for="d in ['Alle', 'Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']"
-          :key="d"
-          class="filter-tab"
-          :class="{ 'filter-tab--active': filterDept === d }"
-          @click="filterDept = d as any"
-        >{{ d }}</button>
+      <!-- Department filter (visible when user can see all depts) -->
+      <div v-if="canSeeAllDepts" class="filter-bar">
+        <label class="filter-label">Stufe:</label>
+        <div class="dept-pills">
+          <button
+            type="button"
+            class="dept-pill-btn"
+            :class="{ 'dept-pill-btn--active': filterDept === 'Alle' }"
+            @click="filterDept = 'Alle'"
+          >Alle</button>
+          <button
+            v-for="d in DEPARTMENTS"
+            :key="d"
+            type="button"
+            class="dept-pill-btn dept-pill-btn--bare"
+            @click="filterDept = d as any"
+          >
+            <DepartmentBadge :department="d" :active="filterDept === d" />
+          </button>
+        </div>
       </div>
 
       <!-- Users table -->
@@ -153,12 +286,18 @@ function roleBadgeClass(role: UserRole) {
             <tr v-for="u in filtered" :key="u.id">
               <td class="td-name">{{ u.display_name }}</td>
               <td class="td-email">{{ u.email }}</td>
-              <td>{{ u.department ?? '—' }}</td>
               <td>
-                <span class="role-badge" :class="roleBadgeClass(u.role)">{{ u.role }}</span>
+                <DepartmentBadge v-if="u.department" :department="u.department" />
+                <span v-else>—</span>
               </td>
               <td>
-                <button class="btn-edit" @click="openEdit(u)">Bearbeiten</button>
+                <RoleBadge :role="u.role" />
+              </td>
+              <td>
+                <div class="item-actions">
+                  <button class="btn-edit" @click="openEdit(u)">Bearbeiten</button>
+                  <button class="btn-delete" :disabled="u.id === currentUser?.id" @click="openDeleteConfirm(u)">Löschen</button>
+                </div>
               </td>
             </tr>
             <tr v-if="filtered.length === 0">
@@ -168,6 +307,13 @@ function roleBadgeClass(role: UserRole) {
         </table>
       </div>
     </template>
+  </main>
+
+  <!-- Tab: Stufen & Rollen (admin only) -->
+  <main v-else-if="activeTab === 'permissions' && canSeePermissionsTab" class="main">
+    <DepartmentManager />
+    <div class="section-divider" />
+    <RoleManager />
   </main>
 
   <!-- Edit modal -->
@@ -184,19 +330,28 @@ function roleBadgeClass(role: UserRole) {
 
         <div class="form-group">
           <label class="form-label">Stufe</label>
-          <select v-if="isAdmin" v-model="editForm.department" class="form-input">
-            <option value="">Keine Angabe</option>
-            <option v-for="d in DEPARTMENTS.filter(Boolean)" :key="d" :value="d">{{ d }}</option>
-          </select>
+          <BadgeSelect
+            v-if="canEditDepts"
+            kind="department"
+            :items="deptItems"
+            allow-empty
+            placeholder="Keine Angabe"
+            :model-value="editForm.department || null"
+            @update:model-value="(v: string | null) => editForm.department = (v ?? '') as any"
+          />
           <input v-else class="form-input form-input--readonly" type="text"
             :value="editForm.department || 'Keine Angabe'" readonly />
         </div>
 
-        <div v-if="isAdmin" class="form-group">
+        <div v-if="canEditRoles" class="form-group">
           <label class="form-label">Rolle</label>
-          <select v-model="editForm.role" class="form-input">
-            <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
-          </select>
+          <BadgeSelect
+            kind="role"
+            :items="roleItems"
+            placeholder="Rolle wählen…"
+            :model-value="editForm.role"
+            @update:model-value="(v: string | null) => editForm.role = (v ?? '') as any"
+          />
         </div>
 
         <ErrorAlert :error="saveError" />
@@ -208,6 +363,24 @@ function roleBadgeClass(role: UserRole) {
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Delete confirmation modal -->
+  <div v-if="deleteTarget" class="modal-backdrop" @click.self="closeDeleteConfirm">
+    <div class="modal modal--danger">
+      <h2 class="modal-title modal-title--danger">Benutzer löschen</h2>
+      <p class="modal-email">{{ deleteTarget.display_name }} ({{ deleteTarget.email }})</p>
+      <p class="modal-warning">Dieser Benutzer wird dauerhaft gelöscht. Verantwortlichkeiten in Aktivitäten bleiben zur Nachverfolgbarkeit bestehen.</p>
+
+      <ErrorAlert :error="saveError" />
+
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" @click="closeDeleteConfirm">Abbrechen</button>
+        <button type="button" class="btn-danger" :disabled="saving || deleteTarget.id === currentUser?.id" @click="deleteUser">
+          {{ saving ? 'Löschen...' : 'Löschen' }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -225,7 +398,44 @@ function roleBadgeClass(role: UserRole) {
   color: #1a202c;
   margin: 0;
 }
-.header-right {
+
+/* Tabs */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 16px 24px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.tab-btn:hover {
+  color: #374151;
+}
+.tab-btn--active {
+  color: #1a56db;
+  border-bottom-color: #1a56db;
+}
+
+.tab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.tab-header-left {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -248,6 +458,59 @@ function roleBadgeClass(role: UserRole) {
   color: #6b7280;
 }
 .error-msg { color: #dc2626; }
+
+.section-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 32px 0;
+}
+
+/* Filter */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.filter-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+}
+.dept-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.dept-pill-btn {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1.5px solid #d1d5db;
+  background: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: #374151;
+  transition: background 0.12s, border-color 0.12s;
+}
+.dept-pill-btn:hover { background: #f3f4f6; }
+.dept-pill-btn--active {
+  background: #1a56db;
+  border-color: #1a56db;
+  color: #fff;
+}
+.dept-pill-btn--bare {
+  padding: 2px;
+  border: none;
+  background: transparent;
+}
+.dept-pill-btn--bare:hover { background: transparent; }
+.dept-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+}
 
 /* Table */
 .table-wrap {
@@ -283,6 +546,11 @@ function roleBadgeClass(role: UserRole) {
 .td-email { color: #6b7280; font-size: 0.85rem; }
 .td-empty { text-align: center; color: #9ca3af; padding: 32px; }
 
+.item-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* Edit button */
 .btn-edit {
   padding: 5px 14px;
@@ -295,6 +563,18 @@ function roleBadgeClass(role: UserRole) {
   transition: background 0.12s;
 }
 .btn-edit:hover { background: #f3f4f6; }
+
+.btn-delete {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1.5px solid #fca5a5;
+  background: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: #dc2626;
+}
+.btn-delete:hover:not(:disabled) { background: #fef2f2; }
+.btn-delete:disabled { opacity: 0.45; cursor: default; }
 
 /* Modal */
 .modal-backdrop {
@@ -314,16 +594,23 @@ function roleBadgeClass(role: UserRole) {
   max-width: 420px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.18);
 }
+.modal--danger { border: 2px solid #fca5a5; }
 .modal-title {
   font-size: 1.15rem;
   font-weight: 700;
   margin: 0 0 4px;
   color: #1a202c;
 }
+.modal-title--danger { color: #dc2626; }
 .modal-email {
   font-size: 0.85rem;
   color: #6b7280;
   margin: 0 0 20px;
+}
+.modal-warning {
+  font-size: 0.88rem;
+  color: #6b7280;
+  margin: 0 0 16px;
 }
 .modal-form {
   display: flex;
@@ -359,10 +646,27 @@ function roleBadgeClass(role: UserRole) {
 }
 .modal-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 10px;
   margin-top: 4px;
 }
+.modal-actions-right {
+  display: flex;
+  gap: 10px;
+}
+.btn-danger {
+  padding: 9px 20px;
+  border-radius: 8px;
+  border: 1.5px solid #fca5a5;
+  background: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #dc2626;
+  transition: background 0.12s;
+}
+.btn-danger:hover:not(:disabled) { background: #fef2f2; }
+.btn-danger:disabled { opacity: 0.4; cursor: default; }
 .btn-cancel {
   padding: 9px 20px;
   border-radius: 8px;
@@ -387,5 +691,4 @@ function roleBadgeClass(role: UserRole) {
 }
 .btn-primary:hover:not(:disabled) { background: #1648c0; }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
-
 </style>

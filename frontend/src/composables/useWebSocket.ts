@@ -7,6 +7,7 @@ const connected = ref(false);
 const handlers = new Set<(e: WsEvent) => void>();
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingRegister: { display_name: string; oid: string } | null = null;
+let pendingJoin: { activity_id: string } | null = null;
 let wsConnectCount = 0;
 let wsDisconnectCount = 0;
 let wsLastError: string | null = null;
@@ -23,6 +24,10 @@ function connect() {
 		// Re-send registration on reconnect
 		if (pendingRegister) {
 			wsSend({ type: 'register', ...pendingRegister });
+		}
+		// Re-join activity room on reconnect
+		if (pendingJoin) {
+			wsSend({ type: 'join', ...pendingJoin });
 		}
 	};
 
@@ -61,6 +66,20 @@ export function wsSend(data: Record<string, unknown>) {
 export function wsRegister(display_name: string, oid: string) {
 	pendingRegister = { display_name, oid };
 	wsSend({ type: 'register', display_name, oid });
+}
+
+/** Join an activity/template room for collaborative editing (survives reconnects) */
+export function wsJoin(activity_id: string) {
+	pendingJoin = { activity_id };
+	wsSend({ type: 'join', activity_id });
+}
+
+/** Leave the current activity/template room */
+export function wsLeave() {
+	if (pendingJoin) {
+		wsSend({ type: 'leave', activity_id: pendingJoin.activity_id });
+	}
+	pendingJoin = null;
 }
 
 /** Expose WS debug state for bug reports */

@@ -81,6 +81,7 @@ void WebSocketManager::handle_join(WsHandle ws, const std::string &activity_id)
     auto *data = ws->getUserData();
     data->viewing_activity = activity_id;
     activity_viewers_[activity_id].insert(ws);
+    printf("[WS] %s joined %s (viewers: %zu)\n", data->display_name.c_str(), activity_id.c_str(), activity_viewers_[activity_id].size());
     send_editors_list(activity_id);
     // Send current lock state to the joining user
     send_locks_state(ws, activity_id);
@@ -139,6 +140,7 @@ void WebSocketManager::handle_lock(WsHandle ws, const std::string &activity_id, 
         return;
     }
     locks[section] = {section, data->display_name, ws};
+    printf("[WS] %s locked %s in %s\n", data->display_name.c_str(), section.c_str(), activity_id.c_str());
     json msg = {{"event", "lock"}, {"activity_id", activity_id}, {"section", section}, {"user", data->display_name}};
     broadcast_to_activity(activity_id, msg.dump(), ws);
 }
@@ -154,6 +156,7 @@ void WebSocketManager::handle_unlock(WsHandle ws, const std::string &activity_id
     if (sit == it->second.end() || sit->second.holder != ws)
         return; // not the owner
     it->second.erase(sit);
+    printf("[WS] unlocked %s in %s\n", section.c_str(), activity_id.c_str());
     if (it->second.empty())
         activity_locks_.erase(it);
     json msg = {{"event", "unlock"}, {"activity_id", activity_id}, {"section", section}};

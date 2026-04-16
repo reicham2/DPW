@@ -1,23 +1,30 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useActivities } from '../composables/useActivities'
+import { usePermissions } from '../composables/usePermissions'
 import { user } from '../composables/useAuth'
 import ActivityList from '../components/ActivityList.vue'
+import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { Activity, Department, MaterialItem } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
 
-const DEPARTMENTS: Department[] = ['Leiter', 'Pio', 'Pfadi', 'Wölfe', 'Biber']
+const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadActivity, readableDepts, writableDepts } = usePermissions()
+const DEPARTMENTS = computed<Department[]>(() => readableDepts(user.value?.department))
 
 const { activities, loading, error, connected, fetchActivities } = useActivities()
 
-const isAdmin        = computed(() => user.value?.role === 'admin')
-const isStufenleiter = computed(() => user.value?.role === 'Stufenleiter')
-const isPio          = computed(() => user.value?.role === 'Pio')
+// Permission-based: can user see multiple departments?
+const canReadMultipleDepts = computed(() => {
+  return DEPARTMENTS.value.length > 1
+})
+
+// Can the user create activities? (has write access to at least one dept)
+const canCreateActivity = computed(() => {
+  return writableDepts(user.value?.department).length > 0
+})
 
 const search = ref('')
-const activedept = ref<Department | 'Alle'>(
-  isPio.value ? (user.value?.department ?? 'Alle') : (user.value?.department ?? 'Alle')
-)
+const activedept = ref<Department | 'Alle'>(user.value?.department ?? 'Alle')
 
 // Date range filter inputs (manual)
 const dateFrom = ref('')
@@ -62,7 +69,11 @@ function loadEarlier() {
   extraEarlier.value += STEP
 }
 
-onMounted(fetchActivities)
+onMounted(() => {
+  fetchActivities()
+  fetchDeptRecords()
+  fetchMyPermissions()
+})
 
 // "Meine Verantwortung" — enriched list entry
 interface ListEntry {
@@ -73,6 +84,9 @@ interface ListEntry {
 
 const filteredEntries = computed<ListEntry[]>(() => {
   let list = activities.value
+
+  // Filter by readable departments (client-side safety net)
+  list = list.filter(a => user.value ? canReadActivity(a, user.value.display_name, user.value.department) : false)
 
   // Department filter
   if (activedept.value !== 'Alle') {
@@ -142,6 +156,8 @@ const filteredEntries = computed<ListEntry[]>(() => {
 // Counts of activities outside the visible window
 const baseList = computed(() => {
   let list = activities.value
+  // Filter by readable departments
+  list = list.filter(a => user.value ? canReadActivity(a, user.value.display_name, user.value.department) : false)
   if (activedept.value !== 'Alle') list = list.filter(a => a.department === activedept.value)
   const q = search.value.trim().toLowerCase()
   if (q) {
@@ -179,7 +195,8 @@ const earlierCount = computed(() => {
       <span class="status" :class="connected ? 'status--live' : 'status--off'">
         {{ connected ? 'Live' : 'Verbinde...' }}
       </span>
-      <router-link to="/activities/new" class="btn-primary">+ Neue Aktivität</router-link>
+      <router-link v-if="canCreateActivity" to="/activities/new" class="btn-primary">+ Neue Aktivität</router-link>
+      <button v-else class="btn-primary" disabled title="Keine Schreibrechte">+ Neue Aktivität</button>
     </div>
   </header>
 
@@ -216,8 +233,8 @@ const earlierCount = computed(() => {
         >👤 Meine Verantwortung</button>
       </div>
 
-      <!-- Pio only sees their own dept; others can filter freely -->
-      <div v-if="!isPio" class="filter-tabs">
+      <!-- Show department filter tabs if user can read multiple departments -->
+      <div v-if="canReadMultipleDepts" class="filter-tabs">
         <button
           class="filter-tab"
           :class="{ 'filter-tab--active': activedept === 'Alle' }"
@@ -226,10 +243,11 @@ const earlierCount = computed(() => {
         <button
           v-for="dep in DEPARTMENTS"
           :key="dep"
-          class="filter-tab"
-          :class="{ 'filter-tab--active': activedept === dep }"
+          class="filter-tab filter-tab--badge"
           @click="activedept = dep"
-        >{{ dep }}</button>
+        >
+          <DepartmentBadge :department="dep" :active="activedept === dep" />
+        </button>
       </div>
     </div>
 
@@ -244,8 +262,8 @@ const earlierCount = computed(() => {
         @click="loadEarlier"
       >⬆ Frühere Aktivitäten laden ({{ earlierCount }})</button>
 
-      <p v-if="filteredEntries.length === 0 && activities.length > 0" class="filter-empty">
-        Keine Aktivitäten für diese Filter.
+      <p v-if="filteredEntries.length === 0" class="filter-empty">
+        {{ activities.length > 0 ? 'Keine Aktivitäten für diese Filter.' : 'Noch keine Aktivitäten.' }}
       </p>
 
       <ActivityList :entries="filteredEntries" />

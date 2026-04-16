@@ -3,10 +3,13 @@ import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useActivities } from '../composables/useActivities';
 import { useUsers } from '../composables/useUsers';
+import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
-import { wsSend, wsRegister } from '../composables/useWebSocket';
+import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
+import DepartmentBadge from '../components/DepartmentBadge.vue';
+import BadgeSelect from '../components/BadgeSelect.vue';
 
 
 const route = useRoute();
@@ -31,6 +34,7 @@ const {
 	predefinedLocations,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
+const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity } = usePermissions();
 
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
@@ -154,46 +158,52 @@ function unlockSection(section: EditSection, event?: FocusEvent) {
 }
 
 // ---- Load ------------------------------------------------------------------
-const canEdit = computed(() => {
+const canView = computed(() => {
+	if (!user.value || !activity.value) return true; // don't block during loading
+	return canReadActivity(activity.value, user.value.display_name, user.value.department);
+});
+
+function canEditByScope(scope: 'none' | 'own' | 'same_dept' | 'all') {
 	if (!user.value || !activity.value) return false;
-	const role = user.value.role;
-	if (role === 'admin') return true;
-	if (role === 'Stufenleiter') {
-		if (!!user.value.department && activity.value.department === user.value.department) return true;
+	if (scope === 'all') return true;
+	if (scope === 'same_dept') {
+		return !!activity.value.department && activity.value.department === user.value.department;
+	}
+	if (scope === 'own') {
 		return activity.value.responsible.includes(user.value.display_name);
 	}
-	// Leiter and Pio: only if verantwortlich (Pio also limited to own dept — enforced by backend)
-	return activity.value.responsible.includes(user.value.display_name);
+	return false;
+}
+
+const canEdit = computed(() => {
+	const scope = myPermissions.value?.activity_edit_scope ?? 'none';
+	return canEditByScope(scope);
 });
 
 const canDelete = computed(() => {
-	if (!user.value || !activity.value) return false;
-	const role = user.value.role;
-	if (role === 'admin') return true;
-	if (role === 'Stufenleiter') {
-		if (!!user.value.department && activity.value.department === user.value.department) return true;
-		return activity.value.responsible.includes(user.value.display_name);
-	}
-	// Leiter and Pio: only if verantwortlich
-	return activity.value.responsible.includes(user.value.display_name);
+	const scope = myPermissions.value?.activity_edit_scope ?? 'none';
+	return canEditByScope(scope);
 });
 
 const canMail = computed(() => {
 	if (!user.value || !activity.value) return false;
-	const role = user.value.role;
-	if (role === 'admin') return true;
-	if (role === 'Stufenleiter') {
-		if (!!user.value.department && activity.value.department === user.value.department) return true;
-		return activity.value.responsible.includes(user.value.display_name);
-	}
-	// Leiter and Pio: only if verantwortlich
-	return activity.value.responsible.includes(user.value.display_name);
+	const p = myPermissions.value;
+	if (!p) return false;
+	if (p.mail_send_scope === 'all') return true;
+	if (p.mail_send_scope === 'same_dept' && activity.value.department === user.value.department) return true;
+	if (p.mail_send_scope === 'own' && activity.value.responsible.includes(user.value.display_name)) return true;
+	return false;
 });
 
 onMounted(async () => {
-	await Promise.all([fetchDepartments(), fetchUsers(), fetchLocations(), fetchActivities()]);
+	await Promise.all([fetchDepartments(), fetchUsers(), fetchLocations(), fetchActivities(), fetchMyPermissions()]);
 	activity.value = await fetchActivity(id);
 	if (activity.value) {
+		// Check read permission
+		if (!canView.value) {
+			router.replace('/');
+			return;
+		}
 		document.title = `${activity.value.title} – DPWeb`;
 		attachments.value = await fetchAttachments(id);
 	}
@@ -202,7 +212,7 @@ onMounted(async () => {
 	// Register identity and join this activity for collaborative editing
 	if (user.value) {
 		wsRegister(user.value.display_name, user.value.microsoft_oid);
-		wsSend({ type: 'join', activity_id: id });
+		wsJoin(id);
 	}
 
 	// Scroll to focused element (e.g. material) via ?focus=material_2
@@ -225,7 +235,7 @@ onUnmounted(() => {
 	if (savedTimer) clearTimeout(savedTimer);
 	stopAutoSaveInterval();
 	// Leave the activity and unlock any held section
-	wsSend({ type: 'leave', activity_id: id });
+	wsLeave();
 	document.title = 'DPWeb Aktivitäten';
 });
 
@@ -481,29 +491,11 @@ function onLocationBlur() {
 }
 
 // ---- Department dropdown ----------------------------------------------------
-const departmentSearch = ref('');
-const showDepartmentDropdown = ref(false);
-
-const filteredDepartments = computed(() => {
-	const q = departmentSearch.value.toLowerCase();
-	return departments.value.filter(
-		(dep) => q === '' || dep.toLowerCase().includes(q),
-	);
-});
-
-function selectDepartment(dep: string) {
-	editDepartment.value = dep as Department;
-	departmentSearch.value = '';
-	showDepartmentDropdown.value = false;
-	(document.activeElement as HTMLElement)?.blur();
-}
-
-function onDepartmentBlur() {
-	setTimeout(() => {
-		showDepartmentDropdown.value = false;
-		departmentSearch.value = '';
-	}, 200);
-}
+const editWritableDepts = computed(() => writableDepts(user.value?.department));
+const deptFieldDisabled = computed(() => editWritableDepts.value.length <= 1);
+const editDeptItems = computed(() =>
+	editWritableDepts.value.map((d) => ({ value: d })),
+);
 
 // ---- Programs --------------------------------------------------------------
 function addProgram() {
@@ -989,12 +981,29 @@ async function doDelete() {
 				>📧 Mail</router-link
 			>
 			<button
-				v-if="activity && canEdit"
+				v-else-if="activity && mode === 'view'"
+				class="btn-mail"
+				disabled
+				title="Kein Zugriff auf Mailversand"
+			>
+				📧 Mail
+			</button>
+			<button
+				v-if="activity && mode === 'view'"
 				class="btn-toggle"
-				:class="mode === 'edit' ? 'btn-mail' : 'btn-primary'"
+				:class="'btn-primary'"
+				:disabled="!canEdit"
+				:title="canEdit ? 'Aktivität bearbeiten' : 'Keine Berechtigung zum Bearbeiten'"
 				@click="mode === 'view' ? enterEdit() : (mode = 'view')"
 			>
-				{{ mode === 'view' ? '✏️ Bearbeiten' : '👁️ Ansicht' }}
+				✏️ Bearbeiten
+			</button>
+			<button
+				v-else-if="activity && mode === 'edit'"
+				class="btn-toggle btn-mail"
+				@click="mode = 'view'"
+			>
+				👁️ Ansicht
 			</button>
 		</div>
 	</header>
@@ -1049,7 +1058,10 @@ async function doDelete() {
 					</div>
 					<div class="detail-field">
 						<span class="detail-label">Stufe</span>
-						<span class="detail-value">{{ activity.department || '—' }}</span>
+						<span class="detail-value">
+							<DepartmentBadge v-if="activity.department" :department="activity.department" />
+							<template v-else>—</template>
+						</span>
 					</div>
 				</div>
 			</div>
@@ -1297,27 +1309,14 @@ async function doDelete() {
 				</div>
 				<div class="form-group">
 					<label>Stufe</label>
-					<div class="user-search-wrapper">
-						<input
-							type="text"
-							:value="editDepartment || departmentSearch"
-							@input="departmentSearch = ($event.target as HTMLInputElement).value; editDepartment = '' as any; showDepartmentDropdown = true; markDirty('department')"
-							@focus="showDepartmentDropdown = true"
-							@blur="onDepartmentBlur"
-							placeholder="Stufe wählen…"
-							:disabled="isLockedByOther('location')"
-						/>
-						<div v-if="showDepartmentDropdown && filteredDepartments.length" class="user-dropdown">
-							<div
-								v-for="dep in filteredDepartments"
-								:key="dep"
-								class="user-dropdown-item"
-								@mousedown.prevent="selectDepartment(dep)"
-							>
-								{{ dep }}
-							</div>
-						</div>
-					</div>
+					<BadgeSelect
+						kind="department"
+						:items="editDeptItems"
+						placeholder="Stufe wählen…"
+						:disabled="isLockedByOther('location') || deptFieldDisabled"
+						:model-value="editDepartment || null"
+						@update:model-value="(v) => { editDepartment = (v ?? '') as Department | ''; markDirty('department'); }"
+					/>
 					<span v-if="savedFields['department']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['department']">💾</span>
 				</div>
 			</div>
@@ -1666,7 +1665,10 @@ async function doDelete() {
 				</div>
 				<div class="activity-preview-popup__row">
 					<span class="detail-label">Stufe</span>
-					<span>{{ previewActivity.department || '—' }}</span>
+					<span>
+						<DepartmentBadge v-if="previewActivity.department" :department="previewActivity.department" />
+						<template v-else>—</template>
+					</span>
 				</div>
 				<div class="activity-preview-popup__row">
 					<span class="detail-label">Verantwortlich</span>

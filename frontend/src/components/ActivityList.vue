@@ -13,7 +13,6 @@ defineProps<{ entries: ListEntry[] }>()
 
 <template>
   <div class="activity-list">
-    <p v-if="entries.length === 0" class="empty">Noch keine Aktivitäten.</p>
     <div
       v-for="(entry, eIdx) in entries"
       :key="entry.activity.id"

@@ -5,7 +5,9 @@ import { useActivities } from '../composables/useActivities';
 import { useMailTemplates } from '../composables/useMailTemplates';
 import { useContactSearch } from '../composables/useContactSearch';
 import { user } from '../composables/useAuth';
+import { usePermissions } from '../composables/usePermissions';
 import ErrorAlert from '../components/ErrorAlert.vue';
+import DepartmentBadge from '../components/DepartmentBadge.vue';
 import type { Activity, Department, SentMail } from '../types';
 
 const route = useRoute()
@@ -14,6 +16,7 @@ const activityId = route.params.id as string
 
 const { fetchActivity } = useActivities()
 const { fetchTemplate, sendMail, sending, error, fetchSentMails } = useMailTemplates()
+const { myPermissions, fetchMyPermissions } = usePermissions()
 
 const activity = ref<Activity | null>(null)
 const subject = ref('')
@@ -96,6 +99,12 @@ function replaceTemplateVars(text: string, act: Activity): string {
 }
 
 onMounted(async () => {
+  await fetchMyPermissions()
+  if (!myPermissions.value || myPermissions.value.mail_send_scope === 'none') {
+    router.replace('/')
+    return
+  }
+
   const act = await fetchActivity(activityId)
   if (!act) {
     loadError.value = 'Aktivität nicht gefunden.'
@@ -439,9 +448,7 @@ function closeMailViewer() {
 			<form class="detail-form" @submit.prevent="handleSend">
 			<!-- Activity info -->
 			<div class="mail-activity-info">
-				<span class="card-dept-badge" v-if="activity.department">{{
-					activity.department
-				}}</span>
+				<DepartmentBadge :department="activity.department" />
 				<strong>{{ activity.title }}</strong>
 			</div>
 

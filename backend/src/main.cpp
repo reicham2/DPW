@@ -15,6 +15,9 @@ static std::string env(const char *key, const char *def = "")
 
 int main()
 {
+     // Disable stdout buffering so logs appear immediately in Docker
+     setvbuf(stdout, nullptr, _IONBF, 0);
+
      curl_global_init(CURL_GLOBAL_DEFAULT);
 
      std::string conn_str =
@@ -45,8 +48,6 @@ int main()
          // Auth + user endpoints
          .post("/auth/me", [&](auto *res, auto *req)
                { handle_post_auth_me(res, req, db); })
-         .post("/auth/debug-login", [&](auto *res, auto *req)
-               { handle_debug_login(res, req, db); })
          .get("/me", [&](auto *res, auto *req)
               { handle_get_me(res, req, db); })
          .get("/users", [&](auto *res, auto *req)
@@ -55,14 +56,48 @@ int main()
               { handle_debug_get_users(res, req, db); })
          .patch("/me", [&](auto *res, auto *req)
                 { handle_patch_me(res, req, db); })
+         .get("/my-permissions", [&](auto *res, auto *req)
+              { handle_get_my_permissions(res, req, db); })
 
          // Admin endpoints
          .patch("/admin/users/:id", [&](auto *res, auto *req)
                 { handle_patch_admin_user(res, req, db); })
+         .del("/admin/users/:id", [&](auto *res, auto *req)
+              { handle_delete_admin_user(res, req, db); })
+
+         // Permission management (admin only)
+         .get("/admin/roles", [&](auto *res, auto *req)
+              { handle_get_roles(res, req, db); })
+         .post("/admin/roles", [&](auto *res, auto *req)
+               { handle_post_role(res, req, db); })
+         .post("/admin/roles/reorder", [&](auto *res, auto *req)
+               { handle_post_roles_reorder(res, req, db); })
+         .post("/admin/roles/:name/move", [&](auto *res, auto *req)
+               { handle_post_role_move(res, req, db); })
+         .patch("/admin/roles/:name", [&](auto *res, auto *req)
+                { handle_patch_role(res, req, db); })
+         .del("/admin/roles/:name", [&](auto *res, auto *req)
+              { handle_delete_role(res, req, db); })
+         .get("/admin/departments", [&](auto *res, auto *req)
+              { handle_get_departments(res, req, db); })
+         .post("/admin/departments", [&](auto *res, auto *req)
+               { handle_post_department(res, req, db); })
+         .patch("/admin/departments/:name", [&](auto *res, auto *req)
+                { handle_patch_department(res, req, db); })
+         .del("/admin/departments/:name", [&](auto *res, auto *req)
+              { handle_delete_department(res, req, db); })
+         .get("/admin/role-permissions", [&](auto *res, auto *req)
+              { handle_get_role_permissions(res, req, db); })
+         .put("/admin/role-permissions", [&](auto *res, auto *req)
+              { handle_put_role_permission(res, req, db); })
+         .get("/admin/role-dept-access", [&](auto *res, auto *req)
+              { handle_get_role_dept_access(res, req, db); })
+         .put("/admin/role-dept-access", [&](auto *res, auto *req)
+              { handle_put_role_dept_access(res, req, db); })
 
          // Static data
          .get("/departments", [&](auto *res, auto *req)
-              { handle_get_departments(res, req); })
+              { handle_get_departments(res, req, db); })
 
          // Activities list + create
          .get("/activities", [&](auto *res, auto *req)

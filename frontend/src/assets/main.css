@@ -331,30 +331,6 @@ body {
 	color: #111;
 }
 
-.card-dept-badge {
-	font-size: 0.75rem;
-	font-weight: 600;
-	padding: 2px 9px;
-	border-radius: 999px;
-	background: #cce5ff;
-	color: #0023ff;
-	white-space: nowrap;
-	flex-shrink: 0;
-}
-
-/* Role badges */
-.role-badge {
-	display: inline-block;
-	padding: 2px 10px;
-	border-radius: 999px;
-	font-size: 0.78rem;
-	font-weight: 600;
-}
-.badge-admin { background: #fef3c7; color: #92400e; }
-.badge-stufenleiter { background: #dbeafe; color: #1e40af; }
-.badge-leiter { background: #d1fae5; color: #065f46; }
-.badge-pio { background: #f3f4f6; color: #6b7280; }
-
 .card-meta {
 	display: flex;
 	align-items: center;
@@ -1361,6 +1337,20 @@ body {
 	color: #fff;
 }
 
+/* Filter tab used as a container for a DepartmentBadge — badge itself carries the styling */
+.filter-tab--badge {
+	padding: 2px;
+	border: none;
+	background: transparent;
+	border-radius: 999px;
+}
+
+.filter-tab--badge:hover {
+	background: transparent;
+	border-color: transparent;
+	color: inherit;
+}
+
 /* Empty state when filters match nothing */
 .filter-empty {
 	text-align: center;
@@ -1561,6 +1551,13 @@ body {
 }
 .btn-mail:hover {
 	background: #cce5ff;
+}
+.btn-mail:disabled {
+	opacity: 0.5;
+	cursor: default;
+	background: #eef2f7;
+	color: #7a8a9a;
+	border-color: #c7d2de;
 }
 
 .mail-activity-info {

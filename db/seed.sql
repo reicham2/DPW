@@ -3,6 +3,37 @@
 -- Ausführen mit: make db-seed
 -- ============================================================================
 
+-- ── Stufen & Rollen ─────────────────────────────────────────────────────────
+INSERT INTO departments (name, color) VALUES
+    ('Leiter', '#065f46'),
+    ('Pio',    '#6b7280'),
+    ('Pfadi',  '#1e40af'),
+    ('Wölfe',  '#92400e'),
+    ('Biber',  '#7c3aed')
+ON CONFLICT (name) DO NOTHING;
+
+UPDATE roles SET sort_order = 4 WHERE name = 'Mitglied';
+
+INSERT INTO roles (name, color, sort_order) VALUES
+    ('Stufenleiter',  '#1e40af', 1),
+    ('Leiter',        '#065f46', 2),
+    ('Pio',           '#6b7280', 3)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, user_dept_scope, user_role_scope) VALUES
+    ('Stufenleiter',  true, true, false, false, 'same_dept', 'own_dept', 'same_dept', 'same_dept', 'own_dept', 'own_dept', 'own_dept'),
+    ('Leiter',        true, true, false, false, 'same_dept', 'own_dept', 'own',       'own',       'none',     'none',     'none'),
+    ('Pio',           true, false, false, false, 'same_dept', 'none',     'none',      'none',      'none',     'none',     'none')
+ON CONFLICT (role) DO NOTHING;
+
+INSERT INTO mail_templates (department, subject, body, recipients) VALUES
+    ('Leiter', '', '', '{}'),
+    ('Pio',    '', '', '{}'),
+    ('Pfadi',  '', '', '{}'),
+    ('Wölfe',  '', '', '{}'),
+    ('Biber',  '', '', '{}')
+ON CONFLICT (department) DO NOTHING;
+
 -- ── Test-Benutzer ───────────────────────────────────────────────────────────
 INSERT INTO users (id, microsoft_oid, email, display_name, department, role) VALUES
     ('a0000000-0000-0000-0000-000000000001', 'oid-admin',        'admin@pfadihue.ch',     'Admin User',       'Leiter', 'admin'),

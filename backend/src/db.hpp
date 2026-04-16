@@ -12,7 +12,7 @@ struct UserRecord
     std::string email;
     std::string display_name;
     std::optional<std::string> department;
-    std::string role; // 'admin' | 'Stufenleiter' | 'Leiter' | 'Pio'
+    std::string role;
     std::string created_at;
     std::string updated_at;
 };
@@ -38,6 +38,43 @@ struct SentMail
     std::string subject;
     std::string body_html;
     std::string sent_at;
+};
+
+struct DepartmentRecord
+{
+    std::string name;
+    std::string color;
+};
+
+struct RoleRecord
+{
+    std::string name;
+    std::string color;
+    int sort_order;
+};
+
+struct RolePermission
+{
+    std::string role;
+    bool can_read_own_dept;
+    bool can_write_own_dept;
+    bool can_read_all_depts;
+    bool can_write_all_depts;
+    std::string activity_read_scope;   // none|own|same_dept|all
+    std::string activity_create_scope; // none|own_dept|all
+    std::string activity_edit_scope;   // none|own|same_dept|all
+    std::string mail_send_scope;       // none|own|same_dept|all
+    std::string mail_templates_scope;  // none|own_dept|all
+    std::string user_dept_scope;       // none|own|own_dept|all
+    std::string user_role_scope;       // none|own|own_dept|all
+};
+
+struct RoleDeptAccess
+{
+    std::string role;
+    std::string department;
+    bool can_read;
+    bool can_write;
 };
 
 class Database
@@ -75,8 +112,8 @@ public:
     std::optional<UserRecord> upsert_user(const std::string &oid,
                                           const std::string &email,
                                           const std::string &display_name,
-                                          const std::string &initial_role = "Leiter",
-                                          const std::string &initial_dept = "Leiter",
+                                          const std::string &initial_role = "Mitglied",
+                                          const std::string &initial_dept = "Allgemein",
                                           bool force_role = false);
     std::optional<UserRecord> get_user_by_oid(const std::string &oid);
     std::optional<UserRecord> get_user_by_id(const std::string &id);
@@ -89,6 +126,8 @@ public:
                                                 const std::string &display_name,
                                                 const std::optional<std::string> &department,
                                                 const std::string &role);
+    // Admin: delete a user by id.
+    bool delete_user(const std::string &id);
 
     // Mail templates
     std::vector<MailTemplate> list_mail_templates();
@@ -114,6 +153,50 @@ public:
                                           const std::string &body_html);
     std::vector<SentMail> list_sent_mails(const std::string &activity_id);
 
+    // Departments CRUD
+    std::vector<DepartmentRecord> list_departments();
+    std::optional<DepartmentRecord> create_department(const std::string &name, const std::string &color);
+    std::optional<DepartmentRecord> update_department(const std::string &name, const std::string &new_name,
+                                                      const std::string &color);
+    bool delete_department(const std::string &name);
+    bool delete_department_with_transfers(const std::string &name,
+                                          const std::string &transfer_activities_to,
+                                          bool delete_activities,
+                                          const std::string &transfer_users_to,
+                                          bool delete_users);
+
+    // Roles CRUD
+    std::vector<RoleRecord> list_roles();
+    std::optional<RoleRecord> create_role(const std::string &name, const std::string &color);
+    std::optional<RoleRecord> update_role(const std::string &name, const std::string &new_name,
+                                          const std::string &color);
+    bool move_role(const std::string &name, bool move_up);
+    bool reorder_roles(const std::vector<std::string> &ordered_names);
+    bool delete_role(const std::string &name,
+                     const std::string &transfer_users_to = "",
+                     bool delete_users = false);
+
+    // Role permissions
+    std::vector<RolePermission> list_role_permissions();
+    std::optional<RolePermission> get_role_permission(const std::string &role);
+    bool update_role_permission(const std::string &role,
+                                bool can_read_own_dept,
+                                bool can_write_own_dept,
+                                bool can_read_all_depts,
+                                bool can_write_all_depts,
+                                const std::string &activity_read_scope,
+                                const std::string &activity_create_scope,
+                                const std::string &activity_edit_scope,
+                                const std::string &mail_send_scope,
+                                const std::string &mail_templates_scope,
+                                const std::string &user_dept_scope,
+                                const std::string &user_role_scope);
+
+    // Role department access
+    std::vector<RoleDeptAccess> list_role_dept_access(const std::string &role);
+    bool set_role_dept_access(const std::string &role, const std::string &department,
+                              bool can_read, bool can_write);
+
 private:
     PGconn *conn_{nullptr};
     void ensure_connected();
@@ -124,6 +207,10 @@ private:
     UserRecord row_to_user(PGresult *res, int row);
     MailTemplate row_to_mail_template(PGresult *res, int row);
     SentMail row_to_sent_mail(PGresult *res, int row);
+    DepartmentRecord row_to_department(PGresult *res, int row);
+    RoleRecord row_to_role(PGresult *res, int row);
+    RolePermission row_to_role_perm(PGresult *res, int row);
+    RoleDeptAccess row_to_role_dept_access(PGresult *res, int row);
     void attach_programs(std::vector<Activity> &activities);
     void attach_programs_single(Activity &a);
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Activity } from '../types'
+import DepartmentBadge from './DepartmentBadge.vue'
 
 const props = defineProps<{
   activity: Activity
@@ -20,9 +21,7 @@ function formatDate(d: string): string {
   <div class="activity-card" :class="{ 'activity-card--dimmed': dimmed }">
     <div class="card-header">
       <span class="card-title">{{ activity.title }}</span>
-      <span v-if="activity.department" class="card-dept-badge">
-        {{ activity.department }}
-      </span>
+      <DepartmentBadge :department="activity.department" />
     </div>
     <div class="card-meta">
       <span class="card-date">
