@@ -170,12 +170,14 @@ int main()
          .get("/activities/:id/form/stats", [&](auto *res, auto *req)
               { handle_get_form_stats(res, req, db); })
 
-         // Admin: form templates (one per department)
-         .get("/form-templates/:department", [&](auto *res, auto *req)
-              { handle_get_form_template(res, req, db); })
-         .put("/form-templates/:department", [&](auto *res, auto *req)
+         // Admin: form templates
+         .get("/form-templates", [&](auto *res, auto *req)
+              { handle_get_form_templates(res, req, db); })
+         .post("/form-templates", [&](auto *res, auto *req)
+               { handle_post_form_template(res, req, db); })
+         .put("/form-templates/:id", [&](auto *res, auto *req)
               { handle_put_form_template(res, req, db); })
-         .del("/form-templates/:department", [&](auto *res, auto *req)
+         .del("/form-templates/:id", [&](auto *res, auto *req)
               { handle_delete_form_template(res, req, db); })
 
          // WebSocket endpoint

@@ -228,14 +228,18 @@ public:
     // Stats
     nlohmann::json get_form_stats(const std::string &form_id);
 
-    // Templates (one per department)
-    std::optional<FormTemplate> get_form_template(const std::string &department);
-    std::optional<FormTemplate> save_form_template(const std::string &department,
-                                                    const std::string &name,
-                                                    const std::string &form_type,
-                                                    const nlohmann::json &template_config,
-                                                    const std::string &created_by);
-    bool delete_form_template(const std::string &department);
+    // Templates
+    std::vector<FormTemplate> list_form_templates(const std::string &department);
+    std::optional<FormTemplate> create_form_template(const std::string &name,
+                                                     const std::string &department,
+                                                     const std::string &form_type,
+                                                     const nlohmann::json &template_config,
+                                                     const std::string &created_by);
+    std::optional<FormTemplate> update_form_template(const std::string &id,
+                                                     const std::string &name,
+                                                     const std::string &form_type,
+                                                     const nlohmann::json &template_config);
+    bool delete_form_template(const std::string &id);
 
 private:
     PGconn *conn_{nullptr};

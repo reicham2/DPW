@@ -228,39 +228,59 @@ export function useForms() {
 	};
 }
 
-// ── Form templates (one per department) ────────────────────────────────────────
+// ── Form templates ─────────────────────────────────────────────────────────────
 
 export function useFormTemplates() {
-	const template = ref<FormTemplate | null>(null);
+	const templates = ref<FormTemplate[]>([]);
 	const loading = ref(false);
 	const error = ref<string | null>(null);
 
-	async function fetchTemplate(department: string): Promise<FormTemplate | null> {
+	async function fetchTemplates(department: string): Promise<FormTemplate[]> {
 		loading.value = true;
 		error.value = null;
 		try {
 			const token = await getIdToken();
 			const res = await fetch(
-				`${BASE}/form-templates/${encodeURIComponent(department)}`,
+				`${BASE}/form-templates?department=${encodeURIComponent(department)}`,
 				{ headers: { Authorization: `Bearer ${token}` } },
 			);
-			if (res.status === 404) {
-				template.value = null;
-				return null;
-			}
 			if (!res.ok) throw new Error(await res.text());
-			template.value = (await res.json()) as FormTemplate;
-			return template.value;
+			templates.value = (await res.json()) as FormTemplate[];
+			return templates.value;
 		} catch (e) {
 			error.value = String(e);
-			return null;
+			return [];
 		} finally {
 			loading.value = false;
 		}
 	}
 
-	async function saveTemplate(
+	async function createTemplate(
+		name: string,
 		department: string,
+		form_type: FormType,
+		template_config: FormQuestionInput[],
+	): Promise<FormTemplate | null> {
+		error.value = null;
+		try {
+			const token = await getIdToken();
+			const res = await fetch(`${BASE}/form-templates`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, department, form_type, template_config }),
+			});
+			if (!res.ok) throw new Error(await res.text());
+			const tpl = (await res.json()) as FormTemplate;
+			templates.value.push(tpl);
+			return tpl;
+		} catch (e) {
+			error.value = String(e);
+			return null;
+		}
+	}
+
+	async function updateTemplate(
+		id: string,
 		name: string,
 		form_type: FormType,
 		template_config: FormQuestionInput[],
@@ -268,30 +288,32 @@ export function useFormTemplates() {
 		error.value = null;
 		try {
 			const token = await getIdToken();
-			const res = await fetch(`${BASE}/form-templates/${encodeURIComponent(department)}`, {
+			const res = await fetch(`${BASE}/form-templates/${encodeURIComponent(id)}`, {
 				method: 'PUT',
 				headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
 				body: JSON.stringify({ name, form_type, template_config }),
 			});
 			if (!res.ok) throw new Error(await res.text());
-			template.value = (await res.json()) as FormTemplate;
-			return template.value;
+			const tpl = (await res.json()) as FormTemplate;
+			const idx = templates.value.findIndex((t) => t.id === id);
+			if (idx !== -1) templates.value[idx] = tpl;
+			return tpl;
 		} catch (e) {
 			error.value = String(e);
 			return null;
 		}
 	}
 
-	async function deleteTemplate(department: string): Promise<boolean> {
+	async function deleteTemplate(id: string): Promise<boolean> {
 		error.value = null;
 		try {
 			const token = await getIdToken();
-			const res = await fetch(`${BASE}/form-templates/${encodeURIComponent(department)}`, {
+			const res = await fetch(`${BASE}/form-templates/${encodeURIComponent(id)}`, {
 				method: 'DELETE',
 				headers: { Authorization: `Bearer ${token}` },
 			});
 			if (!res.ok) throw new Error(await res.text());
-			template.value = null;
+			templates.value = templates.value.filter((t) => t.id !== id);
 			return true;
 		} catch (e) {
 			error.value = String(e);
@@ -299,5 +321,5 @@ export function useFormTemplates() {
 		}
 	}
 
-	return { template, loading, error, fetchTemplate, saveTemplate, deleteTemplate };
+	return { templates, loading, error, fetchTemplates, createTemplate, updateTemplate, deleteTemplate };
 }
