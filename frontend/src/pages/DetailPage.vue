@@ -996,7 +996,7 @@ function scheduleAutoSave() {
 	if (AUTOSAVE_DEBOUNCE) {
 		// Debounce: restart timer on every change, save after idle
 		if (autoSaveTimer) clearTimeout(autoSaveTimer);
-		autoSaveTimer = setTimeout(doSave, AUTOSAVE_INTERVAL);
+		autoSaveTimer = setTimeout(() => doSave({ skipFuzzyCheck: true }), AUTOSAVE_INTERVAL);
 	} else {
 		// Interval: just mark dirty, the interval will pick it up
 		hasPendingChanges = true;
@@ -1008,7 +1008,7 @@ function startAutoSaveInterval() {
 		autoSaveInterval = setInterval(() => {
 			if (hasPendingChanges && mode.value === 'edit') {
 				hasPendingChanges = false;
-				doSave();
+				doSave({ skipFuzzyCheck: true });
 			}
 		}, AUTOSAVE_INTERVAL);
 	}
@@ -1069,10 +1069,34 @@ watch([editSikoText], () => markDirty('siko_text'));
 watch([editGoal], () => markDirty('goal'));
 watch([editBadWeather], () => markDirty('bad_weather'));
 
+// ---- Fuzzy location overlap confirmation dialog ----------------------------
+const showFuzzyDialog = ref(false);
+const fuzzyDialogOverlaps = ref<OverlapInfo[]>([]);
+let pendingFuzzyAcknowledged = false;
+
+function confirmFuzzyAndSave() {
+	showFuzzyDialog.value = false;
+	pendingFuzzyAcknowledged = true;
+	doSave();
+}
+
+function cancelFuzzyDialog() {
+	showFuzzyDialog.value = false;
+	pendingFuzzyAcknowledged = false;
+}
+
 // ---- Core save (used by auto-save and the button) --------------------------
-async function doSave() {
+async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 	if (!activity.value) return;
 	error.value = null;
+
+	// When there are fuzzy (but not exact) overlaps, ask for confirmation unless already acknowledged
+	if (!opts.skipFuzzyCheck && !pendingFuzzyAcknowledged && fuzzyOverlaps.value.length > 0) {
+		fuzzyDialogOverlaps.value = fuzzyOverlaps.value;
+		showFuzzyDialog.value = true;
+		return;
+	}
+	pendingFuzzyAcknowledged = false;
 
 	await updateActivity(id, {
 		title: editTitle.value.trim(),
@@ -1780,9 +1804,29 @@ async function doDelete() {
 		</div>
 	</main>
 
-	<!-- Duplicate File Dialog -->
-	<div v-if="showDuplicateDialog" class="preview-overlay" @click.self="onDuplicateSkip">
+	<!-- Fuzzy Location Overlap Confirmation Dialog -->
+	<div v-if="showFuzzyDialog" class="preview-overlay" @click.self="cancelFuzzyDialog">
 		<div class="duplicate-dialog">
+			<p class="duplicate-dialog__title">⚠️ Mögliche Ortsüberschneidung</p>
+			<p class="duplicate-dialog__text">
+				Der eingetragene Ort <strong>«{{ editLocation }}»</strong> ähnelt dem Ort einer anderen Aktivität zur gleichen Zeit.
+				Ist dies derselbe Ort? Die Aktivitäten könnten sich überschneiden.
+			</p>
+			<ul class="overlap-list" style="margin: 8px 0 12px">
+				<li v-for="o in fuzzyDialogOverlaps" :key="o.id">
+					<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
+					– Ort: «{{ o.location }}» ({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
+				</li>
+			</ul>
+			<div class="duplicate-dialog__actions">
+				<button type="button" class="btn-secondary" @click="cancelFuzzyDialog">Abbrechen</button>
+				<button type="button" class="btn-primary" @click="confirmFuzzyAndSave">Ja, trotzdem speichern</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Duplicate File Dialog -->
+	<div v-if="showDuplicateDialog" class="preview-overlay" @click.self="onDuplicateSkip">		<div class="duplicate-dialog">
 			<p class="duplicate-dialog__title">Datei bereits vorhanden</p>
 			<p class="duplicate-dialog__text">Die Datei <strong>{{ duplicateFile?.name }}</strong> existiert bereits. Möchtest du sie ersetzen?</p>
 			<div class="duplicate-dialog__actions">

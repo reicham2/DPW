@@ -108,6 +108,14 @@ int main()
          // Predefined locations
          .get("/locations", [&](auto *res, auto *req)
               { handle_get_locations(res, req, db); })
+         .get("/admin/locations", [&](auto *res, auto *req)
+              { handle_get_locations_admin(res, req, db); })
+         .post("/admin/locations", [&](auto *res, auto *req)
+               { handle_post_location(res, req, db); })
+         .patch("/admin/locations/:id", [&](auto *res, auto *req)
+                { handle_patch_location(res, req, db); })
+         .del("/admin/locations/:id", [&](auto *res, auto *req)
+              { handle_delete_location(res, req, db); })
 
          // Attachments — must be registered BEFORE /activities/:id
          .get("/activities/:id/attachments", [&](auto *res, auto *req)

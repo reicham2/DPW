@@ -13,12 +13,8 @@ static const std::string PFADI_HUE_GROUP_ID = "17fcb1fa-9fa2-45f2-96cc-3804d7097
 
 static const char *status_text(int code)
 {
-    switch (code)
     {
-    case 200:
-        return "200 OK";
-    case 201:
-        return "201 Created";
+                                                user_dept_scope, user_role_scope, locations_manage_scope);
     case 204:
         return "204 No Content";
     case 400:
@@ -424,6 +420,126 @@ void handle_get_locations(HttpRes *res, HttpReq *req, Database &db)
         for (const auto &l : locs)
             arr.push_back(l);
         send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// Helper: require locations_manage_scope == 'all'
+static std::optional<UserRecord> require_locations_admin(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return std::nullopt;
+    auto user = resolve_user(db, claims);
+    if (!user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return std::nullopt;
+    }
+    auto perm = db.get_role_permission(user->role);
+    if (!perm || perm->locations_manage_scope != "all")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return std::nullopt;
+    }
+    return user;
+}
+
+static nlohmann::json location_to_json(const LocationRecord &loc)
+{
+    return {{"id", loc.id}, {"name", loc.name}, {"created_at", loc.created_at}, {"updated_at", loc.updated_at}};
+}
+
+// ---- GET /admin/locations ---------------------------------------------------
+
+void handle_get_locations_admin(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_locations_admin(res, req, db))
+        return;
+    try
+    {
+        auto locs = db.list_predefined_locations();
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &l : locs)
+            arr.push_back(location_to_json(l));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+    }
+}
+
+// ---- POST /admin/locations --------------------------------------------------
+
+void handle_post_location(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_locations_admin(res, req, db))
+        return;
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db](std::string_view chunk, bool last) mutable
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (!j.is_object()) { send_json(res, 400, R"({"error":"Ungültiges JSON-Format"})"); return; }
+        std::string name = j.value("name", "");
+        if (name.empty()) { send_json(res, 400, R"({"error":"name erforderlich"})"); return; }
+        try {
+            auto loc = db.create_predefined_location(name);
+            if (!loc) { send_json(res, 409, R"({"error":"Ort existiert bereits"})"); return; }
+            send_json(res, 201, location_to_json(*loc).dump());
+        } catch (std::exception &e) {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
+}
+
+// ---- PATCH /admin/locations/:id ---------------------------------------------
+
+void handle_patch_location(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_locations_admin(res, req, db))
+        return;
+    std::string id{req->getParameter(0)};
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db, id](std::string_view chunk, bool last) mutable
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (!j.is_object()) { send_json(res, 400, R"({"error":"Ungültiges JSON-Format"})"); return; }
+        std::string name = j.value("name", "");
+        if (name.empty()) { send_json(res, 400, R"({"error":"name erforderlich"})"); return; }
+        try {
+            auto loc = db.update_predefined_location(id, name);
+            if (!loc) { send_json(res, 404, R"({"error":"Nicht gefunden"})"); return; }
+            send_json(res, 200, location_to_json(*loc).dump());
+        } catch (std::exception &e) {
+            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        } });
+}
+
+// ---- DELETE /admin/locations/:id --------------------------------------------
+
+void handle_delete_location(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_locations_admin(res, req, db))
+        return;
+    std::string id{req->getParameter(0)};
+    try
+    {
+        bool ok = db.delete_predefined_location(id);
+        if (!ok)
+        {
+            send_json(res, 404, R"({"error":"Nicht gefunden"})");
+            return;
+        }
+        send_json(res, 204, "");
     }
     catch (std::exception &e)
     {
@@ -2336,7 +2452,8 @@ static nlohmann::json role_perm_to_json(const RolePermission &rp)
         {"form_scope", rp.form_scope},
         {"form_templates_scope", rp.form_templates_scope},
         {"user_dept_scope", rp.user_dept_scope},
-        {"user_role_scope", rp.user_role_scope}};
+        {"user_role_scope", rp.user_role_scope},
+        {"locations_manage_scope", rp.locations_manage_scope}};
 }
 
 // ── Current user permissions ─────────────────────────────────────────────────
@@ -2769,6 +2886,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
         std::string form_templates_scope = j.value("form_templates_scope", "none");
         std::string user_dept_scope = j.value("user_dept_scope", "none");
         std::string user_role_scope = j.value("user_role_scope", "none");
+        std::string locations_manage_scope = j.value("locations_manage_scope", "none");
 
         bool can_read_own_dept = activity_read_scope == "same_dept" || activity_read_scope == "all";
         bool can_read_all_depts = activity_read_scope == "all";
@@ -2781,7 +2899,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
                                                 activity_read_scope, activity_create_scope, activity_edit_scope,
                                                 mail_send_scope, mail_templates_scope,
                                                 form_scope, form_templates_scope,
-                                                user_dept_scope, user_role_scope);
+                                                user_dept_scope, user_role_scope, locations_manage_scope);
             if (!ok) {
                 send_json(res, 404, R"({"error":"Rolle nicht gefunden"})");
                 return;

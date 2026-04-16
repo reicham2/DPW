@@ -4,6 +4,7 @@ import { user as currentUser, getIdToken } from '../composables/useAuth'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import DepartmentManager from '../components/DepartmentManager.vue'
 import RoleManager from '../components/RoleManager.vue'
+import LocationManager from '../components/LocationManager.vue'
 import RoleBadge from '../components/RoleBadge.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
@@ -12,7 +13,7 @@ import { usePermissions } from '../composables/usePermissions'
 import type { User, Department, UserRole } from '../types'
 
 const router = useRouter()
-const { departments: deptRecords, roles: roleRecords, fetchDepartments, fetchRoles, myPermissions, fetchMyPermissions, canManageUsers, canManageSystem } = usePermissions()
+const { departments: deptRecords, roles: roleRecords, fetchDepartments, fetchRoles, myPermissions, fetchMyPermissions, canManageUsers, canManageSystem, canManageLocations } = usePermissions()
 
 const DEPARTMENTS = computed(() => deptRecords.value.map(d => d.name))
 const orderedRoles = computed(() => [...roleRecords.value].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de')))
@@ -28,9 +29,10 @@ const canEditRoles = computed(() => {
   return scope === 'all' || scope === 'own_dept' || scope === 'own'
 })
 const canSeePermissionsTab = computed(() => canManageSystem())
+const canSeeLocationsTab = computed(() => canManageLocations())
 
 // ── Tab management ──────────────────────────────────────────────────────────
-const activeTab = ref<'users' | 'permissions'>('users')
+const activeTab = ref<'users' | 'permissions' | 'locations'>('users')
 
 // ── User management state ───────────────────────────────────────────────────
 const users = ref<User[]>([])
@@ -230,6 +232,19 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
       </svg>
       Stufen &amp; Rollen
     </button>
+    <button
+      v-if="canSeeLocationsTab"
+      class="tab-btn"
+      :class="{ 'tab-btn--active': activeTab === 'locations' }"
+      @click="activeTab = 'locations'"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="6" r="3" />
+        <path d="M8 9c-3 0-5 1.3-5 3" />
+        <path d="M13 12c0 1.7-2.2 3-5 3s-5-1.3-5-3" />
+      </svg>
+      Orte
+    </button>
   </nav>
 
   <!-- Tab: Benutzerverwaltung -->
@@ -314,6 +329,11 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
     <DepartmentManager />
     <div class="section-divider" />
     <RoleManager />
+  </main>
+
+  <!-- Tab: Orte (locations_manage_scope = all) -->
+  <main v-else-if="activeTab === 'locations' && canSeeLocationsTab" class="main">
+    <LocationManager />
   </main>
 
   <!-- Edit modal -->

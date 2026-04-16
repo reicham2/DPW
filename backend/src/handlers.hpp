@@ -30,6 +30,10 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
 
 // Predefined locations
 void handle_get_locations(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_locations_admin(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_location(HttpRes *res, HttpReq *req, Database &db);
+void handle_patch_location(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_location(HttpRes *res, HttpReq *req, Database &db);
 
 // Attachments
 void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db);

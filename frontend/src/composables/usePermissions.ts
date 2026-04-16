@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { getIdToken } from './useAuth';
 import type {
 	DepartmentRecord,
+	LocationRecord,
 	RoleRecord,
 	RolePermission,
 	RoleDeptAccess,
@@ -312,6 +313,52 @@ function writableDepts(userDept: string | null | undefined): string[] {
 		.filter((name) => canCreateDept(name, userDept));
 }
 
+function canManageLocations(): boolean {
+	return myPermissions.value?.locations_manage_scope === 'all';
+}
+
+// ── Locations CRUD ──────────────────────────────────────────────────────────
+
+async function fetchLocationsAdmin(): Promise<LocationRecord[]> {
+	const token = await getIdToken();
+	const res = await fetch('/api/admin/locations', {
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function createLocation(name: string): Promise<LocationRecord> {
+	const token = await getIdToken();
+	const res = await fetch('/api/admin/locations', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ name }),
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function updateLocation(id: string, name: string): Promise<LocationRecord> {
+	const token = await getIdToken();
+	const res = await fetch(`/api/admin/locations/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ name }),
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function deleteLocation(id: string): Promise<void> {
+	const token = await getIdToken();
+	const res = await fetch(`/api/admin/locations/${encodeURIComponent(id)}`, {
+		method: 'DELETE',
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!res.ok) throw new Error(await res.text());
+}
+
 // ── Fetch all ───────────────────────────────────────────────────────────────
 
 async function fetchAll() {
@@ -361,7 +408,12 @@ export function usePermissions() {
 		canManageSystem,
 		canForms,
 		canFormTemplates,
+		canManageLocations,
 		readableDepts,
 		writableDepts,
+		fetchLocationsAdmin,
+		createLocation,
+		updateLocation,
+		deleteLocation,
 	};
 }
