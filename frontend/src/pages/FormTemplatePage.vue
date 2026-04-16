@@ -48,6 +48,7 @@ const activeDept = ref<Department>((user.value?.department as Department) ?? (''
 
 const showBuilder = ref(false);
 const editingTemplate = ref<FormTemplate | null>(null);
+const editingIsDefault = ref(false);
 
 onMounted(async () => {
 	await Promise.all([fetchDepartments(), fetchMyPermissions()]);
@@ -63,17 +64,20 @@ watch(activeDept, async (d) => {
 
 function openCreate() {
 	editingTemplate.value = null;
+	editingIsDefault.value = false;
 	showBuilder.value = true;
 }
 
 function openEdit(tpl: FormTemplate) {
 	editingTemplate.value = tpl;
+	editingIsDefault.value = tpl.is_default;
 	showBuilder.value = true;
 }
 
 function closeBuilder() {
 	showBuilder.value = false;
 	editingTemplate.value = null;
+	editingIsDefault.value = false;
 }
 
 // Synthesize a SignupForm-shaped object so FormBuilder can render it.
@@ -106,11 +110,20 @@ async function onSave(payload: SignupFormInput) {
 	const name = payload.title.trim();
 	if (!name) return;
 	if (editingTemplate.value) {
-		await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions);
+		await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions, editingIsDefault.value);
 	} else {
-		await createTemplate(name, activeDept.value, payload.form_type, payload.questions);
+		await createTemplate(name, activeDept.value, payload.form_type, payload.questions, editingIsDefault.value);
+	}
+	if (editingIsDefault.value) {
+		await fetchTemplates(activeDept.value);
 	}
 	closeBuilder();
+}
+
+async function toggleDefault(tpl: FormTemplate) {
+	const newDefault = !tpl.is_default;
+	await updateTemplate(tpl.id, tpl.name, tpl.form_type, tpl.template_config, newDefault);
+	await fetchTemplates(activeDept.value);
 }
 
 async function onDelete(tpl: FormTemplate) {
@@ -149,6 +162,13 @@ function typeLabel(t: string): string {
 			<div class="ft-page-header">
 				<h2 class="ft-title">{{ editingTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage' }}</h2>
 			</div>
+			<div class="default-toggle-section">
+				<label class="checkbox-label">
+					<input v-model="editingIsDefault" type="checkbox" />
+					<span>Als Standard-Vorlage für diese Stufe setzen</span>
+				</label>
+				<p class="default-hint">Die Standard-Vorlage wird beim Erstellen eines Formulars automatisch ausgewählt.</p>
+			</div>
 			<FormBuilder
 				:initial="builderInitial"
 				:is-edit="!!editingTemplate"
@@ -176,13 +196,23 @@ function typeLabel(t: string): string {
 				class="ft-row"
 			>
 				<div class="ft-row-main">
-					<div class="ft-row-name">{{ tpl.name }}</div>
+					<div class="ft-row-name">
+						{{ tpl.name }}
+						<span v-if="tpl.is_default" class="default-badge">Standard</span>
+					</div>
 					<div class="ft-row-meta">
 						<span class="ft-mode" :data-type="tpl.form_type">{{ typeLabel(tpl.form_type) }}</span>
 						<span class="ft-count">{{ tpl.template_config.length }} Frage(n)</span>
 					</div>
 				</div>
 				<div class="ft-row-actions">
+					<button
+						:class="['btn-sm', tpl.is_default ? 'active-default' : '']"
+						@click="toggleDefault(tpl)"
+						:title="tpl.is_default ? 'Standard entfernen' : 'Als Standard setzen'"
+					>
+						{{ tpl.is_default ? '⭐ Standard' : '☆ Standard' }}
+					</button>
 					<button class="btn-sm" @click="openEdit(tpl)">Bearbeiten</button>
 					<button class="btn-sm danger" @click="onDelete(tpl)">Löschen</button>
 				</div>
@@ -282,6 +312,53 @@ function typeLabel(t: string): string {
 .btn-sm:hover { background: #f9fafb; }
 .btn-sm.danger { color: #dc2626; border-color: #fca5a5; }
 .btn-sm.danger:hover { background: #fee2e2; }
+
+.default-badge {
+	display: inline-block;
+	font-size: 0.7rem;
+	font-weight: 600;
+	background: #fef3c7;
+	color: #92400e;
+	padding: 0.1rem 0.4rem;
+	border-radius: 0.25rem;
+	margin-left: 0.4rem;
+	vertical-align: middle;
+}
+
+.active-default {
+	background: #fef3c7 !important;
+	border-color: #f59e0b !important;
+	color: #92400e !important;
+}
+
+.default-toggle-section {
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+	border-radius: 0.5rem;
+	padding: 0.75rem 1rem;
+	margin-bottom: 1rem;
+}
+
+.checkbox-label {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: #374151;
+	cursor: pointer;
+}
+.checkbox-label input[type="checkbox"] {
+	width: 1rem;
+	height: 1rem;
+	accent-color: #6366f1;
+}
+
+.default-hint {
+	margin: 0.25rem 0 0 1.5rem;
+	font-size: 0.75rem;
+	color: #9ca3af;
+}
 
 .tpl-vars {
 	margin-top: 2rem;

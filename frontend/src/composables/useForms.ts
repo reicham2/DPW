@@ -260,6 +260,7 @@ export function useFormTemplates() {
 		department: string,
 		form_type: FormType,
 		template_config: FormQuestionInput[],
+		is_default = false,
 	): Promise<FormTemplate | null> {
 		error.value = null;
 		try {
@@ -267,10 +268,13 @@ export function useFormTemplates() {
 			const res = await fetch(`${BASE}/form-templates`, {
 				method: 'POST',
 				headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name, department, form_type, template_config }),
+				body: JSON.stringify({ name, department, form_type, template_config, is_default }),
 			});
 			if (!res.ok) throw new Error(await res.text());
 			const tpl = (await res.json()) as FormTemplate;
+			if (is_default) {
+				templates.value.forEach((t) => { if (t.id !== tpl.id) t.is_default = false; });
+			}
 			templates.value.push(tpl);
 			return tpl;
 		} catch (e) {
@@ -284,6 +288,7 @@ export function useFormTemplates() {
 		name: string,
 		form_type: FormType,
 		template_config: FormQuestionInput[],
+		is_default = false,
 	): Promise<FormTemplate | null> {
 		error.value = null;
 		try {
@@ -291,10 +296,13 @@ export function useFormTemplates() {
 			const res = await fetch(`${BASE}/form-templates/${encodeURIComponent(id)}`, {
 				method: 'PUT',
 				headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name, form_type, template_config }),
+				body: JSON.stringify({ name, form_type, template_config, is_default }),
 			});
 			if (!res.ok) throw new Error(await res.text());
 			const tpl = (await res.json()) as FormTemplate;
+			if (is_default) {
+				templates.value.forEach((t) => { if (t.id !== id) t.is_default = false; });
+			}
 			const idx = templates.value.findIndex((t) => t.id === id);
 			if (idx !== -1) templates.value[idx] = tpl;
 			return tpl;
