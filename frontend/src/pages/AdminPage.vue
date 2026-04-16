@@ -49,9 +49,13 @@ const filterDept = ref<Department | 'Alle'>('Alle')
 
 onMounted(async () => {
   await fetchMyPermissions()
-  if (!currentUser.value || !canManageUsers()) {
+  if (!currentUser.value || (!canManageUsers() && !canManageLocations())) {
     router.replace('/')
     return
+  }
+  // Set default tab based on permissions
+  if (!canManageUsers() && canManageLocations()) {
+    activeTab.value = 'locations'
   }
   // Lock filter to own dept if user can only manage own dept
   if (myPermissions.value?.user_dept_scope === 'own_dept') {
@@ -210,6 +214,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   <!-- Tab navigation -->
   <nav class="tab-bar">
     <button
+      v-if="canManageUsers()"
       class="tab-btn"
       :class="{ 'tab-btn--active': activeTab === 'users' }"
       @click="activeTab = 'users'"
