@@ -223,8 +223,8 @@ onMounted(async () => {
 	// If no form exists, auto-open builder pre-filled with department template
 	if (!existingForm && activityDepartment.value) {
 		await fetchDeptTemplates(activityDepartment.value);
-		// Pick the first template for this department (if any)
-		const tpl = deptTemplates.value[0];
+		// Pick the default template for this department, or fall back to first
+		const tpl = deptTemplates.value.find(t => t.is_default) ?? deptTemplates.value[0];
 		if (tpl) {
 			templateInitial.value = {
 				id: '',
