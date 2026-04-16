@@ -198,6 +198,7 @@ CREATE TRIGGER trg_roles_updated_at
 CREATE TABLE signup_forms (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     activity_id UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    public_slug TEXT        NOT NULL UNIQUE DEFAULT substr(encode(gen_random_bytes(12), 'hex'), 1, 20),
     form_type   TEXT        NOT NULL CHECK (form_type IN ('registration', 'deregistration')),
     title       TEXT        NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -261,7 +262,44 @@ CREATE TRIGGER trg_form_templates_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE INDEX idx_signup_forms_activity    ON signup_forms(activity_id);
+CREATE INDEX idx_signup_forms_public_slug ON signup_forms(public_slug);
 CREATE INDEX idx_form_questions_form      ON form_questions(form_id);
 CREATE INDEX idx_form_responses_form      ON form_responses(form_id);
 CREATE INDEX idx_response_answers_resp    ON response_answers(response_id);
 CREATE INDEX idx_form_templates_dept      ON form_templates(department);
+
+-- ── Mail drafts (autosave) ──────────────────────────────────────────────────
+
+CREATE TABLE mail_drafts (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id  UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    recipients   TEXT[]      NOT NULL DEFAULT '{}',
+    subject      TEXT        NOT NULL DEFAULT '',
+    body_html    TEXT        NOT NULL DEFAULT '',
+    updated_by   UUID        REFERENCES users(id) ON DELETE SET NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (activity_id)
+);
+
+CREATE TRIGGER trg_mail_drafts_updated_at
+    BEFORE UPDATE ON mail_drafts
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX idx_mail_drafts_activity ON mail_drafts (activity_id);
+
+CREATE TABLE form_drafts (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id     UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    form_type       TEXT        NOT NULL DEFAULT 'registration',
+    title           TEXT        NOT NULL DEFAULT '',
+    questions_json  JSONB       NOT NULL DEFAULT '[]',
+    updated_by      UUID        REFERENCES users(id) ON DELETE SET NULL,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (activity_id)
+);
+
+CREATE TRIGGER trg_form_drafts_updated_at
+    BEFORE UPDATE ON form_drafts
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX idx_form_drafts_activity ON form_drafts (activity_id);

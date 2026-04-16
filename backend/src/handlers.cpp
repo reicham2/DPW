@@ -1599,6 +1599,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
                     std::string sender_id = current_user ? current_user->id : "";
                     std::string sender_email = current_user ? current_user->email : from_email;
                     db.log_sent_mail(activity_id, sender_id, sender_email, to_emails, subject, body_html);
+                    db.delete_mail_draft(activity_id);
                 }
                 send_json(res, 200, R"({"status":"sent"})");
             } else {
@@ -1661,6 +1662,301 @@ void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db)
         });
     }
     send_json(res, 200, arr.dump());
+}
+
+// ─── GET /activities/:id/mail-draft ──────────────────────────────────────────
+
+void handle_get_mail_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto activity = db.get_activity_by_id(activity_id);
+    if (!activity)
+    {
+        send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->mail_send_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    auto draft = db.get_mail_draft(activity_id);
+    if (!draft)
+    {
+        send_json(res, 404, R"({"error":"Kein Entwurf vorhanden"})");
+        return;
+    }
+
+    nlohmann::json recip_arr = nlohmann::json::array();
+    for (auto &r : draft->recipients)
+        recip_arr.push_back(r);
+
+    nlohmann::json j = {
+        {"id", draft->id},
+        {"activity_id", draft->activity_id},
+        {"recipients", recip_arr},
+        {"subject", draft->subject},
+        {"body_html", draft->body_html},
+        {"updated_by", draft->updated_by},
+        {"updated_at", draft->updated_at},
+    };
+    send_json(res, 200, j.dump());
+}
+
+// ─── PUT /activities/:id/mail-draft ──────────────────────────────────────────
+
+void handle_put_mail_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->mail_send_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string body_buf;
+    res->onData([res, &db, activity_id, user_id = current_user->id,
+                 body_buf = std::move(body_buf)](std::string_view data, bool last) mutable
+                {
+        body_buf.append(data);
+        if (!last) return;
+
+        nlohmann::json j;
+        try { j = nlohmann::json::parse(body_buf); }
+        catch (...)
+        {
+            send_json(res, 400, R"({"error":"Ungültiges JSON"})");
+            return;
+        }
+
+        std::vector<std::string> recipients;
+        if (j.contains("recipients") && j["recipients"].is_array())
+        {
+            for (auto &r : j["recipients"])
+                if (r.is_string() && !r.get<std::string>().empty())
+                    recipients.push_back(r.get<std::string>());
+        }
+
+        std::string subject = j.value("subject", "");
+        std::string body_html = j.value("body_html", "");
+
+        auto draft = db.upsert_mail_draft(activity_id, recipients, subject, body_html, user_id);
+        if (!draft)
+        {
+            send_json(res, 500, R"({"error":"Entwurf konnte nicht gespeichert werden"})");
+            return;
+        }
+
+        nlohmann::json recip_arr = nlohmann::json::array();
+        for (auto &r : draft->recipients)
+            recip_arr.push_back(r);
+
+        nlohmann::json out = {
+            {"id", draft->id},
+            {"activity_id", draft->activity_id},
+            {"recipients", recip_arr},
+            {"subject", draft->subject},
+            {"body_html", draft->body_html},
+            {"updated_by", draft->updated_by},
+            {"updated_at", draft->updated_at},
+        };
+        send_json(res, 200, out.dump()); });
+
+    res->onAborted([]() {});
+}
+
+// ─── DELETE /activities/:id/mail-draft ───────────────────────────────────────
+
+void handle_delete_mail_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto perm = db.get_role_permission(current_user->role);
+    if (!perm || perm->mail_send_scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    db.delete_mail_draft(activity_id);
+    send_json(res, 200, R"({"ok":true})");
+}
+
+// ─── GET /activities/:id/form-draft ─────────────────────────────────────────
+
+void handle_get_form_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto activity = db.get_activity_by_id(activity_id);
+    if (!activity)
+    {
+        send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+        return;
+    }
+
+    auto draft = db.get_form_draft(activity_id);
+    if (!draft)
+    {
+        send_json(res, 404, R"({"error":"Kein Entwurf vorhanden"})");
+        return;
+    }
+
+    nlohmann::json questions;
+    try
+    {
+        questions = nlohmann::json::parse(draft->questions_json);
+    }
+    catch (...)
+    {
+        questions = nlohmann::json::array();
+    }
+
+    nlohmann::json j = {
+        {"id", draft->id},
+        {"activity_id", draft->activity_id},
+        {"form_type", draft->form_type},
+        {"title", draft->title},
+        {"questions", questions},
+        {"updated_by", draft->updated_by},
+        {"updated_at", draft->updated_at},
+    };
+    send_json(res, 200, j.dump());
+}
+
+// ─── PUT /activities/:id/form-draft ─────────────────────────────────────────
+
+void handle_put_form_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string body_buf;
+    res->onData([res, &db, activity_id, user_id = current_user->id,
+                 body_buf = std::move(body_buf)](std::string_view data, bool last) mutable
+                {
+        body_buf.append(data);
+        if (!last) return;
+
+        nlohmann::json j;
+        try { j = nlohmann::json::parse(body_buf); }
+        catch (...)
+        {
+            send_json(res, 400, R"({"error":"Ungültiges JSON"})");
+            return;
+        }
+
+        std::string form_type = j.value("form_type", "registration");
+        std::string title = j.value("title", "");
+        std::string questions_json = "[]";
+        if (j.contains("questions") && j["questions"].is_array())
+            questions_json = j["questions"].dump();
+
+        auto draft = db.upsert_form_draft(activity_id, form_type, title, questions_json, user_id);
+        if (!draft)
+        {
+            send_json(res, 500, R"({"error":"Entwurf konnte nicht gespeichert werden"})");
+            return;
+        }
+
+        nlohmann::json questions;
+        try
+        {
+            questions = nlohmann::json::parse(draft->questions_json);
+        }
+        catch (...)
+        {
+            questions = nlohmann::json::array();
+        }
+
+        nlohmann::json out = {
+            {"id", draft->id},
+            {"activity_id", draft->activity_id},
+            {"form_type", draft->form_type},
+            {"title", draft->title},
+            {"questions", questions},
+            {"updated_by", draft->updated_by},
+            {"updated_at", draft->updated_at},
+        };
+        send_json(res, 200, out.dump()); });
+
+    res->onAborted([]() {});
+}
+
+// ─── DELETE /activities/:id/form-draft ───────────────────────────────────────
+
+void handle_delete_form_draft(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter("id")};
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    db.delete_form_draft(activity_id);
+    send_json(res, 200, R"({"ok":true})");
 }
 
 // ─── GitHub API helpers ───────────────────────────────────────────────────────
@@ -2975,7 +3271,7 @@ void handle_get_form_stats(HttpRes *res, HttpReq *req, Database &db)
     }
 }
 
-// ---- GET /forms/:activityId (public, no auth) --------------------------------
+// ---- GET /forms/:slug (public, no auth) --------------------------------
 
 // ---- Template variable resolution -------------------------------------------
 
@@ -3085,10 +3381,10 @@ static std::string replace_template_vars(const std::string &text, const Activity
 void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
 {
     set_cors(res);
-    std::string activity_id{req->getParameter(0)};
+    std::string public_slug{req->getParameter(0)};
     try
     {
-        auto form = db.get_form_for_activity(activity_id);
+        auto form = db.get_form_for_public_slug(public_slug);
         if (!form)
         {
             send_json(res, 404, R"({"error":"Formular nicht gefunden"})");
@@ -3096,7 +3392,7 @@ void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
         }
 
         // Resolve template variables in question texts using activity data
-        auto act = db.get_activity_by_id(activity_id);
+        auto act = db.get_activity_by_id(form->activity_id);
         if (act)
         {
             form->title = replace_template_vars(form->title, *act);
@@ -3130,12 +3426,12 @@ void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
     }
 }
 
-// ---- POST /forms/:activityId/submit (public, no auth) -----------------------
+// ---- POST /forms/:slug/submit (public, no auth) -----------------------
 
 void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db)
 {
     set_cors(res);
-    std::string activity_id{req->getParameter(0)};
+    std::string public_slug{req->getParameter(0)};
 
     std::string user_agent{req->getHeader("user-agent")};
     // IP is not available directly via uWS in this context; pass empty
@@ -3143,7 +3439,7 @@ void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db)
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, activity_id, user_agent, ip_address, &db](std::string_view chunk, bool last)
+    res->onData([res, buf, public_slug, user_agent, ip_address, &db](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -3151,7 +3447,7 @@ void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db)
         if (j.is_discarded()) { send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})"); return; }
 
         try {
-            auto form = db.get_form_for_activity(activity_id);
+            auto form = db.get_form_for_public_slug(public_slug);
             if (!form) { send_json(res, 404, R"({"error":"Formular nicht gefunden"})"); return; }
 
             // Parse answers: array of { question_id, answer_value }

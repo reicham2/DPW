@@ -138,6 +138,18 @@ int main()
                { handle_post_send_mail(res, req, db); })
          .get("/activities/:id/sent-mails", [&](auto *res, auto *req)
               { handle_get_sent_mails(res, req, db); })
+         .get("/activities/:id/mail-draft", [&](auto *res, auto *req)
+              { handle_get_mail_draft(res, req, db); })
+         .put("/activities/:id/mail-draft", [&](auto *res, auto *req)
+              { handle_put_mail_draft(res, req, db); })
+         .del("/activities/:id/mail-draft", [&](auto *res, auto *req)
+              { handle_delete_mail_draft(res, req, db); })
+         .get("/activities/:id/form-draft", [&](auto *res, auto *req)
+              { handle_get_form_draft(res, req, db); })
+         .put("/activities/:id/form-draft", [&](auto *res, auto *req)
+              { handle_put_form_draft(res, req, db); })
+         .del("/activities/:id/form-draft", [&](auto *res, auto *req)
+              { handle_delete_form_draft(res, req, db); })
 
          // Bug report — creates a GitHub issue
          .post("/bug-report", [&](auto *res, auto *req)
@@ -145,9 +157,9 @@ int main()
 
          // ── Forms ────────────────────────────────────────────────────────────
          // Public endpoints (no auth) — must be BEFORE /activities/:id
-         .get("/forms/:activityId", [&](auto *res, auto *req)
+         .get("/forms/:slug", [&](auto *res, auto *req)
               { handle_get_public_form(res, req, db); })
-         .post("/forms/:activityId/submit", [&](auto *res, auto *req)
+         .post("/forms/:slug/submit", [&](auto *res, auto *req)
                { handle_post_form_submit(res, req, db); })
 
          // Admin: form CRUD per activity

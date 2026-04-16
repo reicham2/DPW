@@ -40,6 +40,28 @@ struct SentMail
     std::string sent_at;
 };
 
+struct MailDraft
+{
+    std::string id;
+    std::string activity_id;
+    std::vector<std::string> recipients;
+    std::string subject;
+    std::string body_html;
+    std::string updated_by;
+    std::string updated_at;
+};
+
+struct FormDraft
+{
+    std::string id;
+    std::string activity_id;
+    std::string form_type;
+    std::string title;
+    std::string questions_json;
+    std::string updated_by;
+    std::string updated_at;
+};
+
 struct DepartmentRecord
 {
     std::string name;
@@ -155,6 +177,23 @@ public:
                                           const std::string &body_html);
     std::vector<SentMail> list_sent_mails(const std::string &activity_id);
 
+    // Mail drafts
+    std::optional<MailDraft> get_mail_draft(const std::string &activity_id);
+    std::optional<MailDraft> upsert_mail_draft(const std::string &activity_id,
+                                               const std::vector<std::string> &recipients,
+                                               const std::string &subject,
+                                               const std::string &body_html,
+                                               const std::string &updated_by);
+    bool delete_mail_draft(const std::string &activity_id);
+    // Form drafts
+    std::optional<FormDraft> get_form_draft(const std::string &activity_id);
+    std::optional<FormDraft> upsert_form_draft(const std::string &activity_id,
+                                               const std::string &form_type,
+                                               const std::string &title,
+                                               const std::string &questions_json,
+                                               const std::string &updated_by);
+    bool delete_form_draft(const std::string &activity_id);
+
     // Departments CRUD
     std::vector<DepartmentRecord> list_departments();
     std::optional<DepartmentRecord> create_department(const std::string &name, const std::string &color);
@@ -218,6 +257,7 @@ public:
 
     // Public form access (no auth)
     std::optional<SignupForm> get_form_by_id(const std::string &form_id);
+    std::optional<SignupForm> get_form_for_public_slug(const std::string &public_slug);
 
     // Responses
     std::optional<FormResponse> submit_response(const std::string &form_id,
@@ -257,6 +297,8 @@ private:
     UserRecord row_to_user(PGresult *res, int row);
     MailTemplate row_to_mail_template(PGresult *res, int row);
     SentMail row_to_sent_mail(PGresult *res, int row);
+    MailDraft row_to_mail_draft(PGresult *res, int row);
+    FormDraft row_to_form_draft(PGresult *res, int row);
     DepartmentRecord row_to_department(PGresult *res, int row);
     RoleRecord row_to_role(PGresult *res, int row);
     RolePermission row_to_role_perm(PGresult *res, int row);

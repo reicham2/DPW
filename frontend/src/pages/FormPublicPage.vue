@@ -75,7 +75,7 @@ import { useForms } from '../composables/useForms';
 import FormQuestion from '../components/FormQuestion.vue';
 
 const route = useRoute();
-const activityId = route.params.activityId as string;
+const publicSlug = route.params.slug as string;
 
 const { loading, error } = useForms();
 const { fetchPublicForm, submitResponse } = useForms();
@@ -90,7 +90,7 @@ const answers = reactive<Record<string, string>>({});
 const validationErrors = reactive<Record<string, string>>({});
 
 onMounted(async () => {
-	const result = await fetchPublicForm(activityId);
+	const result = await fetchPublicForm(publicSlug);
 	if (!result) {
 		notFound.value = true;
 		return;
@@ -126,7 +126,7 @@ async function doSubmit() {
 			question_id,
 			answer_value,
 		}));
-		const result = await submitResponse(activityId, { answers: answerList });
+		const result = await submitResponse(publicSlug, { answers: answerList });
 		if (!result) {
 			submitError.value = error.value ?? 'Ein Fehler ist aufgetreten.';
 			return;

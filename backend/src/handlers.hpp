@@ -57,6 +57,15 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
 void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db);
 
+// Mail draft endpoints
+void handle_get_mail_draft(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_mail_draft(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_mail_draft(HttpRes *res, HttpReq *req, Database &db);
+// Form draft endpoints
+void handle_get_form_draft(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_form_draft(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_form_draft(HttpRes *res, HttpReq *req, Database &db);
+
 // Bug report (creates GitHub issue)
 void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db);
 

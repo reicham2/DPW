@@ -36,6 +36,7 @@
 					:is-edit="!!editingForm"
 					:department="activityDepartment"
 					@save="onSave"
+					@autosave="onAutoSave"
 					@cancel="cancelBuilder"
 				/>
 			</template>
@@ -51,7 +52,7 @@
 					</div>
 					<div class="header-actions">
 						<a
-							:href="`/forms/${activityId}`"
+							:href="form?.public_slug ? `/forms/${form.public_slug}` : '#'"
 							target="_blank"
 							class="btn-outline"
 						>
@@ -194,6 +195,9 @@ const {
 	fetchResponse,
 	deleteResponse,
 	fetchStats,
+	getFormDraft,
+	saveFormDraft,
+	deleteFormDraft,
 } = useForms();
 
 const { fetchActivity } = useActivities();
@@ -214,6 +218,10 @@ const selectedResponse = ref<FormResponse | null>(null);
 // Pre-built initial form from template (auto-filled when no form exists)
 const templateInitial = ref<SignupForm | null>(null);
 
+// Draft persistence state
+const hadDraftOnEntry = ref(false);
+const currentDraft = ref<SignupForm | null>(null);
+
 const tabs = [
 	{ id: 'questions' as const, label: 'Fragen' },
 	{ id: 'responses' as const, label: 'Antworten' },
@@ -233,32 +241,41 @@ onMounted(async () => {
 
 	const existingForm = await fetchForm(activityId);
 
-	// If no form exists, auto-open builder pre-filled with department template
+	// If no form exists, auto-open builder
 	if (!existingForm && activityDepartment.value) {
 		await fetchDeptTemplates(activityDepartment.value);
-		// Pick the default template for this department, or fall back to first
-		const tpl = deptTemplates.value.find(t => t.is_default) ?? deptTemplates.value[0];
-		if (tpl) {
-			templateInitial.value = {
-				id: '',
-				activity_id: activityId,
-				form_type: tpl.form_type,
-				title: tpl.name,
-				created_by: '',
-				created_at: '',
-				updated_at: '',
-				questions: (tpl.template_config ?? []).map((q, i) => ({
-					id: `tpl-${i}`,
-					form_id: '',
+
+		const draft = await getFormDraft(activityId);
+		if (draft) {
+			hadDraftOnEntry.value = true;
+			currentDraft.value = draft;
+			templateInitial.value = draft;
+		} else {
+			const tpl = deptTemplates.value.find(t => t.is_default) ?? deptTemplates.value[0];
+			if (tpl) {
+				templateInitial.value = {
+					id: '',
+					activity_id: activityId,
+					public_slug: '',
+					form_type: tpl.form_type,
+					title: tpl.name,
+					created_by: '',
 					created_at: '',
-					question_text: q.question_text,
-					question_type: q.question_type,
-					position: q.position ?? i,
-					is_required: q.is_required,
-					metadata: q.metadata ?? {},
-				})),
-			};
+					updated_at: '',
+					questions: (tpl.template_config ?? []).map((q, i) => ({
+						id: `tpl-${i}`,
+						form_id: '',
+						created_at: '',
+						question_text: q.question_text,
+						question_type: q.question_type,
+						position: q.position ?? i,
+						is_required: q.is_required,
+						metadata: q.metadata ?? {},
+					})),
+				};
+			}
 		}
+
 		showBuilder.value = true;
 	}
 });
@@ -289,11 +306,20 @@ function openEdit() {
 function goBack() {
 	if (showBuilder.value && formBuilderRef.value) {
 		formBuilderRef.value.flushAutoSave();
+		if (form.value) {
+			showBuilder.value = false;
+			editingForm.value = null;
+			return;
+		}
 	}
 	router.push(`/activities/${activityId}`);
 }
 
-function cancelBuilder() {
+async function cancelBuilder() {
+	// If we had a draft on entry, don't delete it; let user come back to it later
+	if (!hadDraftOnEntry.value) {
+		await deleteFormDraft(activityId);
+	}
 	showBuilder.value = false;
 	editingForm.value = null;
 	// If there's no form (auto-opened builder), go back to the activity
@@ -308,8 +334,24 @@ async function onSave(payload: SignupFormInput) {
 	} else {
 		await createForm(activityId, payload);
 	}
+	// Delete draft after successful save
+	await deleteFormDraft(activityId);
 	showBuilder.value = false;
 	editingForm.value = null;
+}
+
+async function onAutoSave(payload: SignupFormInput) {
+	if (editingForm.value) {
+		await updateForm(activityId, payload);
+	} else {
+		// Save to draft instead of main form
+		await saveFormDraft(
+			activityId,
+			payload.form_type,
+			payload.title,
+			payload.questions,
+		);
+	}
 }
 
 function confirmDelete() {

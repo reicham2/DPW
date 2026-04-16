@@ -10,13 +10,14 @@ import { useForms } from '../composables/useForms';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import type { Activity, Department, SentMail } from '../types';
+import { useAutosave } from '../composables/useAutosave';
 
 const route = useRoute()
 const router = useRouter()
 const activityId = route.params.id as string
 
 const { fetchActivity } = useActivities()
-const { fetchTemplate, sendMail, sending, error, fetchSentMails } = useMailTemplates()
+const { fetchTemplate, sendMail, sending, error, fetchSentMails, fetchDraft, saveDraft, deleteDraft } = useMailTemplates()
 const { myPermissions, fetchMyPermissions } = usePermissions()
 const { fetchForm: fetchActivityForm } = useForms()
 
@@ -46,9 +47,38 @@ const viewingMail = ref<SentMail | null>(null)
 
 // Form link state
 const hasForm = ref(false)
-const showNoFormDialog = ref(false)
 const formUrl = ref('')
 const linkCopied = ref(false)
+
+// Autosave / per-field saved indicators
+const savedFields = ref<Record<string, number>>({})
+let savedTimer: ReturnType<typeof setTimeout> | null = null
+const dirtyFieldSet = new Set<string>()
+
+function showSavedIndicator() {
+	if (savedTimer) clearTimeout(savedTimer)
+	const snap: Record<string, number> = {}
+	for (const f of dirtyFieldSet) snap[f] = Date.now()
+	dirtyFieldSet.clear()
+	savedFields.value = snap
+	savedTimer = setTimeout(() => { savedFields.value = {} }, 2000)
+}
+
+function markDirty(field: string) {
+	dirtyFieldSet.add(field)
+	scheduleAutoSave()
+}
+
+const { scheduleAutoSave, flushAutoSave, cancelAutoSave } = useAutosave(async () => {
+	await saveDraft(activityId, recipients.value.filter(r => r.trim()), subject.value, body.value)
+	showSavedIndicator()
+})
+
+// Snapshot for cancel/revert
+let initialRecipients: string[] = []
+let initialSubject = ''
+let initialBody = ''
+let hadDraftOnEntry = false
 
 function formatDateLong(d: string): string {
   return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
@@ -92,7 +122,7 @@ function replaceTemplateVars(text: string, act: Activity): string {
     absender_email: senderEmail,
     absender_name: senderName,
   }
-  const formLink = `${window.location.origin}/forms/${act.id}`
+  const formLink = formUrl.value || '#'
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
   const textNodes: Text[] = []
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
@@ -146,13 +176,7 @@ onMounted(async () => {
   const existingForm = await fetchActivityForm(activityId)
   if (existingForm) {
     hasForm.value = true
-    formUrl.value = `${window.location.origin}/forms/${activityId}`
-  } else {
-    const skipKey = `dpw_skip_no_form_${activityId}`
-    if (!localStorage.getItem(skipKey)) {
-      showNoFormDialog.value = true
-      return
-    }
+    formUrl.value = `${window.location.origin}/forms/${existingForm.public_slug}`
   }
 
   // Load sent mails for this activity
@@ -171,6 +195,21 @@ onMounted(async () => {
       }
     }
   }
+
+  // Load existing draft (overrides template if present)
+  const draft = await fetchDraft(activityId)
+  if (draft) {
+    hadDraftOnEntry = true
+    if (draft.recipients.length) recipients.value = [...draft.recipients]
+    if (draft.subject) subject.value = draft.subject
+    if (draft.body_html) body.value = draft.body_html
+  }
+
+  // Snapshot initial state for cancel/revert
+  initialRecipients = [...recipients.value]
+  initialSubject = subject.value
+  initialBody = body.value
+
   nextTick(() => {
     if (editorRef.value) editorRef.value.innerHTML = body.value
   })
@@ -179,6 +218,7 @@ onMounted(async () => {
 function onEditorInput() {
   if (editorRef.value) body.value = editorRef.value.innerHTML
   updateToolbarState()
+  markDirty('body')
 }
 
 function updateToolbarState() {
@@ -347,11 +387,13 @@ function addRecipient(email: string) {
 	recipientSearch.value = '';
 	showRecipientDropdown.value = false;
 	clearContactSearch();
+	markDirty('recipients');
 }
 
 function removeRecipient(index: number) {
 	recipients.value.splice(index, 1);
 	if (recipients.value.length === 0) recipients.value = [''];
+	markDirty('recipients');
 }
 
 // ---- Contact search ---------------------------------------------------------
@@ -384,11 +426,15 @@ async function handleSend() {
 	if (validTo.length === 0 || !subject.value.trim() || !body.value.trim())
 		return;
 
+	cancelAutoSave();
 	const fromEmail = user.value?.email ?? '';
 	const bodyHtml = body.value;
 
 	const ok = await sendMail(validTo, subject.value, bodyHtml, fromEmail, activityId);
-	if (ok) sent.value = true;
+	if (ok) {
+		await deleteDraft(activityId);
+		sent.value = true;
+	}
 }
 
 function confirmWarning() {
@@ -409,33 +455,6 @@ function closeMailViewer() {
 	viewingMail.value = null
 }
 
-function goToCreateForm() {
-	router.push(`/activities/${activityId}/forms`)
-}
-
-async function skipNoFormAndContinue() {
-	localStorage.setItem(`dpw_skip_no_form_${activityId}`, '1')
-	showNoFormDialog.value = false
-	// Continue loading mail composer
-	sentMails.value = await fetchSentMails(activityId)
-	if (sentMails.value.length > 0) {
-		showWarning.value = true
-	}
-	if (activity.value?.department) {
-		const tpl = await fetchTemplate(activity.value.department as Department)
-		if (tpl) {
-			subject.value = replaceTemplateVars(tpl.subject, activity.value)
-			body.value    = replaceTemplateVars(tpl.body, activity.value)
-			if (tpl.recipients?.length) {
-				recipients.value = [...tpl.recipients]
-			}
-		}
-	}
-	nextTick(() => {
-		if (editorRef.value) editorRef.value.innerHTML = body.value
-	})
-}
-
 async function copyFormLink() {
 	try {
 		await navigator.clipboard.writeText(formUrl.value)
@@ -453,46 +472,41 @@ async function copyFormLink() {
 		setTimeout(() => { linkCopied.value = false }, 2000)
 	}
 }
+
+async function cancelAndRevert() {
+	cancelAutoSave()
+	recipients.value = [...initialRecipients]
+	subject.value = initialSubject
+	body.value = initialBody
+	if (hadDraftOnEntry) {
+		await saveDraft(activityId, initialRecipients.filter(r => r.trim()), initialSubject, initialBody)
+	} else {
+		await deleteDraft(activityId)
+	}
+	router.back()
+}
 </script>
 
 <template>
 	<header class="header">
-		<button class="btn-back" @click="router.back()">← Zurück</button>
+		<button class="btn-back" @click="flushAutoSave(); router.back()">← Zurück</button>
 		<h1>Mail senden</h1>
 	</header>
 
 	<main class="main">
 		<ErrorAlert :error="loadError" />
 
-		<!-- No-form dialog -->
-		<div v-if="!loadError && showNoFormDialog" class="mail-warning-overlay">
-			<div class="mail-warning-box">
-				<div class="mail-warning-icon">📋</div>
-				<h2 class="mail-warning-title">Kein Formular vorhanden</h2>
-				<p class="mail-warning-text">
-					Für diese Aktivität wurde noch kein Anmeldeformular erstellt.
-					Möchtest du zuerst ein Formular erstellen?
-				</p>
-				<div class="mail-warning-actions" style="flex-wrap: wrap; gap: 0.5rem;">
-					<button class="btn-secondary" @click="router.back()">Abbrechen</button>
-					<button class="btn-secondary" @click="skipNoFormAndContinue">Nicht mehr fragen &amp; Mail senden</button>
-					<button class="btn-primary" @click="goToCreateForm">Formular erstellen</button>
-				</div>
-			</div>
-		</div>
-
 		<!-- Warning dialog when mails already sent -->
-		<div v-if="!loadError && showWarning && !warningConfirmed" class="mail-warning-overlay">
-			<div class="mail-warning-box">
-				<div class="mail-warning-icon">⚠️</div>
-				<h2 class="mail-warning-title">Bereits versendete Mails</h2>
-				<p class="mail-warning-text">
+		<div v-if="!loadError && showWarning && !warningConfirmed" class="modal-backdrop" @click.self="router.back()">
+			<div class="modal modal--info">
+				<h2 class="modal-title modal-title--info">Bereits versendete Mails</h2>
+				<p class="modal-warning">
 					Für diese Aktivität {{ sentMails.length === 1 ? 'wurde bereits 1 Mail' : `wurden bereits ${sentMails.length} Mails` }} versendet.
 					Möchtest du trotzdem ein weiteres Mail senden?
 				</p>
-				<div class="mail-warning-actions">
-					<button class="btn-secondary" @click="router.back()">Abbrechen</button>
-					<button class="btn-primary" @click="confirmWarning">Trotzdem senden</button>
+				<div class="modal-actions">
+					<button class="btn-cancel" @click="router.back()">Abbrechen</button>
+					<button class="btn-info" @click="confirmWarning">Trotzdem senden</button>
 				</div>
 			</div>
 		</div>
@@ -581,7 +595,7 @@ async function copyFormLink() {
 
 			<!-- Recipients -->
 			<div class="form-group user-search-group">
-				<label>Empfänger <span class="required">*</span></label>
+				<label>Empfänger <span class="required">*</span> <span v-if="savedFields['recipients']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['recipients']">💾</span></label>
 				<div class="user-chips" v-if="recipients.filter(r => r).length">
 					<span v-for="(email, i) in recipients" :key="email || i" class="user-chip" v-show="email">
 						{{ email }}
@@ -615,13 +629,13 @@ async function copyFormLink() {
 
 			<!-- Subject -->
 			<div class="form-group">
-				<label>Betreff <span class="required">*</span></label>
-				<input v-model="subject" type="text" required />
+				<label>Betreff <span class="required">*</span> <span v-if="savedFields['subject']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['subject']">💾</span></label>
+				<input v-model="subject" type="text" required @input="markDirty('subject')" />
 			</div>
 
 			<!-- Body -->
 			<div class="form-group">
-				<label>Nachricht <span class="required">*</span></label>
+				<label>Nachricht <span class="required">*</span> <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['body']">💾</span></label>
 				<div class="rich-editor-toolbar">
 					<select class="toolbar-select" :value="curFont" @change="execCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
 						<option value="" disabled>Schriftart</option>
@@ -669,7 +683,7 @@ async function copyFormLink() {
 			<ErrorAlert :error="error" />
 
 			<div class="form-actions">
-				<button type="button" class="btn-secondary" @click="router.back()">
+				<button type="button" class="btn-secondary" @click="cancelAndRevert">
 					Abbrechen
 				</button>
 				<button type="submit" class="btn-primary" :disabled="sending">

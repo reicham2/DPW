@@ -33,6 +33,7 @@ const visibleDepartments = computed<Department[]>(() => {
 
 const activeDept = ref<Department>((user.value?.department as Department) ?? ('' as Department));
 
+const formBuilderRef = ref<InstanceType<typeof FormBuilder> | null>(null);
 const showBuilder = ref(false);
 const editingTemplate = ref<FormTemplate | null>(null);
 const editingIsDefault = ref(false);
@@ -75,6 +76,7 @@ const builderInitial = computed<SignupForm | null>(() => {
 	return {
 		id: tpl.id,
 		activity_id: '',
+		public_slug: '',
 		form_type: tpl.form_type,
 		title: tpl.name,
 		created_by: tpl.created_by,
@@ -105,6 +107,12 @@ async function onSave(payload: SignupFormInput) {
 		await fetchTemplates(activeDept.value);
 	}
 	closeBuilder();
+}
+
+async function onAutoSave(payload: SignupFormInput) {
+	const name = payload.title.trim();
+	if (!name || !editingTemplate.value) return;
+	await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions, editingIsDefault.value);
 }
 
 async function toggleDefault(tpl: FormTemplate) {
@@ -157,13 +165,18 @@ function typeLabel(t: string): string {
 				<p class="default-hint">Die Standard-Vorlage wird beim Erstellen eines Formulars automatisch ausgewählt.</p>
 			</div>
 			<FormBuilder
+				ref="formBuilderRef"
 				:initial="builderInitial"
 				:is-edit="!!editingTemplate"
 				title-label="Name der Vorlage"
 				title-placeholder="z. B. Standard-Anmeldung Pio"
 				@save="onSave"
+				@autosave="onAutoSave"
 				@cancel="closeBuilder"
 			/>
+			<div style="margin-top: 24px">
+				<TemplateVarsDropdown />
+			</div>
 		</template>
 
 		<!-- List -->
@@ -205,9 +218,6 @@ function typeLabel(t: string): string {
 				</div>
 			</div>
 		</template>
-
-		<!-- Variable reference -->
-		<TemplateVarsDropdown hint="Variablen werden im öffentlichen Formular automatisch mit den Aktivitäts-Daten ersetzt." />
 	</main>
 </template>
 

@@ -114,6 +114,16 @@ export interface SentMail {
 	sent_at: string;
 }
 
+export interface MailDraft {
+	id: string;
+	activity_id: string;
+	recipients: string[];
+	subject: string;
+	body_html: string;
+	updated_by: string;
+	updated_at: string;
+}
+
 export interface Attachment {
 	id: string;
 	activity_id: string;
@@ -204,6 +214,7 @@ export interface FormQuestionInput {
 export interface SignupForm {
 	id: string;
 	activity_id: string;
+	public_slug: string;
 	form_type: FormType;
 	title: string;
 	created_by: string;

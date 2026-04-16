@@ -129,6 +129,7 @@ struct SignupForm
 {
     std::string id;
     std::string activity_id;
+    std::string public_slug;
     std::string form_type; // registration | deregistration
     std::string title;
     std::string created_by;
@@ -185,6 +186,7 @@ inline nlohmann::json signup_form_to_json(const SignupForm &f)
     return {
         {"id", f.id},
         {"activity_id", f.activity_id},
+        {"public_slug", f.public_slug},
         {"form_type", f.form_type},
         {"title", f.title},
         {"created_by", f.created_by},

@@ -201,13 +201,13 @@ export function useForms() {
 	// ── Public submission (no auth) ───────────────────────────────────────────
 
 	async function fetchPublicForm(
-		activityId: string,
+		publicSlug: string,
 	): Promise<SignupForm | null> {
 		loading.value = true;
 		error.value = null;
 		try {
 			const res = await fetch(
-				`${BASE}/forms/${encodeURIComponent(activityId)}`,
+				`${BASE}/forms/${encodeURIComponent(publicSlug)}`,
 			);
 			if (res.status === 404) return null;
 			if (!res.ok) throw new Error(await res.text());
@@ -222,14 +222,14 @@ export function useForms() {
 	}
 
 	async function submitResponse(
-		activityId: string,
+		publicSlug: string,
 		payload: FormSubmitPayload,
 	): Promise<FormResponse | null> {
 		loading.value = true;
 		error.value = null;
 		try {
 			const res = await fetch(
-				`${BASE}/forms/${encodeURIComponent(activityId)}/submit`,
+				`${BASE}/forms/${encodeURIComponent(publicSlug)}/submit`,
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -249,6 +249,79 @@ export function useForms() {
 		}
 	}
 
+	// ── Form drafts ───────────────────────────────────────────────────────────
+
+	async function getFormDraft(activityId: string): Promise<SignupForm | null> {
+		try {
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form-draft`,
+			);
+			if (res.status === 404) return null;
+			if (!res.ok) return null;
+			const data = (await res.json()) as any;
+			return {
+				id: data.id,
+				activity_id: data.activity_id,
+				public_slug: '',
+				form_type: data.form_type,
+				title: data.title,
+				created_by: data.updated_by,
+				created_at: data.updated_at,
+				updated_at: data.updated_at,
+				questions: data.questions || [],
+			} as SignupForm;
+		} catch {
+			return null;
+		}
+	}
+
+	async function saveFormDraft(
+		activityId: string,
+		formType: FormType,
+		title: string,
+		questions: FormQuestionInput[],
+	): Promise<SignupForm | null> {
+		try {
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form-draft`,
+				{
+					method: 'PUT',
+					body: JSON.stringify({
+						form_type: formType,
+						title,
+						questions,
+					}),
+				},
+			);
+			if (!res.ok) return null;
+			const data = (await res.json()) as any;
+			return {
+				id: data.id,
+				activity_id: data.activity_id,
+				public_slug: '',
+				form_type: data.form_type,
+				title: data.title,
+				created_by: data.updated_by,
+				created_at: data.updated_at,
+				updated_at: data.updated_at,
+				questions: data.questions || [],
+			} as SignupForm;
+		} catch {
+			return null;
+		}
+	}
+
+	async function deleteFormDraft(activityId: string): Promise<void> {
+		try {
+			await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/form-draft`,
+				{ method: 'DELETE' },
+			);
+		} catch {
+			// ignore
+		}
+	}
+
 	return {
 		form,
 		responses,
@@ -265,6 +338,9 @@ export function useForms() {
 		fetchStats,
 		fetchPublicForm,
 		submitResponse,
+		getFormDraft,
+		saveFormDraft,
+		deleteFormDraft,
 	};
 }
 
