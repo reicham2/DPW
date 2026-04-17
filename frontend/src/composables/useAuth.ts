@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import type { PublicClientApplication, AccountInfo } from '@azure/msal-browser';
 import type { User } from '../types';
 import { config } from '../config';
+import { wsDisconnect } from './useWebSocket';
 
 const msalConfig = {
 	auth: {
@@ -26,6 +27,7 @@ const graphMailScopes = {
 let msalInstance: PublicClientApplication | null = null;
 let debugUserId: string | null = null;
 const DEBUG_USER_STORAGE_KEY = 'dpw.debugUserId';
+const DEBUG_AUTH_ENABLED = import.meta.env.VITE_ENABLE_DEBUG_AUTH === '1';
 
 export const user = ref<User | null>(null);
 export const authLoading = ref(true);
@@ -42,7 +44,7 @@ async function getMsal(): Promise<PublicClientApplication> {
 }
 
 export async function getIdToken(): Promise<string> {
-	if (debugUserId) return `debug:${debugUserId}`;
+	if (DEBUG_AUTH_ENABLED && debugUserId) return `debug:${debugUserId}`;
 
 	const msal = await getMsal();
 	const account = msal.getActiveAccount();
@@ -108,6 +110,7 @@ export async function login(): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
+	wsDisconnect();
 	if (!debugUserId) {
 		const msal = await getMsal();
 		msal.setActiveAccount(null);
@@ -117,9 +120,13 @@ export async function logout(): Promise<void> {
 	user.value = null;
 }
 
-export const isDebug = config.DEBUG;
+export const isDebug = DEBUG_AUTH_ENABLED;
 
 export async function debugLogin(userId: string): Promise<void> {
+	if (!DEBUG_AUTH_ENABLED) {
+		throw new Error('Debug-Authentifizierung ist in diesem Build deaktiviert.');
+	}
+	wsDisconnect();
 	loginError.value = null;
 	try {
 		debugUserId = userId;
@@ -136,7 +143,13 @@ export async function debugLogin(userId: string): Promise<void> {
 
 export async function initAuth(): Promise<void> {
 	try {
-		const storedDebugUserId = localStorage.getItem(DEBUG_USER_STORAGE_KEY);
+		if (!DEBUG_AUTH_ENABLED) {
+			localStorage.removeItem(DEBUG_USER_STORAGE_KEY);
+		}
+
+		const storedDebugUserId = DEBUG_AUTH_ENABLED
+			? localStorage.getItem(DEBUG_USER_STORAGE_KEY)
+			: null;
 		if (storedDebugUserId) {
 			debugUserId = storedDebugUserId;
 			await syncUser(`debug:${storedDebugUserId}`);

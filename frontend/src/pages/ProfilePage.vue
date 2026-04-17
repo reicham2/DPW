@@ -84,7 +84,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { user, getIdToken } from '../composables/useAuth'
+import { user } from '../composables/useAuth'
+import { apiFetch } from '../composables/useApi'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
@@ -136,13 +137,8 @@ async function save() {
   saved.value  = false
   error.value  = null
   try {
-    const token = await getIdToken()
-    const res = await fetch('/api/me', {
+    const res = await apiFetch('/api/me', {
       method: 'PATCH',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
       body: JSON.stringify({
         display_name: form.value.display_name,
         department:   form.value.department || null,

@@ -53,22 +53,22 @@
         <!-- Debug login -->
         <template v-if="isDebug">
           <div class="auth-divider"><span>Debug Login</span></div>
-          <div v-if="debugUsersLoading" class="auth-debug-loading">Benutzer laden…</div>
-          <template v-else>
-            <select v-model="debugSelectedUser" class="auth-debug-select">
-              <option value="" disabled>Benutzer wählen…</option>
-              <option v-for="u in debugUsers" :key="u.id" :value="u.id">
-                {{ u.display_name }} ({{ u.role }}{{ u.department ? ', ' + u.department : '' }})
-              </option>
-            </select>
-            <button
-              class="auth-btn auth-btn-debug"
-              @click="handleDebugLogin"
-              :disabled="!debugSelectedUser || loggingIn"
-            >
-              {{ loggingIn ? 'Anmelden...' : 'Als Benutzer anmelden' }}
-            </button>
-          </template>
+          <select
+            v-model="debugSelectedUser"
+            class="auth-debug-select"
+          >
+            <option value="" disabled>Benutzer wählen…</option>
+            <option v-for="u in debugUsers" :key="u.id" :value="u.id">
+              {{ u.display_name }} ({{ u.role }}{{ u.department ? `, ${u.department}` : '' }})
+            </option>
+          </select>
+          <button
+            class="auth-btn auth-btn-debug"
+            @click="handleDebugLogin"
+            :disabled="!debugSelectedUser || loggingIn"
+          >
+            {{ loggingIn ? 'Anmelden...' : 'Als Benutzer anmelden' }}
+          </button>
         </template>
 
         <p v-if="loginError" class="auth-error">{{ loginError }}</p>
@@ -91,7 +91,6 @@ import UserAvatar from './components/UserAvatar.vue'
 import BugReportButton from './components/BugReportButton.vue'
 import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
 import { usePermissions } from './composables/usePermissions'
-import type { User } from './types'
 
 const route = useRoute()
 const { myPermissions, fetchMyPermissions } = usePermissions()
@@ -108,9 +107,15 @@ const showAdmin = computed(() => {
 })
 
 const loggingIn = ref(false)
-const debugUsers = ref<User[]>([])
 const debugSelectedUser = ref('')
-const debugUsersLoading = ref(false)
+const debugUsers = ref<{ id: string; display_name: string; role: string; department: string | null }[]>([])
+
+async function fetchDebugUsers() {
+  try {
+    const res = await fetch('/api/debug/users')
+    if (res.ok) debugUsers.value = await res.json()
+  } catch { /* non-critical */ }
+}
 
 async function handleLogin() {
   loggingIn.value = true
@@ -123,20 +128,9 @@ async function handleDebugLogin() {
   try { await debugLogin(debugSelectedUser.value) } finally { loggingIn.value = false }
 }
 
-async function loadDebugUsers() {
-  if (!isDebug) return
-  debugUsersLoading.value = true
-  try {
-    const res = await fetch('/api/debug/users')
-    if (res.ok) debugUsers.value = await res.json()
-  } finally {
-    debugUsersLoading.value = false
-  }
-}
-
 onMounted(() => {
   initAuth()
-  loadDebugUsers()
+  if (isDebug) fetchDebugUsers()
 })
 
 watch(user, (u) => {
@@ -249,6 +243,11 @@ watch(user, (u) => {
   background: #fff;
   color: #1a202c;
   cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
 }
 .auth-btn-debug {
   background: #6b7280;

@@ -1,5 +1,6 @@
 import { ref } from 'vue';
-import { getIdToken } from './useAuth';
+import { apiFetch } from './useApi';
+import { wsAddGlobalHandler } from './useWebSocket';
 import type {
 	DepartmentRecord,
 	LocationRecord,
@@ -8,6 +9,7 @@ import type {
 	RoleDeptAccess,
 	MyPermissions,
 	Activity,
+	WsEvent,
 } from '../types';
 
 const departments = ref<DepartmentRecord[]>([]);
@@ -17,22 +19,28 @@ const myPermissions = ref<MyPermissions | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+// ── Live updates via WebSocket ──────────────────────────────────────────────
+
+wsAddGlobalHandler((event: WsEvent) => {
+	if (event.event === 'department_deleted') {
+		departments.value = departments.value.filter((d) => d.name !== event.name);
+	} else if (event.event === 'role_deleted') {
+		roles.value = roles.value.filter((r) => r.name !== event.name);
+		rolePermissions.value = rolePermissions.value.filter((p) => p.role !== event.name);
+	}
+});
+
 // ── Departments CRUD ────────────────────────────────────────────────────────
 
 async function fetchDepartments() {
-	const res = await fetch('/api/departments');
+	const res = await apiFetch('/api/departments');
 	if (!res.ok) throw new Error(await res.text());
 	departments.value = await res.json();
 }
 
 async function createDepartment(dept: Partial<DepartmentRecord>) {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/departments', {
+	const res = await apiFetch('/api/admin/departments', {
 		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
 		body: JSON.stringify(dept),
 	});
 	if (!res.ok) throw new Error(await res.text());
@@ -43,15 +51,10 @@ async function updateDepartment(
 	oldName: string,
 	dept: Partial<DepartmentRecord>,
 ) {
-	const token = await getIdToken();
-	const res = await fetch(
+	const res = await apiFetch(
 		`/api/admin/departments/${encodeURIComponent(oldName)}`,
 		{
 			method: 'PATCH',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Bearer ${token}`,
-			},
 			body: JSON.stringify(dept),
 		},
 	);
@@ -60,13 +63,9 @@ async function updateDepartment(
 }
 
 async function deleteDepartment(name: string) {
-	const token = await getIdToken();
-	const res = await fetch(
+	const res = await apiFetch(
 		`/api/admin/departments/${encodeURIComponent(name)}`,
-		{
-			method: 'DELETE',
-			headers: { Authorization: `Bearer ${token}` },
-		},
+		{ method: 'DELETE' },
 	);
 	if (!res.ok) throw new Error(await res.text());
 }
@@ -74,22 +73,14 @@ async function deleteDepartment(name: string) {
 // ── Roles CRUD ──────────────────────────────────────────────────────────────
 
 async function fetchRoles() {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/roles', {
-		headers: { Authorization: `Bearer ${token}` },
-	});
+	const res = await apiFetch('/api/admin/roles');
 	if (!res.ok) throw new Error(await res.text());
 	roles.value = await res.json();
 }
 
 async function createRole(role: Partial<RoleRecord>) {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/roles', {
+	const res = await apiFetch('/api/admin/roles', {
 		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
 		body: JSON.stringify(role),
 	});
 	if (!res.ok) throw new Error(await res.text());
@@ -97,13 +88,8 @@ async function createRole(role: Partial<RoleRecord>) {
 }
 
 async function updateRole(oldName: string, role: Partial<RoleRecord>) {
-	const token = await getIdToken();
-	const res = await fetch(`/api/admin/roles/${encodeURIComponent(oldName)}`, {
+	const res = await apiFetch(`/api/admin/roles/${encodeURIComponent(oldName)}`, {
 		method: 'PATCH',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
 		body: JSON.stringify(role),
 	});
 	if (!res.ok) throw new Error(await res.text());
@@ -111,35 +97,23 @@ async function updateRole(oldName: string, role: Partial<RoleRecord>) {
 }
 
 async function deleteRole(name: string) {
-	const token = await getIdToken();
-	const res = await fetch(`/api/admin/roles/${encodeURIComponent(name)}`, {
+	const res = await apiFetch(`/api/admin/roles/${encodeURIComponent(name)}`, {
 		method: 'DELETE',
-		headers: { Authorization: `Bearer ${token}` },
 	});
 	if (!res.ok) throw new Error(await res.text());
 }
 
 async function moveRole(name: string, direction: 'up' | 'down') {
-	const token = await getIdToken();
-	const res = await fetch(`/api/admin/roles/${encodeURIComponent(name)}/move`, {
+	const res = await apiFetch(`/api/admin/roles/${encodeURIComponent(name)}/move`, {
 		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
 		body: JSON.stringify({ direction }),
 	});
 	if (!res.ok) throw new Error(await res.text());
 }
 
 async function reorderRoles(order: string[]) {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/roles/reorder', {
+	const res = await apiFetch('/api/admin/roles/reorder', {
 		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
 		body: JSON.stringify({ order }),
 	});
 	if (!res.ok) throw new Error(await res.text());
@@ -148,22 +122,14 @@ async function reorderRoles(order: string[]) {
 // ── Role Permissions ────────────────────────────────────────────────────────
 
 async function fetchRolePermissions() {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/role-permissions', {
-		headers: { Authorization: `Bearer ${token}` },
-	});
+	const res = await apiFetch('/api/admin/role-permissions');
 	if (!res.ok) throw new Error(await res.text());
 	rolePermissions.value = await res.json();
 }
 
 async function updateRolePermission(perm: RolePermission) {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/role-permissions', {
+	const res = await apiFetch('/api/admin/role-permissions', {
 		method: 'PUT',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
 		body: JSON.stringify(perm),
 	});
 	if (!res.ok) throw new Error(await res.text());
@@ -172,25 +138,16 @@ async function updateRolePermission(perm: RolePermission) {
 // ── Role Department Access ──────────────────────────────────────────────────
 
 async function fetchRoleDeptAccess(role: string): Promise<RoleDeptAccess[]> {
-	const token = await getIdToken();
-	const res = await fetch(
+	const res = await apiFetch(
 		`/api/admin/role-dept-access?role=${encodeURIComponent(role)}`,
-		{
-			headers: { Authorization: `Bearer ${token}` },
-		},
 	);
 	if (!res.ok) throw new Error(await res.text());
 	return await res.json();
 }
 
 async function updateRoleDeptAccess(access: RoleDeptAccess) {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/role-dept-access', {
+	const res = await apiFetch('/api/admin/role-dept-access', {
 		method: 'PUT',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
 		body: JSON.stringify(access),
 	});
 	if (!res.ok) throw new Error(await res.text());
@@ -199,10 +156,7 @@ async function updateRoleDeptAccess(access: RoleDeptAccess) {
 // ── Current user permissions ────────────────────────────────────────────────
 
 async function fetchMyPermissions() {
-	const token = await getIdToken();
-	const res = await fetch('/api/my-permissions', {
-		headers: { Authorization: `Bearer ${token}` },
-	});
+	const res = await apiFetch('/api/my-permissions');
 	if (!res.ok) throw new Error(await res.text());
 	const data = await res.json();
 	myPermissions.value = data.role ? data : null;

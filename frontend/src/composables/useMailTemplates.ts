@@ -1,23 +1,9 @@
 import { ref } from 'vue';
 import type { MailTemplate, Department, SentMail, MailDraft } from '../types';
-import { getIdToken, getGraphAccessToken } from './useAuth';
+import { getGraphAccessToken } from './useAuth';
+import { apiFetch } from './useApi';
 
 const BASE = '/api';
-
-async function apiFetch(
-	url: string,
-	options: RequestInit = {},
-): Promise<Response> {
-	const token = await getIdToken();
-	return fetch(url, {
-		...options,
-		headers: {
-			...((options.headers as Record<string, string>) ?? {}),
-			Authorization: `Bearer ${token}`,
-			...(options.body ? { 'Content-Type': 'application/json' } : {}),
-		},
-	});
-}
 
 export function useMailTemplates() {
 	const templates = ref<MailTemplate[]>([]);
@@ -90,13 +76,8 @@ export function useMailTemplates() {
 		error.value = null;
 		try {
 			const graphToken = await getGraphAccessToken();
-			const idToken = await getIdToken();
-			const res = await fetch(`${BASE}/send-mail`, {
+			const res = await apiFetch(`${BASE}/send-mail`, {
 				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${idToken}`,
-					'Content-Type': 'application/json',
-				},
 				body: JSON.stringify({
 					to,
 					subject,

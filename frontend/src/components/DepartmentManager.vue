@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from './ErrorAlert.vue'
-import { getIdToken } from '../composables/useAuth'
+import { apiFetch } from '../composables/useApi'
 
 const DEFAULT_DEPT = 'Allgemein'
 
@@ -117,16 +117,14 @@ async function confirmDelete() {
   saving.value = true
   error.value = null
   try {
-    const token = await getIdToken()
     const body: any = {}
     if (activityAction.value === 'transfer') body.transfer_activities_to = activityTransferTo.value
     else body.delete_activities = true
     if (userAction.value === 'transfer') body.transfer_users_to = userTransferTo.value
     else body.delete_users = true
 
-    const res = await fetch(`/api/admin/departments/${encodeURIComponent(deleteTarget.value)}`, {
+    const res = await apiFetch(`/api/admin/departments/${encodeURIComponent(deleteTarget.value)}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     })
     if (!res.ok) throw new Error(await res.text())

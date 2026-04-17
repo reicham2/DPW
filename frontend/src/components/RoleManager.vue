@@ -3,7 +3,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from './ErrorAlert.vue'
 import RoleBadge from './RoleBadge.vue'
-import { getIdToken } from '../composables/useAuth'
+import { apiFetch } from '../composables/useApi'
 import type { RolePermission, RoleDeptAccess } from '../types'
 
 const SCOPE_OPTIONS_MAIL_SEND = [
@@ -289,14 +289,12 @@ async function confirmDelete() {
   saving.value = 'role-del'
   error.value = null
   try {
-    const token = await getIdToken()
     const body: any = {}
     if (userAction.value === 'transfer') body.transfer_users_to = userTransferTo.value
     else body.delete_users = true
 
-    const res = await fetch(`/api/admin/roles/${encodeURIComponent(deleteTarget.value)}`, {
+    const res = await apiFetch(`/api/admin/roles/${encodeURIComponent(deleteTarget.value)}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     })
     if (!res.ok) throw new Error(await res.text())
