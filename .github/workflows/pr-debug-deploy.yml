@@ -175,6 +175,29 @@ jobs:
 
                   echo "Tunnel started: https://${HOSTNAME}"
 
+            - name: Verify tunnel connection
+              run: |
+                  TUNNEL="${{ steps.slug.outputs.project }}-tunnel"
+                  echo "Waiting for tunnel to connect..."
+                  for i in $(seq 1 12); do
+                    LOGS=$(docker logs "$TUNNEL" 2>&1)
+                    if echo "$LOGS" | grep -q "Registered tunnel connection"; then
+                      echo "Tunnel connected after attempt $i"
+                      echo "$LOGS" | grep -E "INF|ERR" | tail -10
+                      exit 0
+                    fi
+                    if echo "$LOGS" | grep -q "ERR"; then
+                      echo "─── Tunnel errors found ───"
+                      echo "$LOGS" | tail -30
+                    fi
+                    echo "Attempt $i/12..."
+                    sleep 5
+                  done
+                  echo "Tunnel did not connect within 60s"
+                  echo "─── Full tunnel logs ───"
+                  docker logs "$TUNNEL" 2>&1
+                  exit 1
+
             - name: Print status
               run: |
                   echo "─── Container Status ───"
