@@ -75,6 +75,7 @@ jobs:
           file: ./backend/Dockerfile
           build-args: |
             BACKEND_BUILD_TYPE=Release
+            ENABLE_DEBUG_AUTH=0
           push: ${{ github.event_name == 'push' }}
           tags: ${{ needs.metadata.outputs.backend_tags }}
           labels: ${{ needs.metadata.outputs.backend_labels }}
@@ -107,6 +108,8 @@ jobs:
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
+          build-args: |
+            ENABLE_DEBUG_AUTH=0
           push: ${{ github.event_name == 'push' }}
           tags: ${{ needs.metadata.outputs.frontend_tags }}
           labels: ${{ needs.metadata.outputs.frontend_labels }}
@@ -126,16 +129,20 @@ jobs:
         run: cp .env.example .env
 
       - name: Build all containers
-        run: docker compose build
+        run: >
+          BACKEND_BUILD_TYPE=Release
+          ENABLE_DEBUG_AUTH=0
+          FRONTEND_ENABLE_DEBUG_AUTH=0
+          docker compose -f docker-compose-dev.yml build
 
       - name: Start services
-        run: docker compose up -d
+        run: docker compose -f docker-compose-dev.yml up -d
 
       - name: Wait for backend health
         run: |
           echo "Waiting for backend health..."
           for i in $(seq 1 30); do
-            if docker compose exec -T backend curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+            if docker compose -f docker-compose-dev.yml exec -T backend curl -sf http://localhost:8080/health > /dev/null 2>&1; then
               echo "Backend healthy"
               exit 0
             fi
@@ -143,14 +150,14 @@ jobs:
             sleep 2
           done
           echo "Backend did not become healthy"
-          docker compose logs backend
+          docker compose -f docker-compose-dev.yml logs backend
           exit 1
 
       - name: Wait for frontend health
         run: |
           echo "Waiting for frontend health..."
           for i in $(seq 1 15); do
-            if docker compose exec -T frontend curl -sf http://localhost:80 > /dev/null 2>&1; then
+            if docker compose -f docker-compose-dev.yml exec -T frontend curl -sf http://localhost:80 > /dev/null 2>&1; then
               echo "Frontend healthy"
               exit 0
             fi
@@ -158,23 +165,23 @@ jobs:
             sleep 2
           done
           echo "Frontend did not become healthy"
-          docker compose logs frontend
+          docker compose -f docker-compose-dev.yml logs frontend
           exit 1
 
       - name: Verify DB schema loaded
         run: |
-          docker compose exec -T db psql -U activities_user -d activities \
+          docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities \
             -c "\\dt" | grep -q activities
           echo "DB schema present"
 
       - name: Print container status
         if: always()
-        run: docker compose ps
+        run: docker compose -f docker-compose-dev.yml ps
 
       - name: Collect logs on failure
         if: failure()
-        run: docker compose logs --tail=100
+        run: docker compose -f docker-compose-dev.yml logs --tail=100
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: docker compose -f docker-compose-dev.yml down -v

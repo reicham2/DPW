@@ -5,6 +5,9 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
+ARG ENABLE_DEBUG_AUTH=0
+ENV VITE_ENABLE_DEBUG_AUTH=${ENABLE_DEBUG_AUTH}
+
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
