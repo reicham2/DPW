@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+# Test-only Dockerfile — builds and runs backend unit tests.
+FROM alpine:3.21 AS build
+
+RUN apk add --no-cache build-base cmake openssl-dev zlib-dev curl-dev libpq-dev libuv-dev
+
+WORKDIR /src
+COPY CMakeLists.txt .
+COPY deps/ deps/
+COPY src/ src/
+COPY tests/ tests/
+
+RUN cmake -B build -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug && \
+    cmake --build build --target run_tests -j"$(nproc)"
+
+FROM build AS runner
+CMD ["/src/build/run_tests"]
