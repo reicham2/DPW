@@ -141,14 +141,9 @@ jobs:
                   # Write tunnel config
                   CRED_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
                   mkdir -p /tmp/cloudflared
-                  cat > /tmp/cloudflared/${SLUG}-config.yml <<-CFEOF
-	tunnel: ${TUNNEL_ID}
-	credentials-file: /etc/cloudflared/credentials.json
-	ingress:
-	  - hostname: ${HOSTNAME}
-	    service: http://frontend:80
-	  - service: http_status:404
-	CFEOF
+                  printf 'tunnel: %s\ncredentials-file: /etc/cloudflared/credentials.json\ningress:\n  - hostname: %s\n    service: http://frontend:80\n  - service: http_status:404\n' \
+                    "${TUNNEL_ID}" "${HOSTNAME}" \
+                    > /tmp/cloudflared/${SLUG}-config.yml
 
                   # Run cloudflared in the compose network
                   docker run -d \
