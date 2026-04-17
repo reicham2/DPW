@@ -4,14 +4,14 @@ export type UserRole = string;
 export interface Program {
 	id: string;
 	activity_id: string;
-	time: string;
+	duration_minutes: number;
 	title: string;
 	description: string;
 	responsible: string[];
 }
 
 export interface ProgramInput {
-	time: string;
+	duration_minutes: number;
 	title: string;
 	description: string;
 	responsible: string[];
@@ -82,6 +82,8 @@ export type WsEvent =
 	| { event: 'editors'; activity_id: string; users: string[] }
 	| { event: 'locks_state'; activity_id: string; locks: SectionLock[] };
 
+export type TimeDisplayMode = 'minutes' | 'clock';
+
 export interface User {
 	id: string;
 	microsoft_oid: string;
@@ -89,6 +91,7 @@ export interface User {
 	display_name: string;
 	department: Department | null;
 	role: UserRole;
+	time_display_mode: TimeDisplayMode;
 	created_at: string;
 	updated_at: string;
 }

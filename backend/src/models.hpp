@@ -10,7 +10,7 @@ struct Program
 {
     std::string id;
     std::string activity_id;
-    std::string time;
+    int duration_minutes{0};
     std::string title;
     std::string description;
     std::vector<std::string> responsible;
@@ -18,7 +18,7 @@ struct Program
 
 struct ProgramInput
 {
-    std::string time;
+    int duration_minutes{0};
     std::string title;
     std::string description;
     std::vector<std::string> responsible;
@@ -105,7 +105,7 @@ inline nlohmann::json program_to_json(const Program &p)
     return {
         {"id", p.id},
         {"activity_id", p.activity_id},
-        {"time", p.time},
+        {"duration_minutes", p.duration_minutes},
         {"title", p.title},
         {"description", p.description},
         {"responsible", p.responsible}};

@@ -212,7 +212,8 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
         for (auto &p : j["programs"])
         {
             ProgramInput pi;
-            pi.time = str_field(p, "time");
+            if (p.contains("duration_minutes") && p["duration_minutes"].is_number())
+                pi.duration_minutes = p["duration_minutes"].get<int>();
             pi.title = str_field(p, "title");
             pi.description = str_field(p, "description");
             if (p.contains("responsible") && p["responsible"].is_array())
@@ -962,6 +963,7 @@ static nlohmann::json user_to_json(const UserRecord &u)
     j["display_name"] = u.display_name;
     j["department"] = u.department ? nlohmann::json(*u.department) : nlohmann::json(nullptr);
     j["role"] = u.role;
+    j["time_display_mode"] = u.time_display_mode;
     j["created_at"] = u.created_at;
     j["updated_at"] = u.updated_at;
     return j;
@@ -1443,8 +1445,18 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             department = current_user ? current_user->department : std::optional<std::string>{};
         }
 
+        std::optional<std::string> time_display_mode;
+        if (j.contains("time_display_mode") && j["time_display_mode"].is_string()) {
+            std::string mode = j["time_display_mode"].get<std::string>();
+            if (mode != "minutes" && mode != "clock") {
+                send_json(res, 400, R"({"error":"Ung\u00fcltiger time_display_mode"})");
+                return;
+            }
+            time_display_mode = mode;
+        }
+
         try {
-            auto user = db.update_user(current_user->microsoft_oid, display_name, department);
+            auto user = db.update_user(current_user->microsoft_oid, display_name, department, time_display_mode);
             if (!user) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
@@ -3467,7 +3479,7 @@ static std::string replace_template_vars(const std::string &text, const Activity
         {
             if (!p.empty())
                 p += "\n";
-            p += (!pr.time.empty() ? pr.time + " min" : std::string("—"));
+            p += (pr.duration_minutes > 0 ? std::to_string(pr.duration_minutes) + " min" : std::string("—"));
             p += " – " + pr.title;
             if (!pr.responsible.empty())
             {

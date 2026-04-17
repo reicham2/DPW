@@ -207,7 +207,10 @@ Program Database::row_to_program(PGresult *res, int row)
     Program p;
     p.id = col("id");
     p.activity_id = col("activity_id");
-    p.time = col("time");
+    {
+        std::string dm = col("duration_minutes");
+        p.duration_minutes = dm.empty() ? 0 : std::atoi(dm.c_str());
+    }
     p.title = col("title");
     p.description = col("description");
     {
@@ -235,7 +238,7 @@ void Database::attach_programs(std::vector<Activity> &activities)
     const char *params[1] = {arr.c_str()};
 
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, activity_id, time, title, description, responsible "
+                                 "SELECT id, activity_id, duration_minutes, title, description, responsible "
                                  "FROM programs WHERE activity_id = ANY($1::uuid[]) ORDER BY ctid",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
@@ -443,15 +446,16 @@ static void insert_programs(PGconn *conn,
     for (const auto &pi : programs)
     {
         std::string resp_json = fmt(pi.responsible);
+        std::string dm_str = std::to_string(pi.duration_minutes);
         const char *params[5] = {
             activity_id.c_str(),
-            pi.time.c_str(),
+            dm_str.c_str(),
             pi.title.c_str(),
             pi.description.c_str(),
             resp_json.c_str()};
         PGresult *r = PQexecParams(conn,
-                                   "INSERT INTO programs (activity_id, time, title, description, responsible) "
-                                   "VALUES ($1, $2, $3, $4, array(select jsonb_array_elements_text($5::jsonb)))",
+                                   "INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) "
+                                   "VALUES ($1, $2::int, $3, $4, array(select jsonb_array_elements_text($5::jsonb)))",
                                    5, nullptr, params, nullptr, nullptr, 0);
         ExecStatusType s = PQresultStatus(r);
         PQclear(r);
@@ -615,6 +619,7 @@ UserRecord Database::row_to_user(PGresult *res, int row)
     u.email = col("email") ? col("email") : "";
     u.display_name = col("display_name") ? col("display_name") : "";
     u.role = col("role") ? col("role") : "Mitglied";
+    u.time_display_mode = col("time_display_mode") ? col("time_display_mode") : "minutes";
     u.created_at = col("created_at") ? col("created_at") : "";
     u.updated_at = col("updated_at") ? col("updated_at") : "";
     if (col("department"))
@@ -628,7 +633,7 @@ std::vector<UserRecord> Database::list_users()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT id, microsoft_oid, email, display_name, department, role, created_at, updated_at "
+                           "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, created_at, updated_at "
                            "FROM users ORDER BY display_name");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -678,7 +683,7 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
         "VALUES ($1, $2, $3, '" +
         initial_dept + "', '" + initial_role + "') " +
         on_conflict +
-        "RETURNING id, microsoft_oid, email, display_name, department, role, created_at, updated_at";
+        "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, created_at, updated_at";
 
     const char *params[3] = {oid.c_str(), email.c_str(), display_name.c_str()};
     PGresult *res = PQexecParams(conn_, sql.c_str(), 3, nullptr, params, nullptr, nullptr, 0);
@@ -700,7 +705,7 @@ std::optional<UserRecord> Database::get_user_by_oid(const std::string &oid)
     ensure_connected();
     const char *params[1] = {oid.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, microsoft_oid, email, display_name, department, role, created_at, updated_at "
+                                 "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, created_at, updated_at "
                                  "FROM users WHERE microsoft_oid = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
@@ -721,7 +726,7 @@ std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
     ensure_connected();
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, microsoft_oid, email, display_name, department, role, created_at, updated_at "
+                                 "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, created_at, updated_at "
                                  "FROM users WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
@@ -739,16 +744,21 @@ std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
 
 std::optional<UserRecord> Database::update_user(const std::string &oid,
                                                 const std::string &display_name,
-                                                const std::optional<std::string> &department)
+                                                const std::optional<std::string> &department,
+                                                const std::optional<std::string> &time_display_mode)
 {
     ensure_connected();
     std::string dept_str = department ? *department : "";
+    std::string tdm_str = time_display_mode ? *time_display_mode : "";
 
     std::string sql =
         "UPDATE users SET display_name = $1, department = " +
-        (department ? ("'" + dept_str + "'") : std::string("NULL")) +
+        (department ? ("'" + dept_str + "'") : std::string("NULL"));
+    if (time_display_mode)
+        sql += ", time_display_mode = '" + tdm_str + "'";
+    sql +=
         " WHERE microsoft_oid = $2 "
-        "RETURNING id, microsoft_oid, email, display_name, department, role, created_at, updated_at";
+        "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, created_at, updated_at";
 
     const char *params[2] = {display_name.c_str(), oid.c_str()};
     PGresult *res = PQexecParams(conn_, sql.c_str(), 2, nullptr, params, nullptr, nullptr, 0);
@@ -778,7 +788,7 @@ std::optional<UserRecord> Database::update_user_admin(const std::string &id,
         (department ? ("'" + dept_str + "'") : std::string("NULL")) +
         ", role = $2"
         " WHERE id = $3 "
-        "RETURNING id, microsoft_oid, email, display_name, department, role, created_at, updated_at";
+        "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, created_at, updated_at";
 
     const char *params[3] = {display_name.c_str(), role.c_str(), id.c_str()};
     PGresult *res = PQexecParams(conn_, sql.c_str(), 3, nullptr, params, nullptr, nullptr, 0);
