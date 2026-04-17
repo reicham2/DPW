@@ -171,7 +171,7 @@ jobs:
                     -v "${CRED_FILE}:/etc/cloudflared/credentials.json:ro" \
                     -v "/tmp/cloudflared/${SLUG}-config.yml:/etc/cloudflared/config.yml:ro" \
                     cloudflare/cloudflared:latest \
-                    tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+                    tunnel --no-autoupdate --protocol http2 --config /etc/cloudflared/config.yml run
 
                   echo "Tunnel started: https://${HOSTNAME}"
 
