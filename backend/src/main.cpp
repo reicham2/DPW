@@ -7,6 +7,27 @@
 #include <cstdio>
 #include <curl/curl.h>
 
+static std::string url_decode_component(std::string_view src)
+{
+     std::string out;
+     out.reserve(src.size());
+     for (size_t i = 0; i < src.size(); ++i)
+     {
+          if (src[i] == '%' && i + 2 < src.size())
+          {
+               unsigned int ch = 0;
+               if (sscanf(src.data() + i + 1, "%2x", &ch) == 1)
+               {
+                    out += static_cast<char>(ch);
+                    i += 2;
+                    continue;
+               }
+          }
+          out += (src[i] == '+') ? ' ' : src[i];
+     }
+     return out;
+}
+
 static std::string env(const char *key, const char *def = "")
 {
      const char *v = std::getenv(key);
@@ -28,7 +49,7 @@ int main()
          " password=" + env("POSTGRES_PASSWORD", "");
 
      Database db(conn_str);
-     WebSocketManager wm;
+     WebSocketManager wm(db);
 
      uWS::App()
          // CORS preflight
@@ -45,6 +66,10 @@ int main()
                     ->writeStatus("200 OK")
                     ->end("ok"); })
 
+         // Debug-only endpoints (compiled out in Release)
+         .get("/debug/users", [&](auto *res, auto *req)
+              { handle_debug_get_users(res, req, db); })
+
          // Auth + user endpoints
          .post("/auth/me", [&](auto *res, auto *req)
                { handle_post_auth_me(res, req, db); })
@@ -52,8 +77,6 @@ int main()
               { handle_get_me(res, req, db); })
          .get("/users", [&](auto *res, auto *req)
               { handle_get_users(res, req, db); })
-         .get("/debug/users", [&](auto *res, auto *req)
-              { handle_debug_get_users(res, req, db); })
          .patch("/me", [&](auto *res, auto *req)
                 { handle_patch_me(res, req, db); })
          .get("/my-permissions", [&](auto *res, auto *req)
@@ -77,7 +100,7 @@ int main()
          .patch("/admin/roles/:name", [&](auto *res, auto *req)
                 { handle_patch_role(res, req, db); })
          .del("/admin/roles/:name", [&](auto *res, auto *req)
-              { handle_delete_role(res, req, db); })
+              { handle_delete_role(res, req, db, wm); })
          .get("/admin/departments", [&](auto *res, auto *req)
               { handle_get_departments(res, req, db); })
          .post("/admin/departments", [&](auto *res, auto *req)
@@ -85,7 +108,7 @@ int main()
          .patch("/admin/departments/:name", [&](auto *res, auto *req)
                 { handle_patch_department(res, req, db); })
          .del("/admin/departments/:name", [&](auto *res, auto *req)
-              { handle_delete_department(res, req, db); })
+              { handle_delete_department(res, req, db, wm); })
          .get("/admin/role-permissions", [&](auto *res, auto *req)
               { handle_get_role_permissions(res, req, db); })
          .put("/admin/role-permissions", [&](auto *res, auto *req)
@@ -204,6 +227,28 @@ int main()
          .ws<WsUserData>("/ws", {.compression = uWS::SHARED_COMPRESSOR,
                                  .maxPayloadLength = 64 * 1024,
                                  .idleTimeout = 120,
+                                 .upgrade = [&](auto *res, auto *req, auto *context)
+                                 {
+                                      std::string token = url_decode_component(req->getQuery("token"));
+                                      if (token.empty())
+                                      {
+                                           res->writeStatus("401 Unauthorized")->end("Missing WebSocket token");
+                                           return;
+                                      }
+
+                                      WsUserData user_data;
+                                      if (!wm.authenticate_upgrade(token, user_data))
+                                      {
+                                           res->writeStatus("401 Unauthorized")->end("Invalid WebSocket token");
+                                           return;
+                                      }
+
+                                      res->template upgrade<WsUserData>(
+                                          std::move(user_data),
+                                          req->getHeader("sec-websocket-key"),
+                                          req->getHeader("sec-websocket-protocol"),
+                                          req->getHeader("sec-websocket-extensions"),
+                                          context); },
                                  .open = [&](auto *ws)
                                  { wm.on_open(ws); },
                                  .message = [&](auto *ws, std::string_view message, uWS::OpCode)

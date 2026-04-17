@@ -21,7 +21,7 @@ std::string auth_token_from_header(HttpRes *res, const std::string &auth_header)
 void handle_get_departments(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_department(HttpRes *res, HttpReq *req, Database &db);
 void handle_patch_department(HttpRes *res, HttpReq *req, Database &db);
-void handle_delete_department(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_department(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_get_activities(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activity(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
@@ -51,7 +51,7 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db);
 void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_admin_user(HttpRes *res, HttpReq *req, Database &db);
 
-// Debug-only endpoints (only active when DEBUG=true)
+// Debug-only endpoints (only active when DPW_ENABLE_DEBUG_AUTH=1 build flag is enabled)
 void handle_debug_get_users(HttpRes *res, HttpReq *req, Database &db);
 
 // Mail template endpoints
@@ -106,7 +106,7 @@ void handle_post_role(HttpRes *res, HttpReq *req, Database &db);
 void handle_patch_role(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_role_move(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_roles_reorder(HttpRes *res, HttpReq *req, Database &db);
-void handle_delete_role(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_role(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_get_role_permissions(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_role_dept_access(HttpRes *res, HttpReq *req, Database &db);
