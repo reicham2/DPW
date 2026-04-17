@@ -103,6 +103,15 @@ struct RoleDeptAccess
     bool can_write;
 };
 
+struct ActivityShareLink
+{
+    std::string id;
+    std::string activity_id;
+    std::string share_token;
+    std::string created_by;
+    std::string created_at;
+};
+
 class Database
 {
 public:
@@ -294,6 +303,13 @@ public:
                                                      const nlohmann::json &template_config,
                                                      bool is_default = false);
     bool delete_form_template(const std::string &id);
+
+    // Activity share links
+    std::optional<ActivityShareLink> create_share_link(const std::string &activity_id,
+                                                       const std::string &created_by);
+    std::optional<ActivityShareLink> get_share_link(const std::string &activity_id);
+    bool delete_share_link(const std::string &activity_id);
+    std::optional<Activity> get_activity_by_share_token(const std::string &token);
 
 private:
     PGconn *conn_{nullptr};

@@ -150,6 +150,17 @@ int main()
          .del("/attachments/:id", [&](auto *res, auto *req)
               { handle_delete_attachment(res, req, db); })
 
+         // Activity share links — must be registered BEFORE /activities/:id
+         .post("/activities/:id/share", [&](auto *res, auto *req)
+               { handle_post_share_link(res, req, db); })
+         .get("/activities/:id/share", [&](auto *res, auto *req)
+              { handle_get_share_link(res, req, db); })
+         .del("/activities/:id/share", [&](auto *res, auto *req)
+              { handle_delete_share_link(res, req, db); })
+         // Public shared activity view (no auth)
+         .get("/shared/:token", [&](auto *res, auto *req)
+              { handle_get_shared_activity(res, req, db); })
+
          // Single activity CRUD
          .get("/activities/:id", [&](auto *res, auto *req)
               { handle_get_activity(res, req, db); })

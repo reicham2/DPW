@@ -3944,3 +3944,125 @@ void handle_delete_form_template(HttpRes *res, HttpReq *req, Database &db)
         send_internal_error(res, "handler", e);
     }
 }
+
+// ---- Activity share links ---------------------------------------------------
+
+void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    std::string activity_id{req->getParameter(0)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto activity = db.get_activity_by_id(activity_id);
+        if (!activity)
+        {
+            send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+            return;
+        }
+        auto perm = db.get_role_permission(current_user->role);
+        auto dept_access = db.list_role_dept_access(current_user->role);
+        if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity, claims))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        auto link = db.create_share_link(activity_id, current_user->id);
+        if (!link)
+        {
+            send_json(res, 500, R"({"error":"Share-Link konnte nicht erstellt werden"})");
+            return;
+        }
+        nlohmann::json j = {
+            {"id", link->id},
+            {"activity_id", link->activity_id},
+            {"share_token", link->share_token},
+            {"created_at", link->created_at}};
+        send_json(res, 201, j.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+void handle_get_share_link(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    std::string activity_id{req->getParameter(0)};
+    try
+    {
+        auto link = db.get_share_link(activity_id);
+        if (!link)
+        {
+            send_json(res, 200, R"({"share_token":null})");
+            return;
+        }
+        nlohmann::json j = {
+            {"id", link->id},
+            {"activity_id", link->activity_id},
+            {"share_token", link->share_token},
+            {"created_at", link->created_at}};
+        send_json(res, 200, j.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+void handle_delete_share_link(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    std::string activity_id{req->getParameter(0)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        bool ok = db.delete_share_link(activity_id);
+        if (!ok)
+        {
+            send_json(res, 404, R"({"error":"Kein Share-Link vorhanden"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+void handle_get_shared_activity(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string token{req->getParameter(0)};
+    try
+    {
+        auto activity = db.get_activity_by_share_token(token);
+        if (!activity)
+        {
+            send_json(res, 404, R"({"error":"Nicht gefunden"})");
+            return;
+        }
+        send_json(res, 200, to_json(*activity).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}

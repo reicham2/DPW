@@ -7,6 +7,7 @@ import MailComposerPage from '../pages/MailComposerPage.vue';
 import MailTemplatePage from '../pages/MailTemplatePage.vue';
 import AdminPage from '../pages/AdminPage.vue';
 import FormPublicPage from '../pages/FormPublicPage.vue';
+import SharedActivityPage from '../pages/SharedActivityPage.vue';
 import ActivityFormsPage from '../pages/ActivityFormsPage.vue';
 import FormTemplatePage from '../pages/FormTemplatePage.vue';
 import { user, authLoading } from '../composables/useAuth';
@@ -25,6 +26,8 @@ export const router = createRouter({
 		{ path: '/admin', component: AdminPage },
 		// Public form page — no auth required
 		{ path: '/forms/:slug', component: FormPublicPage, meta: { public: true } },
+		// Public shared activity — no auth required
+		{ path: '/shared/:token', component: SharedActivityPage, meta: { public: true } },
 	],
 });
 
