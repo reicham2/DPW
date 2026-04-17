@@ -1212,7 +1212,7 @@ async function doDelete() {
 						>
 							{{ activity.location || '—' }}
 							<span v-if="exactOverlaps.length" class="location-warn-icon" title="Überschneidung">⚠️</span>
-							<span v-else-if="fuzzyOverlaps.length" class="location-warn-icon" title="Möglicherweise ähnlicher Ort">⚠️</span>
+							<span v-else-if="fuzzyOverlaps.length" class="location-warn-icon" title="Möglicherweise ähnlicher Ort">ℹ️</span>
 						</span>
 						<template v-if="locationWarningOpen">
 							<div v-if="exactOverlaps.length" class="field-warning" style="margin-top: 6px">

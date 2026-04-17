@@ -13,8 +13,12 @@ static const std::string PFADI_HUE_GROUP_ID = "17fcb1fa-9fa2-45f2-96cc-3804d7097
 
 static const char *status_text(int code)
 {
+    switch (code)
     {
-                                                user_dept_scope, user_role_scope, locations_manage_scope);
+    case 200:
+        return "200 OK";
+    case 201:
+        return "201 Created";
     case 204:
         return "204 No Content";
     case 400:
