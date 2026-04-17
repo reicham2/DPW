@@ -338,6 +338,91 @@ std::vector<std::string> Database::get_predefined_locations()
     return out;
 }
 
+LocationRecord Database::row_to_location(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> std::string
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return "";
+        return PQgetvalue(res, row, c);
+    };
+    LocationRecord loc;
+    loc.id = col("id");
+    loc.name = col("name");
+    loc.created_at = col("created_at");
+    loc.updated_at = col("updated_at");
+    return loc;
+}
+
+std::vector<LocationRecord> Database::list_predefined_locations()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+        "SELECT id, name, created_at, updated_at FROM predefined_locations ORDER BY name");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_predefined_locations: " + err);
+    }
+    std::vector<LocationRecord> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_location(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<LocationRecord> Database::create_predefined_location(const std::string &name)
+{
+    ensure_connected();
+    const char *params[1] = {name.c_str()};
+    PGresult *res = PQexecParams(conn_,
+        "INSERT INTO predefined_locations (name) VALUES ($1) "
+        "RETURNING id, name, created_at, updated_at",
+        1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto out = row_to_location(res, 0);
+    PQclear(res);
+    return out;
+}
+
+std::optional<LocationRecord> Database::update_predefined_location(const std::string &id, const std::string &name)
+{
+    ensure_connected();
+    const char *params[2] = {id.c_str(), name.c_str()};
+    PGresult *res = PQexecParams(conn_,
+        "UPDATE predefined_locations SET name = $2 WHERE id = $1 "
+        "RETURNING id, name, created_at, updated_at",
+        2, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto out = row_to_location(res, 0);
+    PQclear(res);
+    return out;
+}
+
+bool Database::delete_predefined_location(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+        "DELETE FROM predefined_locations WHERE id = $1",
+        1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK && PQcmdTuples(res)[0] != '0';
+    PQclear(res);
+    return ok;
+}
+
 // ---- Transaction helpers ----------------------------------------------------
 
 static void exec_or_throw(PGconn *conn, const char *sql, const char *context)
@@ -1760,6 +1845,7 @@ RolePermission Database::row_to_role_perm(PGresult *res, int row)
     rp.form_templates_scope = col("form_templates_scope") ? col("form_templates_scope") : "none";
     rp.user_dept_scope = col("user_dept_scope") ? col("user_dept_scope") : "none";
     rp.user_role_scope = col("user_role_scope") ? col("user_role_scope") : "none";
+    rp.locations_manage_scope = col("locations_manage_scope") ? col("locations_manage_scope") : "none";
     return rp;
 }
 
@@ -1773,7 +1859,7 @@ std::vector<RolePermission> Database::list_role_permissions()
                            "       activity_edit_scope, "
                            "       mail_send_scope, "
                            "       mail_templates_scope, form_scope, form_templates_scope, "
-                           "       user_dept_scope, user_role_scope "
+                           "       user_dept_scope, user_role_scope, locations_manage_scope "
                            "FROM role_permissions ORDER BY role");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
@@ -1801,7 +1887,7 @@ std::optional<RolePermission> Database::get_role_permission(const std::string &r
                                  "       activity_edit_scope, "
                                  "       mail_send_scope, "
                                  "       mail_templates_scope, form_scope, form_templates_scope, "
-                                 "       user_dept_scope, user_role_scope "
+                                 "       user_dept_scope, user_role_scope, locations_manage_scope "
                                  "FROM role_permissions WHERE role = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1830,7 +1916,8 @@ bool Database::update_role_permission(const std::string &role,
                                       const std::string &form_scope,
                                       const std::string &form_templates_scope,
                                       const std::string &user_dept_scope,
-                                      const std::string &user_role_scope)
+                                      const std::string &user_role_scope,
+                                      const std::string &locations_manage_scope)
 {
     ensure_connected();
     const char *p1 = role.c_str();
@@ -1847,22 +1934,24 @@ bool Database::update_role_permission(const std::string &role,
     const char *p12 = form_templates_scope.c_str();
     const char *p13 = user_dept_scope.c_str();
     const char *p14 = user_role_scope.c_str();
-    const char *params[14] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14};
+    const char *p15 = locations_manage_scope.c_str();
+    const char *params[15] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, "
                                  "can_read_all_depts, can_write_all_depts, "
                                  "activity_read_scope, activity_create_scope, activity_edit_scope, "
                                  "mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, "
-                                 "user_dept_scope, user_role_scope) "
-                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9, $10, $11, $12, $13, $14) "
+                                 "user_dept_scope, user_role_scope, locations_manage_scope) "
+                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) "
                                  "ON CONFLICT (role) DO UPDATE SET "
                                  "can_read_own_dept = $2::boolean, can_write_own_dept = $3::boolean, "
                                  "can_read_all_depts = $4::boolean, can_write_all_depts = $5::boolean, "
                                  "activity_read_scope = $6, activity_create_scope = $7, activity_edit_scope = $8, "
                                  "mail_send_scope = $9, mail_templates_scope = $10, "
                                  "form_scope = $11, form_templates_scope = $12, "
-                                 "user_dept_scope = $13, user_role_scope = $14",
-                                 14, nullptr, params, nullptr, nullptr, 0);
+                                 "user_dept_scope = $13, user_role_scope = $14, "
+                                 "locations_manage_scope = $15",
+                                 15, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;

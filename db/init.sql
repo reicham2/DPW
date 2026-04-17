@@ -117,11 +117,17 @@ CREATE TABLE sent_mails (
 
 CREATE INDEX idx_sent_mails_activity_id ON sent_mails (activity_id);
 
--- Predefined locations
+-- Predefined locations (global, shared across all departments)
 CREATE TABLE predefined_locations (
-    id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL UNIQUE
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name       TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TRIGGER trg_predefined_locations_updated_at
+    BEFORE UPDATE ON predefined_locations
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 INSERT INTO predefined_locations (name) VALUES
     ('Pfadiheim'),
@@ -166,8 +172,10 @@ CREATE TABLE role_permissions (
         CHECK (form_templates_scope IN ('none', 'own_dept', 'all')),
     user_dept_scope      TEXT    NOT NULL DEFAULT 'none'
         CHECK (user_dept_scope IN ('none', 'own', 'own_dept', 'all')),
-    user_role_scope      TEXT    NOT NULL DEFAULT 'none'
-        CHECK (user_role_scope IN ('none', 'own', 'own_dept', 'all'))
+    user_role_scope           TEXT    NOT NULL DEFAULT 'none'
+        CHECK (user_role_scope IN ('none', 'own', 'own_dept', 'all')),
+    locations_manage_scope   TEXT    NOT NULL DEFAULT 'none'
+        CHECK (locations_manage_scope IN ('none', 'all'))
 );
 
 -- Cross-department access per role (beyond own department)
@@ -180,9 +188,9 @@ CREATE TABLE role_dept_access (
 );
 
 -- Seed default role permissions
-INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope) VALUES
-    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all'),
-    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none');
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope) VALUES
+    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all'),
+    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none', 'none');
 
 -- Triggers for departments & roles updated_at
 CREATE TRIGGER trg_departments_updated_at

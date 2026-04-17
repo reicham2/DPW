@@ -711,6 +711,22 @@ body {
 .detail-value--muted {
 	color: #6b7280;
 }
+
+.detail-value.location-has-warning {
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.detail-value.location-has-warning:hover {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+.location-warn-icon {
+	font-size: 0.85em;
+	line-height: 1;
+}
+
 .detail-value--multiline {
 	white-space: pre-wrap;
 }

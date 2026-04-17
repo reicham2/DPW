@@ -103,7 +103,8 @@ const showAdmin = computed(() => {
   const p = myPermissions.value
   if (!p) return false
   return (p.user_dept_scope && p.user_dept_scope !== 'none') ||
-         (p.user_role_scope && p.user_role_scope !== 'none')
+         (p.user_role_scope && p.user_role_scope !== 'none') ||
+         (p.locations_manage_scope && p.locations_manage_scope !== 'none')
 })
 
 const loggingIn = ref(false)

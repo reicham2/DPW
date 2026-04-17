@@ -137,6 +137,13 @@ export interface DepartmentRecord {
 	color: string;
 }
 
+export interface LocationRecord {
+	id: string;
+	name: string;
+	created_at: string;
+	updated_at: string;
+}
+
 export interface RoleRecord {
 	name: string;
 	color: string;
@@ -154,6 +161,7 @@ export interface RolePermission {
 	form_templates_scope: 'none' | 'own_dept' | 'all';
 	user_dept_scope: 'none' | 'own' | 'own_dept' | 'all';
 	user_role_scope: 'none' | 'own' | 'own_dept' | 'all';
+	locations_manage_scope: 'none' | 'all';
 }
 
 export interface MyPermissions extends RolePermission {

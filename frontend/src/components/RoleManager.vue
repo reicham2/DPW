@@ -39,6 +39,10 @@ const SCOPE_OPTIONS_USER = [
   { value: 'own_dept', label: 'Eigene Stufe' },
   { value: 'all', label: 'Alle' },
 ]
+const SCOPE_OPTIONS_LOCATIONS_MANAGE = [
+  { value: 'none', label: 'Kein Zugriff' },
+  { value: 'all', label: 'Alle' },
+]
 
 const {
   roles,
@@ -601,6 +605,13 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
               <select class="scope-select" :value="getPermForRole(r.name)!.user_role_scope"
                 @change="updatePerm(r.name, 'user_role_scope', ($event.target as HTMLSelectElement).value)">
                 <option v-for="o in SCOPE_OPTIONS_USER" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Orte verwalten</span></div>
+              <select class="scope-select" :value="getPermForRole(r.name)!.locations_manage_scope"
+                @change="updatePerm(r.name, 'locations_manage_scope', ($event.target as HTMLSelectElement).value)">
+                <option v-for="o in SCOPE_OPTIONS_LOCATIONS_MANAGE" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
             </div>
             </template>

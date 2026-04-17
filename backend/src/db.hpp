@@ -91,6 +91,7 @@ struct RolePermission
     std::string form_templates_scope;  // none|own_dept|all
     std::string user_dept_scope;       // none|own|own_dept|all
     std::string user_role_scope;       // none|own|own_dept|all
+    std::string locations_manage_scope; // none|all
 };
 
 struct RoleDeptAccess
@@ -119,6 +120,10 @@ public:
 
     // Predefined locations
     std::vector<std::string> get_predefined_locations();
+    std::vector<LocationRecord> list_predefined_locations();
+    std::optional<LocationRecord> create_predefined_location(const std::string &name);
+    std::optional<LocationRecord> update_predefined_location(const std::string &id, const std::string &name);
+    bool delete_predefined_location(const std::string &id);
 
     // Attachments
     std::optional<Attachment> add_attachment(const std::string &activity_id,
@@ -233,7 +238,8 @@ public:
                                 const std::string &form_scope,
                                 const std::string &form_templates_scope,
                                 const std::string &user_dept_scope,
-                                const std::string &user_role_scope);
+                                const std::string &user_role_scope,
+                                const std::string &locations_manage_scope = "none");
 
     // Role department access
     std::vector<RoleDeptAccess> list_role_dept_access(const std::string &role);
@@ -303,6 +309,7 @@ private:
     RoleRecord row_to_role(PGresult *res, int row);
     RolePermission row_to_role_perm(PGresult *res, int row);
     RoleDeptAccess row_to_role_dept_access(PGresult *res, int row);
+    LocationRecord row_to_location(PGresult *res, int row);
     void attach_programs(std::vector<Activity> &activities);
     void attach_programs_single(Activity &a);
 
