@@ -117,14 +117,21 @@ jobs:
                   echo "DB seeded"
 
             - name: Setup Cloudflare Tunnel
+              env:
+                  TUNNEL_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
               run: |
+                  set -euo pipefail
                   SLUG="${{ steps.slug.outputs.slug }}"
                   PROJECT="${{ steps.slug.outputs.project }}"
                   TUNNEL_NAME="dpw-${SLUG}"
                   HOSTNAME="${{ steps.slug.outputs.hostname }}"
                   NETWORK="${PROJECT}_default"
 
-                  # Remove previous tunnel if exists (re-run / synchronize)
+                  # Write origin cert for cloudflared CLI
+                  mkdir -p "$HOME/.cloudflared"
+                  echo "$TUNNEL_ORIGIN_CERT" > "$HOME/.cloudflared/cert.pem"
+
+                  # Remove previous tunnel container + tunnel
                   docker rm -f "${PROJECT}-tunnel" 2>/dev/null || true
                   cloudflared tunnel cleanup "$TUNNEL_NAME" 2>/dev/null || true
                   cloudflared tunnel delete "$TUNNEL_NAME" 2>/dev/null || true
@@ -134,9 +141,11 @@ jobs:
 
                   # Get tunnel UUID
                   TUNNEL_ID=$(cloudflared tunnel list -o json | jq -r ".[] | select(.name==\"$TUNNEL_NAME\") | .id")
+                  echo "Created tunnel: ${TUNNEL_ID}"
 
                   # Route DNS (CNAME → tunnel)
                   cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$HOSTNAME"
+                  echo "DNS configured: ${HOSTNAME}"
 
                   # Write tunnel config
                   CRED_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
@@ -197,31 +206,22 @@ jobs:
               uses: actions/checkout@v4
 
             - name: Stop Cloudflare Tunnel
+              env:
+                  TUNNEL_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
               run: |
                   PROJECT="${{ steps.slug.outputs.project }}"
                   TUNNEL_NAME="dpw-${{ steps.slug.outputs.slug }}"
 
+                  # Write origin cert
+                  mkdir -p "$HOME/.cloudflared"
+                  echo "$TUNNEL_ORIGIN_CERT" > "$HOME/.cloudflared/cert.pem"
+
                   # Stop tunnel container
                   docker rm -f "${PROJECT}-tunnel" 2>/dev/null || true
 
-                  # Cleanup and delete tunnel (removes connector, frees name)
+                  # Cleanup and delete tunnel (also removes DNS route)
                   cloudflared tunnel cleanup "$TUNNEL_NAME" 2>/dev/null || true
                   cloudflared tunnel delete "$TUNNEL_NAME" 2>/dev/null || true
-
-                  # Delete DNS record via Cloudflare API
-                  HOSTNAME="${{ steps.slug.outputs.slug }}.dpw.lklaus.ch"
-                  ZONE_ID="${{ secrets.CLOUDFLARE_ZONE_ID }}"
-                  API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
-                  if [ -n "$ZONE_ID" ] && [ -n "$API_TOKEN" ]; then
-                    RECORD_ID=$(curl -s -H "Authorization: Bearer ${API_TOKEN}" \
-                      "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${HOSTNAME}&type=CNAME" \
-                      | jq -r '.result[0].id // empty')
-                    if [ -n "$RECORD_ID" ]; then
-                      curl -s -X DELETE -H "Authorization: Bearer ${API_TOKEN}" \
-                        "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${RECORD_ID}"
-                      echo "DNS record deleted: ${HOSTNAME}"
-                    fi
-                  fi
 
                   rm -f /tmp/cloudflared/${{ steps.slug.outputs.slug }}-config.yml
                   echo "Tunnel cleaned up: $TUNNEL_NAME"
