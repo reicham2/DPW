@@ -652,8 +652,25 @@ function programLabelFor(a: Activity | null, index: number): string {
 	return formatDuration(progs[index].duration_minutes || 0);
 }
 
+function programSecondaryLabelFor(a: Activity | null, index: number): string {
+	if (!a) return '';
+	const progs = a.programs;
+	if (timeDisplayMode.value === 'clock') {
+		return formatDuration(progs[index].duration_minutes || 0);
+	}
+	let acc = 0;
+	for (let i = 0; i < index; i++) acc += progs[i].duration_minutes || 0;
+	const start = addMinutesToClock(a.start_time, acc);
+	const end = addMinutesToClock(a.start_time, acc + (progs[index].duration_minutes || 0));
+	return start && end ? `${start} – ${end}` : start || '—';
+}
+
 function viewProgramLabel(index: number): string {
 	return programLabelFor(activity.value, index);
+}
+
+function viewProgramSecondaryLabel(index: number): string {
+	return programSecondaryLabelFor(activity.value, index);
 }
 
 function previewProgramLabel(index: number): string {
@@ -661,9 +678,17 @@ function previewProgramLabel(index: number): string {
 }
 
 function editProgramLabel(index: number): string {
-	if (timeDisplayMode.value !== 'clock') return '';
 	const start = editStartTime.value;
 	if (!start) return '';
+	if (timeDisplayMode.value === 'clock') {
+		let acc = 0;
+		for (let i = 0; i < index; i++) acc += Number(editPrograms.value[i].duration_minutes) || 0;
+		const s = addMinutesToClock(start, acc);
+		const e = addMinutesToClock(start, acc + (Number(editPrograms.value[index].duration_minutes) || 0));
+		const clock = s && e ? `${s} – ${e}` : '';
+		const dur = formatDuration(Number(editPrograms.value[index].duration_minutes) || 0);
+		return clock ? `${clock}  · ${dur}` : '';
+	}
 	let acc = 0;
 	for (let i = 0; i < index; i++) acc += Number(editPrograms.value[i].duration_minutes) || 0;
 	const s = addMinutesToClock(start, acc);
@@ -1311,7 +1336,10 @@ async function doDelete() {
 						:key="prog.id"
 						class="program-item"
 					>
-						<span class="program-time">{{ viewProgramLabel(pi) }}</span>
+						<div class="program-time-col">
+							<span class="program-time">{{ viewProgramLabel(pi) }}</span>
+							<span class="program-time-secondary">{{ viewProgramSecondaryLabel(pi) }}</span>
+						</div>
 						<div class="program-body">
 							<div class="program-header">
 								<p class="program-title">{{ prog.title }}</p>
