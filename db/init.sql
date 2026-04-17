@@ -44,12 +44,12 @@ CREATE TABLE activities (
 );
 
 CREATE TABLE programs (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
-    time        TEXT NOT NULL,
-    title       TEXT NOT NULL,
-    description TEXT NOT NULL,
-    responsible TEXT[] NOT NULL DEFAULT '{}'
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id      UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK (duration_minutes >= 0),
+    title            TEXT NOT NULL,
+    description      TEXT NOT NULL,
+    responsible      TEXT[] NOT NULL DEFAULT '{}'
 );
 
 CREATE OR REPLACE FUNCTION touch_updated_at()
@@ -74,6 +74,8 @@ CREATE TABLE users (
     display_name  TEXT        NOT NULL,
     department    TEXT        REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL,
     role          TEXT        NOT NULL DEFAULT 'Mitglied' REFERENCES roles(name) ON UPDATE CASCADE,
+    time_display_mode TEXT    NOT NULL DEFAULT 'minutes'
+        CHECK (time_display_mode IN ('minutes', 'clock')),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

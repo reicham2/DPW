@@ -94,9 +94,12 @@ function formatDateShort(d: string): string {
 
 function formatPrograms(act: Activity): string {
   if (!act.programs.length) return '—'
-  return act.programs.map(p =>
-    `${p.time ? p.time + ' min' : '—'} – ${p.title}${p.responsible ? ' (' + p.responsible + ')' : ''}${p.description ? ': ' + p.description : ''}`
-  ).join('\n')
+  return act.programs.map(p => {
+    const dur = p.duration_minutes ? `${p.duration_minutes} min` : '—'
+    const resp = p.responsible && p.responsible.length ? ' (' + p.responsible.join(', ') + ')' : ''
+    const desc = p.description ? ': ' + p.description : ''
+    return `${dur} – ${p.title}${resp}${desc}`
+  }).join('\n')
 }
 
 function replaceTemplateVars(text: string, act: Activity): string {

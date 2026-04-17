@@ -45,6 +45,32 @@
           <input class="form-input form-input--readonly" type="text" :value="user?.email" readonly />
         </div>
 
+        <div class="form-group">
+          <label class="form-label">Zeitanzeige der Programmpunkte</label>
+          <div class="time-mode-toggle" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="form.time_display_mode === 'minutes'"
+              class="time-mode-pill"
+              :class="{ 'time-mode-pill--active': form.time_display_mode === 'minutes' }"
+              @click="form.time_display_mode = 'minutes'"
+            >
+              Minuten
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="form.time_display_mode === 'clock'"
+              class="time-mode-pill"
+              :class="{ 'time-mode-pill--active': form.time_display_mode === 'clock' }"
+              @click="form.time_display_mode = 'clock'"
+            >
+              Uhrzeit
+            </button>
+          </div>
+        </div>
+
         <ErrorAlert :error="error" />
         <div v-if="saved" class="profile-success">Gespeichert!</div>
 
@@ -63,7 +89,7 @@ import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
-import type { User } from '../types'
+import type { User, TimeDisplayMode } from '../types'
 
 const { myPermissions, fetchMyPermissions, departments: deptRecords, fetchDepartments } = usePermissions()
 
@@ -77,6 +103,7 @@ const deptItems = computed(() => deptRecords.value.map(d => ({ value: d.name }))
 const form = ref({
   display_name: user.value?.display_name ?? '',
   department:   user.value?.department   ?? '',
+  time_display_mode: (user.value?.time_display_mode ?? 'minutes') as TimeDisplayMode,
 })
 const saving = ref(false)
 const saved  = ref(false)
@@ -99,6 +126,7 @@ onMounted(async () => {
   if (user.value) {
     form.value.display_name = user.value.display_name
     form.value.department   = user.value.department ?? ''
+    form.value.time_display_mode = user.value.time_display_mode ?? 'minutes'
   }
   initialLoaded = true
 })
@@ -118,6 +146,7 @@ async function save() {
       body: JSON.stringify({
         display_name: form.value.display_name,
         department:   form.value.department || null,
+        time_display_mode: form.value.time_display_mode,
       }),
     })
     if (!res.ok) throw new Error(await res.text())
@@ -253,6 +282,41 @@ async function save() {
   background: #fff5f5;
   border-radius: 6px;
   padding: 8px 12px;
+}
+.time-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px;
+  background: #f3f4f6;
+  border-radius: 999px;
+  align-self: flex-start;
+}
+.time-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: none;
+  background: transparent;
+  color: #4b5563;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.time-mode-pill:hover:not(.time-mode-pill--active) {
+  color: #1a202c;
+}
+.time-mode-pill--active {
+  background: #e0e7ff;
+  color: #1a202c;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.time-mode-check {
+  color: #1a56db;
+  font-weight: 700;
 }
 .profile-success {
   color: #15803d;

@@ -218,81 +218,81 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
 
 -- ── Programm-Einträge ───────────────────────────────────────────────────────
 
--- Programme für "Geländespiel im Wald"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000001', '14:00', 'Einstieg',          'Begrüssung und Erklärung der Regeln',         ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000001', '14:15', 'Geländespiel',      'Posten im Wald ablaufen mit Karte & Kompass',  ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000001', '16:00', 'Auswertung',        'Punkte zählen und Sieger küren',               ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000001', '16:30', 'Abschluss',         'Zvieri und Aufräumen',                         ARRAY['Stufen Leiter']);
+-- Programme für "Geländespiel im Wald" (14:00–17:00)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000001',  15, 'Einstieg',          'Begrüssung und Erklärung der Regeln',         ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000001', 105, 'Geländespiel',      'Posten im Wald ablaufen mit Karte & Kompass',  ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000001',  30, 'Auswertung',        'Punkte zählen und Sieger küren',               ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000001',  30, 'Abschluss',         'Zvieri und Aufräumen',                         ARRAY['Stufen Leiter']);
 
--- Programme für "Pioniertechnik: Seilbrücke"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000002', '13:30', 'Knoten-Repetition', 'Mastwurf, Kreuzknoten, Achterknoten üben',     ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000002', '14:15', 'Brücke planen',     'Standort wählen und Skizze zeichnen',          ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000002', '14:45', 'Brücke bauen',      'Seilbrücke aufbauen in Gruppen',               ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000002', '16:30', 'Überquerung & Abbau', 'Jede Gruppe überquert, danach Abbau',        ARRAY['Leiter Eins']);
+-- Programme für "Pioniertechnik: Seilbrücke" (13:30–17:00)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000002',  45, 'Knoten-Repetition', 'Mastwurf, Kreuzknoten, Achterknoten üben',     ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000002',  30, 'Brücke planen',     'Standort wählen und Skizze zeichnen',          ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000002', 105, 'Brücke bauen',      'Seilbrücke aufbauen in Gruppen',               ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000002',  30, 'Überquerung & Abbau', 'Jede Gruppe überquert, danach Abbau',        ARRAY['Leiter Eins']);
 
--- Programme für "Schatzsuche"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000003', '14:00', 'Einführung',        'Geschichte erzählen und Gruppen bilden',        ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000003', '14:20', 'Schatzsuche',       'Hinweise suchen und Rätsel lösen',             ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000003', '15:45', 'Schatz öffnen',     'Gemeinsam den Schatz öffnen',                  ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000003', '16:00', 'Zvieri',            'Zvieri und Verabschiedung',                    ARRAY['Leiter Zwei']);
+-- Programme für "Schatzsuche" (14:00–16:30)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000003',  20, 'Einführung',        'Geschichte erzählen und Gruppen bilden',        ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000003',  85, 'Schatzsuche',       'Hinweise suchen und Rätsel lösen',             ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000003',  15, 'Schatz öffnen',     'Gemeinsam den Schatz öffnen',                  ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000003',  30, 'Zvieri',            'Zvieri und Verabschiedung',                    ARRAY['Leiter Zwei']);
 
--- Programme für "Wanderung Säntis"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000007', '08:00', 'Treffpunkt & Start', 'Ausrüstungskontrolle und Kurzbriefing',        ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000007', '09:00', 'Start Wanderung',   'Asphalt bis äis Berghütte',                   ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000007', '12:00', 'Gipfel & Picknick',  'Mittagspause mit Aussicht',                    ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000007', '14:00', 'Abstieg',           'Zurück zum Startpunkt',                        ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000007', '16:00', 'Debrief & Ende',    'Erlebnisse teilen, Abfahrt',                   ARRAY['Stufen Leiter']);
+-- Programme für "Wanderung Säntis" (08:00–16:00)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000007',  60, 'Treffpunkt & Start', 'Ausrüstungskontrolle und Kurzbriefing',        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', 180, 'Start Wanderung',   'Asphalt bis Berghütte',                        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', 120, 'Gipfel & Picknick',  'Mittagspause mit Aussicht',                    ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007', 120, 'Abstieg',           'Zurück zum Startpunkt',                        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000007',   0, 'Debrief & Ende',    'Erlebnisse teilen, Abfahrt',                   ARRAY['Stufen Leiter']);
 
--- Programme für "Pizza selber backen"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000008', '15:00', 'Einstieg',          'Pizzageschichte und Teig-Zutaten erklären',    ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000008', '15:15', 'Teig kneten',       'Jedes Kind knetet seinen Teig',                ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000008', '16:00', 'Formen & Belegen',  'Pizza-Formen verzieren und belegen',           ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000008', '16:30', 'Backen & Essen',    'Im Ofen backen und gemeinsam essen',           ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000008', '18:00', 'Aufräumen & Tschüss', 'Küche putzen und bis bald',                   ARRAY['Leiter Zwei']);
+-- Programme für "Pizza selber backen" (15:00–18:30)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000008',  15, 'Einstieg',          'Pizzageschichte und Teig-Zutaten erklären',    ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008',  45, 'Teig kneten',       'Jedes Kind knetet seinen Teig',                ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008',  30, 'Formen & Belegen',  'Pizza-Formen verzieren und belegen',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008',  90, 'Backen & Essen',    'Im Ofen backen und gemeinsam essen',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000008',  30, 'Aufräumen & Tschüss', 'Küche putzen und bis bald',                   ARRAY['Leiter Zwei']);
 
--- Programme für "Badetag im Freibad"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000009', '14:00', 'Umzug & Belegung',  'Umzug ins Freibad, Platz suchen',              ARRAY['Leiter Drei']),
-    ('b0000000-0000-0000-0000-000000000009', '14:15', 'Sicherheitsbriefing', 'Regeln erklären und Wassergewöhnung',        ARRAY['Leiter Drei']),
-    ('b0000000-0000-0000-0000-000000000009', '14:45', 'Freischwimmen',    'Freies Spielen im Wasser und Becken',         ARRAY['Leiter Drei']),
-    ('b0000000-0000-0000-0000-000000000009', '15:45', 'Flaschenbad',       'Erfrischungen und Snack am Beckenrand',        ARRAY['Leiter Drei']),
-    ('b0000000-0000-0000-0000-000000000009', '16:15', 'Umzug & Ende',      'Zurück zur Sammelstelle',                      ARRAY['Leiter Drei']);
+-- Programme für "Badetag im Freibad" (14:00–16:30)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000009',  15, 'Umzug & Belegung',  'Umzug ins Freibad, Platz suchen',              ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009',  30, 'Sicherheitsbriefing', 'Regeln erklären und Wassergewöhnung',        ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009',  60, 'Freischwimmen',    'Freies Spielen im Wasser und Becken',         ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009',  30, 'Flaschenbad',       'Erfrischungen und Snack am Beckenrand',        ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000009',  15, 'Umzug & Ende',      'Zurück zur Sammelstelle',                      ARRAY['Leiter Drei']);
 
--- Programme für "Felsklettern: Seile und Sicherung"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000010', '09:00', 'Anmarsch & Setup',  'Zu Kletterplatz gehen, Ausrüstung aufbauen',   ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010', '10:00', 'Theorie Knoten',    'Kletterknoten und Sicherung üben',             ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010', '11:00', 'Erste Kletter',     'Beginners an easy Via mit Sicherung',          ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010', '12:30', 'Mittagspause',      'Proviant und Aussicht genießen',               ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010', '13:30', 'Fortgeschrittene',  'Schwierigere Routen für Erfahrene',            ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010', '16:00', 'Abbau & Rückweg',   'Material packen und Debrief',                  ARRAY['Pio Eins']);
+-- Programme für "Felsklettern: Seile und Sicherung" (09:00–17:00)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000010',  60, 'Anmarsch & Setup',  'Zu Kletterplatz gehen, Ausrüstung aufbauen',   ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010',  60, 'Theorie Knoten',    'Kletterknoten und Sicherung üben',             ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010',  90, 'Erste Kletter',     'Beginners an easy Via mit Sicherung',          ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010',  60, 'Mittagspause',      'Proviant und Aussicht genießen',               ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010', 150, 'Fortgeschrittene',  'Schwierigere Routen für Erfahrene',            ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000010',  60, 'Abbau & Rückweg',   'Material packen und Debrief',                  ARRAY['Pio Eins']);
 
--- Programme für "Tipi-Nacht"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000011', '17:00', 'Anreise & Aufbau', 'Tipis aufbauen und Schlafplätze herrichten',  ARRAY['Leiter Eins', 'Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000011', '18:00', 'Feuer & Essen',    'Lagerfeuer entzünden und Abendessen kochen',   ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000011', '19:00', 'Lagerfeuer-Programm', 'Geschichten, Lieder, Spiele ums Feuer',     ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000011', '21:00', 'Zubettmachen',     'Runterfahren und Schlafen gehen',              ARRAY['Leiter Eins', 'Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000011', '09:00', 'Frühstück & Abbau', 'Frühstück zubereiten und Tipis abbauen',      ARRAY['Stufen Leiter']);
+-- Programme für "Tipi-Nacht" (17:00–09:00 Folgetag)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000011',  60, 'Anreise & Aufbau', 'Tipis aufbauen und Schlafplätze herrichten',  ARRAY['Leiter Eins', 'Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011',  60, 'Feuer & Essen',    'Lagerfeuer entzünden und Abendessen kochen',   ARRAY['Leiter Eins']),
+    ('b0000000-0000-0000-0000-000000000011', 120, 'Lagerfeuer-Programm', 'Geschichten, Lieder, Spiele ums Feuer',     ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011', 720, 'Zubettmachen',     'Runterfahren und Schlafen gehen',              ARRAY['Leiter Eins', 'Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000011',   0, 'Frühstück & Abbau', 'Frühstück zubereiten und Tipis abbauen',      ARRAY['Stufen Leiter']);
 
--- Programme für "Waldspiele kombiniert (Pfadi & Wölfe)"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000012', '10:00', 'Begrüssung',       'Verbands- und Gruppengeist aktivieren',        ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000012', '10:15', 'Gemischte Spiele', 'Alters-Mix: Staffeln und Teamspiele',          ARRAY['Stufen Leiter', 'Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000012', '11:30', 'Prämierung',       'Sieger küren und Urkunden verteilen',          ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000012', '12:00', 'Zvieri & Ende',    'Gemeinsamer Zvieri',                           ARRAY['Stufen Leiter']);
+-- Programme für "Waldspiele kombiniert (Pfadi & Wölfe)" (10:00–12:30)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000012',  15, 'Begrüssung',       'Verbands- und Gruppengeist aktivieren',        ARRAY['Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000012',  75, 'Gemischte Spiele', 'Alters-Mix: Staffeln und Teamspiele',          ARRAY['Stufen Leiter', 'Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000012',  30, 'Prämierung',       'Sieger küren und Urkunden verteilen',          ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000012',  30, 'Zvieri & Ende',    'Gemeinsamer Zvieri',                           ARRAY['Stufen Leiter']);
 
--- Programme für "Wölfe-Nachmittagstraining"
-INSERT INTO programs (activity_id, time, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000013', '10:00', 'Aufwärmspiel',     'Fangis und Ballgewöhnung',                     ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000013', '10:15', 'Koordinations-Parcours', 'Hütchen-Slalom und Sprünge',                  ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000013', '11:00', 'Freispiel & Tore', 'Mannschaftsspiele auf Kleinfeldern',           ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000013', '11:45', 'Cool-down',        'Dehnübungen und Abklatschen',                  ARRAY['Leiter Zwei']);
+-- Programme für "Wölfe-Nachmittagstraining" (10:00–12:30)
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000013',  15, 'Aufwärmspiel',     'Fangis und Ballgewöhnung',                     ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013',  45, 'Koordinations-Parcours', 'Hütchen-Slalom und Sprünge',             ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013',  45, 'Freispiel & Tore', 'Mannschaftsspiele auf Kleinfeldern',           ARRAY['Leiter Zwei']),
+    ('b0000000-0000-0000-0000-000000000013',  45, 'Cool-down',        'Dehnübungen und Abklatschen',                  ARRAY['Leiter Zwei']);
 
 -- Mail-Templates mit Beispielinhalt
 UPDATE mail_templates SET

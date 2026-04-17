@@ -13,6 +13,7 @@ struct UserRecord
     std::string display_name;
     std::optional<std::string> department;
     std::string role;
+    std::string time_display_mode{"minutes"};
     std::string created_at;
     std::string updated_at;
 };
@@ -149,7 +150,8 @@ public:
     // Update own profile (display_name only; department blocked by role on handler level).
     std::optional<UserRecord> update_user(const std::string &oid,
                                           const std::string &display_name,
-                                          const std::optional<std::string> &department);
+                                          const std::optional<std::string> &department,
+                                          const std::optional<std::string> &time_display_mode = std::nullopt);
     // Admin: update any user's display_name, department and role.
     std::optional<UserRecord> update_user_admin(const std::string &id,
                                                 const std::string &display_name,

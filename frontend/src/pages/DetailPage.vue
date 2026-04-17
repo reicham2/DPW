@@ -101,7 +101,7 @@ function cloneSnapshotMaterial(material: MaterialItem[]): MaterialItem[] {
 
 function cloneSnapshotPrograms(programs: ProgramInput[]): ProgramInput[] {
 	return programs.map((p) => ({
-		time: p.time,
+		duration_minutes: p.duration_minutes,
 		title: p.title,
 		description: p.description,
 		responsible: [...p.responsible],
@@ -336,7 +336,7 @@ function syncEditFields(a: typeof activity.value) {
 	editSikoText.value = a.siko_text ?? '';
 	editBadWeather.value = a.bad_weather_info ?? '';
 	editPrograms.value = a.programs.map((p) => ({
-		time: p.time,
+		duration_minutes: p.duration_minutes,
 		title: p.title,
 		description: p.description,
 		responsible: [...p.responsible],
@@ -376,7 +376,7 @@ watch(lastUpdatedActivity, (updated) => {
 			editMaterial.value = [...updated.material.map(m => ({ name: m.name, responsible: m.responsible ?? [] })), { name: '', responsible: [] }];
 		if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs)) {
 			editPrograms.value = updated.programs.map((p) => ({
-				time: p.time,
+				duration_minutes: p.duration_minutes,
 				title: p.title,
 				description: p.description,
 				responsible: [...p.responsible],
@@ -618,9 +618,62 @@ const editDeptItems = computed(() =>
 );
 
 // ---- Programs --------------------------------------------------------------
+function addMinutesToClock(start: string, minutes: number): string {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(start.trim());
+	if (!m) return '';
+	const total = parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + minutes;
+	const h = ((Math.floor(total / 60) % 24) + 24) % 24;
+	const mm = ((total % 60) + 60) % 60;
+	return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function formatDuration(min: number): string {
+	if (!Number.isFinite(min) || min <= 0) return '0 min';
+	if (min < 60) return `${min} min`;
+	const h = Math.floor(min / 60);
+	const m = min % 60;
+	return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+const timeDisplayMode = computed<'minutes' | 'clock'>(
+	() => user.value?.time_display_mode === 'clock' ? 'clock' : 'minutes'
+);
+
+function programLabelFor(a: Activity | null, index: number): string {
+	if (!a) return '';
+	const progs = a.programs;
+	if (timeDisplayMode.value === 'clock') {
+		let acc = 0;
+		for (let i = 0; i < index; i++) acc += progs[i].duration_minutes || 0;
+		const start = addMinutesToClock(a.start_time, acc);
+		const end = addMinutesToClock(a.start_time, acc + (progs[index].duration_minutes || 0));
+		return start && end ? `${start} – ${end}` : start || '—';
+	}
+	return formatDuration(progs[index].duration_minutes || 0);
+}
+
+function viewProgramLabel(index: number): string {
+	return programLabelFor(activity.value, index);
+}
+
+function previewProgramLabel(index: number): string {
+	return programLabelFor(previewActivity.value, index);
+}
+
+function editProgramLabel(index: number): string {
+	if (timeDisplayMode.value !== 'clock') return '';
+	const start = editStartTime.value;
+	if (!start) return '';
+	let acc = 0;
+	for (let i = 0; i < index; i++) acc += Number(editPrograms.value[i].duration_minutes) || 0;
+	const s = addMinutesToClock(start, acc);
+	const e = addMinutesToClock(start, acc + (Number(editPrograms.value[index].duration_minutes) || 0));
+	return s && e ? `${s} – ${e}` : '';
+}
+
 function addProgram() {
 	editPrograms.value.push({
-		time: '',
+		duration_minutes: 0,
 		title: '',
 		description: '',
 		responsible: editResponsible.value.length ? [editResponsible.value[0]] : [],
@@ -1254,13 +1307,11 @@ async function doDelete() {
 				<p class="detail-section-title">Programmpunkte</p>
 				<div v-if="activity.programs.length" class="program-timeline">
 					<div
-						v-for="prog in activity.programs"
+						v-for="(prog, pi) in activity.programs"
 						:key="prog.id"
 						class="program-item"
 					>
-						<span class="program-time">{{
-							prog.time || '—'
-						}}</span>
+						<span class="program-time">{{ viewProgramLabel(pi) }}</span>
 						<div class="program-body">
 							<div class="program-header">
 								<p class="program-title">{{ prog.title }}</p>
@@ -1523,17 +1574,20 @@ async function doDelete() {
 						</button>
 						<div class="program-card__fields">
 							<div class="form-group">
-								<label>Zeit</label>
+								<label>Dauer (Minuten)</label>
 								<div class="input-save-wrap">
 									<input
-										type="text"
-										placeholder="z.B. 13:30 bis 14:30"
-										:value="prog.time"
-										@input="prog.time = ($event.target as HTMLInputElement).value; markDirty(`prog_${i}_time`)"
+										type="number"
+										min="0"
+										step="5"
+										placeholder="z.B. 30"
+										:value="prog.duration_minutes"
+										@input="prog.duration_minutes = Math.max(0, parseInt(($event.target as HTMLInputElement).value, 10) || 0); markDirty(`prog_${i}_time`)"
 										:disabled="isLockedByOther(`program_${i}`)"
 									/>
 									<span v-if="savedFields[`prog_${i}_time`]" class="field-saved-icon" :key="savedFields[`prog_${i}_time`]">💾</span>
 								</div>
+								<p v-if="editProgramLabel(i)" style="margin: 4px 0 0; font-size: 0.78rem; color: #6b7280">{{ editProgramLabel(i) }}</p>
 							</div>
 							<div class="form-group">
 								<label>Titel</label>
@@ -1904,8 +1958,8 @@ async function doDelete() {
 				<div v-if="previewActivity.programs.length" class="activity-preview-popup__row activity-preview-popup__row--full">
 					<span class="detail-label">Programmpunkte</span>
 					<ul class="overlap-list" style="margin-top: 4px">
-						<li v-for="prog in previewActivity.programs" :key="prog.id">
-							<strong>{{ prog.time || '—' }}</strong> {{ prog.title }}
+						<li v-for="(prog, pi) in previewActivity.programs" :key="prog.id">
+							<strong>{{ previewProgramLabel(pi) }}</strong> {{ prog.title }}
 							<span v-if="prog.responsible.length"> – {{ prog.responsible.join(', ') }}</span>
 						</li>
 					</ul>
