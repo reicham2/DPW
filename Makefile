@@ -8,7 +8,13 @@ DC := docker compose -f docker-compose-dev.yml
 .PHONY: up down build rebuild logs logs-backend logs-frontend logs-db \
        restart restart-backend restart-frontend restart-db \
 	db-reset db-seed ps clean full-rebuild update-deps \
-	build-prod rebuild-prod rebuild-backend-prod rebuild-frontend-prod
+	build-prod rebuild-prod rebuild-backend-prod rebuild-frontend-prod \
+	new-branch fresh
+
+# ── Shortcut-Targets ─────────────────────────────────────────────────────────
+new-branch: clean rebuild db-seed
+
+fresh: rebuild db-seed
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:
