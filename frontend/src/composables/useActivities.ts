@@ -6,8 +6,8 @@ import type {
 	Department,
 	WsEvent,
 } from '../types';
-import { getIdToken } from './useAuth';
 import { useWebSocket } from './useWebSocket';
+import { apiFetch } from './useApi';
 
 const BASE = '/api';
 
@@ -16,23 +16,6 @@ const activities = ref<Activity[]>([]);
 const lastUpdatedActivity = ref<Activity | null>(null);
 const departments = ref<Department[]>([]);
 const predefinedLocations = ref<string[]>([]);
-
-async function apiFetch(
-	url: string,
-	options: RequestInit = {},
-): Promise<Response> {
-	const token = await getIdToken();
-	return fetch(url, {
-		...options,
-		headers: {
-			...((options.headers as Record<string, string>) ?? {}),
-			Authorization: `Bearer ${token}`,
-			...(options.body && !(options.body instanceof FormData)
-				? { 'Content-Type': 'application/json' }
-				: {}),
-		},
-	});
-}
 
 export function useActivities() {
 	const loading = ref(false);
@@ -48,6 +31,11 @@ export function useActivities() {
 			if (idx !== -1) activities.value[idx] = event.activity;
 		} else if (event.event === 'deleted') {
 			activities.value = activities.value.filter((a) => a.id !== event.id);
+		} else if (event.event === 'department_deleted') {
+			departments.value = departments.value.filter((d) => d !== event.name);
+			void fetchActivities();
+		} else if (event.event === 'role_deleted') {
+			void fetchActivities();
 		}
 	}
 

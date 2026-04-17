@@ -9,24 +9,9 @@ import type {
 	FormType,
 	FormSubmitPayload,
 } from '../types';
-import { getIdToken } from './useAuth';
+import { apiFetch } from './useApi';
 
 const BASE = '/api';
-
-async function apiFetch(
-	url: string,
-	options: RequestInit = {},
-): Promise<Response> {
-	const token = await getIdToken();
-	return fetch(url, {
-		...options,
-		headers: {
-			...((options.headers as Record<string, string>) ?? {}),
-			Authorization: `Bearer ${token}`,
-			...(options.body ? { 'Content-Type': 'application/json' } : {}),
-		},
-	});
-}
 
 export function useForms() {
 	const form = ref<SignupForm | null>(null);
@@ -355,10 +340,8 @@ export function useFormTemplates() {
 		loading.value = true;
 		error.value = null;
 		try {
-			const token = await getIdToken();
-			const res = await fetch(
+			const res = await apiFetch(
 				`${BASE}/form-templates?department=${encodeURIComponent(department)}`,
-				{ headers: { Authorization: `Bearer ${token}` } },
 			);
 			if (!res.ok) throw new Error(await res.text());
 			templates.value = (await res.json()) as FormTemplate[];
@@ -380,13 +363,8 @@ export function useFormTemplates() {
 	): Promise<FormTemplate | null> {
 		error.value = null;
 		try {
-			const token = await getIdToken();
-			const res = await fetch(`${BASE}/form-templates`, {
+			const res = await apiFetch(`${BASE}/form-templates`, {
 				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${token}`,
-					'Content-Type': 'application/json',
-				},
 				body: JSON.stringify({
 					name,
 					department,
@@ -419,15 +397,10 @@ export function useFormTemplates() {
 	): Promise<FormTemplate | null> {
 		error.value = null;
 		try {
-			const token = await getIdToken();
-			const res = await fetch(
+			const res = await apiFetch(
 				`${BASE}/form-templates/${encodeURIComponent(id)}`,
 				{
 					method: 'PUT',
-					headers: {
-						Authorization: `Bearer ${token}`,
-						'Content-Type': 'application/json',
-					},
 					body: JSON.stringify({
 						name,
 						form_type,
@@ -455,12 +428,10 @@ export function useFormTemplates() {
 	async function deleteTemplate(id: string): Promise<boolean> {
 		error.value = null;
 		try {
-			const token = await getIdToken();
-			const res = await fetch(
+			const res = await apiFetch(
 				`${BASE}/form-templates/${encodeURIComponent(id)}`,
 				{
 					method: 'DELETE',
-					headers: { Authorization: `Bearer ${token}` },
 				},
 			);
 			if (!res.ok) throw new Error(await res.text());

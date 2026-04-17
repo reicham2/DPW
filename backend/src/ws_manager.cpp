@@ -1,8 +1,68 @@
 #include "ws_manager.hpp"
+#include "auth.hpp"
+#include "db.hpp"
 #include "json.hpp"
 #include <cstdio>
 
+#if !defined(DPW_ENABLE_DEBUG_AUTH)
+#define DPW_ENABLE_DEBUG_AUTH 0
+#endif
+
+namespace
+{
+
+    TokenClaims validate_ws_token(const std::string &token)
+    {
+#if DPW_ENABLE_DEBUG_AUTH
+        if (token.rfind("debug:", 0) == 0)
+        {
+            std::string user_id = token.substr(6);
+            if (user_id.empty())
+                throw std::runtime_error("debug token: user_id missing");
+            TokenClaims c;
+            c.oid = "debug:" + user_id;
+            c.email = "debug@local";
+            c.display_name = "Debug";
+            c.tid = "debug";
+            return c;
+        }
+#endif
+
+        return validate_microsoft_token(token);
+    }
+
+    std::optional<UserRecord> resolve_ws_user(Database &db, const TokenClaims &claims)
+    {
+        if (claims.oid.rfind("debug:", 0) == 0)
+            return db.get_user_by_id(claims.oid.substr(6));
+        return db.get_user_by_oid(claims.oid);
+    }
+
+} // namespace
+
 using json = nlohmann::json;
+
+bool WebSocketManager::authenticate_upgrade(const std::string &token, WsUserData &out) const
+{
+    try
+    {
+        auto claims = validate_ws_token(token);
+        auto user = resolve_ws_user(db_, claims);
+        if (!user)
+            return false;
+
+        out.display_name = user->display_name;
+        out.oid = user->microsoft_oid;
+        out.authenticated = true;
+        out.viewing_activity.clear();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        printf("[WS] upgrade auth failed: %s\n", e.what());
+        return false;
+    }
+}
 
 void WebSocketManager::on_open(WsHandle ws)
 {
@@ -28,7 +88,7 @@ void WebSocketManager::on_message(WsHandle ws, std::string_view message)
 
         if (type == "register")
         {
-            handle_register(ws, j.value("display_name", ""), j.value("oid", ""));
+            handle_register(ws, j.value("token", ""));
         }
         else if (type == "join")
         {
@@ -64,21 +124,35 @@ void WebSocketManager::broadcast(const std::string &message)
 
 // ---- Private helpers --------------------------------------------------------
 
-void WebSocketManager::handle_register(WsHandle ws, const std::string &display_name, const std::string &oid)
+void WebSocketManager::handle_register(WsHandle ws, const std::string &token)
 {
     auto *data = ws->getUserData();
-    data->display_name = display_name;
-    data->oid = oid;
-    printf("[WS] registered user: %s\n", display_name.c_str());
+    if (data->authenticated)
+    {
+        printf("[WS] registered user: %s\n", data->display_name.c_str());
+        return;
+    }
+
+    WsUserData authenticated_user;
+    if (!authenticate_upgrade(token, authenticated_user))
+    {
+        ws->close();
+        return;
+    }
+
+    *data = authenticated_user;
+    printf("[WS] registered user: %s\n", data->display_name.c_str());
 }
 
 void WebSocketManager::handle_join(WsHandle ws, const std::string &activity_id)
 {
     if (activity_id.empty())
         return;
+    auto *data = ws->getUserData();
+    if (!data->authenticated)
+        return;
     // Leave previous activity first
     handle_leave(ws);
-    auto *data = ws->getUserData();
     data->viewing_activity = activity_id;
     activity_viewers_[activity_id].insert(ws);
     printf("[WS] %s joined %s (viewers: %zu)\n", data->display_name.c_str(), activity_id.c_str(), activity_viewers_[activity_id].size());
@@ -129,7 +203,7 @@ void WebSocketManager::handle_lock(WsHandle ws, const std::string &activity_id, 
     if (activity_id.empty() || section.empty())
         return;
     auto *data = ws->getUserData();
-    if (data->display_name.empty())
+    if (!data->authenticated || data->display_name.empty())
         return;
 
     auto &locks = activity_locks_[activity_id];

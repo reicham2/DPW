@@ -2,86 +2,92 @@
 UWEBSOCKETS_VERSION := v20.62.0
 USOCKETS_VERSION    := v0.8.8
 
+# Dev-Compose-Datei (docker-compose.yml = Produktion mit GHCR-Images)
+DC := docker compose -f docker-compose-dev.yml
+
 .PHONY: up down build rebuild logs logs-backend logs-frontend logs-db \
        restart restart-backend restart-frontend restart-db \
-	db-reset db-seed ps clean build-backend-debug rebuild-backend-debug \
-	full-rebuild update-deps
+	db-reset db-seed ps clean full-rebuild update-deps \
+	build-prod rebuild-prod rebuild-backend-prod rebuild-frontend-prod
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:
-	docker compose up -d
+	$(DC) up -d
 
 down:
-	docker compose down
+	$(DC) down
 
-# ── Bauen ────────────────────────────────────────────────────────────────────
+# ── Bauen (immer Debug + Debug-Auth) ─────────────────────────────────────────
 build:
-	docker compose build
+	BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1 FRONTEND_ENABLE_DEBUG_AUTH=1 $(DC) build
 
 rebuild:
-	docker compose up -d --no-deps --build --force-recreate
+	BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1 FRONTEND_ENABLE_DEBUG_AUTH=1 $(DC) up -d --no-deps --build --force-recreate
 
 rebuild-backend:
-	docker compose up -d --no-deps --build --force-recreate backend
-
-build-backend-debug:
-	BACKEND_BUILD_TYPE=Debug docker compose build backend
-
-rebuild-backend-debug:
-	BACKEND_BUILD_TYPE=Debug docker compose up -d --no-deps --build --force-recreate backend
+	BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1 $(DC) up -d --no-deps --build --force-recreate backend
 
 rebuild-frontend:
-	docker compose up -d --no-deps --build --force-recreate frontend
+	FRONTEND_ENABLE_DEBUG_AUTH=1 $(DC) up -d --no-deps --build --force-recreate frontend
+
+# ── Bauen (Production: Release, kein Debug-Auth) ─────────────────────────────
+build-prod:
+	BACKEND_BUILD_TYPE=Release ENABLE_DEBUG_AUTH=0 FRONTEND_ENABLE_DEBUG_AUTH=0 $(DC) build
+
+rebuild-prod:
+	BACKEND_BUILD_TYPE=Release ENABLE_DEBUG_AUTH=0 FRONTEND_ENABLE_DEBUG_AUTH=0 $(DC) up -d --no-deps --build --force-recreate
+
+rebuild-backend-prod:
+	BACKEND_BUILD_TYPE=Release ENABLE_DEBUG_AUTH=0 $(DC) up -d --no-deps --build --force-recreate backend
+
+rebuild-frontend-prod:
+	FRONTEND_ENABLE_DEBUG_AUTH=0 $(DC) up -d --no-deps --build --force-recreate frontend
 
 # ── Logs ─────────────────────────────────────────────────────────────────────
 logs:
-	docker compose logs -f
+	$(DC) logs -f
 
 logs-backend:
-	docker compose logs -f backend
+	$(DC) logs -f backend
 
 logs-frontend:
-	docker compose logs -f frontend
+	$(DC) logs -f frontend
 
 logs-db:
-	docker compose logs -f db
+	$(DC) logs -f db
 
 # ── Neustart (ohne neu zu bauen) ─────────────────────────────────────────────
 restart:
-	docker compose restart
+	$(DC) restart
 
 restart-backend:
-	docker compose restart backend
+	$(DC) restart backend
 
 restart-frontend:
-	docker compose restart frontend
+	$(DC) restart frontend
 
 restart-db:
-	docker compose restart db
+	$(DC) restart db
 
 # ── Datenbank ────────────────────────────────────────────────────────────────
 db-reset:
-	docker compose down -v
-	docker compose up -d db
-	@echo "⏳ Warte auf DB (healthcheck) …"
-	@until [ "$$(docker inspect --format='{{.State.Health.Status}}' dpw-db-1 2>/dev/null)" = "healthy" ]; do sleep 1; done
+	$(DC) down -v
+	$(DC) up -d --wait
 	@echo "✅ DB bereit (Schema aus init.sql geladen)"
-	docker compose up -d
 
 db-seed: db-reset
-	docker compose exec -T db psql -U activities_user -d activities < db/seed.sql
+	$(DC) exec -T db psql -U activities_user -d activities < db/seed.sql
 	@echo "✅ Testdaten geladen"
-	docker compose up -d
 
 db-shell:
-	docker compose exec db psql -U activities_user -d activities
+	$(DC) exec db psql -U activities_user -d activities
 
 # ── Status / Aufräumen ───────────────────────────────────────────────────────
 ps:
-	docker compose ps
+	$(DC) ps
 
 clean:
-	docker compose down -v --rmi local --remove-orphans
+	$(DC) down -v --rmi local --remove-orphans
 
 # ── Backend-Deps aktualisieren ───────────────────────────────────────────────
 update-deps:
@@ -94,6 +100,6 @@ update-deps:
 # ── Komplett-Rebuild (Cache löschen) ─────────────────────────────────────────
 full-rebuild: update-deps
 	docker builder prune --all -f
-	docker compose build --no-cache
-	docker compose up -d --force-recreate
+	$(DC) build --no-cache
+	$(DC) up -d --force-recreate
 	@echo "✅ Full rebuild abgeschlossen"

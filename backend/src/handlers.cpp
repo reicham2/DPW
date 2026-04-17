@@ -7,9 +7,15 @@
 #include <algorithm>
 #include <ctime>
 #include <map>
+#include <chrono>
+#include <deque>
+#include <mutex>
+#include <unordered_map>
 #include <curl/curl.h>
 
-static const std::string PFADI_HUE_GROUP_ID = "17fcb1fa-9fa2-45f2-96cc-3804d7097311";
+#if !defined(DPW_ENABLE_DEBUG_AUTH)
+#define DPW_ENABLE_DEBUG_AUTH 0
+#endif
 
 static const char *status_text(int code)
 {
@@ -25,14 +31,81 @@ static const char *status_text(int code)
         return "400 Bad Request";
     case 401:
         return "401 Unauthorized";
+    case 403:
+        return "403 Forbidden";
     case 404:
         return "404 Not Found";
+    case 409:
+        return "409 Conflict";
+    case 413:
+        return "413 Payload Too Large";
+    case 429:
+        return "429 Too Many Requests";
+    case 502:
+        return "502 Bad Gateway";
+    case 503:
+        return "503 Service Unavailable";
     case 500:
         return "500 Internal Server Error";
     default:
         return "200 OK";
     }
 }
+
+namespace
+{
+
+    struct PublicSubmitBucket
+    {
+        std::deque<std::chrono::steady_clock::time_point> attempts;
+    };
+
+    std::mutex public_submit_rate_limit_mutex;
+    std::unordered_map<std::string, PublicSubmitBucket> public_submit_rate_limit;
+
+    constexpr size_t kMaxPublicFormPayloadBytes = 128 * 1024;
+    constexpr size_t kPublicSubmitBurstLimit = 3;
+    constexpr size_t kPublicSubmitSustainedLimit = 12;
+    constexpr auto kPublicSubmitBurstWindow = std::chrono::seconds(30);
+    constexpr auto kPublicSubmitSustainedWindow = std::chrono::minutes(10);
+    constexpr size_t kMaxPublicAnswerLength = 4000;
+
+    std::string normalize_public_submit_client_key(const std::string &ip_address, const std::string &user_agent)
+    {
+        if (!ip_address.empty())
+            return ip_address;
+        if (user_agent.empty())
+            return "anonymous";
+        return user_agent.substr(0, std::min<size_t>(user_agent.size(), 160));
+    }
+
+    bool is_public_submit_rate_limited(const std::string &public_slug, const std::string &client_key)
+    {
+        auto now = std::chrono::steady_clock::now();
+        auto cutoff = now - kPublicSubmitSustainedWindow;
+        std::lock_guard<std::mutex> lock(public_submit_rate_limit_mutex);
+        auto &bucket = public_submit_rate_limit[public_slug + "|" + client_key];
+
+        while (!bucket.attempts.empty() && bucket.attempts.front() < cutoff)
+            bucket.attempts.pop_front();
+
+        size_t burst_count = 0;
+        auto burst_cutoff = now - kPublicSubmitBurstWindow;
+        for (auto it = bucket.attempts.rbegin(); it != bucket.attempts.rend(); ++it)
+        {
+            if (*it < burst_cutoff)
+                break;
+            ++burst_count;
+        }
+
+        if (burst_count >= kPublicSubmitBurstLimit || bucket.attempts.size() >= kPublicSubmitSustainedLimit)
+            return true;
+
+        bucket.attempts.push_back(now);
+        return false;
+    }
+
+} // namespace
 
 void set_cors(HttpRes *res)
 {
@@ -69,10 +142,8 @@ static std::string url_decode(const std::string &src)
 // Falls back to real Microsoft token validation otherwise.
 static TokenClaims validate_token(const std::string &token)
 {
-    const char *dbg = std::getenv("DEBUG");
-    bool debug_mode = dbg && (std::string(dbg) == "true" || std::string(dbg) == "1");
-
-    if (debug_mode && token.rfind("debug:", 0) == 0)
+#if DPW_ENABLE_DEBUG_AUTH
+    if (token.rfind("debug:", 0) == 0)
     {
         std::string user_id = token.substr(6);
         if (user_id.empty())
@@ -86,6 +157,7 @@ static TokenClaims validate_token(const std::string &token)
         c.tid = "debug";
         return c;
     }
+#endif
     return validate_microsoft_token(token);
 }
 
@@ -134,6 +206,14 @@ void send_json(HttpRes *res, int status, const std::string &body)
     set_cors(res);
     res->writeHeader("Content-Type", "application/json");
     res->end(body);
+}
+
+// Log exception to stderr and send a generic 500 error to the client.
+// This prevents leaking internal details (DB schema, query plans, etc.).
+static void send_internal_error(HttpRes *res, const char *context, const std::exception &e)
+{
+    fprintf(stderr, "[error] %s: %s\n", context, e.what());
+    send_json(res, 500, R"({"error":"Interner Serverfehler"})");
 }
 
 static std::string str_field(const nlohmann::json &j, const char *key, const std::string &def = "")
@@ -237,8 +317,11 @@ static ActivityInput parse_activity_input(const nlohmann::json &j)
 
 // ---- GET /departments -------------------------------------------------------
 
-void handle_get_departments(HttpRes *res, HttpReq * /*req*/, Database &db)
+void handle_get_departments(HttpRes *res, HttpReq *req, Database &db)
 {
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
     try
     {
         auto depts = db.list_departments();
@@ -249,27 +332,20 @@ void handle_get_departments(HttpRes *res, HttpReq * /*req*/, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
 // ── Permission helpers ───────────────────────────────────────────────────────
 
-static bool has_dept_read_access(const std::vector<RoleDeptAccess> &dept_access, const std::string &dept)
-{
-    for (const auto &da : dept_access)
-    {
-        if (da.department == dept && da.can_read)
-            return true;
-    }
-    return false;
-}
+// Admin role always has full access regardless of DB permission settings.
+static bool is_admin(const UserRecord &user) { return user.role == "admin"; }
 
-static bool has_dept_create_access(const std::vector<RoleDeptAccess> &dept_access, const std::string &dept)
+static bool has_dept_access(const std::vector<RoleDeptAccess> &dept_access, const std::string &dept, bool write)
 {
     for (const auto &da : dept_access)
     {
-        if (da.department == dept && da.can_write)
+        if (da.department == dept && (write ? da.can_write : da.can_read))
             return true;
     }
     return false;
@@ -279,22 +355,26 @@ static bool can_create_dept(const RolePermission &perm, const UserRecord &user,
                             const std::vector<RoleDeptAccess> &dept_access,
                             const std::string &dept)
 {
+    if (is_admin(user))
+        return true;
     if (perm.activity_create_scope == "all")
         return true;
     if (perm.activity_create_scope == "own_dept" && user.department && *user.department == dept)
         return true;
-    return has_dept_create_access(dept_access, dept);
+    return has_dept_access(dept_access, dept, true);
 }
 
 static bool can_read_dept(const RolePermission &perm, const UserRecord &user,
                           const std::vector<RoleDeptAccess> &dept_access,
                           const std::string &dept)
 {
+    if (is_admin(user))
+        return true;
     if (perm.activity_read_scope == "all")
         return true;
     if (perm.activity_read_scope == "same_dept" && user.department && *user.department == dept)
         return true;
-    return has_dept_read_access(dept_access, dept);
+    return has_dept_access(dept_access, dept, false);
 }
 
 static bool is_activity_responsible(const Activity &activity, const UserRecord &user, const TokenClaims &claims)
@@ -311,6 +391,8 @@ static bool can_read_activity(const RolePermission &perm, const UserRecord &user
                               const std::vector<RoleDeptAccess> &dept_access,
                               const Activity &activity, const TokenClaims & /*claims*/)
 {
+    if (is_admin(user))
+        return true;
     if (perm.activity_read_scope == "all")
         return true;
 
@@ -320,12 +402,14 @@ static bool can_read_activity(const RolePermission &perm, const UserRecord &user
     const std::string &dept = *activity.department;
     if (perm.activity_read_scope == "same_dept" && user.department && *user.department == dept)
         return true;
-    return has_dept_read_access(dept_access, dept);
+    return has_dept_access(dept_access, dept, false);
 }
 
 static bool can_edit_activity(const RolePermission &perm, const UserRecord &user,
                               const Activity &activity, const TokenClaims &claims)
 {
+    if (is_admin(user))
+        return true;
     if (perm.activity_edit_scope == "all")
         return true;
     if (perm.activity_edit_scope == "same_dept")
@@ -370,7 +454,7 @@ void handle_get_activities(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -407,7 +491,7 @@ void handle_get_activity(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -428,7 +512,7 @@ void handle_get_locations(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -583,7 +667,7 @@ void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -611,8 +695,7 @@ void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db)
     }
 
     auto perm = db.get_role_permission(current_user->role);
-    auto dept_access = db.list_role_dept_access(current_user->role);
-    if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity, claims))
+    if (!perm || !can_edit_activity(*perm, *current_user, *activity, claims))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -645,7 +728,7 @@ void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db)
             }
             send_json(res, 201, attachment_to_json(*att).dump());
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -684,14 +767,24 @@ void handle_get_attachment_download(HttpRes *res, HttpReq *req, Database &db)
         set_cors(res);
         res->writeStatus("200 OK");
         res->writeHeader("Content-Type", ad->content_type);
-        std::string disp = "inline; filename=\"" + ad->filename + "\"";
+        // Sanitize filename: strip quotes, backslashes, and control chars to prevent header injection
+        std::string safe_name;
+        for (char c : ad->filename)
+        {
+            if (c == '"' || c == '\\' || c == '\r' || c == '\n' || static_cast<unsigned char>(c) < 0x20)
+                continue;
+            safe_name += c;
+        }
+        if (safe_name.empty())
+            safe_name = "attachment";
+        std::string disp = "inline; filename=\"" + safe_name + "\"";
         res->writeHeader("Content-Disposition", disp);
         res->end(std::string_view(
             reinterpret_cast<const char *>(ad->data.data()), ad->data.size()));
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -736,7 +829,7 @@ void handle_delete_attachment(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -805,7 +898,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
             wm.broadcast(msg.dump());
             send_json(res, 201, to_json(*activity).dump());
         } catch (std::exception& e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -896,7 +989,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
             wm.broadcast(msg.dump());
             send_json(res, 200, to_json(*activity).dump());
         } catch (std::exception& e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -948,7 +1041,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -1002,13 +1095,11 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
         std::transform(email_lower.begin(), email_lower.end(), email_lower.begin(), ::tolower);
 
         // ── Debug-Mode ──────────────────────────────────────────────────────
-        // If DEBUG=true and the user's email matches DEBUG_ADMIN_EMAIL,
-        // force admin role regardless of any other checks.
+        // If DEBUG_ADMIN_EMAIL matches, force admin role (compile-time gated).
+#if DPW_ENABLE_DEBUG_AUTH
         {
-            const char *dbg = std::getenv("DEBUG");
             const char *dbg_mail = std::getenv("DEBUG_ADMIN_EMAIL");
-            bool debug_mode = dbg && (std::string(dbg) == "true" || std::string(dbg) == "1");
-            if (debug_mode && dbg_mail && !std::string(dbg_mail).empty())
+            if (dbg_mail && !std::string(dbg_mail).empty())
             {
                 std::string dbg_mail_lower(dbg_mail);
                 std::transform(dbg_mail_lower.begin(), dbg_mail_lower.end(),
@@ -1021,6 +1112,7 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
                 }
             }
         }
+#endif
 
         // ── Normale Rollen-Zuweisung (nur wenn kein Debug-Override) ─────────
         if (!force_role)
@@ -1031,21 +1123,6 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
                 initial_role = "admin";
                 initial_dept = "Allgemein";
                 force_role = true;
-            }
-            else
-            {
-                // Only check group membership for potentially new users.
-                auto existing = resolve_user(db, claims);
-                if (!existing)
-                {
-                    // New user: check if they are in "Pfadi Hü allgemein" group.
-                    auto in_group = is_group_member(claims.oid, PFADI_HUE_GROUP_ID);
-                    if (in_group == false)
-                    {
-                        // Explicitly NOT in the group → keep default Mitglied role
-                    }
-                    // If nullopt (check failed) or true → keep Mitglied defaults
-                }
             }
         }
 
@@ -1060,7 +1137,7 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -1083,7 +1160,7 @@ void handle_get_me(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -1103,15 +1180,15 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
-        if (!perm)
+        if (!is_admin(*current_user) && !perm)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
 
         // Determine visibility based on user management scopes
-        bool can_see_all = perm->user_dept_scope == "all" || perm->user_role_scope == "all";
-        bool can_see_dept = perm->user_dept_scope == "own_dept" || perm->user_role_scope == "own_dept";
+        bool can_see_all = is_admin(*current_user) || (perm && (perm->user_dept_scope == "all" || perm->user_role_scope == "all"));
+        bool can_see_dept = perm && (perm->user_dept_scope == "own_dept" || perm->user_role_scope == "own_dept");
 
         auto users = db.list_users();
         nlohmann::json arr = nlohmann::json::array();
@@ -1139,7 +1216,7 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -1147,11 +1224,14 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db)
 
 static bool is_debug_mode()
 {
-    const char *dbg = std::getenv("DEBUG");
-    return dbg && (std::string(dbg) == "true" || std::string(dbg) == "1");
+#if DPW_ENABLE_DEBUG_AUTH
+    return true;
+#else
+    return false;
+#endif
 }
 
-// GET /debug/users — list all users without auth (debug mode only)
+// GET /debug/users — list debug-login candidates without auth (debug mode only)
 void handle_debug_get_users(HttpRes *res, HttpReq * /*req*/, Database &db)
 {
     if (!is_debug_mode())
@@ -1164,12 +1244,17 @@ void handle_debug_get_users(HttpRes *res, HttpReq * /*req*/, Database &db)
         auto users = db.list_users();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &u : users)
-            arr.push_back(user_to_json(u));
+            arr.push_back({
+                {"id", u.id},
+                {"display_name", u.display_name},
+                {"department", u.department ? nlohmann::json(*u.department) : nlohmann::json(nullptr)},
+                {"role", u.role},
+            });
         send_json(res, 200, arr.dump());
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -1203,7 +1288,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
     auto current_perm = db.get_role_permission(current_user->role);
-    if (!current_perm || (current_perm->user_dept_scope == "none" && current_perm->user_role_scope == "none"))
+    if (!is_admin(*current_user) && (!current_perm || (current_perm->user_dept_scope == "none" && current_perm->user_role_scope == "none")))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -1295,7 +1380,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
             }
             send_json(res, 200, user_to_json(*user).dump());
         } catch (std::exception& e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -1328,7 +1413,7 @@ void handle_delete_admin_user(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
     auto current_perm = db.get_role_permission(current_user->role);
-    if (!current_perm || (current_perm->user_dept_scope == "none" && current_perm->user_role_scope == "none"))
+    if (!is_admin(*current_user) && (!current_perm || (current_perm->user_dept_scope == "none" && current_perm->user_role_scope == "none")))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -1463,7 +1548,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             }
             send_json(res, 200, user_to_json(*user).dump());
         } catch (std::exception& e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -1497,7 +1582,7 @@ void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
-        if (!perm || perm->mail_templates_scope == "none")
+        if (!is_admin(*current_user) && (!perm || perm->mail_templates_scope == "none"))
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
@@ -1508,7 +1593,7 @@ void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db)
         for (auto &t : templates)
         {
             // own_dept: only templates for user's own department
-            if (perm->mail_templates_scope == "own_dept")
+            if (!is_admin(*current_user) && perm->mail_templates_scope == "own_dept")
             {
                 if (!current_user->department || t.department != *current_user->department)
                     continue;
@@ -1519,7 +1604,7 @@ void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -1540,12 +1625,12 @@ void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
-        if (!perm || perm->mail_templates_scope == "none")
+        if (!is_admin(*current_user) && (!perm || perm->mail_templates_scope == "none"))
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-        if (perm->mail_templates_scope == "own_dept")
+        if (!is_admin(*current_user) && perm->mail_templates_scope == "own_dept")
         {
             if (!current_user->department || *current_user->department != department)
             {
@@ -1564,7 +1649,7 @@ void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -1597,12 +1682,12 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
     if (current_user)
     {
         auto perm = db.get_role_permission(current_user->role);
-        if (!perm || perm->mail_templates_scope == "none")
+        if (!is_admin(*current_user) && (!perm || perm->mail_templates_scope == "none"))
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-        if (perm->mail_templates_scope == "own_dept")
+        if (!is_admin(*current_user) && perm->mail_templates_scope == "own_dept")
         {
             if (!current_user->department || *current_user->department != department)
             {
@@ -1646,7 +1731,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
             wm.broadcast(msg.dump());
             send_json(res, 200, template_to_json(*tpl).dump());
         } catch (std::exception& e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -1681,7 +1766,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
     auto perm_check = db.get_role_permission(current_user->role);
-    if (!perm_check || perm_check->mail_send_scope == "none")
+    if (!is_admin(*current_user) && (!perm_check || perm_check->mail_send_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -1738,7 +1823,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 502, R"({"error":"Failed to send mail via Microsoft Graph"})");
             }
         } catch (std::exception& e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -1819,7 +1904,7 @@ void handle_get_mail_draft(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
     auto perm = db.get_role_permission(current_user->role);
-    if (!perm || perm->mail_send_scope == "none")
+    if (!is_admin(*current_user) && (!perm || perm->mail_send_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -1865,7 +1950,7 @@ void handle_put_mail_draft(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
     auto perm = db.get_role_permission(current_user->role);
-    if (!perm || perm->mail_send_scope == "none")
+    if (!is_admin(*current_user) && (!perm || perm->mail_send_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -1939,7 +2024,7 @@ void handle_delete_mail_draft(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
     auto perm = db.get_role_permission(current_user->role);
-    if (!perm || perm->mail_send_scope == "none")
+    if (!is_admin(*current_user) && (!perm || perm->mail_send_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -2103,7 +2188,9 @@ static size_t github_write_cb(char *ptr, size_t size, size_t nmemb, void *userda
 static std::pair<long, std::string> github_post_issue(
     const std::string &token, const std::string &body_json)
 {
-    const std::string url = "https://api.github.com/repos/reicham2/DPW/issues";
+    const char *repo_env = std::getenv("GITHUB_REPO");
+    std::string repo = (repo_env && repo_env[0]) ? repo_env : "reicham2/DPW";
+    const std::string url = "https://api.github.com/repos/" + repo + "/issues";
     std::string response;
 
     CURL *curl = curl_easy_init();
@@ -2446,7 +2533,7 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
         }
         catch (std::exception &e)
         {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2487,6 +2574,27 @@ void handle_get_my_permissions(HttpRes *res, HttpReq *req, Database &db)
     }
     try
     {
+        if (is_admin(*user))
+        {
+            nlohmann::json j = {
+                {"role", user->role},
+                {"can_read_own_dept", true},
+                {"can_write_own_dept", true},
+                {"can_read_all_depts", true},
+                {"can_write_all_depts", true},
+                {"activity_read_scope", "all"},
+                {"activity_create_scope", "all"},
+                {"activity_edit_scope", "all"},
+                {"mail_send_scope", "all"},
+                {"mail_templates_scope", "all"},
+                {"form_scope", "all"},
+                {"form_templates_scope", "all"},
+                {"user_dept_scope", "all"},
+                {"user_role_scope", "all"},
+                {"dept_access", nlohmann::json::array()}};
+            send_json(res, 200, j.dump());
+            return;
+        }
         auto perm = db.get_role_permission(user->role);
         if (!perm)
         {
@@ -2504,7 +2612,7 @@ void handle_get_my_permissions(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -2520,6 +2628,8 @@ static std::optional<UserRecord> require_admin(HttpRes *res, HttpReq *req, Datab
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return std::nullopt;
     }
+    if (is_admin(*user))
+        return user;
     auto perm = db.get_role_permission(user->role);
     if (!perm || perm->user_role_scope != "all")
     {
@@ -2550,7 +2660,7 @@ void handle_post_department(HttpRes *res, HttpReq *req, Database &db)
             if (!d) { send_json(res, 409, R"({"error":"Abteilung existiert bereits"})"); return; }
             send_json(res, 201, nlohmann::json{{"name", d->name}, {"color", d->color}}.dump());
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2575,12 +2685,12 @@ void handle_patch_department(HttpRes *res, HttpReq *req, Database &db)
             if (!d) { send_json(res, 404, R"({"error":"Abteilung nicht gefunden"})"); return; }
             send_json(res, 200, nlohmann::json{{"name", d->name}, {"color", d->color}}.dump());
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
 // DELETE /admin/departments/:name
-void handle_delete_department(HttpRes *res, HttpReq *req, Database &db)
+void handle_delete_department(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
     std::string name = url_decode(std::string{req->getParameter("name")});
     if (!require_admin(res, req, db))
@@ -2592,16 +2702,14 @@ void handle_delete_department(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
 
+    auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, &db, name](std::string_view chunk, bool last) mutable
+    res->onData([res, buf, &db, &wm, name](std::string_view chunk, bool last) mutable
                 {
-        static thread_local std::string body;
-        body.append(chunk);
+        buf->append(chunk);
         if (!last) return;
-        std::string buf = std::move(body);
-        body.clear();
 
-        auto j = nlohmann::json::parse(buf, nullptr, false);
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (!j.is_object()) j = nlohmann::json::object();
 
         std::string transfer_activities_to = j.value("transfer_activities_to", "");
@@ -2619,11 +2727,13 @@ void handle_delete_department(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 404, R"({"error":"Stufe nicht gefunden"})");
                 return;
             }
+            nlohmann::json msg = {{"event", "department_deleted"}, {"name", name}};
+            wm.broadcast(msg.dump());
             send_json(res, 200, R"({"ok":true})");
         }
         catch (std::exception &e)
         {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2647,7 +2757,7 @@ void handle_get_roles(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -2672,7 +2782,7 @@ void handle_post_role(HttpRes *res, HttpReq *req, Database &db)
             if (!r) { send_json(res, 409, R"({"error":"Rolle existiert bereits"})"); return; }
             send_json(res, 201, nlohmann::json{{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}}.dump());
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2704,7 +2814,7 @@ void handle_patch_role(HttpRes *res, HttpReq *req, Database &db)
             if (!r) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
             send_json(res, 200, nlohmann::json{{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}}.dump());
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2739,7 +2849,7 @@ void handle_post_role_move(HttpRes *res, HttpReq *req, Database &db)
             if (!ok) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2772,12 +2882,12 @@ void handle_post_roles_reorder(HttpRes *res, HttpReq *req, Database &db)
             db.reorder_roles(names);
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
 // DELETE /admin/roles/:name
-void handle_delete_role(HttpRes *res, HttpReq *req, Database &db)
+void handle_delete_role(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
     std::string name = url_decode(std::string{req->getParameter("name")});
     if (!require_admin(res, req, db))
@@ -2791,7 +2901,7 @@ void handle_delete_role(HttpRes *res, HttpReq *req, Database &db)
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, &db, name](std::string_view chunk, bool last)
+    res->onData([res, buf, &db, &wm, name](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -2814,9 +2924,11 @@ void handle_delete_role(HttpRes *res, HttpReq *req, Database &db)
         try {
             bool ok = db.delete_role(name, transfer_users_to, del_users);
             if (!ok) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
+            nlohmann::json msg = {{"event", "role_deleted"}, {"name", name}};
+            wm.broadcast(msg.dump());
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2835,7 +2947,7 @@ void handle_get_role_permissions(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -2922,7 +3034,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
             }
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2947,7 +3059,7 @@ void handle_get_role_dept_access(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -2976,7 +3088,7 @@ void handle_put_role_dept_access(HttpRes *res, HttpReq *req, Database &db)
             db.set_role_dept_access(role, department, can_read, can_write);
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
-            send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+            send_internal_error(res, "handler", e);
         } });
 }
 
@@ -2991,6 +3103,8 @@ void handle_put_role_dept_access(HttpRes *res, HttpReq *req, Database &db)
 static bool can_form_access(Database &db, const RolePermission &perm, const UserRecord &user,
                             const TokenClaims &claims, const std::string &activity_id, bool /*write*/)
 {
+    if (is_admin(user))
+        return true;
     if (perm.form_scope == "none")
         return false;
     auto act = db.get_activity_by_id(activity_id);
@@ -3069,7 +3183,7 @@ void handle_get_activity_form(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -3135,7 +3249,7 @@ void handle_post_activity_form(HttpRes *res, HttpReq *req, Database &db)
             auto form = db.create_form(activity_id, form_type, title, user_id, questions);
             if (!form) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
             send_json(res, 201, signup_form_to_json(*form).dump());
-        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+        } catch (std::exception &e) { send_internal_error(res, "handler", e); } });
 }
 
 // ---- PUT /activities/:id/form -----------------------------------------------
@@ -3191,7 +3305,7 @@ void handle_put_activity_form(HttpRes *res, HttpReq *req, Database &db)
             auto form = db.update_form(activity_id, form_type, title, questions);
             if (!form) { send_json(res, 404, R"({"error":"Formular nicht gefunden"})"); return; }
             send_json(res, 200, signup_form_to_json(*form).dump());
-        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+        } catch (std::exception &e) { send_internal_error(res, "handler", e); } });
 }
 
 // ---- DELETE /activities/:id/form --------------------------------------------
@@ -3228,7 +3342,7 @@ void handle_delete_activity_form(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -3271,7 +3385,7 @@ void handle_get_form_responses(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -3310,7 +3424,7 @@ void handle_get_form_response(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -3349,7 +3463,7 @@ void handle_delete_form_response(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -3401,7 +3515,7 @@ void handle_get_form_stats(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -3514,7 +3628,6 @@ static std::string replace_template_vars(const std::string &text, const Activity
 
 void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
 {
-    set_cors(res);
     std::string public_slug{req->getParameter(0)};
     try
     {
@@ -3556,7 +3669,7 @@ void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -3564,25 +3677,40 @@ void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
 
 void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db)
 {
-    set_cors(res);
     std::string public_slug{req->getParameter(0)};
 
     std::string user_agent{req->getHeader("user-agent")};
-    // IP is not available directly via uWS in this context; pass empty
-    std::string ip_address{};
+    std::string ip_address{req->getHeader("x-real-ip")};
 
     auto buf = std::make_shared<std::string>();
+    auto handled = std::make_shared<bool>(false);
     res->onAborted([] {});
-    res->onData([res, buf, public_slug, user_agent, ip_address, &db](std::string_view chunk, bool last)
+    res->onData([res, buf, handled, public_slug, user_agent, ip_address, &db](std::string_view chunk, bool last)
                 {
+        if (*handled) return;
+        if (buf->size() + chunk.size() > kMaxPublicFormPayloadBytes)
+        {
+            *handled = true;
+            send_json(res, 413, R"({"error":"Anfrage zu gross"})");
+            return;
+        }
+
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
+        *handled = true;
         auto j = nlohmann::json::parse(*buf, nullptr, false);
         if (j.is_discarded()) { send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})"); return; }
 
         try {
             auto form = db.get_form_for_public_slug(public_slug);
             if (!form) { send_json(res, 404, R"({"error":"Formular nicht gefunden"})"); return; }
+
+            auto client_key = normalize_public_submit_client_key(ip_address, user_agent);
+            if (is_public_submit_rate_limited(public_slug, client_key))
+            {
+                send_json(res, 429, R"({"error":"Zu viele Einsendungen in kurzer Zeit"})");
+                return;
+            }
 
             // Parse answers: array of { question_id, answer_value }
             std::vector<std::pair<std::string, std::string>> answers;
@@ -3592,6 +3720,11 @@ void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db)
                 {
                     std::string qid = a.value("question_id", "");
                     std::string val = a.value("answer_value", "");
+                    if (val.size() > kMaxPublicAnswerLength)
+                    {
+                        send_json(res, 400, R"({"error":"Antwort ist zu lang"})");
+                        return;
+                    }
                     if (!qid.empty())
                         answers.emplace_back(qid, val);
                 }
@@ -3614,7 +3747,7 @@ void handle_post_form_submit(HttpRes *res, HttpReq *req, Database &db)
             auto resp = db.submit_response(form->id, form->form_type, user_agent, ip_address, answers);
             if (!resp) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
             send_json(res, 201, form_response_to_json(*resp, true).dump());
-        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+        } catch (std::exception &e) { send_internal_error(res, "handler", e); } });
 }
 
 // ---- GET /form-templates?department=... -------------------------------------
@@ -3643,7 +3776,7 @@ void handle_get_form_templates(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }
 
@@ -3676,7 +3809,7 @@ void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
     auto perm = db.get_role_permission(current_user->role);
-    if (!perm || perm->form_templates_scope == "none")
+    if (!is_admin(*current_user) && (!perm || perm->form_templates_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -3703,7 +3836,7 @@ void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
         // Scope check: own_dept only allows own department
-        if (perm->form_templates_scope == "own_dept")
+        if (!is_admin(*current_user) && perm->form_templates_scope == "own_dept")
         {
             if (!current_user->department || *current_user->department != department) {
                 send_json(res, 403, R"({"error":"Keine Berechtigung f\u00fcr dieses Department"})");
@@ -3714,7 +3847,7 @@ void handle_post_form_template(HttpRes *res, HttpReq *req, Database &db)
             auto tpl = db.create_form_template(name, department, form_type, config, user_id, is_default);
             if (!tpl) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
             send_json(res, 201, form_template_to_json(*tpl).dump());
-        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+        } catch (std::exception &e) { send_internal_error(res, "handler", e); } });
 }
 
 // ---- PUT /form-templates/:id ------------------------------------------------
@@ -3748,7 +3881,7 @@ void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
     auto perm = db.get_role_permission(current_user->role);
-    if (!perm || perm->form_templates_scope == "none")
+    if (!is_admin(*current_user) && (!perm || perm->form_templates_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -3772,7 +3905,7 @@ void handle_put_form_template(HttpRes *res, HttpReq *req, Database &db)
             auto tpl = db.update_form_template(tpl_id, name, form_type, config, is_default);
             if (!tpl) { send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})"); return; }
             send_json(res, 200, form_template_to_json(*tpl).dump());
-        } catch (std::exception &e) { send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump()); } });
+        } catch (std::exception &e) { send_internal_error(res, "handler", e); } });
 }
 
 // ---- DELETE /form-templates/:id ---------------------------------------------
@@ -3793,7 +3926,7 @@ void handle_delete_form_template(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
-        if (!perm || perm->form_templates_scope == "none")
+        if (!is_admin(*current_user) && (!perm || perm->form_templates_scope == "none"))
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
@@ -3808,6 +3941,6 @@ void handle_delete_form_template(HttpRes *res, HttpReq *req, Database &db)
     }
     catch (std::exception &e)
     {
-        send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
+        send_internal_error(res, "handler", e);
     }
 }

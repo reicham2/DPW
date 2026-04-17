@@ -77,6 +77,8 @@ export type WsEvent =
 	| { event: 'updated'; activity: Activity }
 	| { event: 'deleted'; id: string }
 	| { event: 'template_updated'; template: MailTemplate }
+	| { event: 'department_deleted'; name: string }
+	| { event: 'role_deleted'; name: string }
 	| { event: 'lock'; activity_id: string; section: EditSection; user: string }
 	| { event: 'unlock'; activity_id: string; section: EditSection }
 	| { event: 'editors'; activity_id: string; users: string[] }

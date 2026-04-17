@@ -64,7 +64,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
-import { getIdToken } from '../composables/useAuth'
+import { apiFetch } from '../composables/useApi'
 import { collectDebugInfo } from '../composables/useDebugInfo'
 import { bugReportOpen, bugReportPrefill } from '../composables/useBugReport'
 
@@ -146,13 +146,8 @@ async function submitReport() {
   error.value = ''
 
   try {
-    const token = await getIdToken()
-    const response = await fetch('/api/bug-report', {
+    const response = await apiFetch('/api/bug-report', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         description: description.value,
         url: window.location.href,

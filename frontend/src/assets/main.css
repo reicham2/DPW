@@ -975,9 +975,11 @@ body {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-end;
-	min-width: 80px;
+	width: 110px;
+	flex-shrink: 0;
 	position: relative;
 	padding-right: 16px;
+	box-sizing: border-box;
 }
 
 /* Timeline vertical line */
@@ -1298,7 +1300,7 @@ body {
 	}
 
 	.program-time-col {
-		min-width: 68px;
+		width: 95px;
 		padding-right: 12px;
 	}
 

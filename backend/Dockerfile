@@ -25,8 +25,10 @@ RUN mkdir -p src && for f in main auth db handlers ws_manager graph; do \
   src/ws_manager.hpp src/graph.hpp
 
 ARG BACKEND_BUILD_TYPE=Release
+ARG ENABLE_DEBUG_AUTH=0
 
 RUN cmake -B build -DCMAKE_BUILD_TYPE=${BACKEND_BUILD_TYPE} \
+  -DENABLE_DEBUG_AUTH=${ENABLE_DEBUG_AUTH} \
   -DCMAKE_C_COMPILER_LAUNCHER=ccache \
   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 

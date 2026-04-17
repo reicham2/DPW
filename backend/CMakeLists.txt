@@ -2,7 +2,15 @@ cmake_minimum_required(VERSION 3.20)
 project(activities_backend CXX C)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_BUILD_TYPE Release)
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+option(ENABLE_DEBUG_AUTH "Enable debug authentication and impersonation flows" OFF)
+
+if (ENABLE_DEBUG_AUTH AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    message(FATAL_ERROR "ENABLE_DEBUG_AUTH is not allowed with Release builds")
+endif()
 
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -60,6 +68,12 @@ target_compile_definitions(server PRIVATE
     LIBUS_USE_OPENSSL=1
     UWS_HTTPRESPONSE_NO_WRITEMARK=0
 )
+
+if (ENABLE_DEBUG_AUTH)
+    target_compile_definitions(server PRIVATE DPW_ENABLE_DEBUG_AUTH=1)
+else()
+    target_compile_definitions(server PRIVATE DPW_ENABLE_DEBUG_AUTH=0)
+endif()
 
 target_link_libraries(server PRIVATE
     ${PQ_LIB}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { user as currentUser, getIdToken } from '../composables/useAuth'
+import { user as currentUser } from '../composables/useAuth'
+import { apiFetch } from '../composables/useApi'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import DepartmentManager from '../components/DepartmentManager.vue'
 import RoleManager from '../components/RoleManager.vue'
@@ -73,10 +74,7 @@ async function fetchUsers() {
   loading.value = true
   error.value = null
   try {
-    const token = await getIdToken()
-    const res = await fetch('/api/users', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const res = await apiFetch('/api/users')
     if (!res.ok) throw new Error(await res.text())
     users.value = await res.json()
   } catch (e) {
@@ -139,13 +137,8 @@ async function saveEdit() {
   saving.value = true
   saveError.value = null
   try {
-    const token = await getIdToken()
-    const res = await fetch(`/api/admin/users/${editingUser.value.id}`, {
+    const res = await apiFetch(`/api/admin/users/${editingUser.value.id}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
       body: JSON.stringify({
         display_name: editForm.value.display_name,
         department: editForm.value.department || null,
@@ -178,10 +171,8 @@ async function deleteUser() {
   saving.value = true
   saveError.value = null
   try {
-    const token = await getIdToken()
-    const res = await fetch(`/api/admin/users/${deleteTarget.value.id}`, {
+    const res = await apiFetch(`/api/admin/users/${deleteTarget.value.id}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error(await res.text())
     users.value = users.value.filter(u => u.id !== deleteTarget.value!.id)

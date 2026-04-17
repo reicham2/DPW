@@ -1,31 +1,48 @@
 import { ref, onUnmounted } from 'vue';
 import type { WsEvent } from '../types';
+import { getIdToken } from './useAuth';
 
 // --- Singleton state (module-scoped, one WS connection for the whole app) ---
 let ws: WebSocket | null = null;
 const connected = ref(false);
 const handlers = new Set<(e: WsEvent) => void>();
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingRegister: { display_name: string; oid: string } | null = null;
 let pendingJoin: { activity_id: string } | null = null;
 let wsConnectCount = 0;
 let wsDisconnectCount = 0;
 let wsLastError: string | null = null;
 let wsMessageCount = 0;
 let wsLastMessageAt: string | null = null;
+let connecting = false;
 
-function connect() {
+function scheduleReconnect() {
+	if (reconnectTimer) return;
+	reconnectTimer = setTimeout(() => {
+		reconnectTimer = null;
+		void connect();
+	}, 3000);
+}
+
+async function connect() {
+	if (ws || connecting) return;
+	connecting = true;
 	const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-	ws = new WebSocket(`${protocol}://${location.host}/ws`);
+	try {
+		const token = await getIdToken();
+		ws = new WebSocket(
+			`${protocol}://${location.host}/ws?token=${encodeURIComponent(token)}`,
+		);
+	} catch {
+		connecting = false;
+		wsLastError = new Date().toISOString();
+		scheduleReconnect();
+		return;
+	}
 
 	ws.onopen = () => {
+		connecting = false;
 		connected.value = true;
 		wsConnectCount++;
-		// Re-send registration on reconnect
-		if (pendingRegister) {
-			wsSend({ type: 'register', ...pendingRegister });
-		}
-		// Re-join activity room on reconnect
 		if (pendingJoin) {
 			wsSend({ type: 'join', ...pendingJoin });
 		}
@@ -43,10 +60,11 @@ function connect() {
 	};
 
 	ws.onclose = () => {
+		connecting = false;
 		connected.value = false;
 		wsDisconnectCount++;
 		ws = null;
-		reconnectTimer = setTimeout(connect, 3000);
+		scheduleReconnect();
 	};
 
 	ws.onerror = () => {
@@ -63,9 +81,10 @@ export function wsSend(data: Record<string, unknown>) {
 }
 
 /** Register the current user identity with the WS server */
-export function wsRegister(display_name: string, oid: string) {
-	pendingRegister = { display_name, oid };
-	wsSend({ type: 'register', display_name, oid });
+export function wsRegister(_display_name: string, _oid: string) {
+	if (!ws && !connecting) {
+		void connect();
+	}
 }
 
 /** Join an activity/template room for collaborative editing (survives reconnects) */
@@ -92,14 +111,30 @@ export function getWsDebugState() {
 		messageCount: wsMessageCount,
 		lastMessageAt: wsLastMessageAt,
 		lastError: wsLastError,
-		registered: pendingRegister !== null,
+		registered: connected.value,
 	};
+}
+
+/** Forcefully close the WebSocket and stop reconnection. */
+export function wsDisconnect() {
+	if (reconnectTimer) {
+		clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+	}
+	pendingJoin = null;
+	if (ws) {
+		ws.onclose = null;
+		ws.close();
+		ws = null;
+	}
+	connecting = false;
+	connected.value = false;
 }
 
 // --- Composable: register / deregister a message handler -------------------
 export function useWebSocket(onMessage: (e: WsEvent) => void) {
 	// Start the singleton connection on first use
-	if (!ws && !reconnectTimer) connect();
+	if (!ws && !reconnectTimer && !connecting) void connect();
 
 	handlers.add(onMessage);
 
@@ -108,4 +143,9 @@ export function useWebSocket(onMessage: (e: WsEvent) => void) {
 	});
 
 	return { connected };
+}
+
+/** Register a persistent global handler (not tied to component lifecycle). */
+export function wsAddGlobalHandler(onMessage: (e: WsEvent) => void) {
+	handlers.add(onMessage);
 }

@@ -7,7 +7,6 @@
 interface AppConfig {
 	MSAL_CLIENT_ID: string;
 	MSAL_TENANT_ID: string;
-	DEBUG: boolean;
 	AUTOSAVE_INTERVAL: number;
 	AUTOSAVE_DEBOUNCE: boolean;
 }
@@ -23,7 +22,6 @@ export const config: AppConfig = {
 		w.__APP_CONFIG__?.MSAL_TENANT_ID ??
 		import.meta.env.VITE_MSAL_TENANT_ID ??
 		'',
-	DEBUG: (w.__APP_CONFIG__?.DEBUG ?? import.meta.env.VITE_DEBUG) === 'true',
 	AUTOSAVE_INTERVAL:
 		Number(
 			w.__APP_CONFIG__?.AUTOSAVE_INTERVAL ??

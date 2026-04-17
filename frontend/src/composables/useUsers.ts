@@ -1,16 +1,13 @@
 import { ref } from 'vue'
 import type { User } from '../types'
-import { getIdToken } from './useAuth'
+import { apiFetch } from './useApi'
 
 export function useUsers() {
   const users = ref<User[]>([])
 
   async function fetchUsers(): Promise<void> {
     try {
-      const token = await getIdToken()
-      const res = await fetch('/api/users', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await apiFetch('/api/users')
       if (res.ok) users.value = await res.json() as User[]
     } catch { /* non-critical */ }
   }
