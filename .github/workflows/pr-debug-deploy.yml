@@ -126,25 +126,34 @@ jobs:
                   TUNNEL_NAME="dpw-${SLUG}"
                   HOSTNAME="${{ steps.slug.outputs.hostname }}"
                   NETWORK="${PROJECT}_default"
+                  CERT_DIR="$HOME/.cloudflared"
 
                   # Write origin cert for cloudflared CLI
-                  mkdir -p "$HOME/.cloudflared"
-                  echo "$TUNNEL_ORIGIN_CERT" > "$HOME/.cloudflared/cert.pem"
+                  mkdir -p "$CERT_DIR"
+                  printf '%s\n' "$TUNNEL_ORIGIN_CERT" > "$CERT_DIR/cert.pem"
+                  chmod 600 "$CERT_DIR/cert.pem"
+
+                  # Verify cert was written correctly
+                  if ! head -1 "$CERT_DIR/cert.pem" | grep -q "BEGIN"; then
+                    echo "ERROR: cert.pem does not look like a valid PEM file"
+                    echo "First line: $(head -1 "$CERT_DIR/cert.pem")"
+                    exit 1
+                  fi
 
                   # Remove previous tunnel container + tunnel
                   docker rm -f "${PROJECT}-tunnel" 2>/dev/null || true
-                  cloudflared tunnel cleanup "$TUNNEL_NAME" 2>/dev/null || true
-                  cloudflared tunnel delete "$TUNNEL_NAME" 2>/dev/null || true
+                  cloudflared tunnel --origincert "$CERT_DIR/cert.pem" cleanup "$TUNNEL_NAME" 2>/dev/null || true
+                  cloudflared tunnel --origincert "$CERT_DIR/cert.pem" delete "$TUNNEL_NAME" 2>/dev/null || true
 
                   # Create tunnel
-                  cloudflared tunnel create "$TUNNEL_NAME"
+                  cloudflared tunnel --origincert "$CERT_DIR/cert.pem" create "$TUNNEL_NAME"
 
                   # Get tunnel UUID
-                  TUNNEL_ID=$(cloudflared tunnel list -o json | jq -r ".[] | select(.name==\"$TUNNEL_NAME\") | .id")
+                  TUNNEL_ID=$(cloudflared tunnel --origincert "$CERT_DIR/cert.pem" list -o json | jq -r ".[] | select(.name==\"$TUNNEL_NAME\") | .id")
                   echo "Created tunnel: ${TUNNEL_ID}"
 
                   # Route DNS (CNAME → tunnel)
-                  cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$HOSTNAME"
+                  cloudflared tunnel --origincert "$CERT_DIR/cert.pem" route dns --overwrite-dns "$TUNNEL_NAME" "$HOSTNAME"
                   echo "DNS configured: ${HOSTNAME}"
 
                   # Write tunnel config
@@ -211,17 +220,19 @@ jobs:
               run: |
                   PROJECT="${{ steps.slug.outputs.project }}"
                   TUNNEL_NAME="dpw-${{ steps.slug.outputs.slug }}"
+                  CERT_DIR="$HOME/.cloudflared"
 
                   # Write origin cert
-                  mkdir -p "$HOME/.cloudflared"
-                  echo "$TUNNEL_ORIGIN_CERT" > "$HOME/.cloudflared/cert.pem"
+                  mkdir -p "$CERT_DIR"
+                  printf '%s\n' "$TUNNEL_ORIGIN_CERT" > "$CERT_DIR/cert.pem"
+                  chmod 600 "$CERT_DIR/cert.pem"
 
                   # Stop tunnel container
                   docker rm -f "${PROJECT}-tunnel" 2>/dev/null || true
 
                   # Cleanup and delete tunnel (also removes DNS route)
-                  cloudflared tunnel cleanup "$TUNNEL_NAME" 2>/dev/null || true
-                  cloudflared tunnel delete "$TUNNEL_NAME" 2>/dev/null || true
+                  cloudflared tunnel --origincert "$CERT_DIR/cert.pem" cleanup "$TUNNEL_NAME" 2>/dev/null || true
+                  cloudflared tunnel --origincert "$CERT_DIR/cert.pem" delete "$TUNNEL_NAME" 2>/dev/null || true
 
                   rm -f /tmp/cloudflared/${{ steps.slug.outputs.slug }}-config.yml
                   echo "Tunnel cleaned up: $TUNNEL_NAME"
