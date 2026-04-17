@@ -141,14 +141,14 @@ jobs:
                   # Write tunnel config
                   CRED_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
                   mkdir -p /tmp/cloudflared
-                  cat > /tmp/cloudflared/${SLUG}-config.yml <<CFEOF
-                  tunnel: ${TUNNEL_ID}
-                  credentials-file: /etc/cloudflared/credentials.json
-                  ingress:
-                    - hostname: ${HOSTNAME}
-                      service: http://frontend:80
-                    - service: http_status:404
-                  CFEOF
+                  cat > /tmp/cloudflared/${SLUG}-config.yml <<-CFEOF
+	tunnel: ${TUNNEL_ID}
+	credentials-file: /etc/cloudflared/credentials.json
+	ingress:
+	  - hostname: ${HOSTNAME}
+	    service: http://frontend:80
+	  - service: http_status:404
+	CFEOF
 
                   # Run cloudflared in the compose network
                   docker run -d \
@@ -179,8 +179,11 @@ jobs:
               run: |
                   docker compose -f docker-compose-dev.yml \
                     -p "${{ steps.slug.outputs.project }}" logs --tail=100
-                  echo "─── Cloudflared logs ───"
-                  docker logs "${{ steps.slug.outputs.project }}-tunnel" --tail=50 2>&1 || true
+                  TUNNEL="${{ steps.slug.outputs.project }}-tunnel"
+                  if docker ps -a --format '{{.Names}}' | grep -q "^${TUNNEL}$"; then
+                    echo "─── Cloudflared logs ───"
+                    docker logs "$TUNNEL" --tail=50 2>&1
+                  fi
 
     cleanup:
         name: Cleanup on PR Close
