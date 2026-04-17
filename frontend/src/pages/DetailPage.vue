@@ -963,6 +963,7 @@ const locationOverlaps = computed<OverlapInfo[]>(() => {
 
 const exactOverlaps = computed(() => locationOverlaps.value.filter(o => o.kind === 'exact'));
 const fuzzyOverlaps = computed(() => locationOverlaps.value.filter(o => o.kind === 'fuzzy'));
+const locationWarningOpen = ref(false);
 
 // ---- Activity preview popup ------------------------------------------------
 const previewActivity = ref<Activity | null>(null);
@@ -1204,25 +1205,35 @@ async function doDelete() {
 				<div class="detail-grid detail-grid--3">
 					<div class="detail-field">
 						<span class="detail-label">Ort</span>
-						<span class="detail-value">{{ activity.location || '—' }}</span>
-						<div v-if="exactOverlaps.length" class="field-warning" style="margin-top: 6px">
-							⚠️ Überschneidung:
-							<ul class="overlap-list">
-								<li v-for="o in exactOverlaps" :key="o.id">
-									<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
-									({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
-								</li>
-							</ul>
-						</div>
-						<div v-if="fuzzyOverlaps.length" class="field-hint" style="margin-top: 6px">
-							ℹ️ Möglicherweise ähnlicher Ort:
-							<ul class="overlap-list">
-								<li v-for="o in fuzzyOverlaps" :key="o.id">
-									<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
-									– «{{ o.location }}» ({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
-								</li>
-							</ul>
-						</div>
+						<span
+							class="detail-value"
+							:class="{ 'location-has-warning': exactOverlaps.length || fuzzyOverlaps.length }"
+							@click="(exactOverlaps.length || fuzzyOverlaps.length) && (locationWarningOpen = !locationWarningOpen)"
+						>
+							{{ activity.location || '—' }}
+							<span v-if="exactOverlaps.length" class="location-warn-icon" title="Überschneidung">⚠️</span>
+							<span v-else-if="fuzzyOverlaps.length" class="location-warn-icon" title="Möglicherweise ähnlicher Ort">⚠️</span>
+						</span>
+						<template v-if="locationWarningOpen">
+							<div v-if="exactOverlaps.length" class="field-warning" style="margin-top: 6px">
+								⚠️ Überschneidung:
+								<ul class="overlap-list">
+									<li v-for="o in exactOverlaps" :key="o.id">
+										<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
+										({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
+									</li>
+								</ul>
+							</div>
+							<div v-if="fuzzyOverlaps.length" class="field-hint" style="margin-top: 6px">
+								ℹ️ Möglicherweise ähnlicher Ort:
+								<ul class="overlap-list">
+									<li v-for="o in fuzzyOverlaps" :key="o.id">
+										<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
+										– «{{ o.location }}» ({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
+									</li>
+								</ul>
+							</div>
+						</template>
 					</div>
 					<div class="detail-field">
 						<span class="detail-label">Verantwortlich</span>
