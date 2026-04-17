@@ -9,12 +9,24 @@ DC := docker compose -f docker-compose-dev.yml
        restart restart-backend restart-frontend restart-db \
 	db-reset db-seed ps clean full-rebuild update-deps \
 	build-prod rebuild-prod rebuild-backend-prod rebuild-frontend-prod \
-	new-branch fresh
+	new-branch fresh test test-frontend test-backend test-watch
 
 # ── Shortcut-Targets ─────────────────────────────────────────────────────────
 new-branch: clean rebuild db-seed
 
 fresh: rebuild db-seed
+
+# ── Tests (laufen im Container) ──────────────────────────────────────────────
+test: test-frontend test-backend
+
+test-frontend:
+	@echo "── Frontend Unit Tests ──────────────────────────────────────────"
+	docker run --rm -w /app -v "$(CURDIR)/frontend:/app" node:22-alpine sh -c "npm ci --silent 2>/dev/null && npx vitest run --reporter=verbose"
+
+test-backend:
+	@echo "── Backend Unit Tests ───────────────────────────────────────────"
+	docker build -f backend/Dockerfile.test backend/ -t dpw-test-backend -q && \
+	docker run --rm dpw-test-backend
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:
