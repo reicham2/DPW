@@ -1315,6 +1315,7 @@ static nlohmann::json template_to_json(const MailTemplate &t)
         {"subject", t.subject},
         {"body", t.body},
         {"recipients", t.recipients},
+        {"cc", t.cc},
         {"created_at", t.created_at},
         {"updated_at", t.updated_at}};
 }
@@ -1473,9 +1474,16 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
                     recipients.push_back(e.get<std::string>());
             }
         }
+        std::vector<std::string> cc;
+        if (j.contains("cc") && j["cc"].is_array()) {
+            for (auto& e : j["cc"]) {
+                if (e.is_string() && !e.get<std::string>().empty())
+                    cc.push_back(e.get<std::string>());
+            }
+        }
 
         try {
-            auto tpl = db.upsert_mail_template(department, subject, body, recipients);
+            auto tpl = db.upsert_mail_template(department, subject, body, recipients, cc);
             if (!tpl) {
                 send_json(res, 500, R"({"error":"Datenbankfehler"})");
                 return;
@@ -1561,14 +1569,22 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
 
+        std::vector<std::string> cc_emails;
+        if (j.contains("cc") && j["cc"].is_array()) {
+            for (auto& e : j["cc"]) {
+                if (e.is_string() && !e.get<std::string>().empty())
+                    cc_emails.push_back(e.get<std::string>());
+            }
+        }
+
         try {
-            bool ok = db.send_mail(graph_token, from_email, to_emails, subject, body_html);
+            bool ok = db.send_mail(graph_token, from_email, to_emails, cc_emails, subject, body_html);
             if (ok) {
                 // Log sent mail if activity_id was provided
                 if (!activity_id.empty()) {
                     std::string sender_id = current_user ? current_user->id : "";
                     std::string sender_email = current_user ? current_user->email : from_email;
-                    db.log_sent_mail(activity_id, sender_id, sender_email, to_emails, subject, body_html);
+                    db.log_sent_mail(activity_id, sender_id, sender_email, to_emails, cc_emails, subject, body_html);
                     db.delete_mail_draft(activity_id);
                 }
                 send_json(res, 200, R"({"status":"sent"})");
@@ -1619,6 +1635,9 @@ void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db)
         nlohmann::json to_arr = nlohmann::json::array();
         for (auto &e : m.to_emails)
             to_arr.push_back(e);
+        nlohmann::json cc_arr = nlohmann::json::array();
+        for (auto &e : m.cc_emails)
+            cc_arr.push_back(e);
 
         arr.push_back({
             {"id", m.id},
@@ -1626,6 +1645,7 @@ void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db)
             {"sender_id", m.sender_id},
             {"sender_email", m.sender_email},
             {"to_emails", to_arr},
+            {"cc_emails", cc_arr},
             {"subject", m.subject},
             {"body_html", m.body_html},
             {"sent_at", m.sent_at},
@@ -1673,11 +1693,15 @@ void handle_get_mail_draft(HttpRes *res, HttpReq *req, Database &db)
     nlohmann::json recip_arr = nlohmann::json::array();
     for (auto &r : draft->recipients)
         recip_arr.push_back(r);
+    nlohmann::json cc_arr = nlohmann::json::array();
+    for (auto &c : draft->cc)
+        cc_arr.push_back(c);
 
     nlohmann::json j = {
         {"id", draft->id},
         {"activity_id", draft->activity_id},
         {"recipients", recip_arr},
+        {"cc", cc_arr},
         {"subject", draft->subject},
         {"body_html", draft->body_html},
         {"updated_by", draft->updated_by},
@@ -1731,11 +1755,18 @@ void handle_put_mail_draft(HttpRes *res, HttpReq *req, Database &db)
                 if (r.is_string() && !r.get<std::string>().empty())
                     recipients.push_back(r.get<std::string>());
         }
+        std::vector<std::string> cc;
+        if (j.contains("cc") && j["cc"].is_array())
+        {
+            for (auto &c : j["cc"])
+                if (c.is_string() && !c.get<std::string>().empty())
+                    cc.push_back(c.get<std::string>());
+        }
 
         std::string subject = j.value("subject", "");
         std::string body_html = j.value("body_html", "");
 
-        auto draft = db.upsert_mail_draft(activity_id, recipients, subject, body_html, user_id);
+        auto draft = db.upsert_mail_draft(activity_id, recipients, cc, subject, body_html, user_id);
         if (!draft)
         {
             send_json(res, 500, R"({"error":"Entwurf konnte nicht gespeichert werden"})");
@@ -1745,11 +1776,15 @@ void handle_put_mail_draft(HttpRes *res, HttpReq *req, Database &db)
         nlohmann::json recip_arr = nlohmann::json::array();
         for (auto &r : draft->recipients)
             recip_arr.push_back(r);
+        nlohmann::json cc_arr = nlohmann::json::array();
+        for (auto &c : draft->cc)
+            cc_arr.push_back(c);
 
         nlohmann::json out = {
             {"id", draft->id},
             {"activity_id", draft->activity_id},
             {"recipients", recip_arr},
+            {"cc", cc_arr},
             {"subject", draft->subject},
             {"body_html", draft->body_html},
             {"updated_by", draft->updated_by},

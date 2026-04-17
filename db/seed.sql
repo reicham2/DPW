@@ -26,12 +26,12 @@ INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_r
     ('Pio',           true, false, false, false, 'same_dept', 'none',     'none',      'none',      'none',     'none',     'none',     'none')
 ON CONFLICT (role) DO NOTHING;
 
-INSERT INTO mail_templates (department, subject, body, recipients) VALUES
-    ('Leiter', '', '', '{}'),
-    ('Pio',    '', '', '{}'),
-    ('Pfadi',  '', '', '{}'),
-    ('Wölfe',  '', '', '{}'),
-    ('Biber',  '', '', '{}')
+INSERT INTO mail_templates (department, subject, body, recipients, cc) VALUES
+    ('Leiter', '', '', '{}', '{}'),
+    ('Pio',    '', '', '{}', '{}'),
+    ('Pfadi',  '', '', '{}', '{}'),
+    ('Wölfe',  '', '', '{}', '{}'),
+    ('Biber',  '', '', '{}', '{}')
 ON CONFLICT (department) DO NOTHING;
 
 -- ── Test-Benutzer ───────────────────────────────────────────────────────────

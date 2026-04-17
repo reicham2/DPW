@@ -47,6 +47,7 @@ const activeDept = ref<Department>(
 const subject = ref('')
 const body = ref('')
 const recipients = ref<string[]>([''])
+const cc = ref<string[]>([''])
 const editorRef = ref<HTMLElement | null>(null)
 const curFont = ref('Arial')
 const curSize = ref('12')
@@ -163,7 +164,8 @@ function stopAutoSaveInterval() {
 async function doSave() {
   error.value = null
   const validRecipients = recipients.value.map(r => r.trim()).filter(Boolean)
-  const result = await saveTemplate(activeDept.value, subject.value, body.value, validRecipients)
+  const validCc = cc.value.map(r => r.trim()).filter(Boolean)
+  const result = await saveTemplate(activeDept.value, subject.value, body.value, validRecipients, validCc)
   if (result) {
     showSavedIndicator()
     const idx = templates.value.findIndex(t => t.department === activeDept.value)
@@ -175,6 +177,7 @@ async function doSave() {
 // Watchers for auto-save + dirty tracking
 watch([subject], () => { markDirty('subject'); scheduleAutoSave() })
 watch([recipients], () => { markDirty('recipients'); scheduleAutoSave() }, { deep: true })
+watch([cc], () => { markDirty('cc'); scheduleAutoSave() }, { deep: true })
 // body changes are triggered by onEditorInput which calls scheduleAutoSave directly
 
 // ---- WS: live sync of template updates from other editors ------------------
@@ -209,6 +212,11 @@ useWebSocket((e) => {
     if (JSON.stringify(tpl.recipients) !== JSON.stringify(recipients.value.map(r => r.trim()).filter(Boolean))
         && !myLockedSection.value?.startsWith('tpl_recipients')) {
       recipients.value = tpl.recipients.length ? [...tpl.recipients] : ['']
+    }
+    const remoteCc = tpl.cc ?? []
+    if (JSON.stringify(remoteCc) !== JSON.stringify(cc.value.map(r => r.trim()).filter(Boolean))
+        && !myLockedSection.value?.startsWith('tpl_cc')) {
+      cc.value = remoteCc.length ? [...remoteCc] : ['']
     }
     if (tpl.body !== body.value && !myLockedSection.value?.startsWith('tpl_body')) {
       body.value = tpl.body
@@ -262,6 +270,7 @@ function loadDept(dept: Department) {
   subject.value = tpl?.subject ?? ''
   body.value    = tpl?.body ?? ''
   recipients.value = tpl?.recipients?.length ? [...tpl.recipients] : ['']
+  cc.value = tpl?.cc?.length ? [...tpl.cc] : ['']
   nextTick(() => {
     if (editorRef.value) editorRef.value.innerHTML = body.value
     suppressDirtyTracking = false
@@ -477,6 +486,49 @@ function onRecipientKeydown(e: KeyboardEvent) {
     }
   }
 }
+
+// ---- CC contact search ------------------------------------------------------
+const { results: ccResults, searching: ccSearching, search: searchCcContacts, clear: clearCcSearch } = useContactSearch()
+const ccSearch = ref('')
+const showCcDropdown = ref(false)
+
+function onCcSearchInput() {
+  searchCcContacts(ccSearch.value)
+}
+
+function addCc(email: string) {
+  if (!cc.value.includes(email)) {
+    if (cc.value.length === 1 && cc.value[0] === '') {
+      cc.value[0] = email
+    } else {
+      cc.value.push(email)
+    }
+  }
+  ccSearch.value = ''
+  showCcDropdown.value = false
+  clearCcSearch()
+}
+
+function removeCc(index: number) {
+  cc.value.splice(index, 1)
+  if (cc.value.length === 0) cc.value = ['']
+}
+
+function onCcBlur() {
+  setTimeout(() => {
+    showCcDropdown.value = false
+  }, 200)
+}
+
+function onCcKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    const val = ccSearch.value.trim()
+    if (val && val.includes('@')) {
+      addCc(val)
+    }
+  }
+}
 </script>
 
 <template>
@@ -537,6 +589,45 @@ function onRecipientKeydown(e: KeyboardEvent) {
               :key="c.email"
               class="user-dropdown-item"
               @mousedown.prevent="addRecipient(c.email)"
+            >
+              <span class="contact-name">{{ c.displayName }}</span>
+              <span class="contact-email">{{ c.email }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CC -->
+      <div class="form-group lock-wrapper user-search-group" :class="{ 'is-locked': isLockedByOther('tpl_cc') }"
+        @focusin="lockSection('tpl_cc')" @focusout="unlockSection('tpl_cc', $event)">
+        <div v-if="lockedBy('tpl_cc')" class="lock-badge">🔒 {{ lockedBy('tpl_cc') }}</div>
+        <label>CC
+          <span v-if="savedFields['cc']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['cc']">💾</span>
+        </label>
+        <div class="user-chips" v-if="cc.filter(r => r).length">
+          <span v-for="(email, i) in cc" :key="email || i" class="user-chip" v-show="email">
+            {{ email }}
+            <button type="button" class="user-chip-remove" @click="removeCc(i)" :disabled="isLockedByOther('tpl_cc')">✕</button>
+          </span>
+        </div>
+        <div class="user-search-wrapper">
+          <input
+            type="text"
+            v-model="ccSearch"
+            placeholder="Kontakt suchen…"
+            @input="onCcSearchInput"
+            @focus="showCcDropdown = true"
+            @blur="onCcBlur"
+            @keydown="onCcKeydown"
+            :disabled="isLockedByOther('tpl_cc')"
+          />
+          <div v-if="showCcDropdown && (ccResults.length || ccSearching)" class="user-dropdown">
+            <div v-if="ccSearching" class="user-dropdown-item user-dropdown-item--loading">Suchen…</div>
+            <div
+              v-for="c in ccResults"
+              :key="c.email"
+              class="user-dropdown-item"
+              @mousedown.prevent="addCc(c.email)"
             >
               <span class="contact-name">{{ c.displayName }}</span>
               <span class="contact-email">{{ c.email }}</span>

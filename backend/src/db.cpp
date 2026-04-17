@@ -836,6 +836,8 @@ MailTemplate Database::row_to_mail_template(PGresult *res, int row)
     t.body = col("body") ? col("body") : "";
     if (col("recipients"))
         t.recipients = parse_pg_array(col("recipients"));
+    if (col("cc"))
+        t.cc = parse_pg_array(col("cc"));
     t.created_at = col("created_at") ? col("created_at") : "";
     t.updated_at = col("updated_at") ? col("updated_at") : "";
     return t;
@@ -845,7 +847,7 @@ std::vector<MailTemplate> Database::list_mail_templates()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT id, department, subject, body, recipients, created_at, updated_at "
+                           "SELECT id, department, subject, body, recipients, cc, created_at, updated_at "
                            "FROM mail_templates ORDER BY department");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -868,7 +870,7 @@ std::optional<MailTemplate> Database::get_mail_template_by_department(const std:
     ensure_connected();
     const char *params[1] = {department.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, department, subject, body, recipients, created_at, updated_at "
+                                 "SELECT id, department, subject, body, recipients, cc, created_at, updated_at "
                                  "FROM mail_templates WHERE department = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
@@ -885,25 +887,28 @@ std::optional<MailTemplate> Database::get_mail_template_by_department(const std:
 std::optional<MailTemplate> Database::upsert_mail_template(const std::string &department,
                                                            const std::string &subject,
                                                            const std::string &body,
-                                                           const std::vector<std::string> &recipients)
+                                                           const std::vector<std::string> &recipients,
+                                                           const std::vector<std::string> &cc)
 {
     ensure_connected();
-    // Build PostgreSQL text array literal for recipients
-    std::string recipients_arr = "{";
-    for (size_t i = 0; i < recipients.size(); ++i)
-    {
-        if (i > 0)
-            recipients_arr += ",";
-        recipients_arr += "\"" + recipients[i] + "\"";
-    }
-    recipients_arr += "}";
-    const char *params[4] = {department.c_str(), subject.c_str(), body.c_str(), recipients_arr.c_str()};
+    auto build_arr = [](const std::vector<std::string> &v) {
+        std::string s = "{";
+        for (size_t i = 0; i < v.size(); ++i) {
+            if (i > 0) s += ",";
+            s += "\"" + v[i] + "\"";
+        }
+        s += "}";
+        return s;
+    };
+    std::string recipients_arr = build_arr(recipients);
+    std::string cc_arr = build_arr(cc);
+    const char *params[5] = {department.c_str(), subject.c_str(), body.c_str(), recipients_arr.c_str(), cc_arr.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO mail_templates (department, subject, body, recipients) "
-                                 "VALUES ($1, $2, $3, $4::text[]) "
-                                 "ON CONFLICT (department) DO UPDATE SET subject = EXCLUDED.subject, body = EXCLUDED.body, recipients = EXCLUDED.recipients "
-                                 "RETURNING id, department, subject, body, recipients, created_at, updated_at",
-                                 4, nullptr, params, nullptr, nullptr, 0);
+                                 "INSERT INTO mail_templates (department, subject, body, recipients, cc) "
+                                 "VALUES ($1, $2, $3, $4::text[], $5::text[]) "
+                                 "ON CONFLICT (department) DO UPDATE SET subject = EXCLUDED.subject, body = EXCLUDED.body, recipients = EXCLUDED.recipients, cc = EXCLUDED.cc "
+                                 "RETURNING id, department, subject, body, recipients, cc, created_at, updated_at",
+                                 5, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
@@ -933,6 +938,8 @@ SentMail Database::row_to_sent_mail(PGresult *res, int row)
     m.sender_email = col("sender_email") ? col("sender_email") : "";
     if (col("to_emails"))
         m.to_emails = parse_pg_array(col("to_emails"));
+    if (col("cc_emails"))
+        m.cc_emails = parse_pg_array(col("cc_emails"));
     m.subject = col("subject") ? col("subject") : "";
     m.body_html = col("body_html") ? col("body_html") : "";
     m.sent_at = col("sent_at") ? col("sent_at") : "";
@@ -943,25 +950,29 @@ std::optional<SentMail> Database::log_sent_mail(const std::string &activity_id,
                                                 const std::string &sender_id,
                                                 const std::string &sender_email,
                                                 const std::vector<std::string> &to_emails,
+                                                const std::vector<std::string> &cc_emails,
                                                 const std::string &subject,
                                                 const std::string &body_html)
 {
     ensure_connected();
-    std::string to_arr = "{";
-    for (size_t i = 0; i < to_emails.size(); ++i)
-    {
-        if (i > 0)
-            to_arr += ",";
-        to_arr += "\"" + to_emails[i] + "\"";
-    }
-    to_arr += "}";
-    const char *params[6] = {activity_id.c_str(), sender_id.c_str(), sender_email.c_str(),
-                             to_arr.c_str(), subject.c_str(), body_html.c_str()};
+    auto build_arr = [](const std::vector<std::string> &v) {
+        std::string s = "{";
+        for (size_t i = 0; i < v.size(); ++i) {
+            if (i > 0) s += ",";
+            s += "\"" + v[i] + "\"";
+        }
+        s += "}";
+        return s;
+    };
+    std::string to_arr = build_arr(to_emails);
+    std::string cc_arr = build_arr(cc_emails);
+    const char *params[7] = {activity_id.c_str(), sender_id.c_str(), sender_email.c_str(),
+                             to_arr.c_str(), cc_arr.c_str(), subject.c_str(), body_html.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO sent_mails (activity_id, sender_id, sender_email, to_emails, subject, body_html) "
-                                 "VALUES ($1, $2, $3, $4::text[], $5, $6) "
-                                 "RETURNING id, activity_id, sender_id, sender_email, to_emails, subject, body_html, sent_at",
-                                 6, nullptr, params, nullptr, nullptr, 0);
+                                 "INSERT INTO sent_mails (activity_id, sender_id, sender_email, to_emails, cc_emails, subject, body_html) "
+                                 "VALUES ($1, $2, $3, $4::text[], $5::text[], $6, $7) "
+                                 "RETURNING id, activity_id, sender_id, sender_email, to_emails, cc_emails, subject, body_html, sent_at",
+                                 7, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         std::string err = PQresultErrorMessage(res);
@@ -979,7 +990,7 @@ std::vector<SentMail> Database::list_sent_mails(const std::string &activity_id)
     ensure_connected();
     const char *params[1] = {activity_id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, activity_id, sender_id, sender_email, to_emails, subject, body_html, sent_at "
+                                 "SELECT id, activity_id, sender_id, sender_email, to_emails, cc_emails, subject, body_html, sent_at "
                                  "FROM sent_mails WHERE activity_id = $1 ORDER BY sent_at DESC",
                                  1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1012,6 +1023,8 @@ MailDraft Database::row_to_mail_draft(PGresult *res, int row)
     d.activity_id = col("activity_id") ? col("activity_id") : "";
     if (col("recipients"))
         d.recipients = parse_pg_array(col("recipients"));
+    if (col("cc"))
+        d.cc = parse_pg_array(col("cc"));
     d.subject = col("subject") ? col("subject") : "";
     d.body_html = col("body_html") ? col("body_html") : "";
     d.updated_by = col("updated_by") ? col("updated_by") : "";
@@ -1024,7 +1037,7 @@ std::optional<MailDraft> Database::get_mail_draft(const std::string &activity_id
     ensure_connected();
     const char *params[1] = {activity_id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, activity_id, recipients, subject, body_html, updated_by, updated_at "
+                                 "SELECT id, activity_id, recipients, cc, subject, body_html, updated_by, updated_at "
                                  "FROM mail_drafts WHERE activity_id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
@@ -1039,28 +1052,32 @@ std::optional<MailDraft> Database::get_mail_draft(const std::string &activity_id
 
 std::optional<MailDraft> Database::upsert_mail_draft(const std::string &activity_id,
                                                      const std::vector<std::string> &recipients,
+                                                     const std::vector<std::string> &cc,
                                                      const std::string &subject,
                                                      const std::string &body_html,
                                                      const std::string &updated_by)
 {
     ensure_connected();
-    std::string recip_arr = "{";
-    for (size_t i = 0; i < recipients.size(); ++i)
-    {
-        if (i > 0)
-            recip_arr += ",";
-        recip_arr += "\"" + recipients[i] + "\"";
-    }
-    recip_arr += "}";
-    const char *params[5] = {activity_id.c_str(), recip_arr.c_str(), subject.c_str(),
+    auto build_arr = [](const std::vector<std::string> &v) {
+        std::string s = "{";
+        for (size_t i = 0; i < v.size(); ++i) {
+            if (i > 0) s += ",";
+            s += "\"" + v[i] + "\"";
+        }
+        s += "}";
+        return s;
+    };
+    std::string recip_arr = build_arr(recipients);
+    std::string cc_arr = build_arr(cc);
+    const char *params[6] = {activity_id.c_str(), recip_arr.c_str(), cc_arr.c_str(), subject.c_str(),
                              body_html.c_str(), updated_by.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO mail_drafts (activity_id, recipients, subject, body_html, updated_by) "
-                                 "VALUES ($1, $2::text[], $3, $4, $5) "
-                                 "ON CONFLICT (activity_id) DO UPDATE SET recipients = EXCLUDED.recipients, "
+                                 "INSERT INTO mail_drafts (activity_id, recipients, cc, subject, body_html, updated_by) "
+                                 "VALUES ($1, $2::text[], $3::text[], $4, $5, $6) "
+                                 "ON CONFLICT (activity_id) DO UPDATE SET recipients = EXCLUDED.recipients, cc = EXCLUDED.cc, "
                                  "subject = EXCLUDED.subject, body_html = EXCLUDED.body_html, updated_by = EXCLUDED.updated_by "
-                                 "RETURNING id, activity_id, recipients, subject, body_html, updated_by, updated_at",
-                                 5, nullptr, params, nullptr, nullptr, 0);
+                                 "RETURNING id, activity_id, recipients, cc, subject, body_html, updated_by, updated_at",
+                                 6, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         std::string err = PQresultErrorMessage(res);
@@ -1175,6 +1192,7 @@ static size_t graph_write_cb(char *ptr, size_t size, size_t nmemb, void *userdat
 bool Database::send_mail(const std::string &access_token,
                          const std::string &from_email,
                          const std::vector<std::string> &to_emails,
+                         const std::vector<std::string> &cc_emails,
                          const std::string &subject,
                          const std::string &body_html)
 {
@@ -1186,9 +1204,20 @@ bool Database::send_mail(const std::string &access_token,
     {
         to_arr.push_back({{"emailAddress", {{"address", email}}}});
     }
+    nlohmann::json cc_arr = nlohmann::json::array();
+    for (auto &email : cc_emails)
+    {
+        cc_arr.push_back({{"emailAddress", {{"address", email}}}});
+    }
 
+    nlohmann::json message = {
+        {"subject", subject},
+        {"body", {{"contentType", "HTML"}, {"content", body_html}}},
+        {"toRecipients", to_arr}};
+    if (!cc_arr.empty())
+        message["ccRecipients"] = cc_arr;
     nlohmann::json payload = {
-        {"message", {{"subject", subject}, {"body", {{"contentType", "HTML"}, {"content", body_html}}}, {"toRecipients", to_arr}}},
+        {"message", message},
         {"saveToSentItems", true}};
 
     std::string url = "https://graph.microsoft.com/v1.0/me/sendMail";

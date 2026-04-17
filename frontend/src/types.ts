@@ -64,6 +64,7 @@ export type EditSection =
 	| 'siko'
 	| 'goal_weather'
 	| 'tpl_recipients'
+	| 'tpl_cc'
 	| 'tpl_subject'
 	| 'tpl_body';
 
@@ -104,6 +105,7 @@ export interface MailTemplate {
 	subject: string;
 	body: string;
 	recipients: string[];
+	cc: string[];
 	created_at: string;
 	updated_at: string;
 }
@@ -114,6 +116,7 @@ export interface SentMail {
 	sender_id: string;
 	sender_email: string;
 	to_emails: string[];
+	cc_emails: string[];
 	subject: string;
 	body_html: string;
 	sent_at: string;
@@ -123,6 +126,7 @@ export interface MailDraft {
 	id: string;
 	activity_id: string;
 	recipients: string[];
+	cc: string[];
 	subject: string;
 	body_html: string;
 	updated_by: string;
