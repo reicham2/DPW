@@ -32,9 +32,7 @@ jobs:
           SLUG=$(echo "$RAW" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | cut -c1-48)
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
           echo "project=dpw-$SLUG" >> "$GITHUB_OUTPUT"
-          echo "hostname=${SLUG}.dpw.lklaus.ch" >> "$GITHUB_OUTPUT"
-          echo "Branch: $RAW → Slug: $SLUG"
-
+                  echo "hostname=dpw-${SLUG}.lklaus.ch" >> "$GITHUB_OUTPUT"
       - name: Checkout
         uses: actions/checkout@v4
 
