@@ -111,3 +111,9 @@ void handle_get_role_permissions(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_role_dept_access(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_role_dept_access(HttpRes *res, HttpReq *req, Database &db);
+
+// Activity share links
+void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_share_link(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_share_link(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_shared_activity(HttpRes *res, HttpReq *req, Database &db);

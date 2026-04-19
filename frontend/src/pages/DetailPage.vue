@@ -7,6 +7,7 @@ import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
 import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
 import { useForms } from '../composables/useForms';
+import { apiFetch } from '../composables/useApi';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
@@ -43,6 +44,9 @@ const activity = ref<Activity | null>(null);
 const loading = ref(true);
 const showNoFormDialog = ref(false);
 const mode = ref<'view' | 'edit'>('view');
+const shareToken = ref<string | null>(null);
+const shareLoading = ref(false);
+const shareCopied = ref(false);
 const dirtyFields = new Set<string>();
 const savedFields = ref<Record<string, number>>({});
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -288,6 +292,7 @@ onMounted(async () => {
 		}
 		document.title = `${activity.value.title} – DPWeb`;
 		attachments.value = await fetchAttachments(id);
+		fetchShareLink();
 	}
 	loading.value = false;
 
@@ -1202,6 +1207,46 @@ async function doDelete() {
 	await deleteActivity(id);
 	router.push('/');
 }
+
+// ---- Share link ------------------------------------------------------------
+async function fetchShareLink() {
+	try {
+		const res = await apiFetch(`/api/activities/${id}/share`);
+		if (res.ok) {
+			const data = await res.json();
+			shareToken.value = data.share_token || null;
+		}
+	} catch { /* ignore */ }
+}
+
+async function createShareLink() {
+	shareLoading.value = true;
+	try {
+		const res = await apiFetch(`/api/activities/${id}/share`, { method: 'POST' });
+		if (res.ok) {
+			const data = await res.json();
+			shareToken.value = data.share_token;
+		}
+	} catch { /* ignore */ }
+	shareLoading.value = false;
+}
+
+async function deleteShareLink() {
+	shareLoading.value = true;
+	try {
+		const res = await apiFetch(`/api/activities/${id}/share`, { method: 'DELETE' });
+		if (res.ok) shareToken.value = null;
+	} catch { /* ignore */ }
+	shareLoading.value = false;
+}
+
+function copyShareLink() {
+	if (!shareToken.value) return;
+	const url = `${window.location.origin}/shared/${shareToken.value}`;
+	navigator.clipboard.writeText(url);
+	shareCopied.value = true;
+	setTimeout(() => { shareCopied.value = false; }, 2000);
+}
 </script>
 
 <template>
@@ -1239,6 +1284,34 @@ async function doDelete() {
 			>
 				📧 Mail
 			</button>
+			<!-- Share link -->
+			<div v-if="activity && mode === 'view'" class="share-link-wrap">
+				<button
+					v-if="!shareToken"
+					class="btn-mail"
+					title="Share-Link erstellen"
+					:disabled="shareLoading"
+					@click="createShareLink"
+				>
+					🔗 Teilen
+				</button>
+				<template v-else>
+					<button
+						class="btn-mail btn-mail--active"
+						title="Share-Link kopieren"
+						@click="copyShareLink"
+					>
+						{{ shareCopied ? '✅ Kopiert!' : '🔗 Link kopieren' }}
+					</button>
+					<button
+						class="btn-share-remove"
+						title="Share-Link löschen"
+						@click="deleteShareLink"
+					>
+						✕
+					</button>
+				</template>
+			</div>
 			<button
 				v-if="activity && mode === 'view'"
 				class="btn-toggle"

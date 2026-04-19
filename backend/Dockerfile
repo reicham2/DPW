@@ -19,10 +19,10 @@ COPY CMakeLists.txt .
 COPY deps/ deps/
 
 # Stub sources so cmake configure caches without real src/
-RUN mkdir -p src && for f in main auth db handlers ws_manager graph; do \
+RUN mkdir -p src && for f in main auth db handlers ws_manager graph utils; do \
   echo "// stub" > src/$f.cpp; \
   done && touch src/auth.hpp src/db.hpp src/handlers.hpp src/models.hpp \
-  src/ws_manager.hpp src/graph.hpp
+  src/ws_manager.hpp src/graph.hpp src/utils.hpp
 
 ARG BACKEND_BUILD_TYPE=Release
 ARG ENABLE_DEBUG_AUTH=0

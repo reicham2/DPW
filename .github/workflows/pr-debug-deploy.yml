@@ -1,0 +1,298 @@
+name: PR Debug Deploy
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened, closed ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-debug-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Debug Build & Deploy
+    if: github.event.action != 'closed'
+    runs-on: self-hosted
+    environment: pr-debug
+    timeout-minutes: 30
+
+    env:
+      BRANCH_SLUG: ""
+      COMPOSE_PROJECT: ""
+
+    steps:
+      - name: Sanitize branch name
+        id: slug
+        run: |
+          RAW="${{ github.head_ref }}"
+          SLUG=$(echo "$RAW" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | cut -c1-48)
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "project=dpw-$SLUG" >> "$GITHUB_OUTPUT"
+                  echo "hostname=dpw-${SLUG}.lklaus.ch" >> "$GITHUB_OUTPUT"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Avoid host port conflicts
+        run: |
+          PR_PORT=$((8100 + ${{ github.event.pull_request.number }} % 900))
+          sed -i "s/\"8000:80\"/\"${PR_PORT}:80\"/" docker-compose-dev.yml
+
+      - name: Create .env
+        run: |
+          cat > .env <<'EOF'
+          AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }}
+          VITE_MSAL_TENANT_ID=${{ secrets.VITE_MSAL_TENANT_ID }}
+          VITE_MSAL_CLIENT_ID=${{ secrets.VITE_MSAL_CLIENT_ID }}
+          GITHUB_TOKEN=${{ secrets.GH_ISSUES_TOKEN }}
+          GITHUB_REPO=${{ github.repository }}
+          ENABLE_DEBUG_AUTH=1
+          FRONTEND_ENABLE_DEBUG_AUTH=1
+          EOF
+
+      - name: Build debug containers
+        run: |
+          BACKEND_BUILD_TYPE=Debug \
+          ENABLE_DEBUG_AUTH=1 \
+          FRONTEND_ENABLE_DEBUG_AUTH=1 \
+          docker compose -f docker-compose-dev.yml \
+            -p "${{ steps.slug.outputs.project }}" \
+            build
+
+      - name: Start services
+        run: |
+          BACKEND_BUILD_TYPE=Debug \
+          ENABLE_DEBUG_AUTH=1 \
+          FRONTEND_ENABLE_DEBUG_AUTH=1 \
+          docker compose -f docker-compose-dev.yml \
+            -p "${{ steps.slug.outputs.project }}" \
+            up -d
+
+      - name: Wait for backend health
+        run: |
+          PROJECT="${{ steps.slug.outputs.project }}"
+          echo "Waiting for backend health..."
+          for i in $(seq 1 30); do
+            if docker compose -f docker-compose-dev.yml -p "$PROJECT" \
+                exec -T backend curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Backend healthy after attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i/30..."
+            sleep 2
+          done
+          echo "Backend did not become healthy"
+          docker compose -f docker-compose-dev.yml -p "$PROJECT" logs backend
+          exit 1
+
+      - name: Wait for frontend health
+        run: |
+          PROJECT="${{ steps.slug.outputs.project }}"
+          echo "Waiting for frontend health..."
+          for i in $(seq 1 15); do
+            if docker compose -f docker-compose-dev.yml -p "$PROJECT" \
+                exec -T frontend curl -sf http://localhost:80 > /dev/null 2>&1; then
+              echo "Frontend healthy after attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i/15..."
+            sleep 2
+          done
+          echo "Frontend did not become healthy"
+          docker compose -f docker-compose-dev.yml -p "$PROJECT" logs frontend
+          exit 1
+
+      - name: Seed database
+        run: |
+          PROJECT="${{ steps.slug.outputs.project }}"
+          docker compose -f docker-compose-dev.yml -p "$PROJECT" \
+            exec -T db psql -U activities_user -d activities < db/seed.sql
+          echo "DB seeded"
+
+      - name: Setup Cloudflare Tunnel
+        env:
+          TUNNEL_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
+        run: |
+          set -euo pipefail
+          SLUG="${{ steps.slug.outputs.slug }}"
+          PROJECT="${{ steps.slug.outputs.project }}"
+          TUNNEL_NAME="dpw-${SLUG}"
+          HOSTNAME="${{ steps.slug.outputs.hostname }}"
+          NETWORK="${PROJECT}_default"
+          CERT_DIR="$HOME/.cloudflared"
+
+          # Write origin cert for cloudflared CLI
+          mkdir -p "$CERT_DIR"
+          printf '%s\n' "$TUNNEL_ORIGIN_CERT" > "$CERT_DIR/cert.pem"
+          chmod 600 "$CERT_DIR/cert.pem"
+
+          # Verify cert was written correctly
+          if ! head -1 "$CERT_DIR/cert.pem" | grep -q "BEGIN"; then
+            echo "ERROR: cert.pem does not look like a valid PEM file"
+            echo "First line: $(head -1 "$CERT_DIR/cert.pem")"
+            exit 1
+          fi
+
+          # Remove previous tunnel container + tunnel
+          docker rm -f "${PROJECT}-tunnel" 2>/dev/null || true
+          cloudflared tunnel --origincert "$CERT_DIR/cert.pem" cleanup "$TUNNEL_NAME" 2>/dev/null || true
+          cloudflared tunnel --origincert "$CERT_DIR/cert.pem" delete "$TUNNEL_NAME" 2>/dev/null || true
+
+          # Create tunnel
+          cloudflared tunnel --origincert "$CERT_DIR/cert.pem" create "$TUNNEL_NAME"
+
+          # Get tunnel UUID
+          TUNNEL_ID=$(cloudflared tunnel --origincert "$CERT_DIR/cert.pem" list -o json | jq -r ".[] | select(.name==\"$TUNNEL_NAME\") | .id")
+          echo "Created tunnel: ${TUNNEL_ID}"
+
+          # Route DNS (CNAME → tunnel)
+          cloudflared tunnel --origincert "$CERT_DIR/cert.pem" route dns --overwrite-dns "$TUNNEL_NAME" "$HOSTNAME"
+          echo "DNS configured: ${HOSTNAME}"
+
+          # Write tunnel config
+          CRED_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
+          mkdir -p /tmp/cloudflared
+          printf 'tunnel: %s\ncredentials-file: /etc/cloudflared/credentials.json\ningress:\n  - hostname: %s\n    service: http://frontend:80\n  - service: http_status:404\n' \
+            "${TUNNEL_ID}" "${HOSTNAME}" \
+            > /tmp/cloudflared/${SLUG}-config.yml
+
+          # Make credentials readable by non-root container user
+          chmod 644 "${CRED_FILE}"
+
+          # Run cloudflared in the compose network
+          docker run -d \
+            --name "${PROJECT}-tunnel" \
+            --network "${NETWORK}" \
+            --restart unless-stopped \
+            -v "${CRED_FILE}:/etc/cloudflared/credentials.json:ro" \
+            -v "/tmp/cloudflared/${SLUG}-config.yml:/etc/cloudflared/config.yml:ro" \
+            cloudflare/cloudflared:latest \
+            tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+
+          echo "Tunnel started: https://${HOSTNAME}"
+
+      - name: Verify tunnel connection
+        run: |
+          TUNNEL="${{ steps.slug.outputs.project }}-tunnel"
+          echo "Waiting for tunnel to connect..."
+          for i in $(seq 1 12); do
+            LOGS=$(docker logs "$TUNNEL" 2>&1)
+            if echo "$LOGS" | grep -q "Registered tunnel connection"; then
+              echo "Tunnel connected after attempt $i"
+              echo "$LOGS" | grep -E "INF|ERR" | tail -10
+              exit 0
+            fi
+            if echo "$LOGS" | grep -q "ERR"; then
+              echo "─── Tunnel errors found ───"
+              echo "$LOGS" | tail -30
+            fi
+            echo "Attempt $i/12..."
+            sleep 5
+          done
+          echo "Tunnel did not connect within 60s"
+          echo "─── Full tunnel logs ───"
+          docker logs "$TUNNEL" 2>&1
+          exit 1
+
+      - name: Print status
+        run: |
+          echo "─── Container Status ───"
+          docker compose -f docker-compose-dev.yml \
+            -p "${{ steps.slug.outputs.project }}" ps
+          echo ""
+          docker ps --filter "name=${{ steps.slug.outputs.project }}-tunnel" --format "table {{.Names}}\t{{.Status}}"
+          echo ""
+          echo "─── Deployed as: ${{ steps.slug.outputs.project }} ───"
+          echo "Branch: ${{ github.head_ref }}"
+          echo "URL:    https://${{ steps.slug.outputs.hostname }}"
+
+      - name: Comment deployment URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- dpw-deploy-comment -->';
+            const body = `${marker}\n:rocket: **Debug deploy ready!**\n\nhttps://${{ steps.slug.outputs.hostname }}\n\n_Commit: ${{ github.event.pull_request.head.sha }}_`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose-dev.yml \
+            -p "${{ steps.slug.outputs.project }}" logs --tail=100
+          TUNNEL="${{ steps.slug.outputs.project }}-tunnel"
+          if docker ps -a --format '{{.Names}}' | grep -q "^${TUNNEL}$"; then
+            echo "─── Cloudflared logs ───"
+            docker logs "$TUNNEL" --tail=50 2>&1
+          fi
+
+  cleanup:
+    name: Cleanup on PR Close
+    if: github.event.action == 'closed'
+    runs-on: self-hosted
+    steps:
+      - name: Sanitize branch name
+        id: slug
+        run: |
+          RAW="${{ github.head_ref }}"
+          SLUG=$(echo "$RAW" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | cut -c1-48)
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "project=dpw-$SLUG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stop Cloudflare Tunnel
+        env:
+          TUNNEL_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
+        run: |
+          PROJECT="${{ steps.slug.outputs.project }}"
+          TUNNEL_NAME="dpw-${{ steps.slug.outputs.slug }}"
+          CERT_DIR="$HOME/.cloudflared"
+
+          # Write origin cert
+          mkdir -p "$CERT_DIR"
+          printf '%s\n' "$TUNNEL_ORIGIN_CERT" > "$CERT_DIR/cert.pem"
+          chmod 600 "$CERT_DIR/cert.pem"
+
+          # Stop tunnel container
+          docker rm -f "${PROJECT}-tunnel" 2>/dev/null || true
+
+          # Cleanup and delete tunnel (also removes DNS route)
+          cloudflared tunnel --origincert "$CERT_DIR/cert.pem" cleanup "$TUNNEL_NAME" 2>/dev/null || true
+          cloudflared tunnel --origincert "$CERT_DIR/cert.pem" delete "$TUNNEL_NAME" 2>/dev/null || true
+
+          rm -f /tmp/cloudflared/${{ steps.slug.outputs.slug }}-config.yml
+          echo "Tunnel cleaned up: $TUNNEL_NAME"
+
+      - name: Stop and remove containers
+        run: |
+          docker compose -f docker-compose-dev.yml \
+            -p "${{ steps.slug.outputs.project }}" \
+            down -v --remove-orphans || true
+          echo "Cleaned up: ${{ steps.slug.outputs.project }}"

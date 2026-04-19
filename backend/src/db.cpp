@@ -2526,3 +2526,104 @@ bool Database::delete_form_template(const std::string &id)
     PQclear(res);
     return ok;
 }
+
+// ---- Activity share links ---------------------------------------------------
+
+std::optional<ActivityShareLink> Database::create_share_link(const std::string &activity_id,
+                                                              const std::string &created_by)
+{
+    ensure_connected();
+    const char *params[2] = {activity_id.c_str(), created_by.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO activity_share_links (activity_id, created_by) "
+                                 "VALUES ($1, $2) "
+                                 "ON CONFLICT (activity_id) WHERE true "
+                                 "DO UPDATE SET activity_id = activity_share_links.activity_id "
+                                 "RETURNING id, activity_id, share_token, created_by::text, created_at",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    // If UPSERT fails (no unique on activity_id), try simple approach
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        // Check if one already exists
+        auto existing = get_share_link(activity_id);
+        if (existing) return existing;
+        // Insert without ON CONFLICT
+        res = PQexecParams(conn_,
+                           "INSERT INTO activity_share_links (activity_id, created_by) "
+                           "VALUES ($1, $2) "
+                           "RETURNING id, activity_id, share_token, created_by::text, created_at",
+                           2, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+        {
+            PQclear(res);
+            return std::nullopt;
+        }
+    }
+    ActivityShareLink link;
+    link.id = PQgetvalue(res, 0, 0);
+    link.activity_id = PQgetvalue(res, 0, 1);
+    link.share_token = PQgetvalue(res, 0, 2);
+    link.created_by = PQgetisnull(res, 0, 3) ? "" : PQgetvalue(res, 0, 3);
+    link.created_at = PQgetvalue(res, 0, 4);
+    PQclear(res);
+    return link;
+}
+
+std::optional<ActivityShareLink> Database::get_share_link(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, share_token, created_by::text, created_at "
+                                 "FROM activity_share_links WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    ActivityShareLink link;
+    link.id = PQgetvalue(res, 0, 0);
+    link.activity_id = PQgetvalue(res, 0, 1);
+    link.share_token = PQgetvalue(res, 0, 2);
+    link.created_by = PQgetisnull(res, 0, 3) ? "" : PQgetvalue(res, 0, 3);
+    link.created_at = PQgetvalue(res, 0, 4);
+    PQclear(res);
+    return link;
+}
+
+bool Database::delete_share_link(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM activity_share_links WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+std::optional<Activity> Database::get_activity_by_share_token(const std::string &token)
+{
+    ensure_connected();
+    const char *params[1] = {token.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, "
+                                 "       a.location, a.responsible, a.department, a.material, a.siko_text, "
+                                 "       a.bad_weather_info, a.created_at, a.updated_at "
+                                 "FROM activities a "
+                                 "JOIN activity_share_links s ON s.activity_id = a.id "
+                                 "WHERE s.share_token = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    Activity a = row_to_activity(res, 0);
+    PQclear(res);
+    attach_programs_single(a);
+    return a;
+}

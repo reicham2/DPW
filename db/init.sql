@@ -148,6 +148,18 @@ CREATE TABLE attachments (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Activity share links (public read-only access)
+CREATE TABLE activity_share_links (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id   UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    share_token   TEXT        NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(16), 'hex'),
+    created_by    UUID        REFERENCES users(id) ON DELETE SET NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_activity_share_links_token ON activity_share_links (share_token);
+CREATE INDEX idx_activity_share_links_activity ON activity_share_links (activity_id);
+
 CREATE INDEX idx_attachments_activity_id ON attachments (activity_id);
 
 -- ── Role permissions ────────────────────────────────────────────────────────

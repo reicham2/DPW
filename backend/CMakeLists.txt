@@ -51,6 +51,7 @@ add_executable(server
     src/auth.cpp
     src/ws_manager.cpp
     src/graph.cpp
+    src/utils.cpp
     ${USOCKETS_SOURCES}
 )
 
@@ -94,3 +95,30 @@ target_precompile_headers(server PRIVATE
     "$<$<COMPILE_LANGUAGE:CXX>:<vector$<ANGLE-R>>"
     "$<$<COMPILE_LANGUAGE:CXX>:<optional$<ANGLE-R>>"
 )
+
+# ── Unit Tests ───────────────────────────────────────────────────────────────
+option(BUILD_TESTS "Build unit tests" OFF)
+
+if (BUILD_TESTS)
+    enable_testing()
+
+    add_executable(run_tests
+        tests/test_main.cpp
+        src/utils.cpp
+        src/auth.cpp
+    )
+
+    target_include_directories(run_tests PRIVATE
+        src/
+        deps/
+        ${PQ_INCLUDE}
+    )
+
+    target_link_libraries(run_tests PRIVATE
+        OpenSSL::SSL OpenSSL::Crypto CURL::libcurl
+    )
+
+    target_compile_options(run_tests PRIVATE -O2 -Wall -Wextra)
+
+    add_test(NAME unit_tests COMMAND run_tests)
+endif()
