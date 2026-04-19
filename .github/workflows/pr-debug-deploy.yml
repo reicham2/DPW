@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: pr-debug-${{ github.event.pull_request.number }}
@@ -210,6 +211,34 @@ jobs:
           echo "─── Deployed as: ${{ steps.slug.outputs.project }} ───"
           echo "Branch: ${{ github.head_ref }}"
           echo "URL:    https://${{ steps.slug.outputs.hostname }}"
+
+      - name: Comment deployment URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- dpw-deploy-comment -->';
+            const body = `${marker}\n:rocket: **Debug deploy ready!**\n\nhttps://${{ steps.slug.outputs.hostname }}\n\n_Commit: ${{ github.event.pull_request.head.sha }}_`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
 
       - name: Collect logs on failure
         if: failure()
