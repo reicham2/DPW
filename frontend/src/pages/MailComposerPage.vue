@@ -25,6 +25,7 @@ const activity = ref<Activity | null>(null)
 const subject = ref('')
 const body = ref('')
 const recipients = ref<string[]>([''])
+const cc = ref<string[]>([''])
 const sent = ref(false)
 const loadError = ref<string | null>(null)
 const editorRef = ref<HTMLElement | null>(null)
@@ -70,12 +71,13 @@ function markDirty(field: string) {
 }
 
 const { scheduleAutoSave, flushAutoSave, cancelAutoSave } = useAutosave(async () => {
-	await saveDraft(activityId, recipients.value.filter(r => r.trim()), subject.value, body.value)
+	await saveDraft(activityId, recipients.value.filter(r => r.trim()), subject.value, body.value, cc.value.filter(r => r.trim()))
 	showSavedIndicator()
 })
 
 // Snapshot for cancel/revert
 let initialRecipients: string[] = []
+let initialCc: string[] = []
 let initialSubject = ''
 let initialBody = ''
 let hadDraftOnEntry = false
@@ -196,6 +198,9 @@ onMounted(async () => {
       if (tpl.recipients?.length) {
         recipients.value = [...tpl.recipients]
       }
+      if (tpl.cc?.length) {
+        cc.value = [...tpl.cc]
+      }
     }
   }
 
@@ -204,12 +209,14 @@ onMounted(async () => {
   if (draft) {
     hadDraftOnEntry = true
     if (draft.recipients.length) recipients.value = [...draft.recipients]
+    if (draft.cc?.length) cc.value = [...draft.cc]
     if (draft.subject) subject.value = draft.subject
     if (draft.body_html) body.value = draft.body_html
   }
 
   // Snapshot initial state for cancel/revert
   initialRecipients = [...recipients.value]
+  initialCc = [...cc.value]
   initialSubject = subject.value
   initialBody = body.value
 
@@ -424,6 +431,51 @@ function onRecipientKeydown(e: KeyboardEvent) {
 	}
 }
 
+// ---- CC contact search ------------------------------------------------------
+const { results: ccResults, searching: ccSearching, search: searchCcContacts, clear: clearCcSearch } = useContactSearch()
+const ccSearch = ref('')
+const showCcDropdown = ref(false)
+
+function onCcSearchInput() {
+	searchCcContacts(ccSearch.value)
+}
+
+function addCc(email: string) {
+	if (!cc.value.includes(email)) {
+		if (cc.value.length === 1 && cc.value[0] === '') {
+			cc.value[0] = email;
+		} else {
+			cc.value.push(email);
+		}
+	}
+	ccSearch.value = '';
+	showCcDropdown.value = false;
+	clearCcSearch();
+	markDirty('cc');
+}
+
+function removeCc(index: number) {
+	cc.value.splice(index, 1);
+	if (cc.value.length === 0) cc.value = [''];
+	markDirty('cc');
+}
+
+function onCcBlur() {
+	setTimeout(() => {
+		showCcDropdown.value = false
+	}, 200)
+}
+
+function onCcKeydown(e: KeyboardEvent) {
+	if (e.key === 'Enter') {
+		e.preventDefault()
+		const val = ccSearch.value.trim()
+		if (val && val.includes('@')) {
+			addCc(val)
+		}
+	}
+}
+
 async function handleSend() {
 	const validTo = recipients.value.map((r) => r.trim()).filter(Boolean);
 	if (validTo.length === 0 || !subject.value.trim() || !body.value.trim())
@@ -433,7 +485,8 @@ async function handleSend() {
 	const fromEmail = user.value?.email ?? '';
 	const bodyHtml = body.value;
 
-	const ok = await sendMail(validTo, subject.value, bodyHtml, fromEmail, activityId);
+	const validCc = cc.value.map((r) => r.trim()).filter(Boolean);
+	const ok = await sendMail(validTo, subject.value, bodyHtml, fromEmail, activityId, validCc);
 	if (ok) {
 		await deleteDraft(activityId);
 		sent.value = true;
@@ -479,10 +532,11 @@ async function copyFormLink() {
 async function cancelAndRevert() {
 	cancelAutoSave()
 	recipients.value = [...initialRecipients]
+	cc.value = [...initialCc]
 	subject.value = initialSubject
 	body.value = initialBody
 	if (hadDraftOnEntry) {
-		await saveDraft(activityId, initialRecipients.filter(r => r.trim()), initialSubject, initialBody)
+		await saveDraft(activityId, initialRecipients.filter(r => r.trim()), initialSubject, initialBody, initialCc.filter(r => r.trim()))
 	} else {
 		await deleteDraft(activityId)
 	}
@@ -555,6 +609,7 @@ async function cancelAndRevert() {
 						<div class="mail-viewer-meta">
 							<div><strong>Von:</strong> {{ viewingMail.sender_email }}</div>
 							<div><strong>An:</strong> {{ viewingMail.to_emails.join(', ') }}</div>
+							<div v-if="viewingMail.cc_emails?.length"><strong>CC:</strong> {{ viewingMail.cc_emails.join(', ') }}</div>
 							<div><strong>Betreff:</strong> {{ viewingMail.subject }}</div>
 							<div><strong>Gesendet:</strong> {{ formatSentDate(viewingMail.sent_at) }}</div>
 						</div>
@@ -622,6 +677,40 @@ async function cancelAndRevert() {
 							:key="c.email"
 							class="user-dropdown-item"
 							@mousedown.prevent="addRecipient(c.email)"
+						>
+							<span class="contact-name">{{ c.displayName }}</span>
+							<span class="contact-email">{{ c.email }}</span>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- CC -->
+			<div class="form-group user-search-group">
+				<label>CC <span v-if="savedFields['cc']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['cc']">💾</span></label>
+				<div class="user-chips" v-if="cc.filter(r => r).length">
+					<span v-for="(email, i) in cc" :key="email || i" class="user-chip" v-show="email">
+						{{ email }}
+						<button type="button" class="user-chip-remove" @click="removeCc(i)">✕</button>
+					</span>
+				</div>
+				<div class="user-search-wrapper">
+					<input
+						type="text"
+						v-model="ccSearch"
+						placeholder="Kontakt suchen…"
+						@input="onCcSearchInput"
+						@focus="showCcDropdown = true"
+						@blur="onCcBlur"
+						@keydown="onCcKeydown"
+					/>
+					<div v-if="showCcDropdown && (ccResults.length || ccSearching)" class="user-dropdown">
+						<div v-if="ccSearching" class="user-dropdown-item user-dropdown-item--loading">Suchen…</div>
+						<div
+							v-for="c in ccResults"
+							:key="c.email"
+							class="user-dropdown-item"
+							@mousedown.prevent="addCc(c.email)"
 						>
 							<span class="contact-name">{{ c.displayName }}</span>
 							<span class="contact-email">{{ c.email }}</span>

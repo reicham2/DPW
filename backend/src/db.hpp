@@ -25,6 +25,7 @@ struct MailTemplate
     std::string subject;
     std::string body;
     std::vector<std::string> recipients;
+    std::vector<std::string> cc;
     std::string created_at;
     std::string updated_at;
 };
@@ -36,6 +37,7 @@ struct SentMail
     std::string sender_id;
     std::string sender_email;
     std::vector<std::string> to_emails;
+    std::vector<std::string> cc_emails;
     std::string subject;
     std::string body_html;
     std::string sent_at;
@@ -46,6 +48,7 @@ struct MailDraft
     std::string id;
     std::string activity_id;
     std::vector<std::string> recipients;
+    std::vector<std::string> cc;
     std::string subject;
     std::string body_html;
     std::string updated_by;
@@ -175,12 +178,14 @@ public:
     std::optional<MailTemplate> upsert_mail_template(const std::string &department,
                                                      const std::string &subject,
                                                      const std::string &body,
-                                                     const std::vector<std::string> &recipients);
+                                                     const std::vector<std::string> &recipients,
+                                                     const std::vector<std::string> &cc);
 
     // Send mail via Microsoft Graph
     bool send_mail(const std::string &access_token,
                    const std::string &from_email,
                    const std::vector<std::string> &to_emails,
+                   const std::vector<std::string> &cc_emails,
                    const std::string &subject,
                    const std::string &body_html);
 
@@ -189,6 +194,7 @@ public:
                                           const std::string &sender_id,
                                           const std::string &sender_email,
                                           const std::vector<std::string> &to_emails,
+                                          const std::vector<std::string> &cc_emails,
                                           const std::string &subject,
                                           const std::string &body_html);
     std::vector<SentMail> list_sent_mails(const std::string &activity_id);
@@ -197,6 +203,7 @@ public:
     std::optional<MailDraft> get_mail_draft(const std::string &activity_id);
     std::optional<MailDraft> upsert_mail_draft(const std::string &activity_id,
                                                const std::vector<std::string> &recipients,
+                                               const std::vector<std::string> &cc,
                                                const std::string &subject,
                                                const std::string &body_html,
                                                const std::string &updated_by);

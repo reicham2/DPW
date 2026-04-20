@@ -47,6 +47,7 @@ export function useMailTemplates() {
 		subject: string,
 		body: string,
 		recipients: string[] = [],
+		cc: string[] = [],
 	): Promise<MailTemplate | null> {
 		error.value = null;
 		try {
@@ -54,7 +55,7 @@ export function useMailTemplates() {
 				`${BASE}/mail-templates/${encodeURIComponent(department)}`,
 				{
 					method: 'PUT',
-					body: JSON.stringify({ subject, body, recipients }),
+					body: JSON.stringify({ subject, body, recipients, cc }),
 				},
 			);
 			if (!res.ok) throw new Error(await res.text());
@@ -71,6 +72,7 @@ export function useMailTemplates() {
 		bodyHtml: string,
 		fromEmail: string,
 		activityId?: string,
+		cc: string[] = [],
 	): Promise<boolean> {
 		sending.value = true;
 		error.value = null;
@@ -80,6 +82,7 @@ export function useMailTemplates() {
 				method: 'POST',
 				body: JSON.stringify({
 					to,
+					cc,
 					subject,
 					body: bodyHtml,
 					from: fromEmail,
@@ -130,13 +133,14 @@ export function useMailTemplates() {
 		recipients: string[],
 		subject: string,
 		bodyHtml: string,
+		cc: string[] = [],
 	): Promise<MailDraft | null> {
 		try {
 			const res = await apiFetch(
 				`${BASE}/activities/${encodeURIComponent(activityId)}/mail-draft`,
 				{
 					method: 'PUT',
-					body: JSON.stringify({ recipients, subject, body_html: bodyHtml }),
+					body: JSON.stringify({ recipients, cc, subject, body_html: bodyHtml }),
 				},
 			);
 			if (!res.ok) return null;

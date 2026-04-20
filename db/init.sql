@@ -93,6 +93,7 @@ CREATE TABLE mail_templates (
     subject     TEXT        NOT NULL DEFAULT '',
     body        TEXT        NOT NULL DEFAULT '',
     recipients  TEXT[]      NOT NULL DEFAULT '{}',
+    cc          TEXT[]      NOT NULL DEFAULT '{}',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -102,8 +103,8 @@ CREATE TRIGGER trg_mail_templates_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- Seed default (empty) template for default department
-INSERT INTO mail_templates (department, subject, body, recipients) VALUES
-    ('Allgemein', '', '', '{}');
+INSERT INTO mail_templates (department, subject, body, recipients, cc) VALUES
+    ('Allgemein', '', '', '{}', '{}');
 
 -- Sent mail log (audit trail)
 CREATE TABLE sent_mails (
@@ -112,6 +113,7 @@ CREATE TABLE sent_mails (
     sender_id    UUID        REFERENCES users(id) ON DELETE SET NULL,
     sender_email TEXT        NOT NULL,
     to_emails    TEXT[]      NOT NULL,
+    cc_emails    TEXT[]      NOT NULL DEFAULT '{}',
     subject      TEXT        NOT NULL,
     body_html    TEXT        NOT NULL,
     sent_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -296,6 +298,7 @@ CREATE TABLE mail_drafts (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     activity_id  UUID        NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
     recipients   TEXT[]      NOT NULL DEFAULT '{}',
+    cc           TEXT[]      NOT NULL DEFAULT '{}',
     subject      TEXT        NOT NULL DEFAULT '',
     body_html    TEXT        NOT NULL DEFAULT '',
     updated_by   UUID        REFERENCES users(id) ON DELETE SET NULL,
