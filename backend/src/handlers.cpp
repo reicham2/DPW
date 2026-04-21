@@ -51,48 +51,6 @@ namespace
         return s;
     }
 
-    std::string normalize_role_match_key(const std::string &input)
-    {
-        std::string s = to_lower_ascii(trim_ascii(input));
-        std::string out;
-        out.reserve(s.size());
-        for (size_t i = 0; i < s.size(); ++i)
-        {
-            unsigned char c = static_cast<unsigned char>(s[i]);
-            if (c == 0xC3 && i + 1 < s.size())
-            {
-                unsigned char n = static_cast<unsigned char>(s[i + 1]);
-                if (n == 0xA4 || n == 0x84)
-                {
-                    out += "ae";
-                    ++i;
-                    continue;
-                }
-                if (n == 0xB6 || n == 0x96)
-                {
-                    out += "oe";
-                    ++i;
-                    continue;
-                }
-                if (n == 0xBC || n == 0x9C)
-                {
-                    out += "ue";
-                    ++i;
-                    continue;
-                }
-                if (n == 0x9F)
-                {
-                    out += "ss";
-                    ++i;
-                    continue;
-                }
-            }
-            if (std::isalnum(c))
-                out += static_cast<char>(c);
-        }
-        return out;
-    }
-
     std::string sanitize_meteo_text(std::string s)
     {
         std::string out;
@@ -137,49 +95,6 @@ namespace
         return trim_ascii(out);
     }
 
-    std::vector<std::string> parse_midata_child_roles_json(const nlohmann::json &value)
-    {
-        std::vector<std::string> out;
-        std::unordered_set<std::string> seen_lower;
-        auto add_token = [&](std::string token)
-        {
-            token = trim_ascii(token);
-            if (token.empty())
-                return;
-            auto lowered = to_lower_ascii(token);
-            if (seen_lower.insert(lowered).second)
-                out.push_back(token);
-        };
-
-        if (value.is_string())
-        {
-            auto raw = value.get<std::string>();
-            size_t start = 0;
-            while (start <= raw.size())
-            {
-                size_t comma = raw.find(',', start);
-                std::string token = (comma == std::string::npos)
-                                        ? raw.substr(start)
-                                        : raw.substr(start, comma - start);
-                add_token(token);
-                if (comma == std::string::npos)
-                    break;
-                start = comma + 1;
-            }
-            return out;
-        }
-
-        if (value.is_array())
-        {
-            for (const auto &entry : value)
-            {
-                if (entry.is_string())
-                    add_token(entry.get<std::string>());
-            }
-        }
-        return out;
-    }
-
     std::optional<std::string> json_string_or_nested_label(const nlohmann::json &j)
     {
         if (j.is_string())
@@ -194,74 +109,6 @@ namespace
             }
         }
         return std::nullopt;
-    }
-
-    std::vector<std::string> extract_role_texts(const nlohmann::json &person)
-    {
-        static const char *keys[] = {
-            "role",
-            "role_name",
-            "roleName",
-            "group_role",
-            "groupRole",
-            "layer_group_name",
-            "layerGroupName",
-            "member_role",
-            "type"};
-
-        std::vector<std::string> roles;
-        auto push_if_not_empty = [&](const std::optional<std::string> &v)
-        {
-            if (!v)
-                return;
-            auto t = trim_ascii(*v);
-            if (!t.empty())
-                roles.push_back(t);
-        };
-
-        for (const char *k : keys)
-        {
-            if (!person.contains(k))
-                continue;
-            push_if_not_empty(json_string_or_nested_label(person[k]));
-        }
-
-        if (person.contains("roles") && person["roles"].is_array())
-        {
-            for (const auto &entry : person["roles"])
-            {
-                push_if_not_empty(json_string_or_nested_label(entry));
-                if (entry.is_object())
-                {
-                    static const char *role_obj_keys[] = {"name", "label", "type", "group_name", "groupName", "role", "role_name"};
-                    for (const char *rk : role_obj_keys)
-                    {
-                        if (entry.contains(rk))
-                            push_if_not_empty(json_string_or_nested_label(entry[rk]));
-                    }
-                }
-            }
-        }
-
-        return roles;
-    }
-
-    std::vector<std::string> extract_linked_role_texts(const nlohmann::json &role)
-    {
-        std::vector<std::string> out;
-        static const char *keys[] = {"role_type", "role_class", "label", "name", "type"};
-        for (const char *k : keys)
-        {
-            if (!role.contains(k))
-                continue;
-            auto v = json_string_or_nested_label(role[k]);
-            if (!v)
-                continue;
-            auto trimmed = trim_ascii(*v);
-            if (!trimmed.empty())
-                out.push_back(trimmed);
-        }
-        return out;
     }
 
     const nlohmann::json *find_people_array(const nlohmann::json &payload)
