@@ -289,6 +289,21 @@ ActivityInput parse_activity_input(const nlohmann::json &j)
         if (!st.empty())
             input.siko_text = st;
     }
+    if (j.contains("planned_participants_estimate"))
+    {
+        if (j["planned_participants_estimate"].is_number_integer())
+        {
+            int value = j["planned_participants_estimate"].get<int>();
+            if (value >= 0)
+                input.planned_participants_estimate = value;
+        }
+        else if (j["planned_participants_estimate"].is_number())
+        {
+            int value = static_cast<int>(j["planned_participants_estimate"].get<double>());
+            if (value >= 0)
+                input.planned_participants_estimate = value;
+        }
+    }
     if (j.contains("material") && j["material"].is_array())
     {
         for (auto &m : j["material"])

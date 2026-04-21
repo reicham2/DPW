@@ -18,6 +18,10 @@
 					<span class="stat-label">{{ mode === 'registration' ? 'Anmeldungen' : 'Abmeldungen' }}</span>
 				</div>
 			</template>
+			<div class="stat-card">
+				<span class="stat-value">{{ expectedCurrent }}</span>
+				<span class="stat-label">Aktuell erwartet</span>
+			</div>
 		</div>
 
 		<!-- Per-question breakdown -->
@@ -77,12 +81,21 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { FormStats, SignupForm } from '../types';
 
 const props = defineProps<{
 	stats: FormStats | null;
 	form?: SignupForm | null;
 }>();
+
+const expectedCurrent = computed(() => {
+	if (!props.stats) return 0;
+	if (typeof props.stats.expected_current === 'number') return props.stats.expected_current;
+	const registrations = props.stats.registration_count ?? props.stats.by_mode?.registration ?? 0;
+	const deregistrations = props.stats.deregistration_count ?? props.stats.by_mode?.deregistration ?? 0;
+	return registrations - deregistrations;
+});
 
 function typeLabel(type: string): string {
 	const m: Record<string, string> = {

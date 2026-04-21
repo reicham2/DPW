@@ -14,7 +14,11 @@ DC := docker compose -f docker-compose-dev.yml
 # ── Shortcut-Targets ─────────────────────────────────────────────────────────
 new-branch: clean rebuild db-seed
 
-fresh: rebuild db-seed
+fresh:
+	$(DC) down -v --remove-orphans
+	BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1 FRONTEND_ENABLE_DEBUG_AUTH=1 $(DC) up -d --build --force-recreate --wait
+	$(DC) exec -T db psql -U activities_user -d activities < db/seed.sql
+	@echo "✅ Frische Umgebung aufgebaut und Testdaten geladen"
 
 # ── Tests (laufen im Container) ──────────────────────────────────────────────
 test: test-frontend test-backend

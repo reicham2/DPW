@@ -10,7 +10,7 @@ services:
       - db_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U activities_user -d activities"]
+      test: [ "CMD-SHELL", "pg_isready -U activities_user -d activities" ]
       interval: 2s
       timeout: 3s
       retries: 10
@@ -36,11 +36,15 @@ services:
       DEBUG_ADMIN_EMAIL: "${DEBUG_ADMIN_EMAIL}"
       GITHUB_TOKEN: "${GITHUB_TOKEN}"
       GITHUB_REPO: "${GITHUB_REPO:-reicham2/DPW}"
+      MIDATA_API_KEY: "${MIDATA_API_KEY}"
+      MIDATA_API_URL_TEMPLATE: "${MIDATA_API_URL_TEMPLATE:-https://db.scout.ch/de/gro\
+        ups/{group_id}/people.json}"
+      MIDATA_API_TIMEOUT_MS: "${MIDATA_API_TIMEOUT_MS:-8000}"
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1" ]
       interval: 2s
       timeout: 3s
       retries: 10
@@ -58,6 +62,7 @@ services:
       MSAL_TENANT_ID: "${VITE_MSAL_TENANT_ID}"
       AUTOSAVE_INTERVAL: "${VITE_AUTOSAVE_INTERVAL:-1500}"
       AUTOSAVE_DEBOUNCE: "${VITE_AUTOSAVE_DEBOUNCE:-true}"
+      MIDATA_WEATHER_REFRESH_INTERVAL: "${VITE_MIDATA_WEATHER_REFRESH_INTERVAL:-900000}"
     ports:
       - "8000:80"
     depends_on:

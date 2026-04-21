@@ -13,6 +13,7 @@
         </router-link>
         <div v-if="user" class="global-nav-links">
           <router-link to="/" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }">Aktivitäten</router-link>
+          <router-link to="/stats" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/stats' }">Statistik</router-link>
           <router-link v-if="showMailTemplates" to="/mail-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/mail-templates' }">Mail-Vorlagen</router-link>
           <router-link v-if="showFormTemplates" to="/form-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/form-templates' }">Formular-Vorlagen</router-link>
           <router-link v-if="showAdmin" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
@@ -85,15 +86,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import UserAvatar from './components/UserAvatar.vue'
 import BugReportButton from './components/BugReportButton.vue'
 import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
 import { usePermissions } from './composables/usePermissions'
+import { useMidataCounts } from './composables/useMidataCounts'
+import { config } from './config'
 
 const route = useRoute()
 const { myPermissions, fetchMyPermissions } = usePermissions()
+const { startMidataAutoRefresh, stopMidataAutoRefresh, resetMidataCounts } = useMidataCounts()
 
 const showMailTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
 const showFormTemplates = computed(() => myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none')
@@ -134,8 +138,18 @@ onMounted(() => {
 })
 
 watch(user, (u) => {
-  if (u) fetchMyPermissions().catch(() => {})
+  if (u) {
+    fetchMyPermissions().catch(() => {})
+     startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
+  } else {
+    stopMidataAutoRefresh()
+    resetMidataCounts()
+  }
 }, { immediate: true })
+
+onUnmounted(() => {
+  stopMidataAutoRefresh()
+})
 </script>
 
 <style scoped>

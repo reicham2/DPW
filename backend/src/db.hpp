@@ -70,6 +70,8 @@ struct DepartmentRecord
 {
     std::string name;
     std::string color;
+    std::optional<std::string> midata_group_id;
+    std::vector<std::string> midata_child_roles;
 };
 
 struct RoleRecord
@@ -86,15 +88,15 @@ struct RolePermission
     bool can_write_own_dept;
     bool can_read_all_depts;
     bool can_write_all_depts;
-    std::string activity_read_scope;   // none|own|same_dept|all
-    std::string activity_create_scope; // none|own_dept|all
-    std::string activity_edit_scope;   // none|own|same_dept|all
-    std::string mail_send_scope;       // none|own|same_dept|all
-    std::string mail_templates_scope;  // none|own_dept|all
-    std::string form_scope;            // none|own|same_dept|all
-    std::string form_templates_scope;  // none|own_dept|all
-    std::string user_dept_scope;       // none|own|own_dept|all
-    std::string user_role_scope;       // none|own|own_dept|all
+    std::string activity_read_scope;    // none|own|same_dept|all
+    std::string activity_create_scope;  // none|own_dept|all
+    std::string activity_edit_scope;    // none|own|same_dept|all
+    std::string mail_send_scope;        // none|own|same_dept|all
+    std::string mail_templates_scope;   // none|own_dept|all
+    std::string form_scope;             // none|own|same_dept|all
+    std::string form_templates_scope;   // none|own_dept|all
+    std::string user_dept_scope;        // none|own|own_dept|all
+    std::string user_role_scope;        // none|own|own_dept|all
     std::string locations_manage_scope; // none|all
 };
 
@@ -130,6 +132,12 @@ public:
     std::optional<Activity> create_activity(const ActivityInput &input);
     std::optional<Activity> update_activity(const std::string &id, const ActivityInput &input);
     bool delete_activity(const std::string &id);
+    std::optional<int> get_activity_midata_children_value(const std::string &activity_id);
+    bool set_activity_midata_children_value(const std::string &activity_id, int value);
+    std::optional<nlohmann::json> get_activity_weather_snapshot(const std::string &activity_id);
+    bool set_activity_weather_snapshot(const std::string &activity_id, const nlohmann::json &snapshot);
+    std::optional<std::string> get_activity_weather_location(const std::string &activity_id);
+    bool set_activity_weather_location(const std::string &activity_id, const std::string &location);
 
     // Predefined locations
     std::vector<std::string> get_predefined_locations();
@@ -219,9 +227,14 @@ public:
 
     // Departments CRUD
     std::vector<DepartmentRecord> list_departments();
-    std::optional<DepartmentRecord> create_department(const std::string &name, const std::string &color);
+    std::optional<DepartmentRecord> create_department(const std::string &name,
+                                                      const std::string &color,
+                                                      const std::optional<std::string> &midata_group_id = std::nullopt,
+                                                      const std::vector<std::string> &midata_child_roles = {});
     std::optional<DepartmentRecord> update_department(const std::string &name, const std::string &new_name,
-                                                      const std::string &color);
+                                                      const std::string &color,
+                                                      const std::optional<std::string> &midata_group_id = std::nullopt,
+                                                      const std::vector<std::string> &midata_child_roles = {});
     bool delete_department(const std::string &name);
     bool delete_department_with_transfers(const std::string &name,
                                           const std::string &transfer_activities_to,

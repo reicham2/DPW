@@ -52,6 +52,8 @@ jobs:
           VITE_MSAL_CLIENT_ID=${{ secrets.VITE_MSAL_CLIENT_ID }}
           GITHUB_TOKEN=${{ secrets.GH_ISSUES_TOKEN }}
           GITHUB_REPO=${{ github.repository }}
+          MIDATA_API_KEY=${{ secrets.MIDATA_API_KEY }}
+          DEBUG_ADMIN_EMAIL=${{ secrets.DEBUG_ADMIN_EMAIL }}
           ENABLE_DEBUG_AUTH=1
           FRONTEND_ENABLE_DEBUG_AUTH=1
           EOF

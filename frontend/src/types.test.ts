@@ -26,6 +26,7 @@ function makeActivity(): Activity {
 		material: [{ name: 'Seil', responsible: ['user-1'] }],
 		siko_text: 'Alles sicher',
 		bad_weather_info: 'Drinnen',
+		planned_participants_estimate: 24,
 		created_at: '2025-01-01T00:00:00Z',
 		updated_at: '2025-01-01T00:00:00Z',
 		programs: [
@@ -54,6 +55,7 @@ describe('Type structures', () => {
 		expect(act).toHaveProperty('responsible');
 		expect(act).toHaveProperty('department');
 		expect(act).toHaveProperty('material');
+		expect(act).toHaveProperty('planned_participants_estimate');
 		expect(act).toHaveProperty('programs');
 		expect(act).toHaveProperty('created_at');
 		expect(act).toHaveProperty('updated_at');

@@ -18,6 +18,7 @@ const rolePermissions = ref<RolePermission[]>([]);
 const myPermissions = ref<MyPermissions | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+let myPermissionsRequest: Promise<MyPermissions | null> | null = null;
 
 // ── Live updates via WebSocket ──────────────────────────────────────────────
 
@@ -26,7 +27,9 @@ wsAddGlobalHandler((event: WsEvent) => {
 		departments.value = departments.value.filter((d) => d.name !== event.name);
 	} else if (event.event === 'role_deleted') {
 		roles.value = roles.value.filter((r) => r.name !== event.name);
-		rolePermissions.value = rolePermissions.value.filter((p) => p.role !== event.name);
+		rolePermissions.value = rolePermissions.value.filter(
+			(p) => p.role !== event.name,
+		);
 	}
 });
 
@@ -88,10 +91,13 @@ async function createRole(role: Partial<RoleRecord>) {
 }
 
 async function updateRole(oldName: string, role: Partial<RoleRecord>) {
-	const res = await apiFetch(`/api/admin/roles/${encodeURIComponent(oldName)}`, {
-		method: 'PATCH',
-		body: JSON.stringify(role),
-	});
+	const res = await apiFetch(
+		`/api/admin/roles/${encodeURIComponent(oldName)}`,
+		{
+			method: 'PATCH',
+			body: JSON.stringify(role),
+		},
+	);
 	if (!res.ok) throw new Error(await res.text());
 	return (await res.json()) as RoleRecord;
 }
@@ -104,10 +110,13 @@ async function deleteRole(name: string) {
 }
 
 async function moveRole(name: string, direction: 'up' | 'down') {
-	const res = await apiFetch(`/api/admin/roles/${encodeURIComponent(name)}/move`, {
-		method: 'POST',
-		body: JSON.stringify({ direction }),
-	});
+	const res = await apiFetch(
+		`/api/admin/roles/${encodeURIComponent(name)}/move`,
+		{
+			method: 'POST',
+			body: JSON.stringify({ direction }),
+		},
+	);
 	if (!res.ok) throw new Error(await res.text());
 }
 
@@ -155,11 +164,23 @@ async function updateRoleDeptAccess(access: RoleDeptAccess) {
 
 // ── Current user permissions ────────────────────────────────────────────────
 
-async function fetchMyPermissions() {
-	const res = await apiFetch('/api/my-permissions');
-	if (!res.ok) throw new Error(await res.text());
-	const data = await res.json();
-	myPermissions.value = data.role ? data : null;
+async function fetchMyPermissions(force = false) {
+	if (!force && myPermissions.value) return myPermissions.value;
+	if (!force && myPermissionsRequest) return myPermissionsRequest;
+
+	myPermissionsRequest = (async () => {
+		const res = await apiFetch('/api/my-permissions');
+		if (!res.ok) throw new Error(await res.text());
+		const data = await res.json();
+		myPermissions.value = data.role ? data : null;
+		return myPermissions.value;
+	})();
+
+	try {
+		return await myPermissionsRequest;
+	} finally {
+		myPermissionsRequest = null;
+	}
 }
 
 // ── Permission helpers ──────────────────────────────────────────────────────
@@ -286,18 +307,27 @@ async function createLocation(name: string): Promise<LocationRecord> {
 	const token = await getIdToken();
 	const res = await fetch('/api/admin/locations', {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`,
+		},
 		body: JSON.stringify({ name }),
 	});
 	if (!res.ok) throw new Error(await res.text());
 	return await res.json();
 }
 
-async function updateLocation(id: string, name: string): Promise<LocationRecord> {
+async function updateLocation(
+	id: string,
+	name: string,
+): Promise<LocationRecord> {
 	const token = await getIdToken();
 	const res = await fetch(`/api/admin/locations/${encodeURIComponent(id)}`, {
 		method: 'PATCH',
-		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`,
+		},
 		body: JSON.stringify({ name }),
 	});
 	if (!res.ok) throw new Error(await res.text());

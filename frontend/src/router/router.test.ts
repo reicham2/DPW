@@ -63,6 +63,7 @@ describe('Route definitions', () => {
 		'/activities/:id',
 		'/activities/:id/mail',
 		'/activities/:id/forms',
+		'/stats',
 		'/mail-templates',
 		'/form-templates',
 		'/profile',

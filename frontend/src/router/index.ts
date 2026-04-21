@@ -6,6 +6,7 @@ import ProfilePage from '../pages/ProfilePage.vue';
 import MailComposerPage from '../pages/MailComposerPage.vue';
 import MailTemplatePage from '../pages/MailTemplatePage.vue';
 import AdminPage from '../pages/AdminPage.vue';
+import StatsPage from '../pages/StatsPage.vue';
 import FormPublicPage from '../pages/FormPublicPage.vue';
 import SharedActivityPage from '../pages/SharedActivityPage.vue';
 import ActivityFormsPage from '../pages/ActivityFormsPage.vue';
@@ -22,12 +23,17 @@ export const router = createRouter({
 		{ path: '/activities/:id/forms', component: ActivityFormsPage },
 		{ path: '/mail-templates', component: MailTemplatePage },
 		{ path: '/form-templates', component: FormTemplatePage },
+		{ path: '/stats', component: StatsPage },
 		{ path: '/profile', component: ProfilePage },
 		{ path: '/admin', component: AdminPage },
 		// Public form page — no auth required
 		{ path: '/forms/:slug', component: FormPublicPage, meta: { public: true } },
 		// Public shared activity — no auth required
-		{ path: '/shared/:token', component: SharedActivityPage, meta: { public: true } },
+		{
+			path: '/shared/:token',
+			component: SharedActivityPage,
+			meta: { public: true },
+		},
 	],
 });
 
