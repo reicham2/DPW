@@ -108,7 +108,7 @@
     </div>
 
     <!-- App content -->
-    <div v-else class="app">
+    <div v-else class="app" :class="{ 'app--force-drawer-stats': statsDisplayMode === 'always-drawer' }">
       <router-view />
       <BugReportButton />
     </div>
@@ -123,6 +123,7 @@ import UserAvatar from './components/UserAvatar.vue'
 import BugReportButton from './components/BugReportButton.vue'
 import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
 import { usePermissions } from './composables/usePermissions'
+import { statsDisplayMode } from './composables/useUserPrefs'
 import { useMidataCounts } from './composables/useMidataCounts'
 import { useWebSocket } from './composables/useWebSocket'
 import { useApiConnectionStatus } from './composables/useApi'

@@ -999,6 +999,94 @@ img, video {
 	}
 }
 
+/* User preference: force drawer mode on all screen sizes */
+.app--force-drawer-stats .detail-stats-drawer-handle {
+	display: inline-flex;
+	position: fixed;
+	right: 0;
+	top: 52%;
+	transform: translateY(-50%);
+	z-index: 141;
+	writing-mode: vertical-rl;
+	text-orientation: mixed;
+	letter-spacing: 0.04em;
+	font-size: 0.76rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	padding: 12px 8px;
+	border: 1px solid #cbd5e1;
+	border-right: none;
+	border-radius: 10px 0 0 10px;
+	background: #ffffff;
+	color: #1e3a8a;
+	cursor: pointer;
+	box-shadow: -8px 0 16px rgba(15, 23, 42, 0.14);
+}
+
+.app--force-drawer-stats .detail-stats-drawer-handle.is-open {
+	right: min(92vw, 360px);
+	background: #dbeafe;
+	color: #1e40af;
+}
+
+.app--force-drawer-stats .detail-view-layout {
+	grid-template-columns: 1fr;
+	gap: 10px;
+}
+
+.app--force-drawer-stats .detail-stats-popout {
+	display: none;
+}
+
+.app--force-drawer-stats .detail-stats-popout.is-open {
+	position: fixed;
+	inset: 0;
+	z-index: 140;
+	background: rgba(15, 23, 42, 0.35);
+	display: flex;
+	justify-content: flex-end;
+}
+
+.app--force-drawer-stats .detail-stats-popout.is-open .detail-stats-popout__panel {
+	display: flex;
+	flex-direction: column;
+	width: min(92vw, 360px);
+	height: 100%;
+	background: #f8fafc;
+	border-left: 1px solid #dbeafe;
+	box-shadow: -16px 0 34px rgba(15, 23, 42, 0.2);
+	padding: 14px 12px 18px;
+	overflow: hidden;
+}
+
+.app--force-drawer-stats .detail-stats-popout__close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	align-self: flex-end;
+	width: 32px;
+	height: 32px;
+	border: 1px solid #d1d5db;
+	border-radius: 8px;
+	background: #fff;
+	color: #334155;
+	cursor: pointer;
+}
+
+.app--force-drawer-stats .detail-stats-popout .detail-stats-sidebar {
+	position: static;
+	top: auto;
+	z-index: auto;
+	order: 0;
+	margin-top: 8px;
+	overflow: auto;
+	padding-right: 4px;
+}
+
+.app--force-drawer-stats .detail-stats-popout .detail-stats-sidebar--edit {
+	margin-top: 8px;
+}
+
 @media (min-width: 1280px) {
 	.global-nav-inner,
 	.app {
