@@ -600,8 +600,8 @@ JOIN (
         ('d1000000-0000-0000-0000-000000000006'::uuid, 'registration'::text, INTERVAL '4 days'),
         ('d1000000-0000-0000-0000-000000000007'::uuid, 'registration'::text, INTERVAL '3 days'),
         ('d1000000-0000-0000-0000-000000000008'::uuid, 'registration'::text, INTERVAL '2 days'),
-        ('d1000000-0000-0000-0000-000000000009'::uuid, 'deregistration'::text, INTERVAL '36 hours'),
-        ('d1000000-0000-0000-0000-000000000010'::uuid, 'deregistration'::text, INTERVAL '12 hours')
+        ('d1000000-0000-0000-0000-000000000009'::uuid, 'registration'::text, INTERVAL '36 hours'),
+        ('d1000000-0000-0000-0000-000000000010'::uuid, 'registration'::text, INTERVAL '12 hours')
     ) AS r(id, submission_mode, delta)
     ON TRUE
 WHERE sf.activity_id = 'b0000000-0000-0000-0000-000000000002'
@@ -629,4 +629,162 @@ VALUES
     ('d2000000-0000-0000-0000-000000000018', 'd1000000-0000-0000-0000-000000000009', 'd0000000-0000-0000-0000-000000000013', 'Ferien'),
     ('d2000000-0000-0000-0000-000000000019', 'd1000000-0000-0000-0000-000000000010', 'd0000000-0000-0000-0000-000000000011', 'Jonas'),
     ('d2000000-0000-0000-0000-000000000020', 'd1000000-0000-0000-0000-000000000010', 'd0000000-0000-0000-0000-000000000013', 'Krankheit')
+ON CONFLICT (id) DO NOTHING;
+
+-- Zusätzliche historische Aktivitäten mit Antworten für Planwert-Schätzung
+-- Die neue Schätzung nutzt /form/stats ähnlicher vergangener Aktivitäten.
+INSERT INTO activities (id, title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info)
+VALUES
+    ('b0000000-0000-0000-0000-000000000015',
+     'Pfadi-Postenlauf Frühling',
+     CURRENT_DATE - INTERVAL '28 days',
+     '13:30', '16:30',
+     'Postenarbeit und Teamkoordination vertiefen',
+     'Waldlichtung Hüttenberg',
+     ARRAY['Leiter Eins', 'Stufen Leiter'],
+     'Pfadi',
+     '[{"name":"Postenkarten","responsible":["Leiter Eins"]},{"name":"Kompassset","responsible":[]}]'::jsonb,
+     NULL,
+     NULL),
+    ('b0000000-0000-0000-0000-000000000016',
+     'Wölfe-Spielnachmittag',
+     CURRENT_DATE - INTERVAL '21 days',
+     '14:00', '16:00',
+     'Bewegungsspiele und Gruppenstärkung',
+     'Schulhaus Dorf',
+     ARRAY['Leiter Zwei'],
+     'Wölfe',
+     '[{"name":"Ballset","responsible":["Leiter Zwei"]},{"name":"Markierungshütchen","responsible":[]}]'::jsonb,
+     NULL,
+     NULL),
+    ('b0000000-0000-0000-0000-000000000017',
+     'Pio-Outdoortraining',
+     CURRENT_DATE - INTERVAL '35 days',
+     '10:00', '15:00',
+     'Outdoor-Kompetenzen in Teams trainieren',
+     'Pfadiheim Hüetli',
+     ARRAY['Pio Eins'],
+     'Pio',
+     '[{"name":"Kocher","responsible":["Pio Eins"]},{"name":"Seiltechnik-Set","responsible":[]}]'::jsonb,
+     NULL,
+     NULL),
+    ('b0000000-0000-0000-0000-000000000018',
+     'Biber-Werkstatt',
+     CURRENT_DATE - INTERVAL '27 days',
+     '14:00', '16:00',
+     'Kreative Bastelposten und gemeinsames Spielen',
+     'Gemeindesaal',
+     ARRAY['Leiter Drei'],
+     'Biber',
+     '[{"name":"Bastelmaterial","responsible":["Leiter Drei"]},{"name":"Farbstifte","responsible":[]}]'::jsonb,
+     NULL,
+     NULL)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO signup_forms (id, activity_id, public_slug, form_type, title, created_by)
+VALUES
+    ('e0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000015', 'pfadi-postenlauf-fruehling', 'registration', 'An-/Abmeldung Postenlauf', 'a0000000-0000-0000-0000-000000000001'),
+    ('e0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000016', 'woelfe-spielnachmittag', 'registration', 'An-/Abmeldung Spielnachmittag', 'a0000000-0000-0000-0000-000000000001'),
+    ('e0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000017', 'pio-outdoortraining', 'registration', 'An-/Abmeldung Outdoortraining', 'a0000000-0000-0000-0000-000000000001'),
+    ('e0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000018', 'biber-werkstatt', 'registration', 'An-/Abmeldung Biber-Werkstatt', 'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (activity_id) DO UPDATE
+SET form_type = EXCLUDED.form_type,
+    title = EXCLUDED.title,
+    created_by = EXCLUDED.created_by,
+    updated_at = NOW();
+
+INSERT INTO form_responses (id, form_id, submission_mode, submitted_at, user_agent, ip_address)
+SELECT
+    r.id,
+    sf.id,
+    r.submission_mode,
+    NOW() - r.delta,
+    'seed/estimate-tests',
+    '127.0.0.1'
+FROM signup_forms sf
+JOIN (
+    VALUES
+        ('b0000000-0000-0000-0000-000000000015'::uuid, 'e1000000-0000-0000-0000-000000000001'::uuid, 'registration'::text, INTERVAL '26 days'),
+        ('b0000000-0000-0000-0000-000000000015'::uuid, 'e1000000-0000-0000-0000-000000000002'::uuid, 'registration'::text, INTERVAL '25 days'),
+        ('b0000000-0000-0000-0000-000000000015'::uuid, 'e1000000-0000-0000-0000-000000000003'::uuid, 'registration'::text, INTERVAL '24 days'),
+        ('b0000000-0000-0000-0000-000000000015'::uuid, 'e1000000-0000-0000-0000-000000000004'::uuid, 'registration'::text, INTERVAL '23 days'),
+
+        ('b0000000-0000-0000-0000-000000000016'::uuid, 'e1000000-0000-0000-0000-000000000005'::uuid, 'registration'::text, INTERVAL '20 days'),
+        ('b0000000-0000-0000-0000-000000000016'::uuid, 'e1000000-0000-0000-0000-000000000006'::uuid, 'registration'::text, INTERVAL '19 days'),
+        ('b0000000-0000-0000-0000-000000000016'::uuid, 'e1000000-0000-0000-0000-000000000007'::uuid, 'registration'::text, INTERVAL '18 days'),
+        ('b0000000-0000-0000-0000-000000000016'::uuid, 'e1000000-0000-0000-0000-000000000008'::uuid, 'registration'::text, INTERVAL '17 days'),
+
+        ('b0000000-0000-0000-0000-000000000017'::uuid, 'e1000000-0000-0000-0000-000000000009'::uuid, 'registration'::text, INTERVAL '33 days'),
+        ('b0000000-0000-0000-0000-000000000017'::uuid, 'e1000000-0000-0000-0000-000000000010'::uuid, 'registration'::text, INTERVAL '32 days'),
+        ('b0000000-0000-0000-0000-000000000017'::uuid, 'e1000000-0000-0000-0000-000000000011'::uuid, 'registration'::text, INTERVAL '31 days'),
+
+        ('b0000000-0000-0000-0000-000000000018'::uuid, 'e1000000-0000-0000-0000-000000000012'::uuid, 'registration'::text, INTERVAL '25 days'),
+        ('b0000000-0000-0000-0000-000000000018'::uuid, 'e1000000-0000-0000-0000-000000000013'::uuid, 'registration'::text, INTERVAL '24 days'),
+        ('b0000000-0000-0000-0000-000000000018'::uuid, 'e1000000-0000-0000-0000-000000000014'::uuid, 'registration'::text, INTERVAL '23 days'),
+        ('b0000000-0000-0000-0000-000000000018'::uuid, 'e1000000-0000-0000-0000-000000000015'::uuid, 'registration'::text, INTERVAL '22 days'),
+        ('b0000000-0000-0000-0000-000000000018'::uuid, 'e1000000-0000-0000-0000-000000000016'::uuid, 'registration'::text, INTERVAL '21 days')
+) AS r(activity_id, id, submission_mode, delta)
+    ON sf.activity_id = r.activity_id
+ON CONFLICT (id) DO NOTHING;
+
+-- Für alle vergangenen Aktivitäten: Formular sicherstellen und konsistente Testdaten
+-- Ziel: jede vergangene Aktivität hat ein Formular mit exakt 24 Responses,
+--       wobei submission_mode immer form_type entspricht.
+INSERT INTO signup_forms (id, activity_id, public_slug, form_type, title, created_by)
+SELECT
+    (
+        substr(md5('seed-form:' || a.id::text), 1, 8) || '-' ||
+        substr(md5('seed-form:' || a.id::text), 9, 4) || '-' ||
+        substr(md5('seed-form:' || a.id::text), 13, 4) || '-' ||
+        substr(md5('seed-form:' || a.id::text), 17, 4) || '-' ||
+        substr(md5('seed-form:' || a.id::text), 21, 12)
+    )::uuid,
+    a.id,
+    'seed-' || replace(a.id::text, '-', ''),
+    'registration',
+    'Seed-Formular ' || a.title,
+    'a0000000-0000-0000-0000-000000000001'
+FROM activities a
+WHERE a.date < CURRENT_DATE
+ON CONFLICT (activity_id) DO UPDATE
+SET form_type = EXCLUDED.form_type,
+    title = EXCLUDED.title,
+    created_by = EXCLUDED.created_by,
+    updated_at = NOW();
+
+DELETE FROM response_answers
+WHERE response_id IN (
+    SELECT fr.id
+    FROM form_responses fr
+    JOIN signup_forms sf ON sf.id = fr.form_id
+    JOIN activities a ON a.id = sf.activity_id
+    WHERE a.date < CURRENT_DATE
+);
+
+DELETE FROM form_responses
+WHERE form_id IN (
+    SELECT sf.id
+    FROM signup_forms sf
+    JOIN activities a ON a.id = sf.activity_id
+    WHERE a.date < CURRENT_DATE
+);
+
+INSERT INTO form_responses (id, form_id, submission_mode, submitted_at, user_agent, ip_address)
+SELECT
+    (
+        substr(md5('seed-response:' || sf.id::text || ':' || gs.n::text), 1, 8) || '-' ||
+        substr(md5('seed-response:' || sf.id::text || ':' || gs.n::text), 9, 4) || '-' ||
+        substr(md5('seed-response:' || sf.id::text || ':' || gs.n::text), 13, 4) || '-' ||
+        substr(md5('seed-response:' || sf.id::text || ':' || gs.n::text), 17, 4) || '-' ||
+        substr(md5('seed-response:' || sf.id::text || ':' || gs.n::text), 21, 12)
+    )::uuid,
+    sf.id,
+    sf.form_type,
+    (a.date::timestamp + a.start_time::time) - ((25 - gs.n) * INTERVAL '1 hour'),
+    'seed/estimate-window',
+    '127.0.0.1'
+FROM signup_forms sf
+JOIN activities a ON a.id = sf.activity_id
+CROSS JOIN generate_series(1, 24) AS gs(n)
+WHERE a.date < CURRENT_DATE
 ON CONFLICT (id) DO NOTHING;
