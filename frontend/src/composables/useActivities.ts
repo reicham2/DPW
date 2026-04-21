@@ -7,7 +7,7 @@ import type {
 	WsEvent,
 } from '../types';
 import { useWebSocket } from './useWebSocket';
-import { apiFetch } from './useApi';
+import { apiFetch, formatApiError } from './useApi';
 
 const BASE = '/api';
 
@@ -51,7 +51,7 @@ export function useActivities() {
 			if (!res.ok) throw new Error(await res.text());
 			activities.value = (await res.json()) as Activity[];
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 		} finally {
 			loading.value = false;
 		}
@@ -65,7 +65,7 @@ export function useActivities() {
 			if (!res.ok) throw new Error(await res.text());
 			return (await res.json()) as Activity;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -93,7 +93,7 @@ export function useActivities() {
 			const created = await res.json();
 			return created.id ?? null;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -110,7 +110,7 @@ export function useActivities() {
 			});
 			if (!res.ok) throw new Error(await res.text());
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 		}
 	}
 
@@ -123,7 +123,7 @@ export function useActivities() {
 			});
 			if (!res.ok) throw new Error(await res.text());
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			await fetchActivities();
 		}
 	}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useFormTemplates } from '../composables/useForms';
 import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
@@ -37,6 +37,94 @@ const formBuilderRef = ref<InstanceType<typeof FormBuilder> | null>(null);
 const showBuilder = ref(false);
 const editingTemplate = ref<FormTemplate | null>(null);
 const editingIsDefault = ref(false);
+const editingDraftOverride = ref<SignupFormInput | null>(null);
+
+interface LocalFormTemplateDraft {
+	version: 1;
+	templateId: string;
+	savedAt: number;
+	isDefault: boolean;
+	payload: SignupFormInput;
+}
+
+const pendingLocalDraft = ref<LocalFormTemplateDraft | null>(null);
+const localDraftRestoredAt = ref<number | null>(null);
+
+function localDraftKey(templateId: string): string {
+	return `dpw:form-template-draft:${templateId}`;
+}
+
+function templateToPayload(tpl: FormTemplate): SignupFormInput {
+	return {
+		title: tpl.name,
+		form_type: tpl.form_type,
+		questions: tpl.template_config,
+	};
+}
+
+function clearLocalDraft(templateId: string) {
+	try {
+		window.localStorage.removeItem(localDraftKey(templateId));
+	} catch {
+		/* ignore unavailable storage */
+	}
+}
+
+function saveLocalDraft(templateId: string, payload: SignupFormInput, isDefault: boolean) {
+	const draft: LocalFormTemplateDraft = {
+		version: 1,
+		templateId,
+		savedAt: Date.now(),
+		isDefault,
+		payload,
+	};
+	try {
+		window.localStorage.setItem(localDraftKey(templateId), JSON.stringify(draft));
+	} catch {
+		/* ignore unavailable storage */
+	}
+}
+
+function loadPendingLocalDraft(tpl: FormTemplate) {
+	try {
+		const raw = window.localStorage.getItem(localDraftKey(tpl.id));
+		if (!raw) {
+			pendingLocalDraft.value = null;
+			return;
+		}
+		const parsed = JSON.parse(raw) as Partial<LocalFormTemplateDraft>;
+		if (parsed.version !== 1 || parsed.templateId !== tpl.id || !parsed.payload) {
+			pendingLocalDraft.value = null;
+			return;
+		}
+		const draft = parsed as LocalFormTemplateDraft;
+		if (JSON.stringify(draft.payload) === JSON.stringify(templateToPayload(tpl)) && draft.isDefault === tpl.is_default) {
+			clearLocalDraft(tpl.id);
+			pendingLocalDraft.value = null;
+			return;
+		}
+		pendingLocalDraft.value = draft;
+	} catch {
+		pendingLocalDraft.value = null;
+	}
+}
+
+function applyLocalDraft() {
+	if (!pendingLocalDraft.value) return;
+	editingDraftOverride.value = pendingLocalDraft.value.payload;
+	editingIsDefault.value = pendingLocalDraft.value.isDefault;
+	pendingLocalDraft.value = null;
+	localDraftRestoredAt.value = Date.now();
+	nextTick(() => {
+		formBuilderRef.value?.flushAutoSave?.();
+	});
+}
+
+function discardLocalDraft() {
+	if (editingTemplate.value) clearLocalDraft(editingTemplate.value.id);
+	pendingLocalDraft.value = null;
+	localDraftRestoredAt.value = null;
+}
 
 onMounted(async () => {
 	await Promise.all([fetchDepartments(), fetchMyPermissions()]);
@@ -53,12 +141,18 @@ watch(activeDept, async (d) => {
 function openCreate() {
 	editingTemplate.value = null;
 	editingIsDefault.value = false;
+	editingDraftOverride.value = null;
+	pendingLocalDraft.value = null;
+	localDraftRestoredAt.value = null;
 	showBuilder.value = true;
 }
 
 function openEdit(tpl: FormTemplate) {
 	editingTemplate.value = tpl;
 	editingIsDefault.value = tpl.is_default;
+	editingDraftOverride.value = null;
+	localDraftRestoredAt.value = null;
+	loadPendingLocalDraft(tpl);
 	showBuilder.value = true;
 }
 
@@ -66,6 +160,9 @@ function closeBuilder() {
 	showBuilder.value = false;
 	editingTemplate.value = null;
 	editingIsDefault.value = false;
+	editingDraftOverride.value = null;
+	pendingLocalDraft.value = null;
+	localDraftRestoredAt.value = null;
 }
 
 // Synthesize a SignupForm-shaped object so FormBuilder can render it.
@@ -73,16 +170,17 @@ function closeBuilder() {
 const builderInitial = computed<SignupForm | null>(() => {
 	const tpl = editingTemplate.value;
 	if (!tpl) return null;
+	const source = editingDraftOverride.value ?? templateToPayload(tpl);
 	return {
 		id: tpl.id,
 		activity_id: '',
 		public_slug: '',
-		form_type: tpl.form_type,
-		title: tpl.name,
+		form_type: source.form_type,
+		title: source.title,
 		created_by: tpl.created_by,
 		created_at: tpl.created_at,
 		updated_at: tpl.updated_at,
-		questions: tpl.template_config.map((q, i) => ({
+		questions: source.questions.map((q, i) => ({
 			id: `tpl-${i}`,
 			form_id: tpl.id,
 			created_at: tpl.created_at,
@@ -99,7 +197,11 @@ async function onSave(payload: SignupFormInput) {
 	const name = payload.title.trim();
 	if (!name) return;
 	if (editingTemplate.value) {
+		saveLocalDraft(editingTemplate.value.id, payload, editingIsDefault.value);
 		await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions, editingIsDefault.value);
+		if (!error.value) {
+			clearLocalDraft(editingTemplate.value.id);
+		}
 	} else {
 		await createTemplate(name, activeDept.value, payload.form_type, payload.questions, editingIsDefault.value);
 	}
@@ -112,7 +214,13 @@ async function onSave(payload: SignupFormInput) {
 async function onAutoSave(payload: SignupFormInput) {
 	const name = payload.title.trim();
 	if (!name || !editingTemplate.value) return;
+	saveLocalDraft(editingTemplate.value.id, payload, editingIsDefault.value);
 	await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions, editingIsDefault.value);
+	if (!error.value) {
+		clearLocalDraft(editingTemplate.value.id);
+		pendingLocalDraft.value = null;
+		localDraftRestoredAt.value = null;
+	}
 }
 
 async function toggleDefault(tpl: FormTemplate) {
@@ -156,6 +264,16 @@ function typeLabel(t: string): string {
 		<template v-if="showBuilder">
 			<div class="ft-page-header">
 				<h2 class="ft-title">{{ editingTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage' }}</h2>
+			</div>
+			<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+				<span class="editors-banner-icon">💾</span>
+				<span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
+				<button type="button" class="btn-sm" @click="applyLocalDraft">Wiederherstellen</button>
+				<button type="button" class="btn-sm" @click="discardLocalDraft">Verwerfen</button>
+			</div>
+			<div v-else-if="localDraftRestoredAt" class="editors-banner" style="margin-bottom: 12px;">
+				<span class="editors-banner-icon">✅</span>
+				<span>Lokaler Entwurf wurde wiederhergestellt.</span>
 			</div>
 			<div class="default-toggle-section">
 				<label class="checkbox-label">
@@ -243,6 +361,22 @@ function typeLabel(t: string): string {
 	font-size: 0.875rem;
 	border: 1px dashed #e5e7eb;
 	border-radius: 0.5rem;
+}
+
+.editors-banner {
+	display: flex;
+	align-items: center;
+	padding: 0.55rem 0.75rem;
+	border: 1px solid #d1d5db;
+	border-radius: 0.5rem;
+	background: #f9fafb;
+	font-size: 0.86rem;
+	color: #374151;
+	gap: 0.5rem;
+}
+
+.editors-banner-icon {
+	font-size: 0.95rem;
 }
 
 .ft-row {

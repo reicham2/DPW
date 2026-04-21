@@ -11,7 +11,7 @@ import ErrorAlert from '../components/ErrorAlert.vue'
 const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadActivity, readableDepts, writableDepts } = usePermissions()
 const DEPARTMENTS = computed<Department[]>(() => readableDepts(user.value?.department))
 
-const { activities, loading, error, connected, fetchActivities } = useActivities()
+const { activities, loading, error, fetchActivities } = useActivities()
 
 // Permission-based: can user see multiple departments?
 const canReadMultipleDepts = computed(() => {
@@ -192,9 +192,6 @@ const earlierCount = computed(() => {
   <header class="header">
     <h1>Aktivitäten</h1>
     <div class="header-right">
-      <span class="status" :class="connected ? 'status--live' : 'status--off'">
-        {{ connected ? 'Live' : 'Verbinde...' }}
-      </span>
       <router-link v-if="canCreateActivity" to="/activities/new" class="btn-primary">+ Neue Aktivität</router-link>
       <button v-else class="btn-primary" disabled title="Keine Schreibrechte">+ Neue Aktivität</button>
     </div>

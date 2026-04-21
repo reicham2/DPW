@@ -9,7 +9,7 @@ import type {
 	FormType,
 	FormSubmitPayload,
 } from '../types';
-import { apiFetch } from './useApi';
+import { apiFetch, formatApiError } from './useApi';
 
 const BASE = '/api';
 
@@ -37,7 +37,7 @@ export function useForms() {
 			form.value = (await res.json()) as SignupForm;
 			return form.value;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		} finally {
 			loading.value = false;
@@ -61,7 +61,7 @@ export function useForms() {
 			form.value = (await res.json()) as SignupForm;
 			return form.value;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -83,7 +83,7 @@ export function useForms() {
 			form.value = (await res.json()) as SignupForm;
 			return form.value;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -101,7 +101,7 @@ export function useForms() {
 			form.value = null;
 			return true;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return false;
 		}
 	}
@@ -119,7 +119,7 @@ export function useForms() {
 			responses.value = (await res.json()) as FormResponse[];
 			return responses.value;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return [];
 		} finally {
 			loading.value = false;
@@ -139,7 +139,7 @@ export function useForms() {
 			if (!res.ok) throw new Error(await res.text());
 			return (await res.json()) as FormResponse;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -158,7 +158,7 @@ export function useForms() {
 			responses.value = responses.value.filter((r) => r.id !== responseId);
 			return true;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return false;
 		}
 	}
@@ -176,7 +176,7 @@ export function useForms() {
 			stats.value = (await res.json()) as FormStats;
 			return stats.value;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		} finally {
 			loading.value = false;
@@ -199,7 +199,7 @@ export function useForms() {
 			form.value = (await res.json()) as SignupForm;
 			return form.value;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		} finally {
 			loading.value = false;
@@ -227,7 +227,7 @@ export function useForms() {
 			}
 			return (await res.json()) as FormResponse;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		} finally {
 			loading.value = false;
@@ -347,7 +347,7 @@ export function useFormTemplates() {
 			templates.value = (await res.json()) as FormTemplate[];
 			return templates.value;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return [];
 		} finally {
 			loading.value = false;
@@ -383,7 +383,7 @@ export function useFormTemplates() {
 			templates.value.push(tpl);
 			return tpl;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -420,7 +420,7 @@ export function useFormTemplates() {
 			if (idx !== -1) templates.value[idx] = tpl;
 			return tpl;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -438,7 +438,7 @@ export function useFormTemplates() {
 			templates.value = templates.value.filter((t) => t.id !== id);
 			return true;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return false;
 		}
 	}

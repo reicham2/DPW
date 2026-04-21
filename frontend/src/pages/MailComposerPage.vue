@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useActivities } from '../composables/useActivities';
 import { useMailTemplates } from '../composables/useMailTemplates';
@@ -67,12 +67,19 @@ function showSavedIndicator() {
 
 function markDirty(field: string) {
 	dirtyFieldSet.add(field)
+	scheduleLocalDraftWrite()
 	scheduleAutoSave()
 }
 
 const { scheduleAutoSave, flushAutoSave, cancelAutoSave } = useAutosave(async () => {
-	await saveDraft(activityId, recipients.value.filter(r => r.trim()), subject.value, body.value, cc.value.filter(r => r.trim()))
-	showSavedIndicator()
+	writeLocalDraftNow()
+	const saved = await saveDraft(activityId, recipients.value.filter(r => r.trim()), subject.value, body.value, cc.value.filter(r => r.trim()))
+	if (saved) {
+		showSavedIndicator()
+		clearLocalDraft()
+		pendingLocalDraft.value = null
+		localDraftRestoredAt.value = null
+	}
 })
 
 // Snapshot for cancel/revert
@@ -81,6 +88,120 @@ let initialCc: string[] = []
 let initialSubject = ''
 let initialBody = ''
 let hadDraftOnEntry = false
+
+interface LocalMailDraft {
+	version: 1;
+	activityId: string;
+	savedAt: number;
+	recipients: string[];
+	cc: string[];
+	subject: string;
+	body: string;
+}
+
+const pendingLocalDraft = ref<LocalMailDraft | null>(null)
+const localDraftRestoredAt = ref<number | null>(null)
+let localDraftWriteTimer: ReturnType<typeof setTimeout> | null = null
+const LOCAL_DRAFT_WRITE_DEBOUNCE_MS = 350
+
+function localDraftKey() {
+	return `dpw:mail-composer-draft:${activityId}`
+}
+
+function buildLocalDraft(): LocalMailDraft {
+	return {
+		version: 1,
+		activityId,
+		savedAt: Date.now(),
+		recipients: recipients.value.filter(r => r.trim()),
+		cc: cc.value.filter(r => r.trim()),
+		subject: subject.value,
+		body: body.value,
+	}
+}
+
+function clearLocalDraft() {
+	if (localDraftWriteTimer) {
+		clearTimeout(localDraftWriteTimer)
+		localDraftWriteTimer = null
+	}
+	try {
+		window.localStorage.removeItem(localDraftKey())
+	} catch {
+		/* ignore unavailable storage */
+	}
+}
+
+function writeLocalDraftNow() {
+	try {
+		window.localStorage.setItem(localDraftKey(), JSON.stringify(buildLocalDraft()))
+	} catch {
+		/* ignore unavailable storage */
+	}
+}
+
+function scheduleLocalDraftWrite() {
+	if (localDraftWriteTimer) clearTimeout(localDraftWriteTimer)
+	localDraftWriteTimer = setTimeout(() => {
+		writeLocalDraftNow()
+	}, LOCAL_DRAFT_WRITE_DEBOUNCE_MS)
+}
+
+function loadPendingLocalDraft() {
+	try {
+		const raw = window.localStorage.getItem(localDraftKey())
+		if (!raw) {
+			pendingLocalDraft.value = null
+			return
+		}
+		const parsed = JSON.parse(raw) as Partial<LocalMailDraft>
+		if (parsed.version !== 1 || parsed.activityId !== activityId) {
+			pendingLocalDraft.value = null
+			return
+		}
+		const draft = parsed as LocalMailDraft
+		const sameAsCurrent = JSON.stringify({
+			recipients: recipients.value.filter(r => r.trim()),
+			cc: cc.value.filter(r => r.trim()),
+			subject: subject.value,
+			body: body.value,
+		}) === JSON.stringify({
+			recipients: draft.recipients,
+			cc: draft.cc,
+			subject: draft.subject,
+			body: draft.body,
+		})
+		if (sameAsCurrent) {
+			clearLocalDraft()
+			pendingLocalDraft.value = null
+			return
+		}
+		pendingLocalDraft.value = draft
+	} catch {
+		pendingLocalDraft.value = null
+	}
+}
+
+function applyLocalDraft() {
+	if (!pendingLocalDraft.value) return
+	recipients.value = pendingLocalDraft.value.recipients.length ? [...pendingLocalDraft.value.recipients] : ['']
+	cc.value = pendingLocalDraft.value.cc.length ? [...pendingLocalDraft.value.cc] : ['']
+	subject.value = pendingLocalDraft.value.subject
+	body.value = pendingLocalDraft.value.body
+	pendingLocalDraft.value = null
+	localDraftRestoredAt.value = Date.now()
+	nextTick(() => {
+		if (editorRef.value) editorRef.value.innerHTML = body.value
+		scheduleLocalDraftWrite()
+		scheduleAutoSave()
+	})
+}
+
+function discardLocalDraft() {
+	clearLocalDraft()
+	pendingLocalDraft.value = null
+	localDraftRestoredAt.value = null
+}
 
 function formatDateLong(d: string): string {
   return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
@@ -214,6 +335,8 @@ onMounted(async () => {
     if (draft.body_html) body.value = draft.body_html
   }
 
+	loadPendingLocalDraft()
+
   // Snapshot initial state for cancel/revert
   initialRecipients = [...recipients.value]
   initialCc = [...cc.value]
@@ -223,6 +346,14 @@ onMounted(async () => {
   nextTick(() => {
     if (editorRef.value) editorRef.value.innerHTML = body.value
   })
+})
+
+onUnmounted(() => {
+	if (localDraftWriteTimer) {
+		clearTimeout(localDraftWriteTimer)
+		localDraftWriteTimer = null
+	}
+	if (!sent.value) writeLocalDraftNow()
 })
 
 function onEditorInput() {
@@ -489,6 +620,9 @@ async function handleSend() {
 	const ok = await sendMail(validTo, subject.value, bodyHtml, fromEmail, activityId, validCc);
 	if (ok) {
 		await deleteDraft(activityId);
+		clearLocalDraft();
+		pendingLocalDraft.value = null;
+		localDraftRestoredAt.value = null;
 		sent.value = true;
 	}
 }
@@ -552,6 +686,16 @@ async function cancelAndRevert() {
 
 	<main class="main">
 		<ErrorAlert :error="loadError" />
+		<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+			<span class="editors-banner-icon">💾</span>
+			<span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
+			<button type="button" class="btn-secondary" @click="applyLocalDraft">Wiederherstellen</button>
+			<button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
+		</div>
+		<div v-else-if="localDraftRestoredAt" class="editors-banner" style="margin-bottom: 12px;">
+			<span class="editors-banner-icon">✅</span>
+			<span>Lokaler Entwurf wurde wiederhergestellt.</span>
+		</div>
 
 		<!-- Warning dialog when mails already sent -->
 		<div v-if="!loadError && showWarning && !warningConfirmed" class="modal-backdrop" @click.self="router.back()">
