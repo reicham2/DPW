@@ -263,6 +263,7 @@ namespace
         std::optional<double> temperature_max_c;
         std::vector<std::pair<time_t, double>> hourly_temps;
         std::optional<int> rain_probability_percent;
+        std::vector<std::pair<time_t, int>> hourly_rain_probability;
         std::string weather_symbol;
         std::string season;
         std::string point_name;
@@ -843,23 +844,28 @@ namespace
         if (!precip_mm)
             return std::nullopt;
 
-        // rre150h0 is precipitation amount; map it to a simple probability for UI display.
-        if (*precip_mm <= 0.0)
-            return 5;
+        auto precip_mm_to_probability = [](double precip_mm)
+        {
+            // rre150h0 is precipitation amount; map it to a simple probability for UI display.
+            if (precip_mm <= 0.0)
+                return 5;
 
-        int probability = static_cast<int>(15.0 + (*precip_mm * 25.0));
-        if (probability < 5)
-            probability = 5;
-        if (probability > 95)
-            probability = 95;
-        return probability;
+            int probability = static_cast<int>(15.0 + (precip_mm * 25.0));
+            if (probability < 5)
+                probability = 5;
+            if (probability > 95)
+                probability = 95;
+            return probability;
+        };
+
+        return precip_mm_to_probability(*precip_mm);
     }
 
-    std::optional<std::vector<std::pair<time_t, double>>> lookup_forecast_temp_series_for_point(const std::string &csv_url,
-                                                                                                int point_id,
-                                                                                                time_t start_ts,
-                                                                                                time_t end_ts,
-                                                                                                std::string &error)
+    std::optional<std::vector<std::pair<time_t, double>>> lookup_forecast_series_for_point(const std::string &csv_url,
+                                                                                            int point_id,
+                                                                                            time_t start_ts,
+                                                                                            time_t end_ts,
+                                                                                            std::string &error)
     {
         auto csv_body = http_get_text(csv_url, 15000, error);
         if (!csv_body)
@@ -979,7 +985,7 @@ namespace
         }
 
         std::string range_error;
-        auto temp_series = lookup_forecast_temp_series_for_point(*tre_url, point->point_id, activity_ts, activity_end_ts, range_error);
+        auto temp_series = lookup_forecast_series_for_point(*tre_url, point->point_id, activity_ts, activity_end_ts, range_error);
 
         WeatherResult out;
         out.mode = "forecast";
@@ -1006,7 +1012,25 @@ namespace
         std::string rain_error;
         auto rain_url = get_latest_rre150h0_url(rain_error);
         if (rain_url)
+        {
             out.rain_probability_percent = lookup_rain_probability_for_point(*rain_url, point->point_id, activity_ts, rain_error);
+            auto rain_series = lookup_forecast_series_for_point(*rain_url, point->point_id, activity_ts, activity_end_ts, rain_error);
+            if (rain_series)
+            {
+                for (const auto &p : *rain_series)
+                {
+                    double precip_mm = p.second;
+                    int probability = 5;
+                    if (precip_mm > 0.0)
+                    {
+                        probability = static_cast<int>(15.0 + (precip_mm * 25.0));
+                        if (probability > 95)
+                            probability = 95;
+                    }
+                    out.hourly_rain_probability.push_back({p.first, probability});
+                }
+            }
+        }
         out.weather_symbol = pick_weather_symbol(out.temperature_c, out.rain_probability_percent);
         out.point_name = point->point_name;
         out.postal_code = point->postal_code;
@@ -1564,6 +1588,7 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
             {"temperature_min_c", weather->temperature_min_c ? nlohmann::json(*weather->temperature_min_c) : nlohmann::json(nullptr)},
             {"temperature_max_c", weather->temperature_max_c ? nlohmann::json(*weather->temperature_max_c) : nlohmann::json(nullptr)},
             {"hourly_temps", nlohmann::json::array()},
+            {"hourly_rain_probability", nlohmann::json::array()},
             {"rain_probability_percent", weather->rain_probability_percent ? nlohmann::json(*weather->rain_probability_percent) : nlohmann::json(nullptr)},
             {"weather_symbol", weather->weather_symbol.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->weather_symbol)},
             {"season", weather->season.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->season)},
@@ -1573,6 +1598,8 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
             {"note", weather->note.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->note)}};
         for (const auto &p : weather->hourly_temps)
             payload["hourly_temps"].push_back(nlohmann::json{{"ts_unix", p.first}, {"temperature_c", p.second}});
+        for (const auto &p : weather->hourly_rain_probability)
+            payload["hourly_rain_probability"].push_back(nlohmann::json{{"ts_unix", p.first}, {"probability_percent", p.second}});
         db.set_activity_weather_snapshot(id, payload);
         send_json(res, 200, payload.dump());
     }
