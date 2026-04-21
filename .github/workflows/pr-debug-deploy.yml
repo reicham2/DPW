@@ -126,6 +126,7 @@ jobs:
           HOSTNAME="${{ steps.slug.outputs.hostname }}"
           NETWORK="${PROJECT}_default"
           CERT_DIR="$HOME/.cloudflared"
+          TUNNEL_TMP_DIR="${RUNNER_TEMP:-$HOME}/cloudflared-${SLUG}"
 
           # Write origin cert for cloudflared CLI
           mkdir -p "$CERT_DIR"
@@ -157,10 +158,10 @@ jobs:
 
           # Write tunnel config
           CRED_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
-          mkdir -p /tmp/cloudflared
+          mkdir -p "$TUNNEL_TMP_DIR"
           printf 'tunnel: %s\ncredentials-file: /etc/cloudflared/credentials.json\ningress:\n  - hostname: %s\n    service: http://frontend:80\n  - service: http_status:404\n' \
             "${TUNNEL_ID}" "${HOSTNAME}" \
-            > /tmp/cloudflared/${SLUG}-config.yml
+            > "$TUNNEL_TMP_DIR/config.yml"
 
           # Make credentials readable by non-root container user
           chmod 644 "${CRED_FILE}"
@@ -171,7 +172,7 @@ jobs:
             --network "${NETWORK}" \
             --restart unless-stopped \
             -v "${CRED_FILE}:/etc/cloudflared/credentials.json:ro" \
-            -v "/tmp/cloudflared/${SLUG}-config.yml:/etc/cloudflared/config.yml:ro" \
+            -v "$TUNNEL_TMP_DIR/config.yml:/etc/cloudflared/config.yml:ro" \
             cloudflare/cloudflared:latest \
             tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
 
