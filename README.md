@@ -36,19 +36,32 @@ make db-seed
 
 ### Nützliche Befehle
 
-| Befehl                  | Beschreibung                               |
-| ----------------------- | ------------------------------------------ |
-| `make up`               | Alle Container starten                     |
-| `make down`             | Alle Container stoppen                     |
-| `make rebuild`          | Alles neu bauen und starten                |
-| `make rebuild-backend`  | Nur Backend neu bauen                      |
-| `make rebuild-frontend` | Nur Frontend neu bauen                     |
-| `make logs`             | Alle Logs anzeigen                         |
-| `make logs-backend`     | Nur Backend-Logs                           |
-| `make db-seed`          | DB zurücksetzen und Testdaten laden        |
-| `make db-shell`         | PostgreSQL Shell öffnen                    |
-| `make ps`               | Container-Status anzeigen                  |
-| `make clean`            | Alles entfernen (inkl. Volumes und Images) |
+| Befehl                     | Beschreibung                               |
+| -------------------------- | ------------------------------------------ |
+| `make up`                  | Alle Container starten                     |
+| `make down`                | Alle Container stoppen                     |
+| `make rebuild`             | Alles neu bauen und starten                |
+| `make rebuild-backend`     | Nur Backend neu bauen                      |
+| `make rebuild-frontend`    | Nur Frontend neu bauen                     |
+| `make generate-vapid-keys` | VAPID-Schluessel fuer Web-Push erzeugen    |
+| `make logs`                | Alle Logs anzeigen                         |
+| `make logs-backend`        | Nur Backend-Logs                           |
+| `make db-seed`             | DB zurücksetzen und Testdaten laden        |
+| `make db-shell`            | PostgreSQL Shell öffnen                    |
+| `make ps`                  | Container-Status anzeigen                  |
+| `make clean`               | Alles entfernen (inkl. Volumes und Images) |
+
+### Web Push / PWA Benachrichtigungen
+
+```bash
+make generate-vapid-keys
+```
+
+Die Ausgabe kann direkt in `.env` übernommen werden:
+
+- `DPW_VAPID_PUBLIC_KEY`
+- `DPW_VAPID_PRIVATE_KEY`
+- `DPW_VAPID_SUBJECT`
 
 ## Role Permissions
 

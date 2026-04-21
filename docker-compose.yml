@@ -44,6 +44,9 @@ services:
       MIDATA_API_URL_TEMPLATE: "${MIDATA_API_URL_TEMPLATE:-https://db.scout.ch/de/gro\
         ups/{group_id}/people.json}"
       MIDATA_API_TIMEOUT_MS: "${MIDATA_API_TIMEOUT_MS:-8000}"
+      DPW_VAPID_PUBLIC_KEY: "${DPW_VAPID_PUBLIC_KEY:?Setze DPW_VAPID_PUBLIC_KEY in .env}"
+      DPW_VAPID_PRIVATE_KEY: "${DPW_VAPID_PRIVATE_KEY:?Setze DPW_VAPID_PRIVATE_KEY in .env}"
+      DPW_VAPID_SUBJECT: "${DPW_VAPID_SUBJECT:-mailto:admin@example.com}"
     depends_on:
       db:
         condition: service_healthy

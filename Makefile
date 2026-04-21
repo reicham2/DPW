@@ -9,10 +9,11 @@ DC := docker compose -f docker-compose-dev.yml
        restart restart-backend restart-frontend restart-db \
 	db-reset db-seed ps clean full-rebuild update-deps \
 	build-prod rebuild-prod rebuild-backend-prod rebuild-frontend-prod \
-	new-branch fresh test test-frontend test-backend test-watch
+	new-branch fresh test test-frontend test-backend test-watch \
+	generate-vapid-keys
 
 # ── Shortcut-Targets ─────────────────────────────────────────────────────────
-new-branch: clean rebuild db-seed
+new-branch: clean fresh
 
 fresh:
 	$(DC) down -v --remove-orphans
@@ -22,6 +23,9 @@ fresh:
 
 # ── Tests (laufen im Container) ──────────────────────────────────────────────
 test: test-frontend test-backend
+
+generate-vapid-keys:
+	@node -e "const crypto=require('crypto'); const ecdh=crypto.createECDH('prime256v1'); ecdh.generateKeys(); const b64u=b=>b.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$$/,''); console.log('DPW_VAPID_PUBLIC_KEY=' + b64u(ecdh.getPublicKey())); console.log('DPW_VAPID_PRIVATE_KEY=' + b64u(ecdh.getPrivateKey())); console.log('DPW_VAPID_SUBJECT=mailto:admin@example.com');"
 
 test-frontend:
 	@echo "── Frontend Unit Tests ──────────────────────────────────────────"
