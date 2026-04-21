@@ -46,7 +46,7 @@ ON CONFLICT (department) DO NOTHING;
 
 -- ── Test-Benutzer ───────────────────────────────────────────────────────────
 INSERT INTO users (id, microsoft_oid, email, display_name, department, role) VALUES
-    ('a0000000-0000-0000-0000-000000000001', 'oid-admin',        'admin@pfadihue.ch',     'Admin User',       'Leiter', 'admin'),
+    ('a0000000-0000-0000-0000-000000000001', 'oid-admin',        'development@pfadihue.ch',     'Admin User',       'Leiter', 'admin'),
     ('a0000000-0000-0000-0000-000000000002', 'oid-stufenleiter', 'stufenleiter@pfadihue.ch', 'Stufen Leiter', 'Pfadi',  'Stufenleiter'),
     ('a0000000-0000-0000-0000-000000000003', 'oid-leiter1',      'leiter1@pfadihue.ch',   'Leiter Eins',      'Pfadi',  'Leiter'),
     ('a0000000-0000-0000-0000-000000000004', 'oid-leiter2',      'leiter2@pfadihue.ch',   'Leiter Zwei',      'Wölfe',  'Leiter'),
