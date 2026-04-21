@@ -74,7 +74,7 @@ Für die aktuelle Kinderanzahl pro Aktivität kann DPW MiData abfragen.
 Voraussetzungen:
 
 1. `MIDATA_API_KEY` in `.env` setzen.
-2. Falls nötig Header/URL-Template via `MIDATA_API_KEY_HEADER` und `MIDATA_API_URL_TEMPLATE` anpassen.
+2. Falls nötig das URL-Template via `MIDATA_API_URL_TEMPLATE` anpassen (Header ist fix `X-Token`).
 3. Pro Stufe in der Admin-Ansicht eine MiData-Gruppen-ID hinterlegen.
 
 Hinweise:

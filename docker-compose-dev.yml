@@ -37,7 +37,6 @@ services:
       GITHUB_TOKEN: "${GITHUB_TOKEN}"
       GITHUB_REPO: "${GITHUB_REPO:-reicham2/DPW}"
       MIDATA_API_KEY: "${MIDATA_API_KEY}"
-      MIDATA_API_KEY_HEADER: "${MIDATA_API_KEY_HEADER:-X-API-Key}"
       MIDATA_API_URL_TEMPLATE: "${MIDATA_API_URL_TEMPLATE:-https://db.scout.ch/de/gro\
         ups/{group_id}/people.json}"
       MIDATA_API_TIMEOUT_MS: "${MIDATA_API_TIMEOUT_MS:-8000}"

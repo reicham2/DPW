@@ -174,9 +174,7 @@ namespace
 
         std::string body;
         struct curl_slist *headers = nullptr;
-        std::string header_name = std::getenv("MIDATA_API_KEY_HEADER")
-                                      ? std::getenv("MIDATA_API_KEY_HEADER")
-                                      : "X-API-Key";
+        std::string header_name = "X-Token";
         std::string auth_header = header_name + ": " + std::string(api_key_env);
         headers = curl_slist_append(headers, auth_header.c_str());
         headers = curl_slist_append(headers, "Accept: application/json");
@@ -3775,9 +3773,7 @@ void handle_get_admin_midata_status(HttpRes *res, HttpReq *req, Database &db)
     std::string api_url_template = std::getenv("MIDATA_API_URL_TEMPLATE")
                                        ? std::getenv("MIDATA_API_URL_TEMPLATE")
                                        : "https://db.scout.ch/de/groups/{group_id}/people.json";
-    std::string api_key_header = std::getenv("MIDATA_API_KEY_HEADER")
-                                     ? std::getenv("MIDATA_API_KEY_HEADER")
-                                     : "X-API-Key";
+    std::string api_key_header = "X-Token";
 
     send_json(res, 200, nlohmann::json{{"api_key_configured", api_key_configured}, {"api_key_header", api_key_header}, {"api_url_template", api_url_template}}.dump());
 }
