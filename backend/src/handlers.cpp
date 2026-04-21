@@ -338,6 +338,91 @@ namespace
         return out;
     }
 
+    std::string normalize_assignee_key(const std::string &name)
+    {
+        return to_lower_ascii(trim_ascii(name));
+    }
+
+    std::string normalize_material_key(const std::string &name)
+    {
+        return to_lower_ascii(trim_ascii(name));
+    }
+
+    bool user_matches_assignee(const UserRecord &user, const std::string &assignee)
+    {
+        const std::string assignee_key = normalize_assignee_key(assignee);
+        if (assignee_key.empty())
+            return false;
+
+        if (assignee_key == normalize_assignee_key(user.display_name))
+            return true;
+        if (assignee_key == normalize_assignee_key(user.email))
+            return true;
+
+        const auto at = user.email.find('@');
+        if (at != std::string::npos)
+        {
+            const std::string mail_local = user.email.substr(0, at);
+            if (assignee_key == normalize_assignee_key(mail_local))
+                return true;
+        }
+
+        return false;
+    }
+
+    bool user_in_assignee_list(const std::vector<std::string> &assignees, const UserRecord &user)
+    {
+        for (const auto &assignee : assignees)
+        {
+            if (user_matches_assignee(user, assignee))
+                return true;
+        }
+        return false;
+    }
+
+    std::vector<std::string> newly_assigned_users_from_material_delta(const std::vector<MaterialItem> &old_material,
+                                                                       const std::vector<MaterialItem> &new_material)
+    {
+        std::unordered_set<std::string> old_pairs;
+        for (const auto &m : old_material)
+        {
+            const std::string material_key = normalize_material_key(m.name);
+            if (material_key.empty())
+                continue;
+            for (const auto &name : m.responsible)
+            {
+                const std::string assignee_key = normalize_assignee_key(name);
+                if (assignee_key.empty())
+                    continue;
+                old_pairs.insert(material_key + "\n" + assignee_key);
+            }
+        }
+
+        std::vector<std::string> out;
+        std::unordered_set<std::string> seen_assignees;
+        for (const auto &m : new_material)
+        {
+            const std::string material_key = normalize_material_key(m.name);
+            if (material_key.empty())
+                continue;
+            for (const auto &name : m.responsible)
+            {
+                const std::string trimmed_name = trim_ascii(name);
+                const std::string assignee_key = normalize_assignee_key(trimmed_name);
+                if (assignee_key.empty())
+                    continue;
+
+                const std::string pair_key = material_key + "\n" + assignee_key;
+                if (old_pairs.find(pair_key) != old_pairs.end())
+                    continue;
+
+                if (seen_assignees.insert(assignee_key).second)
+                    out.push_back(trimmed_name);
+            }
+        }
+        return out;
+    }
+
     bool contains_name_ci(const std::vector<std::string> &names, const std::string &needle)
     {
         std::string key = to_lower_ascii(trim_ascii(needle));
@@ -2316,7 +2401,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                 for (const auto &u : users) {
                     if (u.id == current_user->id || !u.notify_material_assigned)
                         continue;
-                    if (!contains_name_ci(all_assigned, u.display_name))
+                    if (!user_in_assignee_list(all_assigned, u))
                         continue;
 
                     std::string time_range = activity->start_time + "-" + activity->end_time;
@@ -2459,24 +2544,17 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
             if (current_user) {
                 auto new_assigned = unique_names_from_material(activity->material);
-                auto old_assigned = previous_activity ? unique_names_from_material(previous_activity->material) : std::vector<std::string>{};
-
-                std::vector<std::string> newly_assigned;
-                std::unordered_set<std::string> old_keys;
-                for (const auto &name : old_assigned)
-                    old_keys.insert(to_lower_ascii(trim_ascii(name)));
-                for (const auto &name : new_assigned) {
-                    std::string key = to_lower_ascii(trim_ascii(name));
-                    if (!key.empty() && old_keys.find(key) == old_keys.end())
-                        newly_assigned.push_back(name);
-                }
+                auto newly_assigned = newly_assigned_users_from_material_delta(
+                    previous_activity ? previous_activity->material : std::vector<MaterialItem>{},
+                    activity->material
+                );
 
                 if (!newly_assigned.empty()) {
                     auto users = db.list_users();
                     for (const auto &u : users) {
                         if (u.id == current_user->id || !u.notify_material_assigned)
                             continue;
-                        if (!contains_name_ci(newly_assigned, u.display_name))
+                        if (!user_in_assignee_list(newly_assigned, u))
                             continue;
 
                         std::string time_range = activity->start_time + "-" + activity->end_time;
