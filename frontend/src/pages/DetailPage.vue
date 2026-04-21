@@ -131,7 +131,18 @@ interface EditSnapshot {
 	programs: ProgramInput[];
 }
 
+interface LocalEditDraft {
+	version: 1;
+	activityId: string;
+	savedAt: number;
+	data: EditSnapshot;
+}
+
 const editSnapshot = ref<EditSnapshot | null>(null);
+const pendingLocalDraft = ref<LocalEditDraft | null>(null);
+const localDraftRestoredAt = ref<number | null>(null);
+const LOCAL_DRAFT_WRITE_DEBOUNCE_MS = 350;
+let localDraftWriteTimer: ReturnType<typeof setTimeout> | null = null;
 
 function cloneSnapshotMaterial(material: MaterialItem[]): MaterialItem[] {
 	return material.map((m) => ({ name: m.name, responsible: m.responsible ? [...m.responsible] : [] }));
@@ -146,8 +157,23 @@ function cloneSnapshotPrograms(programs: ProgramInput[]): ProgramInput[] {
 	}));
 }
 
-function captureEditSnapshot() {
-	editSnapshot.value = {
+function applyEditSnapshot(snapshot: EditSnapshot) {
+	editTitle.value = snapshot.title;
+	editDate.value = snapshot.date;
+	editStartTime.value = snapshot.startTime;
+	editEndTime.value = snapshot.endTime;
+	editGoal.value = snapshot.goal;
+	editLocation.value = snapshot.location;
+	editResponsible.value = [...snapshot.responsible];
+	editDepartment.value = snapshot.department;
+	editMaterial.value = cloneSnapshotMaterial(snapshot.material);
+	editSikoText.value = snapshot.sikoText;
+	editBadWeather.value = snapshot.badWeather;
+	editPrograms.value = cloneSnapshotPrograms(snapshot.programs);
+}
+
+function buildCurrentEditSnapshot(): EditSnapshot {
+	return {
 		title: editTitle.value,
 		date: editDate.value,
 		startTime: editStartTime.value,
@@ -163,20 +189,102 @@ function captureEditSnapshot() {
 	};
 }
 
+function localDraftStorageKey() {
+	return `dpw:activity-edit-draft:${id}`;
+}
+
+function readLocalDraft(): LocalEditDraft | null {
+	try {
+		const raw = window.localStorage.getItem(localDraftStorageKey());
+		if (!raw) return null;
+		const parsed = JSON.parse(raw) as Partial<LocalEditDraft>;
+		if (parsed.version !== 1) return null;
+		if (parsed.activityId !== id) return null;
+		if (!parsed.data || typeof parsed.savedAt !== 'number') return null;
+		return parsed as LocalEditDraft;
+	} catch {
+		return null;
+	}
+}
+
+function clearLocalDraft() {
+	if (localDraftWriteTimer) {
+		clearTimeout(localDraftWriteTimer);
+		localDraftWriteTimer = null;
+	}
+	try {
+		window.localStorage.removeItem(localDraftStorageKey());
+	} catch {
+		/* ignore unavailable storage */
+	}
+}
+
+function writeLocalDraftNow() {
+	if (mode.value !== 'edit') return;
+	const draft: LocalEditDraft = {
+		version: 1,
+		activityId: id,
+		savedAt: Date.now(),
+		data: buildCurrentEditSnapshot(),
+	};
+	try {
+		window.localStorage.setItem(localDraftStorageKey(), JSON.stringify(draft));
+	} catch {
+		/* ignore unavailable storage */
+	}
+}
+
+function scheduleLocalDraftWrite() {
+	if (mode.value !== 'edit' || suppressDirtyTracking || applyingRemote) return;
+	if (localDraftWriteTimer) clearTimeout(localDraftWriteTimer);
+	localDraftWriteTimer = setTimeout(() => {
+		writeLocalDraftNow();
+	}, LOCAL_DRAFT_WRITE_DEBOUNCE_MS);
+}
+
+function loadPendingLocalDraft() {
+	const draft = readLocalDraft();
+	if (!draft) {
+		pendingLocalDraft.value = null;
+		return;
+	}
+	const currentSnapshot = JSON.stringify(buildCurrentEditSnapshot());
+	const draftSnapshot = JSON.stringify(draft.data);
+	if (currentSnapshot === draftSnapshot) {
+		clearLocalDraft();
+		pendingLocalDraft.value = null;
+		return;
+	}
+	pendingLocalDraft.value = draft;
+}
+
+function applyLocalDraft() {
+	if (!pendingLocalDraft.value) return;
+	suppressDirtyTracking = true;
+	applyEditSnapshot(pendingLocalDraft.value.data);
+	initProgEditors();
+	pendingLocalDraft.value = null;
+	localDraftRestoredAt.value = Date.now();
+	nextTick(() => {
+		suppressDirtyTracking = false;
+		scheduleLocalDraftWrite();
+		scheduleAutoSave();
+	});
+}
+
+function discardLocalDraft() {
+	clearLocalDraft();
+	pendingLocalDraft.value = null;
+	localDraftRestoredAt.value = null;
+}
+
+function captureEditSnapshot() {
+	editSnapshot.value = buildCurrentEditSnapshot();
+}
+
 function restoreEditSnapshot() {
 	if (!editSnapshot.value) return;
-	editTitle.value = editSnapshot.value.title;
-	editDate.value = editSnapshot.value.date;
-	editStartTime.value = editSnapshot.value.startTime;
-	editEndTime.value = editSnapshot.value.endTime;
-	editGoal.value = editSnapshot.value.goal;
-	editLocation.value = editSnapshot.value.location;
-	editResponsible.value = [...editSnapshot.value.responsible];
-	editDepartment.value = editSnapshot.value.department;
-	editMaterial.value = cloneSnapshotMaterial(editSnapshot.value.material);
-	editSikoText.value = editSnapshot.value.sikoText;
-	editBadWeather.value = editSnapshot.value.badWeather;
-	editPrograms.value = cloneSnapshotPrograms(editSnapshot.value.programs);
+	applyEditSnapshot(editSnapshot.value);
 }
 
 // ---- Attachments state -----------------------------------------------------
@@ -879,6 +987,11 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+	if (mode.value === 'edit') writeLocalDraftNow();
+	if (localDraftWriteTimer) {
+		clearTimeout(localDraftWriteTimer);
+		localDraftWriteTimer = null;
+	}
 	if (autoSaveTimer) clearTimeout(autoSaveTimer);
 	if (savedTimer) clearTimeout(savedTimer);
 	stopAutoSaveInterval();
@@ -999,8 +1112,10 @@ function formatDate(d: string): string {
 function enterEdit() {
 	if (!activity.value || !canEdit.value) return;
 	suppressDirtyTracking = true;
+	localDraftRestoredAt.value = null;
 	syncEditFields(activity.value);
 	captureEditSnapshot();
+	loadPendingLocalDraft();
 	editAttachmentIdsSnapshot.value = attachments.value.map(a => a.id);
 	error.value = null;
 	mode.value = 'edit';
@@ -1646,7 +1761,9 @@ let hasPendingChanges = false;
 
 function scheduleAutoSave() {
 	if (mode.value !== 'edit') return;
+	if (suppressDirtyTracking) return;
 	if (applyingRemote) return; // ignore watcher firings caused by remote WS updates
+	scheduleLocalDraftWrite();
 
 	if (AUTOSAVE_DEBOUNCE) {
 		// Debounce: restart timer on every change, save after idle
@@ -1744,6 +1861,7 @@ function cancelFuzzyDialog() {
 async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 	if (!activity.value) return;
 	error.value = null;
+	writeLocalDraftNow();
 
 	// When there are fuzzy (but not exact) overlaps, ask for confirmation unless already acknowledged
 	if (!opts.skipFuzzyCheck && !pendingFuzzyAcknowledged && fuzzyOverlaps.value.length > 0) {
@@ -1768,7 +1886,12 @@ async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 		programs: editPrograms.value,
 	});
 
-	if (!error.value) showSavedIndicator();
+	if (!error.value) {
+		showSavedIndicator();
+		clearLocalDraft();
+		pendingLocalDraft.value = null;
+		localDraftRestoredAt.value = null;
+	}
 }
 
 // ---- Delete ----------------------------------------------------------------
@@ -2253,6 +2376,17 @@ function copyShareLink() {
 
 		<!-- =============================================================== EDIT -->
 		<div v-else class="detail-form">
+			<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+				<span class="editors-banner-icon">💾</span>
+				<span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
+				<button type="button" class="btn-secondary" @click="applyLocalDraft">Wiederherstellen</button>
+				<button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
+			</div>
+			<div v-else-if="localDraftRestoredAt" class="editors-banner" style="margin-bottom: 12px;">
+				<span class="editors-banner-icon">✅</span>
+				<span>Lokaler Entwurf wurde wiederhergestellt.</span>
+			</div>
+
 			<!-- Active editors indicator -->
 			<div v-if="activeEditors.length" class="editors-banner">
 				<span class="editors-banner-icon">👥</span>
