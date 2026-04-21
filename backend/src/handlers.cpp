@@ -381,7 +381,7 @@ namespace
     }
 
     std::vector<std::string> newly_assigned_users_from_material_delta(const std::vector<MaterialItem> &old_material,
-                                                                       const std::vector<MaterialItem> &new_material)
+                                                                      const std::vector<MaterialItem> &new_material)
     {
         std::unordered_set<std::string> old_pairs;
         for (const auto &m : old_material)
