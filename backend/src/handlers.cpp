@@ -480,22 +480,6 @@ namespace
         return trim_ascii(out);
     }
 
-    std::optional<std::string> json_string_or_nested_label(const nlohmann::json &j)
-    {
-        if (j.is_string())
-            return j.get<std::string>();
-        if (j.is_object())
-        {
-            static const char *keys[] = {"name", "label", "type", "title"};
-            for (const char *k : keys)
-            {
-                if (j.contains(k) && j[k].is_string())
-                    return j[k].get<std::string>();
-            }
-        }
-        return std::nullopt;
-    }
-
     const nlohmann::json *find_people_array(const nlohmann::json &payload)
     {
         if (payload.is_array())
@@ -3432,7 +3416,7 @@ void handle_delete_push_subscription(HttpRes *res, HttpReq *req, Database &db)
 
 // ---- POST /push/payload ----------------------------------------------------
 
-void handle_post_push_payload(HttpRes *res, HttpReq *req, Database &db)
+void handle_post_push_payload(HttpRes *res, HttpReq * /*req*/, Database &db)
 {
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
