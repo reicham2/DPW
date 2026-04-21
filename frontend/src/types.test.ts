@@ -5,7 +5,7 @@ import type {
 	MaterialItem,
 	Program,
 	User,
-} from '../types';
+} from './types';
 
 /**
  * Tests that type definitions are consistent — catches structural regressions
@@ -103,6 +103,9 @@ describe('Type structures', () => {
 			department: 'Pfadi',
 			role: 'Mitglied',
 			time_display_mode: 'clock',
+			notify_material_assigned: true,
+			notify_mail_own_activity: true,
+			notify_mail_department: false,
 			created_at: '2025-01-01T00:00:00Z',
 			updated_at: '2025-01-01T00:00:00Z',
 		};

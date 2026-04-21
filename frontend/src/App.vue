@@ -19,6 +19,29 @@
           <router-link v-if="showAdmin" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
         </div>
         <div class="global-nav-right">
+          <div v-if="user" class="nav-notifications">
+            <button class="nav-notifications-btn" @click="toggleNotifications" title="Benachrichtigungen">
+              <span aria-hidden="true">N</span>
+              <span v-if="unreadCount > 0" class="nav-notifications-badge">{{ unreadCount }}</span>
+            </button>
+            <div v-if="showNotifications" class="nav-notifications-popover">
+              <div class="nav-notifications-head">
+                <strong>Benachrichtigungen</strong>
+                <button class="nav-notifications-markall" @click="markAllNotificationsRead">Alle gelesen</button>
+              </div>
+              <div v-if="notifications.length === 0" class="nav-notifications-empty">Keine Benachrichtigungen</div>
+              <button
+                v-for="n in notifications.slice(0, 8)"
+                :key="n.id"
+                class="nav-notification-item"
+                :class="{ 'nav-notification-item--unread': !n.is_read }"
+                @click="openNotification(n.id, n.link)"
+              >
+                <div class="nav-notification-title">{{ n.title }}</div>
+                <div class="nav-notification-message">{{ n.message }}</div>
+              </button>
+            </div>
+          </div>
           <span v-if="user" class="nav-connection" :class="isOnline ? 'nav-connection--online' : 'nav-connection--offline'">
             {{ isOnline ? 'Online' : 'Offline' }}
           </span>
@@ -98,6 +121,7 @@ import { usePermissions } from './composables/usePermissions'
 import { useMidataCounts } from './composables/useMidataCounts'
 import { useWebSocket } from './composables/useWebSocket'
 import { useApiConnectionStatus } from './composables/useApi'
+import { useNotifications } from './composables/useNotifications'
 import { config } from './config'
 
 const route = useRoute()
@@ -105,7 +129,9 @@ const { myPermissions, fetchMyPermissions } = usePermissions()
 const { startMidataAutoRefresh, stopMidataAutoRefresh, resetMidataCounts } = useMidataCounts()
 const { connected } = useWebSocket(() => {})
 const { apiOnline } = useApiConnectionStatus()
+const { notifications, unreadCount, ensureNotifications, markRead, markAllRead } = useNotifications()
 const isOnline = computed(() => connected.value && apiOnline.value)
+const showNotifications = ref(false)
 
 const showMailTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
 const showFormTemplates = computed(() => myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none')
@@ -140,6 +166,21 @@ async function handleDebugLogin() {
   try { await debugLogin(debugSelectedUser.value) } finally { loggingIn.value = false }
 }
 
+function toggleNotifications() {
+  showNotifications.value = !showNotifications.value
+  if (showNotifications.value) ensureNotifications().catch(() => {})
+}
+
+async function openNotification(id: string, link: string | null) {
+  await markRead(id).catch(() => {})
+  showNotifications.value = false
+  if (link) window.location.href = link
+}
+
+async function markAllNotificationsRead() {
+  await markAllRead().catch(() => {})
+}
+
 onMounted(() => {
   initAuth()
   if (isDebug) fetchDebugUsers()
@@ -148,10 +189,12 @@ onMounted(() => {
 watch(user, (u) => {
   if (u) {
     fetchMyPermissions().catch(() => {})
-     startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
+    ensureNotifications().catch(() => {})
+    startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
   } else {
     stopMidataAutoRefresh()
     resetMidataCounts()
+    showNotifications.value = false
   }
 }, { immediate: true })
 
@@ -310,6 +353,103 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.nav-notifications {
+  position: relative;
+}
+
+.nav-notifications-btn {
+  position: relative;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+}
+
+.nav-notifications-badge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.nav-notifications-popover {
+  position: absolute;
+  right: 0;
+  top: 44px;
+  width: 340px;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  z-index: 30;
+}
+
+.nav-notifications-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.nav-notifications-markall {
+  border: none;
+  background: transparent;
+  color: #1a56db;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.nav-notifications-empty {
+  padding: 14px 12px;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.nav-notification-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fff;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.nav-notification-item--unread {
+  background: #eff6ff;
+}
+
+.nav-notification-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.nav-notification-message {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: #4b5563;
 }
 
 .nav-connection {

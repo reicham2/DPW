@@ -71,6 +71,22 @@
           </div>
         </div>
 
+        <div class="form-group">
+          <label class="form-label">Benachrichtigungen abonnieren</label>
+          <label class="notify-option">
+            <input v-model="form.notify_material_assigned" type="checkbox" />
+            <span>Material an dich zugewiesen</span>
+          </label>
+          <label class="notify-option">
+            <input v-model="form.notify_mail_own_activity" type="checkbox" />
+            <span>Mail versendet fuer deine Aktivitaet</span>
+          </label>
+          <label class="notify-option">
+            <input v-model="form.notify_mail_department" type="checkbox" />
+            <span>Mail versendet in deiner Stufe</span>
+          </label>
+        </div>
+
         <ErrorAlert :error="error" />
         <div v-if="saved" class="profile-success">Gespeichert!</div>
 
@@ -105,6 +121,9 @@ const form = ref({
   display_name: user.value?.display_name ?? '',
   department:   user.value?.department   ?? '',
   time_display_mode: (user.value?.time_display_mode ?? 'minutes') as TimeDisplayMode,
+  notify_material_assigned: user.value?.notify_material_assigned ?? true,
+  notify_mail_own_activity: user.value?.notify_mail_own_activity ?? true,
+  notify_mail_department: user.value?.notify_mail_department ?? true,
 })
 const saving = ref(false)
 const saved  = ref(false)
@@ -128,6 +147,9 @@ onMounted(async () => {
     form.value.display_name = user.value.display_name
     form.value.department   = user.value.department ?? ''
     form.value.time_display_mode = user.value.time_display_mode ?? 'minutes'
+    form.value.notify_material_assigned = user.value.notify_material_assigned ?? true
+    form.value.notify_mail_own_activity = user.value.notify_mail_own_activity ?? true
+    form.value.notify_mail_department = user.value.notify_mail_department ?? true
   }
   initialLoaded = true
 })
@@ -143,6 +165,9 @@ async function save() {
         display_name: form.value.display_name,
         department:   form.value.department || null,
         time_display_mode: form.value.time_display_mode,
+        notify_material_assigned: form.value.notify_material_assigned,
+        notify_mail_own_activity: form.value.notify_mail_own_activity,
+        notify_mail_department: form.value.notify_mail_department,
       }),
     })
     if (!res.ok) throw new Error(await res.text())
@@ -320,5 +345,18 @@ async function save() {
   background: #f0fdf4;
   border-radius: 6px;
   padding: 8px 12px;
+}
+
+.notify-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #374151;
+  font-size: 0.9rem;
+}
+
+.notify-option input {
+  width: 16px;
+  height: 16px;
 }
 </style>
