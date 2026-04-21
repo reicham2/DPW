@@ -61,6 +61,7 @@ const weatherLocationSaved = ref<string | null>(null);
 const weatherLocationEditing = ref(true);
 const weatherLocationSaving = ref(false);
 const mode = ref<'view' | 'edit'>('view');
+const isStatsDrawerOpen = ref(false);
 const shareToken = ref<string | null>(null);
 const shareLoading = ref(false);
 const shareCopied = ref(false);
@@ -83,6 +84,22 @@ function showSavedIndicator() {
 	dirtyFields.clear();
 	savedFields.value = snap;
 	savedTimer = setTimeout(() => { savedFields.value = {}; }, 2000);
+}
+
+function openStatsDrawer() {
+	isStatsDrawerOpen.value = true;
+}
+
+function closeStatsDrawer() {
+	isStatsDrawerOpen.value = false;
+}
+
+function toggleStatsDrawer() {
+	isStatsDrawerOpen.value = !isStatsDrawerOpen.value;
+}
+
+function onStatsDrawerKeydown(event: KeyboardEvent) {
+	if (event.key === 'Escape') closeStatsDrawer();
 }
 
 // ---- Edit state ------------------------------------------------------------
@@ -762,6 +779,10 @@ watch(similarActivitiesKey, () => {
 	void refreshEstimatedParticipantsFromSimilar();
 }, { immediate: true });
 
+watch(mode, () => {
+	closeStatsDrawer();
+});
+
 const estimatedParticipantsFromSimilar = computed(() => {
 	const sample = similarActivities.value
 		.map((a) => similarActivityStats.value[a.id])
@@ -853,6 +874,10 @@ onMounted(async () => {
 	}
 });
 
+onMounted(() => {
+	window.addEventListener('keydown', onStatsDrawerKeydown);
+});
+
 onUnmounted(() => {
 	if (autoSaveTimer) clearTimeout(autoSaveTimer);
 	if (savedTimer) clearTimeout(savedTimer);
@@ -865,6 +890,7 @@ onUnmounted(() => {
 		clearInterval(liveParticipantsRefreshTimer);
 		liveParticipantsRefreshTimer = null;
 	}
+	window.removeEventListener('keydown', onStatsDrawerKeydown);
 	// Leave the activity and unlock any held section
 	wsLeave();
 	document.title = 'DPWeb Aktivitäten';
@@ -1877,6 +1903,18 @@ function copyShareLink() {
 		</div>
 	</header>
 
+	<button
+		v-if="activity"
+		type="button"
+		class="detail-stats-drawer-handle"
+		:class="{ 'is-open': isStatsDrawerOpen }"
+		:aria-expanded="isStatsDrawerOpen"
+		title="Statistik ein-/ausblenden"
+		@click="toggleStatsDrawer"
+	>
+		{{ isStatsDrawerOpen ? 'Statistik schliessen' : 'Statistik öffnen' }}
+	</button>
+
 	<main class="main">
 		<p v-if="loading" class="loading">Laden…</p>
 		<p v-else-if="!activity" class="error">Aktivität nicht gefunden.</p>
@@ -2053,6 +2091,9 @@ function copyShareLink() {
 					</div>
 				</div>
 
+				<div class="detail-stats-popout" :class="{ 'is-open': isStatsDrawerOpen }" @click.self="closeStatsDrawer">
+					<div class="detail-stats-popout__panel">
+						<button type="button" class="detail-stats-popout__close" @click="closeStatsDrawer">✕</button>
 				<aside class="detail-stats-sidebar">
 					<div class="detail-stats-card">
 						<p class="detail-stats-card-title">Aktuelle Informationen</p>
@@ -2205,6 +2246,8 @@ function copyShareLink() {
 						</div>
 					</div>
 				</aside>
+					</div>
+				</div>
 			</div>
 		</div>
 
@@ -2669,6 +2712,9 @@ function copyShareLink() {
 				</button>
 			</div>
 
+			<div class="detail-stats-popout" :class="{ 'is-open': isStatsDrawerOpen }" @click.self="closeStatsDrawer">
+				<div class="detail-stats-popout__panel">
+					<button type="button" class="detail-stats-popout__close" @click="closeStatsDrawer">✕</button>
 			<aside class="detail-stats-sidebar detail-stats-sidebar--edit">
 				<div class="detail-stats-card">
 					<p class="detail-stats-card-title">Aktuelle Informationen</p>
@@ -2832,6 +2878,8 @@ function copyShareLink() {
 					</div>
 				</div>
 			</aside>
+				</div>
+			</div>
 		</div>
 	</main>
 

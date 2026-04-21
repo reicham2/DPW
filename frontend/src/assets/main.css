@@ -681,6 +681,20 @@ body {
 	z-index: 8;
 }
 
+
+.detail-stats-drawer-handle {
+	display: none;
+}
+
+.detail-stats-popout,
+.detail-stats-popout__panel {
+	display: contents;
+}
+
+.detail-stats-popout__close {
+	display: none;
+}
+
 .detail-stats-card {
 	background: #fff;
 	border: 1px solid #e5e7eb;
@@ -886,7 +900,117 @@ body {
 	margin-top: 16px;
 }
 
+@media (max-width: 1279px) {
+	.detail-stats-drawer-handle {
+		display: inline-flex;
+		position: fixed;
+		right: 0;
+		top: 52%;
+		transform: translateY(-50%);
+		z-index: 141;
+		writing-mode: vertical-rl;
+		text-orientation: mixed;
+		letter-spacing: 0.04em;
+		font-size: 0.76rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		padding: 12px 8px;
+		border: 1px solid #cbd5e1;
+		border-right: none;
+		border-radius: 10px 0 0 10px;
+		background: #ffffff;
+		color: #1e3a8a;
+		cursor: pointer;
+		box-shadow: -8px 0 16px rgba(15, 23, 42, 0.14);
+	}
+
+	.detail-stats-drawer-handle.is-open {
+		right: min(92vw, 360px);
+		background: #dbeafe;
+		color: #1e40af;
+	}
+
+	.detail-view-layout {
+		grid-template-columns: 1fr;
+		gap: 10px;
+	}
+
+	.detail-stats-popout {
+		display: none;
+	}
+
+	.detail-stats-popout.is-open {
+		position: fixed;
+		inset: 0;
+		z-index: 140;
+		background: rgba(15, 23, 42, 0.35);
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.detail-stats-popout.is-open .detail-stats-popout__panel {
+		display: flex;
+		flex-direction: column;
+		width: min(92vw, 360px);
+		height: 100%;
+		background: #f8fafc;
+		border-left: 1px solid #dbeafe;
+		box-shadow: -16px 0 34px rgba(15, 23, 42, 0.2);
+		padding: 14px 12px 18px;
+		overflow: hidden;
+	}
+
+	.detail-stats-popout__close {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		align-self: flex-end;
+		width: 32px;
+		height: 32px;
+		border: 1px solid #d1d5db;
+		border-radius: 8px;
+		background: #fff;
+		color: #334155;
+		cursor: pointer;
+	}
+
+	.detail-stats-popout .detail-stats-sidebar {
+		position: static;
+		top: auto;
+		z-index: auto;
+		order: 0;
+		margin-top: 8px;
+		overflow: auto;
+		padding-right: 4px;
+	}
+
+	.detail-stats-popout .detail-stats-sidebar--edit {
+		margin-top: 8px;
+	}
+}
+
 @media (min-width: 1280px) {
+	.global-nav-inner,
+	.app {
+		max-width: 1040px;
+		padding-left: 12px;
+		padding-right: 12px;
+	}
+
+	.detail-view-layout {
+		grid-template-columns: minmax(0, 1fr) 280px;
+		gap: 20px;
+	}
+}
+
+@media (min-width: 1480px) {
+	.global-nav-inner,
+	.app {
+		max-width: 860px;
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+
 	.detail-view-layout {
 		grid-template-columns: minmax(0, 1fr);
 		gap: 0;
