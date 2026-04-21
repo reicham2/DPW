@@ -302,7 +302,10 @@ export interface ActivityExpectedWeather {
 	temperature_min_c?: number | null;
 	temperature_max_c?: number | null;
 	hourly_temps?: Array<{ ts_unix: number; temperature_c: number }>;
-	hourly_rain_probability?: Array<{ ts_unix: number; probability_percent: number }>;
+	hourly_rain_probability?: Array<{
+		ts_unix: number;
+		probability_percent: number;
+	}>;
 	rain_probability_percent?: number | null;
 	weather_symbol?: 'sun' | 'partly-cloudy' | 'cloud' | 'rain' | 'snow' | null;
 	season?: string | null;

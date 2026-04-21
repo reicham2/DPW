@@ -862,10 +862,10 @@ namespace
     }
 
     std::optional<std::vector<std::pair<time_t, double>>> lookup_forecast_series_for_point(const std::string &csv_url,
-                                                                                            int point_id,
-                                                                                            time_t start_ts,
-                                                                                            time_t end_ts,
-                                                                                            std::string &error)
+                                                                                           int point_id,
+                                                                                           time_t start_ts,
+                                                                                           time_t end_ts,
+                                                                                           std::string &error)
     {
         auto csv_body = http_get_text(csv_url, 15000, error);
         if (!csv_body)
