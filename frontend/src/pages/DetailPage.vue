@@ -8,7 +8,8 @@ import { user } from '../composables/useAuth';
 import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
 import { useForms } from '../composables/useForms';
 import { apiFetch } from '../composables/useApi';
-import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem } from '../types';
+import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather } from '../types';
+import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import BadgeSelect from '../components/BadgeSelect.vue';
@@ -43,6 +44,22 @@ const { fetchForm } = useForms();
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
 const showNoFormDialog = ref(false);
+const liveParticipantsLoading = ref(false);
+const liveExpectedParticipants = ref<number | null>(null);
+const liveRegistrationCount = ref<number | null>(null);
+const liveDeregistrationCount = ref<number | null>(null);
+const liveFormType = ref<FormType | null>(null);
+const liveHasForm = ref<boolean | null>(null);
+const midataLoading = ref(false);
+const midataConfigured = ref(false);
+const midataChildrenCount = ref<number | null>(null);
+const midataError = ref<string | null>(null);
+const expectedWeatherLoading = ref(false);
+const expectedWeather = ref<ActivityExpectedWeather | null>(null);
+const weatherLocationInput = ref('');
+const weatherLocationSaved = ref<string | null>(null);
+const weatherLocationEditing = ref(true);
+const weatherLocationSaving = ref(false);
 const mode = ref<'view' | 'edit'>('view');
 const shareToken = ref<string | null>(null);
 const shareLoading = ref(false);
@@ -80,6 +97,7 @@ const editDepartment = ref<Department | ''>('');
 const editMaterial = ref<MaterialItem[]>([{ name: '', responsible: [] }]);
 const editSikoText = ref('');
 const editBadWeather = ref('');
+const editPlannedParticipantsEstimate = ref<number | null>(null);
 const editPrograms = ref<ProgramInput[]>([]);
 
 interface EditSnapshot {
@@ -94,6 +112,7 @@ interface EditSnapshot {
 	material: MaterialItem[];
 	sikoText: string;
 	badWeather: string;
+	plannedParticipantsEstimate: number | null;
 	programs: ProgramInput[];
 }
 
@@ -125,6 +144,7 @@ function captureEditSnapshot() {
 		material: cloneSnapshotMaterial(editMaterial.value),
 		sikoText: editSikoText.value,
 		badWeather: editBadWeather.value,
+		plannedParticipantsEstimate: editPlannedParticipantsEstimate.value,
 		programs: cloneSnapshotPrograms(editPrograms.value),
 	};
 }
@@ -142,6 +162,7 @@ function restoreEditSnapshot() {
 	editMaterial.value = cloneSnapshotMaterial(editSnapshot.value.material);
 	editSikoText.value = editSnapshot.value.sikoText;
 	editBadWeather.value = editSnapshot.value.badWeather;
+	editPlannedParticipantsEstimate.value = editSnapshot.value.plannedParticipantsEstimate;
 	editPrograms.value = cloneSnapshotPrograms(editSnapshot.value.programs);
 }
 
@@ -281,20 +302,465 @@ const canForms = computed(() => {
 	return canFormsHelper(activity.value, user.value.display_name, user.value.department);
 });
 
-onMounted(async () => {
-	await Promise.all([fetchDepartments(), fetchUsers(), fetchLocations(), fetchActivities(), fetchMyPermissions()]);
-	activity.value = await fetchActivity(id);
-	if (activity.value) {
-		// Check read permission
-		if (!canView.value) {
-			router.replace('/');
+let liveParticipantsRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let detailDeferredLoadTimer: ReturnType<typeof setTimeout> | null = null;
+
+function isPastActivityDate(date: string | undefined): boolean {
+	if (!date) return false;
+	const today = new Date();
+	const yyyy = today.getUTCFullYear();
+	const mm = String(today.getUTCMonth() + 1).padStart(2, '0');
+	const dd = String(today.getUTCDate()).padStart(2, '0');
+	return date < `${yyyy}-${mm}-${dd}`;
+}
+
+async function refreshLiveParticipants() {
+	liveParticipantsLoading.value = true;
+	try {
+		const formRes = await apiFetch(`/api/activities/${id}/form`);
+		if (!formRes.ok) {
+			liveHasForm.value = false;
+			liveFormType.value = null;
+			liveExpectedParticipants.value = null;
+			liveRegistrationCount.value = null;
+			liveDeregistrationCount.value = null;
 			return;
 		}
-		document.title = `${activity.value.title} – DPWeb`;
-		attachments.value = await fetchAttachments(id);
-		fetchShareLink();
+		liveHasForm.value = true;
+		const formData = (await formRes.json()) as { id: string; form_type?: FormType };
+		const statsRes = await apiFetch(`/api/activities/${id}/form/stats`);
+		if (!statsRes.ok || !formData?.id) {
+			liveFormType.value = formData?.form_type ?? null;
+			liveExpectedParticipants.value = null;
+			liveRegistrationCount.value = null;
+			liveDeregistrationCount.value = null;
+			return;
+		}
+		const statsData = (await statsRes.json()) as FormStats;
+		const formType: FormType | null = statsData.form_type ?? formData.form_type ?? null;
+		liveFormType.value = formType;
+		const registration = statsData.registration_count ?? statsData.by_mode?.registration ?? 0;
+		const deregistration = statsData.deregistration_count ?? statsData.by_mode?.deregistration ?? 0;
+
+		if (formType === 'registration') {
+			liveRegistrationCount.value = registration;
+			liveDeregistrationCount.value = null;
+			liveExpectedParticipants.value = registration;
+		} else if (formType === 'deregistration') {
+			liveRegistrationCount.value = null;
+			liveDeregistrationCount.value = deregistration;
+			liveExpectedParticipants.value = null;
+		} else {
+			liveRegistrationCount.value = registration;
+			liveDeregistrationCount.value = deregistration;
+			liveExpectedParticipants.value =
+				typeof statsData.expected_current === 'number'
+					? statsData.expected_current
+					: registration - deregistration;
+		}
+	} catch {
+		liveHasForm.value = null;
+		liveFormType.value = null;
+		liveExpectedParticipants.value = null;
+		liveRegistrationCount.value = null;
+		liveDeregistrationCount.value = null;
+	} finally {
+		liveParticipantsLoading.value = false;
 	}
-	loading.value = false;
+}
+
+const registrationsExceedMidata = computed(() => {
+	if (liveFormType.value !== 'registration') return false;
+	if (typeof liveRegistrationCount.value !== 'number') return false;
+	if (typeof midataChildrenCount.value !== 'number') return false;
+	return liveRegistrationCount.value > midataChildrenCount.value;
+});
+
+const liveActivitySumDisplay = computed(() => {
+	if (liveParticipantsLoading.value) return 'Lädt…';
+	if (liveHasForm.value === false) return 'kein Formular';
+	if (liveFormType.value === 'registration') {
+		return String(liveRegistrationCount.value ?? 0);
+	}
+	if (liveFormType.value === 'deregistration') {
+		if (typeof midataChildrenCount.value !== 'number') return '—';
+		return String(midataChildrenCount.value - (liveDeregistrationCount.value ?? 0));
+	}
+	if (typeof liveExpectedParticipants.value === 'number') {
+		return String(liveExpectedParticipants.value);
+	}
+	return '—';
+});
+
+async function refreshActivityMidataChildren() {
+	midataLoading.value = true;
+	try {
+		const res = await apiFetch(`/api/activities/${id}/midata/children-count`);
+		if (!res.ok) {
+			midataConfigured.value = false;
+			midataChildrenCount.value = null;
+			midataError.value = null;
+			return;
+		}
+		const data = (await res.json()) as { configured?: boolean; children_count?: number | null; error?: string };
+		midataConfigured.value = !!data.configured;
+		midataChildrenCount.value = typeof data.children_count === 'number' ? data.children_count : null;
+		midataError.value = data.error ?? null;
+	} catch {
+		midataConfigured.value = false;
+		midataChildrenCount.value = null;
+		midataError.value = null;
+	} finally {
+		midataLoading.value = false;
+	}
+}
+
+async function refreshExpectedWeather() {
+	let location = weatherLocationInput.value.trim();
+	if (!location && weatherLocationSaved.value) {
+		location = weatherLocationSaved.value.trim();
+	}
+	const pastActivity = isPastActivityDate(activity.value?.date);
+	if (!location && !pastActivity) {
+		expectedWeather.value = null;
+		expectedWeatherLoading.value = false;
+		return;
+	}
+	expectedWeatherLoading.value = true;
+	try {
+		const query = location ? `?location=${encodeURIComponent(location)}` : '';
+		const res = await apiFetch(`/api/activities/${id}/weather-expected${query}`);
+		if (!res.ok) return;
+		expectedWeather.value = (await res.json()) as ActivityExpectedWeather;
+	} finally {
+		expectedWeatherLoading.value = false;
+	}
+}
+
+async function fetchWeatherLocation() {
+	try {
+		const res = await apiFetch(`/api/activities/${id}/weather-location`);
+		if (!res.ok) {
+			weatherLocationSaved.value = null;
+			weatherLocationEditing.value = true;
+			return;
+		}
+		const data = (await res.json()) as { location?: string | null };
+		const location = (data.location ?? '').trim();
+		if (location) {
+			weatherLocationSaved.value = location;
+			weatherLocationInput.value = location;
+			weatherLocationEditing.value = false;
+		} else {
+			weatherLocationSaved.value = null;
+			weatherLocationEditing.value = true;
+		}
+		void refreshExpectedWeather();
+	} catch {
+		weatherLocationSaved.value = null;
+		weatherLocationEditing.value = true;
+	}
+}
+
+async function saveWeatherLocation() {
+	const location = weatherLocationInput.value.trim();
+	if (!location) return;
+	weatherLocationSaving.value = true;
+	try {
+		const res = await apiFetch(`/api/activities/${id}/weather-location`, {
+			method: 'PUT',
+			body: JSON.stringify({ location }),
+		});
+		if (!res.ok) return;
+		weatherLocationSaved.value = location;
+		weatherLocationEditing.value = false;
+		void refreshExpectedWeather();
+	} finally {
+		weatherLocationSaving.value = false;
+	}
+}
+
+function startWeatherLocationEdit() {
+	weatherLocationInput.value = weatherLocationSaved.value ?? weatherLocationInput.value;
+	weatherLocationEditing.value = true;
+}
+
+const weatherSymbolEmoji = computed(() => {
+	switch (expectedWeather.value?.weather_symbol) {
+		case 'sun':
+			return '☀️';
+		case 'partly-cloudy':
+			return '⛅';
+		case 'cloud':
+			return '☁️';
+		case 'rain':
+			return '🌧️';
+		case 'snow':
+			return '❄️';
+		default:
+			return '🌤️';
+	}
+});
+
+const weatherForecastDisplay = computed(() => {
+	return expectedWeather.value?.available ? weatherSymbolEmoji.value : '—';
+});
+
+const weatherTemperatureDisplay = computed(() => {
+	if (!expectedWeather.value?.available) return '—';
+	if (
+		typeof expectedWeather.value.temperature_min_c === 'number'
+		&& typeof expectedWeather.value.temperature_max_c === 'number'
+	) {
+		return `${Math.round(expectedWeather.value.temperature_min_c)}° | ${Math.round(expectedWeather.value.temperature_max_c)}°`;
+	}
+	return `${(expectedWeather.value.temperature_c ?? 0).toFixed(1)} °C`;
+});
+
+const weatherRainProbabilityDisplay = computed(() => {
+	if (!expectedWeather.value?.available) return '—';
+	return typeof expectedWeather.value.rain_probability_percent === 'number'
+		? `${expectedWeather.value.rain_probability_percent} %`
+		: '—';
+});
+
+const weatherChartSamples = computed(() => {
+	const samples = expectedWeather.value?.hourly_temps ?? [];
+	if (!Array.isArray(samples)) return [] as Array<{ ts_unix: number; temperature_c: number }>;
+	return samples.filter((p) => Number.isFinite(p.ts_unix) && Number.isFinite(p.temperature_c));
+});
+
+type WeatherChartPoint = {
+	x: number;
+	y: number;
+	temperatureC: number;
+	timeLabel: string;
+	tempLabel: string;
+};
+
+const weatherChartWidth = 320;
+const weatherChartHeight = 84;
+const weatherChartPlotLeft = 42;
+const weatherChartPlotRight = 312;
+const weatherChartPlotTop = 10;
+const weatherChartPlotBottom = 74;
+
+const weatherChartStats = computed(() => {
+	const points = weatherChartSamples.value;
+	if (!points.length) {
+		return {
+			min: 0,
+			max: 0,
+			span: 1,
+		};
+	}
+	const min = Math.min(...points.map((p) => p.temperature_c));
+	const max = Math.max(...points.map((p) => p.temperature_c));
+	return {
+		min,
+		max,
+		span: Math.max(0.1, max - min),
+	};
+});
+
+const weatherChartPoints = computed<WeatherChartPoint[]>(() => {
+	const samples = weatherChartSamples.value;
+	if (samples.length < 2) return [];
+	const plotWidth = weatherChartPlotRight - weatherChartPlotLeft;
+	const plotHeight = weatherChartPlotBottom - weatherChartPlotTop;
+	const { min, span } = weatherChartStats.value;
+	return samples.map((sample, i) => {
+		const x = weatherChartPlotLeft + (i / (samples.length - 1)) * plotWidth;
+		const y = weatherChartPlotBottom - ((sample.temperature_c - min) / span) * plotHeight;
+		return {
+			x,
+			y,
+			temperatureC: sample.temperature_c,
+			timeLabel: new Date(sample.ts_unix * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+			tempLabel: `${sample.temperature_c.toFixed(1)} °C`,
+		};
+	});
+});
+
+const weatherChartYTicks = computed(() => {
+	const { min, max } = weatherChartStats.value;
+	const values = [max, (max + min) / 2, min];
+	const uniqueValues = values.filter((value, idx) => values.findIndex((v) => Math.abs(v - value) < 0.05) === idx);
+	return uniqueValues.map((value) => {
+		const ratio = (value - min) / weatherChartStats.value.span;
+		const y = weatherChartPlotBottom - ratio * (weatherChartPlotBottom - weatherChartPlotTop);
+		return {
+			value,
+			y,
+			label: `${Math.round(value)}°`,
+		};
+	});
+});
+
+const weatherHoveredPointIndex = ref<number | null>(null);
+
+const weatherHoveredPoint = computed(() => {
+	if (weatherHoveredPointIndex.value === null) return null;
+	return weatherChartPoints.value[weatherHoveredPointIndex.value] ?? null;
+});
+
+function onWeatherChartMouseMove(event: MouseEvent) {
+	const points = weatherChartPoints.value;
+	if (!points.length) {
+		weatherHoveredPointIndex.value = null;
+		return;
+	}
+	const chart = event.currentTarget as SVGSVGElement | null;
+	if (!chart) return;
+	const rect = chart.getBoundingClientRect();
+	if (!rect.width) return;
+	const x = ((event.clientX - rect.left) / rect.width) * weatherChartWidth;
+	let nearest = 0;
+	let bestDist = Number.POSITIVE_INFINITY;
+	for (let i = 0; i < points.length; i += 1) {
+		const dist = Math.abs(points[i].x - x);
+		if (dist < bestDist) {
+			bestDist = dist;
+			nearest = i;
+		}
+	}
+	weatherHoveredPointIndex.value = nearest;
+}
+
+function onWeatherChartMouseLeave() {
+	weatherHoveredPointIndex.value = null;
+}
+
+const weatherChartPath = computed(() => {
+	const points = weatherChartPoints.value;
+	if (points.length < 2) return '';
+	return points
+		.map((p, i) => {
+			return `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+		})
+		.join(' ');
+});
+
+const weatherChartStartLabel = computed(() => {
+	const first = weatherChartSamples.value[0];
+	if (!first) return '';
+	return new Date(first.ts_unix * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+});
+
+const weatherChartEndLabel = computed(() => {
+	const samples = weatherChartSamples.value;
+	const last = samples[samples.length - 1];
+	if (!last) return '';
+	return new Date(last.ts_unix * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+});
+
+function parseTimeToMinutes(time: string): number | null {
+	if (!time) return null;
+	const parts = time.split(':');
+	if (parts.length < 2) return null;
+	const h = Number(parts[0]);
+	const m = Number(parts[1]);
+	if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+	return h * 60 + m;
+}
+
+type DayBucket = 'saturday' | 'weekday' | 'sunday' | 'unknown';
+
+function getDayBucket(dateStr: string): DayBucket {
+	if (!dateStr) return 'unknown';
+	const d = new Date(`${dateStr}T00:00:00`);
+	if (Number.isNaN(d.getTime())) return 'unknown';
+	const day = d.getDay();
+	if (day === 6) return 'saturday';
+	if (day >= 1 && day <= 5) return 'weekday';
+	if (day === 0) return 'sunday';
+	return 'unknown';
+}
+
+const similarActivities = computed(() => {
+	if (!activity.value?.department) return [] as Activity[];
+	const current = activity.value;
+	const currentDate = Date.parse(current.date);
+	const currentBucket = getDayBucket(current.date);
+	const currentStart = parseTimeToMinutes(current.start_time);
+
+	return activities.value
+		.filter((a) => a.id !== current.id)
+		.filter((a) => a.department === current.department)
+		.filter((a) => Number.isNaN(currentDate) || Date.parse(a.date) <= currentDate)
+		.filter((a) => getDayBucket(a.date) === currentBucket)
+		.sort((a, b) => {
+			const aStart = parseTimeToMinutes(a.start_time);
+			const bStart = parseTimeToMinutes(b.start_time);
+			const aDiff = currentStart === null || aStart === null ? Number.POSITIVE_INFINITY : Math.abs(aStart - currentStart);
+			const bDiff = currentStart === null || bStart === null ? Number.POSITIVE_INFINITY : Math.abs(bStart - currentStart);
+			if (aDiff !== bDiff) return aDiff - bDiff;
+			return Date.parse(b.date) - Date.parse(a.date);
+		});
+});
+
+const estimatedParticipantsFromSimilar = computed(() => {
+	const sample = similarActivities.value
+		.filter((a) => typeof a.planned_participants_estimate === 'number')
+		.slice(0, 5)
+		.map((a) => a.planned_participants_estimate as number);
+	if (!sample.length) return null;
+	const avg = sample.reduce((sum, value) => sum + value, 0) / sample.length;
+	return Math.round(avg);
+});
+
+const estimateSourceActivities = computed(() => {
+	return similarActivities.value.slice(0, 2);
+});
+
+onMounted(async () => {
+	try {
+		const [, fetchedActivity] = await Promise.all([
+			fetchMyPermissions(),
+			fetchActivity(id),
+		]);
+		activity.value = fetchedActivity;
+
+		if (activity.value) {
+			if (myPermissions.value && !canView.value) {
+				router.replace('/');
+				return;
+			}
+
+			document.title = `${activity.value.title} – DPWeb`;
+		}
+	} finally {
+		loading.value = false;
+	}
+
+	if (activity.value) {
+		void fetchAttachments(id).then((items) => {
+			attachments.value = items;
+		});
+		void fetchShareLink();
+		void Promise.allSettled([
+			fetchDepartments(),
+			fetchUsers(),
+			fetchLocations(),
+			fetchActivities(),
+		]);
+
+		detailDeferredLoadTimer = setTimeout(() => {
+			void refreshLiveParticipants();
+			void refreshActivityMidataChildren();
+			void fetchWeatherLocation().then(() => {
+				if (!weatherLocationSaved.value) {
+					void refreshExpectedWeather();
+				}
+			});
+
+			liveParticipantsRefreshTimer = setInterval(() => {
+				void refreshLiveParticipants();
+				void refreshActivityMidataChildren();
+				void refreshExpectedWeather();
+			}, config.MIDATA_WEATHER_REFRESH_INTERVAL);
+		}, 250);
+	}
 
 	// Register identity and join this activity for collaborative editing
 	if (user.value) {
@@ -321,6 +787,14 @@ onUnmounted(() => {
 	if (autoSaveTimer) clearTimeout(autoSaveTimer);
 	if (savedTimer) clearTimeout(savedTimer);
 	stopAutoSaveInterval();
+	if (detailDeferredLoadTimer) {
+		clearTimeout(detailDeferredLoadTimer);
+		detailDeferredLoadTimer = null;
+	}
+	if (liveParticipantsRefreshTimer) {
+		clearInterval(liveParticipantsRefreshTimer);
+		liveParticipantsRefreshTimer = null;
+	}
 	// Leave the activity and unlock any held section
 	wsLeave();
 	document.title = 'DPWeb Aktivitäten';
@@ -340,6 +814,7 @@ function syncEditFields(a: typeof activity.value) {
 	editMaterial.value = [...a.material.map(m => ({ name: m.name, responsible: m.responsible ?? [] })), { name: '', responsible: [] }]; // trailing empty = sentinel input
 	editSikoText.value = a.siko_text ?? '';
 	editBadWeather.value = a.bad_weather_info ?? '';
+	editPlannedParticipantsEstimate.value = a.planned_participants_estimate;
 	editPrograms.value = a.programs.map((p) => ({
 		duration_minutes: p.duration_minutes,
 		title: p.title,
@@ -377,6 +852,8 @@ watch(lastUpdatedActivity, (updated) => {
 			editSikoText.value = updated.siko_text ?? '';
 		if (updated.bad_weather_info !== prev.bad_weather_info)
 			editBadWeather.value = updated.bad_weather_info ?? '';
+		if (updated.planned_participants_estimate !== prev.planned_participants_estimate)
+			editPlannedParticipantsEstimate.value = updated.planned_participants_estimate;
 		if (JSON.stringify(updated.material) !== JSON.stringify(prev.material))
 			editMaterial.value = [...updated.material.map(m => ({ name: m.name, responsible: m.responsible ?? [] })), { name: '', responsible: [] }];
 		if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs)) {
@@ -1135,6 +1612,7 @@ watch(
 		editMaterial,
 		editSikoText,
 		editBadWeather,
+		editPlannedParticipantsEstimate,
 		editPrograms,
 	],
 	scheduleAutoSave,
@@ -1152,6 +1630,7 @@ watch([editDepartment], () => markDirty('department'));
 watch([editSikoText], () => markDirty('siko_text'));
 watch([editGoal], () => markDirty('goal'));
 watch([editBadWeather], () => markDirty('bad_weather'));
+watch([editPlannedParticipantsEstimate], () => markDirty('planned_participants_estimate'));
 
 // ---- Fuzzy location overlap confirmation dialog ----------------------------
 const showFuzzyDialog = ref(false);
@@ -1194,6 +1673,9 @@ async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 		material: editMaterial.value.filter((m) => m.name.trim()).map(m => ({ name: m.name.trim(), ...(m.responsible?.length ? { responsible: m.responsible } : {}) })),
 		siko_text: editSikoText.value.trim() || null,
 		bad_weather_info: editBadWeather.value.trim() || null,
+		planned_participants_estimate: Number.isFinite(editPlannedParticipantsEstimate.value) && (editPlannedParticipantsEstimate.value as number) >= 0
+			? Math.round(editPlannedParticipantsEstimate.value as number)
+			: null,
 		programs: editPrograms.value,
 	});
 
@@ -1338,70 +1820,72 @@ function copyShareLink() {
 
 		<!-- ================================================================ VIEW -->
 		<div v-else-if="mode === 'view'" class="detail-view">
-			<!-- Hero: Titel + Datum + Stufe -->
-			<div class="detail-section">
-				<div class="detail-hero">
-					<div>
-						<h2 class="detail-hero-title">{{ activity.title }}</h2>
-						<p class="detail-hero-time">
-							{{ formatDate(activity.date) }} &middot;
-							{{ activity.start_time }}–{{ activity.end_time }}
-						</p>
-					</div>
-				</div>
-			</div>
-
-			<!-- Ort / Verantwortlich -->
-			<div class="detail-section">
-				<div class="detail-grid detail-grid--3">
-					<div class="detail-field">
-						<span class="detail-label">Ort</span>
-						<span
-							class="detail-value"
-							:class="{ 'location-has-warning': exactOverlaps.length || fuzzyOverlaps.length }"
-							@click="(exactOverlaps.length || fuzzyOverlaps.length) && (locationWarningOpen = !locationWarningOpen)"
-						>
-							{{ activity.location || '—' }}
-							<span v-if="exactOverlaps.length" class="location-warn-icon" title="Überschneidung">⚠️</span>
-							<span v-else-if="fuzzyOverlaps.length" class="location-warn-icon" title="Möglicherweise ähnlicher Ort">ℹ️</span>
-						</span>
-						<template v-if="locationWarningOpen">
-							<div v-if="exactOverlaps.length" class="field-warning" style="margin-top: 6px">
-								⚠️ Überschneidung:
-								<ul class="overlap-list">
-									<li v-for="o in exactOverlaps" :key="o.id">
-										<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
-										({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
-									</li>
-								</ul>
+			<div class="detail-view-layout">
+				<div class="detail-view-main">
+					<!-- Hero: Titel + Datum + Stufe -->
+					<div class="detail-section">
+						<div class="detail-hero">
+							<div>
+								<h2 class="detail-hero-title">{{ activity.title }}</h2>
+								<p class="detail-hero-time">
+									{{ formatDate(activity.date) }} &middot;
+									{{ activity.start_time }}–{{ activity.end_time }}
+								</p>
 							</div>
-							<div v-if="fuzzyOverlaps.length" class="field-hint" style="margin-top: 6px">
-								ℹ️ Möglicherweise ähnlicher Ort:
-								<ul class="overlap-list">
-									<li v-for="o in fuzzyOverlaps" :key="o.id">
-										<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
-										– «{{ o.location }}» ({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
-									</li>
-								</ul>
-							</div>
-						</template>
+						</div>
 					</div>
-					<div class="detail-field">
-						<span class="detail-label">Verantwortlich</span>
-						<span class="detail-value">{{ activity.responsible.length ? activity.responsible.join(', ') : '—' }}</span>
-					</div>
-					<div class="detail-field">
-						<span class="detail-label">Stufe</span>
-						<span class="detail-value">
-							<DepartmentBadge v-if="activity.department" :department="activity.department" />
-							<template v-else>—</template>
-						</span>
-					</div>
-				</div>
-			</div>
 
-			<!-- Programmpunkte -->
-			<div class="detail-section">
+					<!-- Ort / Verantwortlich -->
+					<div class="detail-section">
+						<div class="detail-grid detail-grid--3">
+							<div class="detail-field">
+								<span class="detail-label">Ort</span>
+								<span
+									class="detail-value"
+									:class="{ 'location-has-warning': exactOverlaps.length || fuzzyOverlaps.length }"
+									@click="(exactOverlaps.length || fuzzyOverlaps.length) && (locationWarningOpen = !locationWarningOpen)"
+								>
+									{{ activity.location || '—' }}
+									<span v-if="exactOverlaps.length" class="location-warn-icon" title="Überschneidung">⚠️</span>
+									<span v-else-if="fuzzyOverlaps.length" class="location-warn-icon" title="Möglicherweise ähnlicher Ort">ℹ️</span>
+								</span>
+								<template v-if="locationWarningOpen">
+									<div v-if="exactOverlaps.length" class="field-warning" style="margin-top: 6px">
+										⚠️ Überschneidung:
+										<ul class="overlap-list">
+											<li v-for="o in exactOverlaps" :key="o.id">
+												<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
+												({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
+											</li>
+										</ul>
+									</div>
+									<div v-if="fuzzyOverlaps.length" class="field-hint" style="margin-top: 6px">
+										ℹ️ Möglicherweise ähnlicher Ort:
+										<ul class="overlap-list">
+											<li v-for="o in fuzzyOverlaps" :key="o.id">
+												<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
+												– «{{ o.location }}» ({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
+											</li>
+										</ul>
+									</div>
+								</template>
+							</div>
+							<div class="detail-field">
+								<span class="detail-label">Verantwortlich</span>
+								<span class="detail-value">{{ activity.responsible.length ? activity.responsible.join(', ') : '—' }}</span>
+							</div>
+							<div class="detail-field">
+								<span class="detail-label">Stufe</span>
+								<span class="detail-value">
+									<DepartmentBadge v-if="activity.department" :department="activity.department" />
+									<template v-else>—</template>
+								</span>
+							</div>
+						</div>
+					</div>
+
+					<!-- Programmpunkte -->
+					<div class="detail-section">
 				<p class="detail-section-title">Programmpunkte</p>
 				<div v-if="activity.programs.length" class="program-timeline">
 					<div
@@ -1426,10 +1910,10 @@ function copyShareLink() {
 					</div>
 				</div>
 				<span v-else class="detail-value detail-value--muted">—</span>
-			</div>
+					</div>
 
-			<!-- Material -->
-			<div class="detail-section">
+					<!-- Material -->
+					<div class="detail-section">
 				<p class="detail-section-title">Material</p>
 				<ul v-if="activity.material.length" class="material-list-view">
 					<li
@@ -1443,18 +1927,18 @@ function copyShareLink() {
 					</li>
 				</ul>
 				<span v-else class="detail-value detail-value--muted">—</span>
-			</div>
+					</div>
 
-			<!-- SiKo -->
-			<div class="detail-section">
+					<!-- SiKo -->
+					<div class="detail-section">
 				<p class="detail-section-title">Sicherheitskonzept</p>
 				<p class="detail-value detail-value--multiline">
 					{{ activity.siko_text || '—' }}
 				</p>
-			</div>
+					</div>
 
-			<!-- Ziel + Schlechtwetter -->
-			<div class="detail-section">
+					<!-- Ziel + Schlechtwetter -->
+					<div class="detail-section">
 				<div class="detail-grid">
 					<div>
 						<p class="detail-section-title">Ziel</p>
@@ -1469,10 +1953,10 @@ function copyShareLink() {
 						</p>
 					</div>
 				</div>
-			</div>
+					</div>
 
-			<!-- Anhänge -->
-			<div class="detail-section">
+					<!-- Anhänge -->
+					<div class="detail-section">
 				<p class="detail-section-title">Anhänge</p>
 				<div v-if="attachments.length" class="user-chips">
 					<span
@@ -1491,10 +1975,10 @@ function copyShareLink() {
 					</span>
 				</div>
 				<span v-else class="detail-value detail-value--muted">—</span>
-			</div>
+					</div>
 
-			<!-- Meta -->
-			<div class="detail-meta">
+					<!-- Meta -->
+					<div class="detail-meta">
 				<span
 					>Erstellt:
 					{{ new Date(activity.created_at).toLocaleString('de-DE') }}</span
@@ -1503,8 +1987,162 @@ function copyShareLink() {
 					>Geändert:
 					{{ new Date(activity.updated_at).toLocaleString('de-DE') }}</span
 				>
-			</div>
+					</div>
+				</div>
 
+				<aside class="detail-stats-sidebar">
+					<div class="detail-stats-card">
+						<p class="detail-stats-card-title">Aktuelle Informationen</p>
+						<div class="detail-stats-list">
+							<div class="detail-stats-row">
+								<span class="detail-label">MiData Teilnehmende</span>
+								<span class="detail-value">
+									{{ midataLoading ? 'Lädt…' : (!midataConfigured ? 'Nicht konfiguriert' : (midataChildrenCount ?? '—')) }}
+								</span>
+							</div>
+							<div class="detail-stats-row" v-if="liveFormType === 'registration'">
+								<span class="detail-label">Anmeldungen</span>
+								<span class="detail-value" :class="{ 'detail-value--warn': registrationsExceedMidata }">{{ liveParticipantsLoading ? 'Lädt…' : (liveRegistrationCount ?? 0) }}</span>
+							</div>
+							<div class="detail-stats-row" v-if="liveFormType === 'deregistration'">
+								<span class="detail-label">Abmeldungen</span>
+								<span class="detail-value">{{ liveParticipantsLoading ? 'Lädt…' : (liveDeregistrationCount ?? 0) }}</span>
+							</div>
+							<div class="detail-stats-row">
+								<span class="detail-label">Total Teilnehmende</span>
+								<span class="detail-value" :class="{ 'detail-value--warn': registrationsExceedMidata }">{{ liveActivitySumDisplay }}</span>
+							</div>
+							<div class="detail-stats-row" v-if="registrationsExceedMidata">
+								<span class="detail-label">Hinweis</span>
+								<span class="detail-value detail-value--warn">Mehr Anmeldungen als MiData Kinder</span>
+							</div>
+							<div class="detail-stats-row" v-if="midataError">
+								<span class="detail-label">MiData Fehler</span>
+								<span class="detail-value">{{ midataError }}</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="detail-stats-card">
+						<p class="detail-stats-card-title">Erwartete Teilnehmende</p>
+						<div class="detail-stats-list">
+							<div class="detail-stats-row">
+								<span class="detail-label">Schätzwert ähnliche Aktivitäten</span>
+								<span class="detail-value">{{ estimatedParticipantsFromSimilar ?? activity.planned_participants_estimate ?? '—' }}</span>
+							</div>
+						</div>
+						<div class="detail-stats-sources" v-if="estimateSourceActivities.length">
+							<p class="detail-stats-sources__title">Quellen</p>
+							<div class="detail-stats-sources__list">
+								<a
+									v-for="source in estimateSourceActivities"
+									:key="source.id"
+									:href="`/activities/${source.id}`"
+									@click="flushAutoSave"
+									class="detail-stats-sources__link"
+								>
+									{{ source.title }}
+								</a>
+							</div>
+						</div>
+					</div>
+
+					<div class="detail-stats-card">
+						<p class="detail-stats-card-title">Erwartetes Wetter</p>
+						<div class="detail-stats-list">
+							<div class="detail-stats-row detail-stats-row--weather-input">
+								<span class="detail-label">Ort</span>
+								<div class="detail-weather-input-wrap">
+									<span class="detail-value">{{ weatherLocationSaved ?? '—' }}</span>
+								</div>
+							</div>
+							<div class="detail-stats-row">
+								<span class="detail-label">Vorhersage</span>
+								<div class="detail-weather-value">
+									<span class="detail-value" :class="{ 'detail-weather-symbol': expectedWeather?.available }">{{ weatherForecastDisplay }}</span>
+									<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
+								</div>
+							</div>
+							<div class="detail-stats-row">
+								<span class="detail-label">Temperatur</span>
+								<div class="detail-weather-value">
+									<span class="detail-value">{{ weatherTemperatureDisplay }}</span>
+									<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
+								</div>
+							</div>
+							<div class="detail-stats-row detail-stats-row--weather-chart" v-if="expectedWeather?.available && weatherChartSamples.length > 1">
+								<span class="detail-label">Verlauf</span>
+								<div class="weather-mini-chart">
+									<svg
+										:viewBox="`0 0 ${weatherChartWidth} ${weatherChartHeight}`"
+										preserveAspectRatio="none"
+										class="weather-mini-chart__svg"
+										aria-label="Temperaturverlauf"
+										@mousemove="onWeatherChartMouseMove"
+										@mouseleave="onWeatherChartMouseLeave"
+									>
+										<line
+											v-for="tick in weatherChartYTicks"
+											:key="`grid-view-${tick.label}`"
+											:x1="weatherChartPlotLeft"
+											:y1="tick.y"
+											:x2="weatherChartPlotRight"
+											:y2="tick.y"
+											class="weather-mini-chart__grid"
+										/>
+										<text
+											v-for="tick in weatherChartYTicks"
+											:key="`label-view-${tick.label}`"
+											x="6"
+											:y="tick.y + 3"
+											class="weather-mini-chart__tick-label"
+										>
+											{{ tick.label }}
+										</text>
+										<path :d="weatherChartPath" class="weather-mini-chart__line" />
+										<circle
+											v-for="(point, idx) in weatherChartPoints"
+											:key="`point-view-${idx}`"
+											:cx="point.x"
+											:cy="point.y"
+											:r="weatherHoveredPointIndex === idx ? 3.2 : 2"
+											class="weather-mini-chart__point"
+											:class="{ 'weather-mini-chart__point--active': weatherHoveredPointIndex === idx }"
+											@mouseenter="weatherHoveredPointIndex = idx"
+										/>
+									</svg>
+									<div v-if="weatherHoveredPoint" class="weather-mini-chart__hover-value">
+										{{ weatherHoveredPoint.timeLabel }} · {{ weatherHoveredPoint.tempLabel }}
+									</div>
+									<div class="weather-mini-chart__labels">
+										<span>{{ weatherChartStartLabel }}</span>
+										<span>{{ weatherChartEndLabel }}</span>
+									</div>
+								</div>
+							</div>
+							<div class="detail-stats-row">
+								<span class="detail-label">Regenwahrscheinlichkeit</span>
+								<div class="detail-weather-value">
+									<span class="detail-value">{{ weatherRainProbabilityDisplay }}</span>
+									<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
+								</div>
+							</div>
+							<div class="detail-stats-row" v-if="expectedWeather?.mode === 'seasonal-average' && expectedWeather?.season">
+								<span class="detail-label">Saison</span>
+								<span class="detail-value">{{ expectedWeather.season }}</span>
+							</div>
+							<div class="detail-stats-row" v-if="expectedWeather?.point_name">
+								<span class="detail-label">MeteoSwiss Punkt</span>
+								<span class="detail-value">{{ expectedWeather.point_name }}</span>
+							</div>
+							<div class="detail-stats-row" v-if="expectedWeather?.source">
+								<span class="detail-label">Quelle</span>
+								<span class="detail-value">{{ expectedWeather.source }}</span>
+							</div>
+						</div>
+					</div>
+				</aside>
+			</div>
 		</div>
 
 		<!-- =============================================================== EDIT -->
@@ -1557,6 +2195,21 @@ function copyShareLink() {
 						<input id="edit-end" v-model="editEndTime" type="time" :disabled="isLockedByOther('datetime')" />
 						<span v-if="savedFields['end_time']" class="field-saved-icon" :key="savedFields['end_time']">💾</span>
 					</div>
+				</div>
+			</div>
+
+			<div class="form-group">
+				<label for="edit-planned-participants">Erwartete Teilnehmende (Planwert)</label>
+				<div class="input-save-wrap">
+					<input
+						id="edit-planned-participants"
+						v-model.number="editPlannedParticipantsEstimate"
+						type="number"
+						min="0"
+						step="1"
+						placeholder="z. B. 24"
+					/>
+					<span v-if="savedFields['planned_participants_estimate']" class="field-saved-icon" :key="savedFields['planned_participants_estimate']">💾</span>
 				</div>
 			</div>
 
@@ -1967,6 +2620,170 @@ function copyShareLink() {
 					Schliessen
 				</button>
 			</div>
+
+			<aside class="detail-stats-sidebar detail-stats-sidebar--edit">
+				<div class="detail-stats-card">
+					<p class="detail-stats-card-title">Aktuelle Informationen</p>
+					<div class="detail-stats-list">
+						<div class="detail-stats-row">
+							<span class="detail-label">MiData Teilnehmende</span>
+							<span class="detail-value">{{ midataLoading ? 'Lädt…' : (!midataConfigured ? 'Nicht konfiguriert' : (midataChildrenCount ?? '—')) }}</span>
+						</div>
+						<div class="detail-stats-row" v-if="liveFormType === 'registration'">
+							<span class="detail-label">Anmeldungen</span>
+							<span class="detail-value" :class="{ 'detail-value--warn': registrationsExceedMidata }">{{ liveParticipantsLoading ? 'Lädt…' : (liveRegistrationCount ?? 0) }}</span>
+						</div>
+						<div class="detail-stats-row" v-if="liveFormType === 'deregistration'">
+							<span class="detail-label">Abmeldungen</span>
+							<span class="detail-value">{{ liveParticipantsLoading ? 'Lädt…' : (liveDeregistrationCount ?? 0) }}</span>
+						</div>
+						<div class="detail-stats-row">
+							<span class="detail-label">Total Teilnehmende</span>
+							<span class="detail-value" :class="{ 'detail-value--warn': registrationsExceedMidata }">{{ liveActivitySumDisplay }}</span>
+						</div>
+						<div class="detail-stats-row" v-if="registrationsExceedMidata">
+							<span class="detail-label">Hinweis</span>
+							<span class="detail-value detail-value--warn">Mehr Anmeldungen als MiData Kinder</span>
+						</div>
+						<div class="detail-stats-row" v-if="midataError">
+							<span class="detail-label">MiData Fehler</span>
+							<span class="detail-value">{{ midataError }}</span>
+						</div>
+					</div>
+				</div>
+
+				<div class="detail-stats-card">
+					<p class="detail-stats-card-title">Erwartete Teilnehmende</p>
+					<div class="detail-stats-list">
+						<div class="detail-stats-row">
+							<span class="detail-label">Schätzwert ähnliche Aktivitäten</span>
+							<span class="detail-value">{{ estimatedParticipantsFromSimilar ?? activity?.planned_participants_estimate ?? '—' }}</span>
+						</div>
+					</div>
+					<div class="detail-stats-sources" v-if="estimateSourceActivities.length">
+						<p class="detail-stats-sources__title">Quellen</p>
+						<div class="detail-stats-sources__list">
+							<a
+								v-for="source in estimateSourceActivities"
+								:key="source.id"
+								:href="`/activities/${source.id}`"
+								@click="flushAutoSave"
+								class="detail-stats-sources__link"
+							>
+								{{ source.title }}
+							</a>
+						</div>
+					</div>
+				</div>
+
+				<div class="detail-stats-card">
+					<p class="detail-stats-card-title">Erwartetes Wetter</p>
+					<div class="detail-stats-list">
+						<div class="detail-stats-row detail-stats-row--weather-input">
+							<span class="detail-label">Ort</span>
+							<div class="detail-weather-input-wrap">
+								<template v-if="weatherLocationEditing">
+									<input
+										v-model="weatherLocationInput"
+										type="text"
+										class="form-input detail-weather-input"
+										placeholder="z. B. 6300 Zug"
+										@keyup.enter="saveWeatherLocation"
+									/>
+									<button type="button" class="btn-secondary" :disabled="weatherLocationSaving" @click="saveWeatherLocation">Speichern</button>
+								</template>
+								<template v-else>
+									<span class="detail-value">{{ weatherLocationSaved }}</span>
+									<button type="button" class="detail-icon-btn" title="Ort bearbeiten" @click="startWeatherLocationEdit">✎</button>
+								</template>
+							</div>
+						</div>
+						<div class="detail-stats-row">
+							<span class="detail-label">Vorhersage</span>
+							<div class="detail-weather-value">
+								<span class="detail-value" :class="{ 'detail-weather-symbol': expectedWeather?.available }">{{ weatherForecastDisplay }}</span>
+								<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
+							</div>
+						</div>
+						<div class="detail-stats-row">
+							<span class="detail-label">Temperatur</span>
+							<div class="detail-weather-value">
+								<span class="detail-value">{{ weatherTemperatureDisplay }}</span>
+								<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
+							</div>
+						</div>
+						<div class="detail-stats-row detail-stats-row--weather-chart" v-if="expectedWeather?.available && weatherChartSamples.length > 1">
+							<span class="detail-label">Verlauf</span>
+							<div class="weather-mini-chart">
+								<svg
+									:viewBox="`0 0 ${weatherChartWidth} ${weatherChartHeight}`"
+									preserveAspectRatio="none"
+									class="weather-mini-chart__svg"
+									aria-label="Temperaturverlauf"
+									@mousemove="onWeatherChartMouseMove"
+									@mouseleave="onWeatherChartMouseLeave"
+								>
+									<line
+										v-for="tick in weatherChartYTicks"
+										:key="`grid-edit-${tick.label}`"
+										:x1="weatherChartPlotLeft"
+										:y1="tick.y"
+										:x2="weatherChartPlotRight"
+										:y2="tick.y"
+										class="weather-mini-chart__grid"
+									/>
+									<text
+										v-for="tick in weatherChartYTicks"
+										:key="`label-edit-${tick.label}`"
+										x="6"
+										:y="tick.y + 3"
+										class="weather-mini-chart__tick-label"
+									>
+										{{ tick.label }}
+									</text>
+									<path :d="weatherChartPath" class="weather-mini-chart__line" />
+									<circle
+										v-for="(point, idx) in weatherChartPoints"
+										:key="`point-edit-${idx}`"
+										:cx="point.x"
+										:cy="point.y"
+										:r="weatherHoveredPointIndex === idx ? 3.2 : 2"
+										class="weather-mini-chart__point"
+										:class="{ 'weather-mini-chart__point--active': weatherHoveredPointIndex === idx }"
+										@mouseenter="weatherHoveredPointIndex = idx"
+									/>
+								</svg>
+								<div v-if="weatherHoveredPoint" class="weather-mini-chart__hover-value">
+									{{ weatherHoveredPoint.timeLabel }} · {{ weatherHoveredPoint.tempLabel }}
+								</div>
+								<div class="weather-mini-chart__labels">
+									<span>{{ weatherChartStartLabel }}</span>
+									<span>{{ weatherChartEndLabel }}</span>
+								</div>
+							</div>
+						</div>
+						<div class="detail-stats-row">
+							<span class="detail-label">Regenwahrscheinlichkeit</span>
+							<div class="detail-weather-value">
+								<span class="detail-value">{{ weatherRainProbabilityDisplay }}</span>
+								<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
+							</div>
+						</div>
+						<div class="detail-stats-row" v-if="expectedWeather?.mode === 'seasonal-average' && expectedWeather?.season">
+							<span class="detail-label">Saison</span>
+							<span class="detail-value">{{ expectedWeather.season }}</span>
+						</div>
+						<div class="detail-stats-row" v-if="expectedWeather?.point_name">
+							<span class="detail-label">MeteoSwiss Punkt</span>
+							<span class="detail-value">{{ expectedWeather.point_name }}</span>
+						</div>
+						<div class="detail-stats-row" v-if="expectedWeather?.source">
+							<span class="detail-label">Quelle</span>
+							<span class="detail-value">{{ expectedWeather.source }}</span>
+						</div>
+					</div>
+				</div>
+			</aside>
 		</div>
 	</main>
 

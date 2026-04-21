@@ -35,6 +35,7 @@ export interface Activity {
 	material: MaterialItem[];
 	siko_text: string | null;
 	bad_weather_info: string | null;
+	planned_participants_estimate: number | null;
 	created_at: string;
 	updated_at: string;
 	programs: Program[];
@@ -52,6 +53,7 @@ export interface ActivityInput {
 	material: MaterialItem[];
 	siko_text?: string | null;
 	bad_weather_info?: string | null;
+	planned_participants_estimate?: number | null;
 	programs: ProgramInput[];
 }
 
@@ -144,6 +146,7 @@ export interface Attachment {
 export interface DepartmentRecord {
 	name: string;
 	color: string;
+	midata_group_id?: string | null;
 }
 
 export interface LocationRecord {
@@ -279,6 +282,9 @@ export interface FormStats {
 	form_type: FormType;
 	total: number;
 	by_mode: Record<string, number>;
+	registration_count?: number;
+	deregistration_count?: number;
+	expected_current?: number;
 	questions: Record<
 		string,
 		{
@@ -287,4 +293,21 @@ export interface FormStats {
 			answers: Record<string, number>;
 		}
 	>;
+}
+
+export interface ActivityExpectedWeather {
+	available: boolean;
+	mode?: 'forecast' | 'seasonal-average' | 'frozen';
+	temperature_c?: number;
+	temperature_min_c?: number | null;
+	temperature_max_c?: number | null;
+	hourly_temps?: Array<{ ts_unix: number; temperature_c: number }>;
+	rain_probability_percent?: number | null;
+	weather_symbol?: 'sun' | 'partly-cloudy' | 'cloud' | 'rain' | 'snow' | null;
+	season?: string | null;
+	point_name?: string | null;
+	postal_code?: string | null;
+	source?: string;
+	note?: string | null;
+	error?: string;
 }

@@ -9,6 +9,7 @@ interface AppConfig {
 	MSAL_TENANT_ID: string;
 	AUTOSAVE_INTERVAL: number;
 	AUTOSAVE_DEBOUNCE: boolean;
+	MIDATA_WEATHER_REFRESH_INTERVAL: number;
 }
 
 const w = window as unknown as { __APP_CONFIG__?: Record<string, string> };
@@ -31,4 +32,9 @@ export const config: AppConfig = {
 		(w.__APP_CONFIG__?.AUTOSAVE_DEBOUNCE ??
 			import.meta.env.VITE_AUTOSAVE_DEBOUNCE ??
 			'true') !== 'false',
+	MIDATA_WEATHER_REFRESH_INTERVAL:
+		Number(
+			w.__APP_CONFIG__?.MIDATA_WEATHER_REFRESH_INTERVAL ??
+				import.meta.env.VITE_MIDATA_WEATHER_REFRESH_INTERVAL,
+		) || 900000,
 };

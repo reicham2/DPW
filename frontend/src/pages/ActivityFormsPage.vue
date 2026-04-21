@@ -145,7 +145,12 @@
 				<!-- Tab: Statistik -->
 				<div v-else-if="activeTab === 'stats'" class="tab-content">
 					<div v-if="loadingStats" class="loading-state"><span class="spinner" /> Wird geladen…</div>
-					<FormStats v-else :stats="stats" :form="form" />
+					<FormStats
+						v-else
+						:stats="stats"
+						:form="form"
+						:planned-estimate="activity?.planned_participants_estimate ?? null"
+					/>
 				</div>
 			</template>
 
@@ -169,7 +174,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { SignupForm, SignupFormInput, FormResponse, FormQuestionInput, FormType } from '../types';
+import type { Activity, SignupForm, SignupFormInput, FormResponse, FormQuestionInput, FormType } from '../types';
 import { useForms, useFormTemplates } from '../composables/useForms';
 import { useActivities } from '../composables/useActivities';
 import { usePermissions } from '../composables/usePermissions';
@@ -204,6 +209,7 @@ const { fetchActivity } = useActivities();
 const { canForms, fetchMyPermissions } = usePermissions();
 const { templates: deptTemplates, fetchTemplates: fetchDeptTemplates } = useFormTemplates();
 
+const activity = ref<Activity | null>(null);
 const activityDepartment = ref<string | undefined>(undefined);
 
 const formBuilderRef = ref<InstanceType<typeof FormBuilder> | null>(null);
@@ -231,6 +237,7 @@ const tabs = [
 onMounted(async () => {
 	await fetchMyPermissions();
 	const act = await fetchActivity(activityId);
+	activity.value = act;
 	activityDepartment.value = act?.department ?? undefined;
 
 	// Permission gate: redirect if no form access
@@ -286,7 +293,7 @@ watch(activeTab, async (tab) => {
 		await fetchResponses(activityId);
 		loadingResponses.value = false;
 	}
-	if (tab === 'stats' && !stats.value) {
+	if (tab === 'stats') {
 		loadingStats.value = true;
 		await fetchStats(activityId);
 		loadingStats.value = false;
@@ -371,6 +378,11 @@ async function openResponse(id: string) {
 async function removeResponse(id: string) {
 	await deleteResponse(activityId, id);
 	if (selectedResponse.value?.id === id) selectedResponse.value = null;
+	if (activeTab.value === 'stats') {
+		loadingStats.value = true;
+		await fetchStats(activityId);
+		loadingStats.value = false;
+	}
 }
 
 function questionText(qid: string): string {

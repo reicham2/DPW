@@ -20,9 +20,9 @@ const error = ref<string | null>(null)
 const saving = ref(false)
 
 const editingName = ref<string | null>(null)
-const editForm = ref({ name: '', color: '#6b7280' })
+const editForm = ref({ name: '', color: '#6b7280', midata_group_id: '' })
 const showAdd = ref(false)
-const addForm = ref({ name: '', color: '#6b7280' })
+const addForm = ref({ name: '', color: '#6b7280', midata_group_id: '' })
 
 // ── Delete flow state ───────────────────────────────────────────────────────
 const deleteTarget = ref<string | null>(null)
@@ -49,9 +49,13 @@ onMounted(async () => {
   }
 })
 
-function startEdit(dept: { name: string; color: string }) {
+function startEdit(dept: { name: string; color: string; midata_group_id?: string | null }) {
   editingName.value = dept.name
-  editForm.value = { name: dept.name, color: dept.color }
+  editForm.value = {
+    name: dept.name,
+    color: dept.color,
+    midata_group_id: dept.midata_group_id ?? '',
+  }
 }
 
 function cancelEdit() {
@@ -63,7 +67,11 @@ async function saveEdit() {
   saving.value = true
   error.value = null
   try {
-    await updateDepartment(editingName.value, editForm.value)
+    await updateDepartment(editingName.value, {
+      name: editForm.value.name,
+      color: editForm.value.color,
+      midata_group_id: editForm.value.midata_group_id,
+    })
     await fetchDepartments()
     await fetchMyPermissions()
     editingName.value = null
@@ -79,10 +87,14 @@ async function handleAdd() {
   saving.value = true
   error.value = null
   try {
-    await createDepartment(addForm.value)
+    await createDepartment({
+      name: addForm.value.name,
+      color: addForm.value.color,
+      midata_group_id: addForm.value.midata_group_id,
+    })
     await fetchDepartments()
     await fetchMyPermissions()
-    addForm.value = { name: '', color: '#6b7280' }
+    addForm.value = { name: '', color: '#6b7280', midata_group_id: '' }
     showAdd.value = false
   } catch (e) {
     error.value = String(e)
@@ -156,6 +168,7 @@ async function confirmDelete() {
             <form class="item-row" @submit.prevent="saveEdit">
               <input v-model="editForm.color" type="color" class="color-input" />
               <input v-model="editForm.name" class="form-input" placeholder="Name" required />
+              <input v-model="editForm.midata_group_id" class="form-input" placeholder="MiData Gruppen-ID (optional)" />
               <span v-if="isDefault(dept.name)" class="protected-hint">Standard</span>
               <div class="item-actions">
                 <button type="submit" class="btn-save" :disabled="saving">Speichern</button>
@@ -167,6 +180,7 @@ async function confirmDelete() {
             <div class="item-row">
               <span class="color-dot" :style="{ background: dept.color }" />
               <span class="item-name">{{ dept.name }}</span>
+              <span v-if="dept.midata_group_id" class="protected-hint">MiData: {{ dept.midata_group_id }}</span>
               <span v-if="isDefault(dept.name)" class="protected-hint">Standard</span>
               <div class="item-actions">
                 <button class="btn-edit" @click="startEdit(dept)">Bearbeiten</button>
@@ -183,6 +197,7 @@ async function confirmDelete() {
             <input v-model="addForm.name" class="form-input" placeholder="Neuer Name" required />
             <input v-model="addForm.color" type="color" class="color-input" />
           </div>
+          <input v-model="addForm.midata_group_id" class="form-input" placeholder="MiData Gruppen-ID (optional)" />
           <div class="item-actions">
             <button type="submit" class="btn-save" :disabled="saving">Hinzufügen</button>
             <button type="button" class="btn-cancel" @click="showAdd = false">Abbrechen</button>
@@ -274,6 +289,33 @@ async function confirmDelete() {
 .section-header h2 { font-size: 1.15rem; font-weight: 700; color: #1a202c; margin: 0 0 4px; }
 .section-desc { font-size: 0.85rem; color: #6b7280; margin: 0 0 20px; }
 .loading { padding: 24px 0; color: #6b7280; }
+
+.midata-hint {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+}
+.midata-hint__title {
+  margin: 0 0 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1d4ed8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.midata-hint__text {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #1f2937;
+}
+.midata-hint__text + .midata-hint__text {
+  margin-top: 3px;
+}
+.midata-hint__text--warn {
+  color: #374151;
+}
 
 .item-list { display: flex; flex-direction: column; gap: 8px; }
 .item-card {
