@@ -53,6 +53,7 @@ bool WebSocketManager::authenticate_upgrade(const std::string &token, WsUserData
 
         out.display_name = user->display_name;
         out.oid = user->microsoft_oid;
+        out.user_id = user->id;
         out.authenticated = true;
         out.viewing_activity.clear();
         return true;
@@ -119,6 +120,22 @@ void WebSocketManager::broadcast(const std::string &message)
     for (auto *ws : clients_)
     {
         ws->send(sv, uWS::OpCode::TEXT);
+    }
+}
+
+void WebSocketManager::send_to_user_ids(const std::vector<std::string> &user_ids, const std::string &message)
+{
+    if (user_ids.empty())
+        return;
+    std::unordered_set<std::string> wanted(user_ids.begin(), user_ids.end());
+    std::string_view sv(message);
+    for (auto *ws : clients_)
+    {
+        auto *data = ws->getUserData();
+        if (!data->authenticated || data->user_id.empty())
+            continue;
+        if (wanted.find(data->user_id) != wanted.end())
+            ws->send(sv, uWS::OpCode::TEXT);
     }
 }
 

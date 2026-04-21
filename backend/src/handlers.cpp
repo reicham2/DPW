@@ -51,6 +51,38 @@ namespace
         return s;
     }
 
+    std::vector<std::string> unique_names_from_material(const std::vector<MaterialItem> &material)
+    {
+        std::vector<std::string> out;
+        std::unordered_set<std::string> seen;
+        for (const auto &m : material)
+        {
+            for (const auto &name : m.responsible)
+            {
+                std::string t = trim_ascii(name);
+                if (t.empty())
+                    continue;
+                std::string key = to_lower_ascii(t);
+                if (seen.insert(key).second)
+                    out.push_back(t);
+            }
+        }
+        return out;
+    }
+
+    bool contains_name_ci(const std::vector<std::string> &names, const std::string &needle)
+    {
+        std::string key = to_lower_ascii(trim_ascii(needle));
+        if (key.empty())
+            return false;
+        for (const auto &n : names)
+        {
+            if (to_lower_ascii(trim_ascii(n)) == key)
+                return true;
+        }
+        return false;
+    }
+
     std::string sanitize_meteo_text(std::string s)
     {
         std::string out;
@@ -2008,6 +2040,40 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                 send_json(res, 500, R"({"error":"Datenbankfehler"})");
                 return;
             }
+
+            if (current_user) {
+                auto all_assigned = unique_names_from_material(activity->material);
+                auto users = db.list_users();
+                for (const auto &u : users) {
+                    if (u.id == current_user->id || !u.notify_material_assigned)
+                        continue;
+                    if (!contains_name_ci(all_assigned, u.display_name))
+                        continue;
+
+                    std::string time_range = activity->start_time + "-" + activity->end_time;
+                    nlohmann::json payload = {
+                        {"activity_id", activity->id},
+                        {"activity_title", activity->title},
+                        {"activity_date", activity->date},
+                        {"activity_time", time_range},
+                        {"location", activity->location},
+                        {"assigned_users", all_assigned}
+                    };
+                    auto note = db.create_notification(
+                        u.id,
+                        "material_assigned",
+                        "Material dir zugewiesen",
+                        "Neue Materialverantwortung in \"" + activity->title + "\" am " + activity->date,
+                        std::string("/activities/") + activity->id,
+                        payload
+                    );
+                    if (note) {
+                        nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                        wm.send_to_user_ids({u.id}, ws_msg.dump());
+                    }
+                }
+            }
+
             nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
             wm.broadcast(msg.dump());
             send_json(res, 201, to_json(*activity).dump());
@@ -2040,6 +2106,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     std::string id{req->getParameter(0)};
     std::optional<std::string> current_department;
+    std::optional<Activity> previous_activity;
 
     // Permission check: user needs activity edit permission for this activity.
     auto current_user = resolve_user(db, claims);
@@ -2058,6 +2125,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         auto perm = db.get_role_permission(current_user->role);
         bool allowed = perm && can_edit_activity(*perm, *current_user, *activity, claims.email);
         current_department = activity->department;
+        previous_activity = *activity;
         if (!allowed)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -2067,7 +2135,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, id, &db, &wm, current_user, current_department](std::string_view chunk, bool last)
+    res->onData([res, buf, id, &db, &wm, current_user, current_department, previous_activity](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -2099,6 +2167,56 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                 send_json(res, 404, R"({"error":"Nicht gefunden"})");
                 return;
             }
+
+            if (current_user) {
+                auto new_assigned = unique_names_from_material(activity->material);
+                auto old_assigned = previous_activity ? unique_names_from_material(previous_activity->material) : std::vector<std::string>{};
+
+                std::vector<std::string> newly_assigned;
+                std::unordered_set<std::string> old_keys;
+                for (const auto &name : old_assigned)
+                    old_keys.insert(to_lower_ascii(trim_ascii(name)));
+                for (const auto &name : new_assigned) {
+                    std::string key = to_lower_ascii(trim_ascii(name));
+                    if (!key.empty() && old_keys.find(key) == old_keys.end())
+                        newly_assigned.push_back(name);
+                }
+
+                if (!newly_assigned.empty()) {
+                    auto users = db.list_users();
+                    for (const auto &u : users) {
+                        if (u.id == current_user->id || !u.notify_material_assigned)
+                            continue;
+                        if (!contains_name_ci(newly_assigned, u.display_name))
+                            continue;
+
+                        std::string time_range = activity->start_time + "-" + activity->end_time;
+                        nlohmann::json payload = {
+                            {"activity_id", activity->id},
+                            {"activity_title", activity->title},
+                            {"activity_date", activity->date},
+                            {"activity_time", time_range},
+                            {"location", activity->location},
+                            {"assigned_users", new_assigned},
+                            {"newly_assigned_users", newly_assigned}
+                        };
+
+                        auto note = db.create_notification(
+                            u.id,
+                            "material_assigned",
+                            "Material dir zugewiesen",
+                            "Neue Materialverantwortung in \"" + activity->title + "\" am " + activity->date,
+                            std::string("/activities/") + activity->id,
+                            payload
+                        );
+                        if (note) {
+                            nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                            wm.send_to_user_ids({u.id}, ws_msg.dump());
+                        }
+                    }
+                }
+            }
+
             nlohmann::json msg = {{"event", "updated"}, {"activity", to_json(*activity)}};
             wm.broadcast(msg.dump());
             send_json(res, 200, to_json(*activity).dump());
@@ -2171,8 +2289,27 @@ static nlohmann::json user_to_json(const UserRecord &u)
     j["department"] = u.department ? nlohmann::json(*u.department) : nlohmann::json(nullptr);
     j["role"] = u.role;
     j["time_display_mode"] = u.time_display_mode;
+    j["notify_material_assigned"] = u.notify_material_assigned;
+    j["notify_mail_own_activity"] = u.notify_mail_own_activity;
+    j["notify_mail_department"] = u.notify_mail_department;
     j["created_at"] = u.created_at;
     j["updated_at"] = u.updated_at;
+    return j;
+}
+
+static nlohmann::json notification_to_json(const NotificationRecord &n)
+{
+    nlohmann::json j = {
+        {"id", n.id},
+        {"user_id", n.user_id},
+        {"category", n.category},
+        {"title", n.title},
+        {"message", n.message},
+        {"payload", n.payload},
+        {"is_read", n.is_read},
+        {"created_at", n.created_at},
+    };
+    j["link"] = n.link ? nlohmann::json(*n.link) : nlohmann::json(nullptr);
     return j;
 }
 
@@ -2654,8 +2791,31 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             time_display_mode = mode;
         }
 
+        std::optional<bool> notify_material_assigned;
+        if (j.contains("notify_material_assigned") && j["notify_material_assigned"].is_boolean()) {
+            notify_material_assigned = j["notify_material_assigned"].get<bool>();
+        }
+
+        std::optional<bool> notify_mail_own_activity;
+        if (j.contains("notify_mail_own_activity") && j["notify_mail_own_activity"].is_boolean()) {
+            notify_mail_own_activity = j["notify_mail_own_activity"].get<bool>();
+        }
+
+        std::optional<bool> notify_mail_department;
+        if (j.contains("notify_mail_department") && j["notify_mail_department"].is_boolean()) {
+            notify_mail_department = j["notify_mail_department"].get<bool>();
+        }
+
         try {
-            auto user = db.update_user(current_user->microsoft_oid, display_name, department, time_display_mode);
+            auto user = db.update_user(
+                current_user->microsoft_oid,
+                display_name,
+                department,
+                time_display_mode,
+                notify_material_assigned,
+                notify_mail_own_activity,
+                notify_mail_department
+            );
             if (!user) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
@@ -2664,6 +2824,106 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);
         } });
+}
+
+// ---- GET /notifications ----------------------------------------------------
+
+void handle_get_notifications(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        int limit = 50;
+        std::string limit_raw = std::string(req->getQuery("limit"));
+        if (!limit_raw.empty())
+        {
+            try
+            {
+                limit = std::max(1, std::min(200, std::stoi(limit_raw)));
+            }
+            catch (...)
+            {
+                limit = 50;
+            }
+        }
+
+        auto notes = db.list_notifications_for_user(current_user->id, limit);
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &n : notes)
+            arr.push_back(notification_to_json(n));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+// ---- PATCH /notifications/:id/read ----------------------------------------
+
+void handle_patch_notification_read(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        std::string notification_id{req->getParameter(0)};
+        bool ok = db.mark_notification_read(current_user->id, notification_id);
+        if (!ok)
+        {
+            send_json(res, 500, R"({"error":"Konnte Benachrichtigung nicht aktualisieren"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+// ---- POST /notifications/read-all -----------------------------------------
+
+void handle_post_notifications_read_all(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        bool ok = db.mark_all_notifications_read(current_user->id);
+        if (!ok)
+        {
+            send_json(res, 500, R"({"error":"Konnte Benachrichtigungen nicht aktualisieren"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
 }
 
 // ---- Mail template helpers --------------------------------------------------
@@ -2859,7 +3119,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
 
 // ---- POST /send-mail --------------------------------------------------------
 
-void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
+void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
     std::string auth_header{req->getHeader("authorization")};
     std::string token = extract_bearer_token(auth_header);
@@ -2896,7 +3156,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, token, &db, current_user](std::string_view chunk, bool last)
+    res->onData([res, buf, token, &db, &wm, current_user](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -2947,6 +3207,60 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
                     std::string sender_email = current_user ? current_user->email : from_email;
                     db.log_sent_mail(activity_id, sender_id, sender_email, to_emails, cc_emails, subject, body_html);
                     db.delete_mail_draft(activity_id);
+
+                    auto activity = db.get_activity_by_id(activity_id);
+                    if (activity && current_user) {
+                        auto users = db.list_users();
+                        for (const auto &u : users) {
+                            if (u.id == current_user->id)
+                                continue;
+
+                            std::string link = std::string("/activities/") + activity->id;
+                            nlohmann::json payload = {
+                                {"activity_id", activity->id},
+                                {"activity_title", activity->title},
+                                {"activity_date", activity->date},
+                                {"activity_department", activity->department ? nlohmann::json(*activity->department) : nlohmann::json(nullptr)},
+                                {"mail_subject", subject},
+                                {"mail_body_html", body_html},
+                                {"to", to_emails},
+                                {"cc", cc_emails}
+                            };
+
+                            bool is_own_activity = contains_name_ci(activity->responsible, u.display_name);
+                            bool is_same_department = activity->department && u.department && *activity->department == *u.department;
+
+                            if (is_own_activity && u.notify_mail_own_activity) {
+                                auto note = db.create_notification(
+                                    u.id,
+                                    "mail_own_activity",
+                                    "Mail für deine Aktivität versendet",
+                                    "Mail zu \"" + activity->title + "\" wurde versendet.",
+                                    link,
+                                    payload
+                                );
+                                if (note) {
+                                    nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                    wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                }
+                            }
+
+                            if (is_same_department && u.notify_mail_department) {
+                                auto note = db.create_notification(
+                                    u.id,
+                                    "mail_department",
+                                    "Mail in deiner Stufe versendet",
+                                    "Mail zu \"" + activity->title + "\" in deiner Stufe wurde versendet.",
+                                    link,
+                                    payload
+                                );
+                                if (note) {
+                                    nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                    wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                }
+                            }
+                        }
+                    }
                 }
                 send_json(res, 200, R"({"status":"sent"})");
             } else {

@@ -11,6 +11,7 @@ struct WsUserData
 {
     std::string display_name;
     std::string oid;
+    std::string user_id;
     std::string viewing_activity; // activity_id the user is currently viewing
     bool authenticated = false;
 };
@@ -35,6 +36,7 @@ public:
     void on_close(WsHandle ws);
     void on_message(WsHandle ws, std::string_view message);
     void broadcast(const std::string &message);
+    void send_to_user_ids(const std::vector<std::string> &user_ids, const std::string &message);
     size_t connection_count() const { return clients_.size(); }
 
 private:

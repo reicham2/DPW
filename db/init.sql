@@ -84,6 +84,9 @@ CREATE TABLE users (
     role          TEXT        NOT NULL DEFAULT 'Mitglied' REFERENCES roles(name) ON UPDATE CASCADE,
     time_display_mode TEXT    NOT NULL DEFAULT 'minutes'
         CHECK (time_display_mode IN ('minutes', 'clock')),
+    notify_material_assigned BOOLEAN NOT NULL DEFAULT true,
+    notify_mail_own_activity BOOLEAN NOT NULL DEFAULT true,
+    notify_mail_department BOOLEAN NOT NULL DEFAULT true,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -128,6 +131,26 @@ CREATE TABLE sent_mails (
 );
 
 CREATE INDEX idx_sent_mails_activity_id ON sent_mails (activity_id);
+
+-- User notifications
+CREATE TABLE notifications (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category   TEXT NOT NULL CHECK (category IN (
+        'material_assigned',
+        'mail_own_activity',
+        'mail_department'
+    )),
+    title      TEXT NOT NULL,
+    message    TEXT NOT NULL,
+    link       TEXT,
+    payload    JSONB NOT NULL DEFAULT '{}',
+    is_read    BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_user_created ON notifications (user_id, created_at DESC);
+CREATE INDEX idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);
 
 -- Predefined locations (global, shared across all departments)
 CREATE TABLE predefined_locations (
