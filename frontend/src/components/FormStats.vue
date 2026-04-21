@@ -22,10 +22,6 @@
 				<span class="stat-value">{{ expectedCurrent }}</span>
 				<span class="stat-label">Aktuell erwartet</span>
 			</div>
-			<div v-if="plannedEstimate !== null" class="stat-card">
-				<span class="stat-value">{{ plannedEstimate }}</span>
-				<span class="stat-label">Geplant</span>
-			</div>
 		</div>
 
 		<!-- Per-question breakdown -->
@@ -91,7 +87,6 @@ import type { FormStats, SignupForm } from '../types';
 const props = defineProps<{
 	stats: FormStats | null;
 	form?: SignupForm | null;
-	plannedEstimate?: number | null;
 }>();
 
 const expectedCurrent = computed(() => {
@@ -101,8 +96,6 @@ const expectedCurrent = computed(() => {
 	const deregistrations = props.stats.deregistration_count ?? props.stats.by_mode?.deregistration ?? 0;
 	return registrations - deregistrations;
 });
-
-const plannedEstimate = computed(() => props.plannedEstimate ?? null);
 
 function typeLabel(type: string): string {
 	const m: Record<string, string> = {

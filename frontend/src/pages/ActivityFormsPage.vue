@@ -149,7 +149,6 @@
 						v-else
 						:stats="stats"
 						:form="form"
-						:planned-estimate="activity?.planned_participants_estimate ?? null"
 					/>
 				</div>
 			</template>

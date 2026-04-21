@@ -97,7 +97,6 @@ const editDepartment = ref<Department | ''>('');
 const editMaterial = ref<MaterialItem[]>([{ name: '', responsible: [] }]);
 const editSikoText = ref('');
 const editBadWeather = ref('');
-const editPlannedParticipantsEstimate = ref<number | null>(null);
 const editPrograms = ref<ProgramInput[]>([]);
 
 interface EditSnapshot {
@@ -112,7 +111,6 @@ interface EditSnapshot {
 	material: MaterialItem[];
 	sikoText: string;
 	badWeather: string;
-	plannedParticipantsEstimate: number | null;
 	programs: ProgramInput[];
 }
 
@@ -144,7 +142,6 @@ function captureEditSnapshot() {
 		material: cloneSnapshotMaterial(editMaterial.value),
 		sikoText: editSikoText.value,
 		badWeather: editBadWeather.value,
-		plannedParticipantsEstimate: editPlannedParticipantsEstimate.value,
 		programs: cloneSnapshotPrograms(editPrograms.value),
 	};
 }
@@ -162,7 +159,6 @@ function restoreEditSnapshot() {
 	editMaterial.value = cloneSnapshotMaterial(editSnapshot.value.material);
 	editSikoText.value = editSnapshot.value.sikoText;
 	editBadWeather.value = editSnapshot.value.badWeather;
-	editPlannedParticipantsEstimate.value = editSnapshot.value.plannedParticipantsEstimate;
 	editPrograms.value = cloneSnapshotPrograms(editSnapshot.value.programs);
 }
 
@@ -677,17 +673,34 @@ function getDayBucket(dateStr: string): DayBucket {
 	return 'unknown';
 }
 
+function getSimilarityWindowStart(dateStr: string): number | null {
+	if (!dateStr) return null;
+	const d = new Date(`${dateStr}T00:00:00`);
+	if (Number.isNaN(d.getTime())) return null;
+	d.setFullYear(d.getFullYear() - 1);
+	d.setMonth(d.getMonth() - 1);
+	return d.getTime();
+}
+
 const similarActivities = computed(() => {
 	if (!activity.value?.department) return [] as Activity[];
 	const current = activity.value;
 	const currentDate = Date.parse(current.date);
+	const windowStartDate = getSimilarityWindowStart(current.date);
 	const currentBucket = getDayBucket(current.date);
 	const currentStart = parseTimeToMinutes(current.start_time);
 
 	return activities.value
 		.filter((a) => a.id !== current.id)
 		.filter((a) => a.department === current.department)
-		.filter((a) => Number.isNaN(currentDate) || Date.parse(a.date) <= currentDate)
+		.filter((a) => {
+			if (Number.isNaN(currentDate)) return true;
+			const candidateDate = Date.parse(a.date);
+			if (Number.isNaN(candidateDate)) return false;
+			if (candidateDate > currentDate) return false;
+			if (windowStartDate !== null && candidateDate < windowStartDate) return false;
+			return true;
+		})
 		.filter((a) => getDayBucket(a.date) === currentBucket)
 		.sort((a, b) => {
 			const aStart = parseTimeToMinutes(a.start_time);
@@ -699,18 +712,76 @@ const similarActivities = computed(() => {
 		});
 });
 
+const similarActivityStats = ref<Record<string, number>>({});
+const similarActivityEstimateLoading = ref(false);
+let similarActivityEstimateRequestId = 0;
+
+function expectedParticipantsFromStats(stats: FormStats): number | null {
+	if (typeof stats.expected_current === 'number') return stats.expected_current;
+	const registration = stats.registration_count ?? stats.by_mode?.registration ?? 0;
+	const deregistration = stats.deregistration_count ?? stats.by_mode?.deregistration ?? 0;
+	return registration - deregistration;
+}
+
+async function refreshEstimatedParticipantsFromSimilar() {
+	const requestId = ++similarActivityEstimateRequestId;
+	const candidates = similarActivities.value.slice(0, 8);
+	if (!candidates.length) {
+		similarActivityStats.value = {};
+		similarActivityEstimateLoading.value = false;
+		return;
+	}
+
+	similarActivityEstimateLoading.value = true;
+	const nextStats: Record<string, number> = {};
+
+	for (const candidate of candidates) {
+		try {
+			const res = await apiFetch(`/api/activities/${candidate.id}/form/stats`);
+			if (!res.ok) continue;
+			const stats = (await res.json()) as FormStats;
+			const expected = expectedParticipantsFromStats(stats);
+			if (typeof expected !== 'number' || !Number.isFinite(expected) || expected < 0) continue;
+			nextStats[candidate.id] = Math.round(expected);
+		} catch {
+			/* ignore invalid candidates */
+		}
+	}
+
+	if (requestId !== similarActivityEstimateRequestId) return;
+	similarActivityStats.value = nextStats;
+	similarActivityEstimateLoading.value = false;
+}
+
+const similarActivitiesKey = computed(() => {
+	const ids = similarActivities.value.slice(0, 8).map((a) => a.id).join('|');
+	return `${activity.value?.id ?? ''}|${ids}`;
+});
+
+watch(similarActivitiesKey, () => {
+	void refreshEstimatedParticipantsFromSimilar();
+}, { immediate: true });
+
 const estimatedParticipantsFromSimilar = computed(() => {
 	const sample = similarActivities.value
-		.filter((a) => typeof a.planned_participants_estimate === 'number')
-		.slice(0, 5)
-		.map((a) => a.planned_participants_estimate as number);
+		.map((a) => similarActivityStats.value[a.id])
+		.filter((value): value is number => typeof value === 'number')
+		.slice(0, 5);
 	if (!sample.length) return null;
 	const avg = sample.reduce((sum, value) => sum + value, 0) / sample.length;
 	return Math.round(avg);
 });
 
+const estimatedParticipantsDisplay = computed(() => {
+	if (typeof estimatedParticipantsFromSimilar.value === 'number') return String(estimatedParticipantsFromSimilar.value);
+	if (similarActivityEstimateLoading.value) return 'Berechnung…';
+	return '—';
+});
+
 const estimateSourceActivities = computed(() => {
-	return similarActivities.value.slice(0, 2);
+	return similarActivities.value
+		.filter((a) => typeof similarActivityStats.value[a.id] === 'number')
+		.slice(0, 2);
 });
 
 onMounted(async () => {
@@ -740,7 +811,6 @@ onMounted(async () => {
 		void fetchShareLink();
 		void Promise.allSettled([
 			fetchDepartments(),
-			fetchUsers(),
 			fetchLocations(),
 			fetchActivities(),
 		]);
@@ -814,7 +884,6 @@ function syncEditFields(a: typeof activity.value) {
 	editMaterial.value = [...a.material.map(m => ({ name: m.name, responsible: m.responsible ?? [] })), { name: '', responsible: [] }]; // trailing empty = sentinel input
 	editSikoText.value = a.siko_text ?? '';
 	editBadWeather.value = a.bad_weather_info ?? '';
-	editPlannedParticipantsEstimate.value = a.planned_participants_estimate;
 	editPrograms.value = a.programs.map((p) => ({
 		duration_minutes: p.duration_minutes,
 		title: p.title,
@@ -852,8 +921,6 @@ watch(lastUpdatedActivity, (updated) => {
 			editSikoText.value = updated.siko_text ?? '';
 		if (updated.bad_weather_info !== prev.bad_weather_info)
 			editBadWeather.value = updated.bad_weather_info ?? '';
-		if (updated.planned_participants_estimate !== prev.planned_participants_estimate)
-			editPlannedParticipantsEstimate.value = updated.planned_participants_estimate;
 		if (JSON.stringify(updated.material) !== JSON.stringify(prev.material))
 			editMaterial.value = [...updated.material.map(m => ({ name: m.name, responsible: m.responsible ?? [] })), { name: '', responsible: [] }];
 		if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs)) {
@@ -911,6 +978,7 @@ function enterEdit() {
 	editAttachmentIdsSnapshot.value = attachments.value.map(a => a.id);
 	error.value = null;
 	mode.value = 'edit';
+	void fetchUsers();
 	startAutoSaveInterval();
 	initProgEditors();
 	nextTick(() => {
@@ -1612,7 +1680,6 @@ watch(
 		editMaterial,
 		editSikoText,
 		editBadWeather,
-		editPlannedParticipantsEstimate,
 		editPrograms,
 	],
 	scheduleAutoSave,
@@ -1630,7 +1697,6 @@ watch([editDepartment], () => markDirty('department'));
 watch([editSikoText], () => markDirty('siko_text'));
 watch([editGoal], () => markDirty('goal'));
 watch([editBadWeather], () => markDirty('bad_weather'));
-watch([editPlannedParticipantsEstimate], () => markDirty('planned_participants_estimate'));
 
 // ---- Fuzzy location overlap confirmation dialog ----------------------------
 const showFuzzyDialog = ref(false);
@@ -1673,9 +1739,6 @@ async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 		material: editMaterial.value.filter((m) => m.name.trim()).map(m => ({ name: m.name.trim(), ...(m.responsible?.length ? { responsible: m.responsible } : {}) })),
 		siko_text: editSikoText.value.trim() || null,
 		bad_weather_info: editBadWeather.value.trim() || null,
-		planned_participants_estimate: Number.isFinite(editPlannedParticipantsEstimate.value) && (editPlannedParticipantsEstimate.value as number) >= 0
-			? Math.round(editPlannedParticipantsEstimate.value as number)
-			: null,
 		programs: editPrograms.value,
 	});
 
@@ -2028,7 +2091,7 @@ function copyShareLink() {
 						<div class="detail-stats-list">
 							<div class="detail-stats-row">
 								<span class="detail-label">Schätzwert ähnliche Aktivitäten</span>
-								<span class="detail-value">{{ estimatedParticipantsFromSimilar ?? activity.planned_participants_estimate ?? '—' }}</span>
+								<span class="detail-value">{{ estimatedParticipantsDisplay }}</span>
 							</div>
 						</div>
 						<div class="detail-stats-sources" v-if="estimateSourceActivities.length">
@@ -2195,21 +2258,6 @@ function copyShareLink() {
 						<input id="edit-end" v-model="editEndTime" type="time" :disabled="isLockedByOther('datetime')" />
 						<span v-if="savedFields['end_time']" class="field-saved-icon" :key="savedFields['end_time']">💾</span>
 					</div>
-				</div>
-			</div>
-
-			<div class="form-group">
-				<label for="edit-planned-participants">Erwartete Teilnehmende (Planwert)</label>
-				<div class="input-save-wrap">
-					<input
-						id="edit-planned-participants"
-						v-model.number="editPlannedParticipantsEstimate"
-						type="number"
-						min="0"
-						step="1"
-						placeholder="z. B. 24"
-					/>
-					<span v-if="savedFields['planned_participants_estimate']" class="field-saved-icon" :key="savedFields['planned_participants_estimate']">💾</span>
 				</div>
 			</div>
 
@@ -2657,7 +2705,7 @@ function copyShareLink() {
 					<div class="detail-stats-list">
 						<div class="detail-stats-row">
 							<span class="detail-label">Schätzwert ähnliche Aktivitäten</span>
-							<span class="detail-value">{{ estimatedParticipantsFromSimilar ?? activity?.planned_participants_estimate ?? '—' }}</span>
+							<span class="detail-value">{{ estimatedParticipantsDisplay }}</span>
 						</div>
 					</div>
 					<div class="detail-stats-sources" v-if="estimateSourceActivities.length">
