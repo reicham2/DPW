@@ -12,6 +12,16 @@ INSERT INTO departments (name, color) VALUES
     ('Biber',  '#7c3aed')
 ON CONFLICT (name) DO NOTHING;
 
+UPDATE departments
+SET midata_group_id = CASE name
+    WHEN 'Biber' THEN '6512'
+    WHEN 'Pfadi' THEN '6513'
+    WHEN 'Pio' THEN '6534'
+    WHEN 'Wölfe' THEN '6529'
+    ELSE midata_group_id
+END
+WHERE name IN ('Biber', 'Pfadi', 'Pio', 'Wölfe');
+
 UPDATE roles SET sort_order = 4 WHERE name = 'Mitglied';
 
 INSERT INTO roles (name, color, sort_order) VALUES
@@ -214,7 +224,20 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      'Wölfe',
      '[{"name": "Springseile (5x)", "responsible": []}, {"name": "Hütchen (20x)", "responsible": ["Leiter Zwei"]}, {"name": "Fußbälle (3x)", "responsible": []}]'::jsonb,
      NULL,
-     'Zeitgleich mit Pfadi-Waldspiel – koordinierte Aktivitäten');
+    'Zeitgleich mit Pfadi-Waldspiel – koordinierte Aktivitäten'),
+
+    -- Vergangene Aktivität ohne Wetter-Snapshot (Freeze-Fehlerfall testbar)
+    ('b0000000-0000-0000-0000-000000000014',
+    'Rückblickabend Biber',
+    CURRENT_DATE - INTERVAL '20 days',
+    '18:30', '20:00',
+    'Abzeichen reflektieren und Fotos schauen',
+    'Pfadiheim Hüetli',
+    ARRAY['Leiter Drei'],
+    'Biber',
+    '[]'::jsonb,
+    NULL,
+    'Bei Bedarf wird auf Bastelraum ausgewichen');
 
 -- ── Programm-Einträge ───────────────────────────────────────────────────────
 
@@ -427,4 +450,183 @@ ON CONFLICT (department, form_type, name) DO NOTHING;
 
 -- ── Test-Formulare für bestehende Aktivitäten ───────────────────────────────
 
--- Keine Formulare – diese werden in der App erstellt und gespeichert
+-- Planwerte für Teilnehmende (neues Feld planned_participants_estimate)
+UPDATE activities
+SET planned_participants_estimate = CASE id
+    WHEN 'b0000000-0000-0000-0000-000000000001' THEN 18
+    WHEN 'b0000000-0000-0000-0000-000000000002' THEN 24
+    WHEN 'b0000000-0000-0000-0000-000000000003' THEN 20
+    WHEN 'b0000000-0000-0000-0000-000000000004' THEN 12
+    WHEN 'b0000000-0000-0000-0000-000000000005' THEN 16
+    WHEN 'b0000000-0000-0000-0000-000000000006' THEN 9
+    WHEN 'b0000000-0000-0000-0000-000000000007' THEN 22
+    WHEN 'b0000000-0000-0000-0000-000000000008' THEN 15
+    WHEN 'b0000000-0000-0000-0000-000000000009' THEN 14
+    WHEN 'b0000000-0000-0000-0000-000000000010' THEN 10
+    WHEN 'b0000000-0000-0000-0000-000000000011' THEN 19
+    WHEN 'b0000000-0000-0000-0000-000000000012' THEN 26
+    WHEN 'b0000000-0000-0000-0000-000000000013' THEN 21
+    WHEN 'b0000000-0000-0000-0000-000000000014' THEN 11
+    ELSE planned_participants_estimate
+END
+WHERE id IN (
+    'b0000000-0000-0000-0000-000000000001',
+    'b0000000-0000-0000-0000-000000000002',
+    'b0000000-0000-0000-0000-000000000003',
+    'b0000000-0000-0000-0000-000000000004',
+    'b0000000-0000-0000-0000-000000000005',
+    'b0000000-0000-0000-0000-000000000006',
+    'b0000000-0000-0000-0000-000000000007',
+    'b0000000-0000-0000-0000-000000000008',
+    'b0000000-0000-0000-0000-000000000009',
+    'b0000000-0000-0000-0000-000000000010',
+    'b0000000-0000-0000-0000-000000000011',
+    'b0000000-0000-0000-0000-000000000012',
+    'b0000000-0000-0000-0000-000000000013',
+    'b0000000-0000-0000-0000-000000000014'
+);
+
+-- Persistierte Midata-/Wetter-Snapshots für Freeze-Tests
+-- Aktivität 001: vollständiger Snapshot vorhanden (soll nach Aktivitätstag fix angezeigt werden)
+UPDATE activities
+SET
+    midata_children_value = 27,
+    midata_children_recorded_at = NOW() - INTERVAL '2 days',
+    weather_snapshot = '{
+        "available": true,
+        "mode": "forecast",
+        "temperature_c": 14.8,
+        "season": null,
+        "point_name": "Zug, Neustadt",
+        "postal_code": "6300",
+        "source": "meteoswiss",
+        "note": "Seed snapshot for frozen-weather test"
+    }'::jsonb,
+    weather_recorded_at = NOW() - INTERVAL '2 days'
+WHERE id = 'b0000000-0000-0000-0000-000000000001';
+
+-- Aktivität 014: nur Midata-Snapshot vorhanden (Wetter fehlt absichtlich)
+UPDATE activities
+SET
+    midata_children_value = 12,
+    midata_children_recorded_at = NOW() - INTERVAL '15 days',
+    weather_location = '6300 Zug',
+    weather_snapshot = NULL,
+    weather_recorded_at = NULL
+WHERE id = 'b0000000-0000-0000-0000-000000000014';
+
+UPDATE activities
+SET weather_location = '9050 Appenzell'
+WHERE id = 'b0000000-0000-0000-0000-000000000007';
+
+-- Testformular + Antworten für Statistik (Anmeldungen / Abmeldungen)
+-- Ziel: Activity-Form-Statistik liefert realistische Werte inkl. expected_current.
+WITH upsert_form AS (
+    INSERT INTO signup_forms (id, activity_id, public_slug, form_type, title, created_by)
+    VALUES (
+        'd0000000-0000-0000-0000-000000000001',
+        'b0000000-0000-0000-0000-000000000002',
+        'pfadi-seilbruecke-test',
+        'registration',
+        'An-/Abmeldung Seilbruecke (Seed)',
+        'a0000000-0000-0000-0000-000000000001'
+    )
+    ON CONFLICT (activity_id) DO UPDATE
+    SET form_type = EXCLUDED.form_type,
+        title = EXCLUDED.title,
+        created_by = EXCLUDED.created_by,
+        updated_at = NOW()
+    RETURNING id
+),
+target_form AS (
+    SELECT id FROM upsert_form
+    UNION ALL
+    SELECT id FROM signup_forms WHERE activity_id = 'b0000000-0000-0000-0000-000000000002'
+    LIMIT 1
+)
+INSERT INTO form_questions (id, form_id, question_text, question_type, position, is_required, metadata)
+SELECT *
+FROM (
+    SELECT
+        'd0000000-0000-0000-0000-000000000011'::uuid,
+        (SELECT id FROM target_form),
+        'Name Kind',
+        'text_input',
+        1,
+        true,
+        '{}'::jsonb
+    UNION ALL
+    SELECT
+        'd0000000-0000-0000-0000-000000000012'::uuid,
+        (SELECT id FROM target_form),
+        'Verpflegung',
+        'single_choice',
+        2,
+        true,
+        '{"choices":[{"id":"normal","label":"Normal"},{"id":"vegetarisch","label":"Vegetarisch"},{"id":"vegan","label":"Vegan"}]}'::jsonb
+    UNION ALL
+    SELECT
+        'd0000000-0000-0000-0000-000000000013'::uuid,
+        (SELECT id FROM target_form),
+        'Bemerkungen',
+        'text_input',
+        3,
+        false,
+        '{"multiline":true}'::jsonb
+) q(id, form_id, question_text, question_type, position, is_required, metadata)
+ON CONFLICT (id) DO UPDATE
+SET question_text = EXCLUDED.question_text,
+    question_type = EXCLUDED.question_type,
+    position = EXCLUDED.position,
+    is_required = EXCLUDED.is_required,
+    metadata = EXCLUDED.metadata;
+
+INSERT INTO form_responses (id, form_id, submission_mode, submitted_at, user_agent, ip_address)
+SELECT
+    r.id,
+    sf.id,
+    r.submission_mode,
+    NOW() - r.delta,
+    'seed/test-suite',
+    '127.0.0.1'
+FROM signup_forms sf
+JOIN (
+    VALUES
+        ('d1000000-0000-0000-0000-000000000001'::uuid, 'registration'::text, INTERVAL '9 days'),
+        ('d1000000-0000-0000-0000-000000000002'::uuid, 'registration'::text, INTERVAL '8 days'),
+        ('d1000000-0000-0000-0000-000000000003'::uuid, 'registration'::text, INTERVAL '7 days'),
+        ('d1000000-0000-0000-0000-000000000004'::uuid, 'registration'::text, INTERVAL '6 days'),
+        ('d1000000-0000-0000-0000-000000000005'::uuid, 'registration'::text, INTERVAL '5 days'),
+        ('d1000000-0000-0000-0000-000000000006'::uuid, 'registration'::text, INTERVAL '4 days'),
+        ('d1000000-0000-0000-0000-000000000007'::uuid, 'registration'::text, INTERVAL '3 days'),
+        ('d1000000-0000-0000-0000-000000000008'::uuid, 'registration'::text, INTERVAL '2 days'),
+        ('d1000000-0000-0000-0000-000000000009'::uuid, 'deregistration'::text, INTERVAL '36 hours'),
+        ('d1000000-0000-0000-0000-000000000010'::uuid, 'deregistration'::text, INTERVAL '12 hours')
+    ) AS r(id, submission_mode, delta)
+    ON TRUE
+WHERE sf.activity_id = 'b0000000-0000-0000-0000-000000000002'
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO response_answers (id, response_id, question_id, answer_value)
+VALUES
+    ('d2000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000011', 'Mila'),
+    ('d2000000-0000-0000-0000-000000000002', 'd1000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000012', 'normal'),
+    ('d2000000-0000-0000-0000-000000000003', 'd1000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000011', 'Noah'),
+    ('d2000000-0000-0000-0000-000000000004', 'd1000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000012', 'vegetarisch'),
+    ('d2000000-0000-0000-0000-000000000005', 'd1000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000011', 'Lina'),
+    ('d2000000-0000-0000-0000-000000000006', 'd1000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000012', 'normal'),
+    ('d2000000-0000-0000-0000-000000000007', 'd1000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-000000000011', 'Jonas'),
+    ('d2000000-0000-0000-0000-000000000008', 'd1000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-000000000012', 'vegan'),
+    ('d2000000-0000-0000-0000-000000000009', 'd1000000-0000-0000-0000-000000000005', 'd0000000-0000-0000-0000-000000000011', 'Lea'),
+    ('d2000000-0000-0000-0000-000000000010', 'd1000000-0000-0000-0000-000000000005', 'd0000000-0000-0000-0000-000000000012', 'normal'),
+    ('d2000000-0000-0000-0000-000000000011', 'd1000000-0000-0000-0000-000000000006', 'd0000000-0000-0000-0000-000000000011', 'Nico'),
+    ('d2000000-0000-0000-0000-000000000012', 'd1000000-0000-0000-0000-000000000006', 'd0000000-0000-0000-0000-000000000012', 'vegetarisch'),
+    ('d2000000-0000-0000-0000-000000000013', 'd1000000-0000-0000-0000-000000000007', 'd0000000-0000-0000-0000-000000000011', 'Timo'),
+    ('d2000000-0000-0000-0000-000000000014', 'd1000000-0000-0000-0000-000000000007', 'd0000000-0000-0000-0000-000000000012', 'normal'),
+    ('d2000000-0000-0000-0000-000000000015', 'd1000000-0000-0000-0000-000000000008', 'd0000000-0000-0000-0000-000000000011', 'Sina'),
+    ('d2000000-0000-0000-0000-000000000016', 'd1000000-0000-0000-0000-000000000008', 'd0000000-0000-0000-0000-000000000012', 'normal'),
+    ('d2000000-0000-0000-0000-000000000017', 'd1000000-0000-0000-0000-000000000009', 'd0000000-0000-0000-0000-000000000011', 'Noah'),
+    ('d2000000-0000-0000-0000-000000000018', 'd1000000-0000-0000-0000-000000000009', 'd0000000-0000-0000-0000-000000000013', 'Ferien'),
+    ('d2000000-0000-0000-0000-000000000019', 'd1000000-0000-0000-0000-000000000010', 'd0000000-0000-0000-0000-000000000011', 'Jonas'),
+    ('d2000000-0000-0000-0000-000000000020', 'd1000000-0000-0000-0000-000000000010', 'd0000000-0000-0000-0000-000000000013', 'Krankheit')
+ON CONFLICT (id) DO NOTHING;

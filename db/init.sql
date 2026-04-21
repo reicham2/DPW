@@ -5,6 +5,8 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE departments (
     name       TEXT PRIMARY KEY,
     color      TEXT NOT NULL DEFAULT '#6b7280',
+    midata_group_id TEXT,
+    midata_child_roles TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -39,6 +41,12 @@ CREATE TABLE activities (
     material         JSONB       NOT NULL DEFAULT '[]',
     siko_text        TEXT,
     bad_weather_info TEXT,
+    planned_participants_estimate INTEGER CHECK (planned_participants_estimate >= 0),
+    midata_children_value INTEGER,
+    midata_children_recorded_at TIMESTAMPTZ,
+    weather_location TEXT,
+    weather_snapshot JSONB,
+    weather_recorded_at TIMESTAMPTZ,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

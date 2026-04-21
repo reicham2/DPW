@@ -66,3 +66,19 @@ make db-seed
 | Edit users (admin panel) | ✅ all, incl. role | ✅ own dept, no role change     | ❌                   | ❌                              |
 
 _As of 10 April 2026._
+
+## MiData Integration
+
+Für die aktuelle Kinderanzahl pro Aktivität kann DPW MiData abfragen.
+
+Voraussetzungen:
+
+1. `MIDATA_API_KEY` in `.env` setzen.
+2. Falls nötig Header/URL-Template via `MIDATA_API_KEY_HEADER` und `MIDATA_API_URL_TEMPLATE` anpassen.
+3. Pro Stufe in der Admin-Ansicht eine MiData-Gruppen-ID hinterlegen.
+
+Hinweise:
+
+1. Ohne Gruppen-ID oder API-Key bleibt der MiData-Wert leer (`Nicht konfiguriert`).
+2. Als Kinder werden Personen gezählt, die in MiData keine Einträge in `links.roles` haben.
+3. Personen mit mindestens einer Rolle (`links.roles`) werden nicht mitgezählt.

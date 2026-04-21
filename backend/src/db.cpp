@@ -151,6 +151,10 @@ Activity Database::row_to_activity(PGresult *res, int row)
     if (bwi)
         a.bad_weather_info = bwi;
 
+    const char *ppe = col("planned_participants_estimate");
+    if (ppe)
+        a.planned_participants_estimate = std::atoi(ppe);
+
     // siko_text
     const char *siko_t = col("siko_text");
     if (siko_t)
@@ -279,7 +283,7 @@ std::vector<Activity> Database::list_activities()
     PGresult *res = PQexec(conn_,
                            "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
                            "       department, material, siko_text, "
-                           "       bad_weather_info, created_at, updated_at "
+                           "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
                            "FROM activities ORDER BY date DESC, start_time");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -307,7 +311,7 @@ std::optional<Activity> Database::get_activity_by_id(const std::string &id)
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
                                  "       department, material, siko_text, "
-                                 "       bad_weather_info, created_at, updated_at "
+                                 "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
                                  "FROM activities WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
@@ -362,7 +366,7 @@ std::vector<LocationRecord> Database::list_predefined_locations()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-        "SELECT id, name, created_at, updated_at FROM predefined_locations ORDER BY name");
+                           "SELECT id, name, created_at, updated_at FROM predefined_locations ORDER BY name");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
         std::string err = PQresultErrorMessage(res);
@@ -383,9 +387,9 @@ std::optional<LocationRecord> Database::create_predefined_location(const std::st
     ensure_connected();
     const char *params[1] = {name.c_str()};
     PGresult *res = PQexecParams(conn_,
-        "INSERT INTO predefined_locations (name) VALUES ($1) "
-        "RETURNING id, name, created_at, updated_at",
-        1, nullptr, params, nullptr, nullptr, 0);
+                                 "INSERT INTO predefined_locations (name) VALUES ($1) "
+                                 "RETURNING id, name, created_at, updated_at",
+                                 1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         PQclear(res);
@@ -401,9 +405,9 @@ std::optional<LocationRecord> Database::update_predefined_location(const std::st
     ensure_connected();
     const char *params[2] = {id.c_str(), name.c_str()};
     PGresult *res = PQexecParams(conn_,
-        "UPDATE predefined_locations SET name = $2 WHERE id = $1 "
-        "RETURNING id, name, created_at, updated_at",
-        2, nullptr, params, nullptr, nullptr, 0);
+                                 "UPDATE predefined_locations SET name = $2 WHERE id = $1 "
+                                 "RETURNING id, name, created_at, updated_at",
+                                 2, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         PQclear(res);
@@ -419,8 +423,8 @@ bool Database::delete_predefined_location(const std::string &id)
     ensure_connected();
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
-        "DELETE FROM predefined_locations WHERE id = $1",
-        1, nullptr, params, nullptr, nullptr, 0);
+                                 "DELETE FROM predefined_locations WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK && PQcmdTuples(res)[0] != '0';
     PQclear(res);
     return ok;
@@ -475,8 +479,10 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
     std::string siko_str = input.siko_text ? *input.siko_text : "";
+    std::string ppe_str = input.planned_participants_estimate ? std::to_string(*input.planned_participants_estimate) : "";
     const char *dept_param = input.department ? dept_str.c_str() : nullptr;
     const char *siko_param = input.siko_text ? siko_str.c_str() : nullptr;
+    const char *ppe_param = input.planned_participants_estimate ? ppe_str.c_str() : nullptr;
 
     exec_or_throw(conn_, "BEGIN", "create_activity BEGIN");
 
@@ -490,16 +496,17 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
             dept_param,
             mat_json.c_str(),
             siko_param,
-            bwi_str.c_str()};
+            bwi_str.c_str(),
+            ppe_param};
         PGresult *r = PQexecParams(conn_,
                                    "INSERT INTO activities "
-                                   "(title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info) "
+                                   "(title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info, planned_participants_estimate) "
                                    "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
-                                   "$8, $9::jsonb, $10, $11) "
+                                   "$8, $9::jsonb, $10, $11, $12::int) "
                                    "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
                                    "department, material, siko_text, "
-                                   "bad_weather_info, created_at, updated_at",
-                                   11, nullptr, p2, nullptr, nullptr, 0);
+                                   "bad_weather_info, planned_participants_estimate, created_at, updated_at",
+                                   12, nullptr, p2, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
             std::string err = PQresultErrorMessage(r);
@@ -532,14 +539,16 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
     std::string siko_str = input.siko_text ? *input.siko_text : "";
+    std::string ppe_str = input.planned_participants_estimate ? std::to_string(*input.planned_participants_estimate) : "";
     const char *dept_param = input.department ? dept_str.c_str() : nullptr;
     const char *siko_param = input.siko_text ? siko_str.c_str() : nullptr;
+    const char *ppe_param = input.planned_participants_estimate ? ppe_str.c_str() : nullptr;
 
     exec_or_throw(conn_, "BEGIN", "update_activity BEGIN");
 
     try
     {
-        const char *p[12] = {
+        const char *p[13] = {
             input.title.c_str(), input.date.c_str(),
             input.start_time.c_str(), input.end_time.c_str(),
             input.goal.c_str(), input.location.c_str(),
@@ -547,18 +556,20 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
             dept_param,
             mat_json.c_str(),
             siko_param,
-            bwi_str.c_str(), id.c_str()};
+            bwi_str.c_str(),
+            ppe_param,
+            id.c_str()};
         PGresult *r = PQexecParams(conn_,
                                    "UPDATE activities SET "
                                    "title=$1, date=$2::date, start_time=$3, end_time=$4, "
                                    "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
                                    "department=$8, material=$9::jsonb, "
-                                   "siko_text=$10, bad_weather_info=$11 "
-                                   "WHERE id=$12 "
+                                   "siko_text=$10, bad_weather_info=$11, planned_participants_estimate=$12 "
+                                   "WHERE id=$13 "
                                    "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
                                    "department, material, siko_text, "
-                                   "bad_weather_info, created_at, updated_at",
-                                   12, nullptr, p, nullptr, nullptr, 0);
+                                   "bad_weather_info, planned_participants_estimate, created_at, updated_at",
+                                   13, nullptr, p, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
             std::string err = PQresultErrorMessage(r);
@@ -597,6 +608,97 @@ bool Database::delete_activity(const std::string &id)
     PGresult *res = PQexecParams(conn_,
                                  "DELETE FROM activities WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+std::optional<int> Database::get_activity_midata_children_value(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT midata_children_value FROM activities WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0 || PQgetisnull(res, 0, 0))
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    int value = std::atoi(PQgetvalue(res, 0, 0));
+    PQclear(res);
+    return value;
+}
+
+bool Database::set_activity_midata_children_value(const std::string &activity_id, int value)
+{
+    ensure_connected();
+    std::string value_str = std::to_string(value);
+    const char *params[2] = {activity_id.c_str(), value_str.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE activities SET midata_children_value = $2::int, midata_children_recorded_at = NOW() WHERE id = $1",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+std::optional<nlohmann::json> Database::get_activity_weather_snapshot(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT weather_snapshot FROM activities WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0 || PQgetisnull(res, 0, 0))
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto parsed = nlohmann::json::parse(PQgetvalue(res, 0, 0), nullptr, false);
+    PQclear(res);
+    if (parsed.is_discarded())
+        return std::nullopt;
+    return parsed;
+}
+
+bool Database::set_activity_weather_snapshot(const std::string &activity_id, const nlohmann::json &snapshot)
+{
+    ensure_connected();
+    std::string snapshot_str = snapshot.dump();
+    const char *params[2] = {activity_id.c_str(), snapshot_str.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE activities SET weather_snapshot = $2::jsonb, weather_recorded_at = NOW() WHERE id = $1",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+std::optional<std::string> Database::get_activity_weather_location(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT weather_location FROM activities WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0 || PQgetisnull(res, 0, 0))
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    std::string value = PQgetvalue(res, 0, 0);
+    PQclear(res);
+    return value;
+}
+
+bool Database::set_activity_weather_location(const std::string &activity_id, const std::string &location)
+{
+    ensure_connected();
+    const char *params[2] = {activity_id.c_str(), location.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE activities SET weather_location = $2 WHERE id = $1",
+                                 2, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;
@@ -891,10 +993,13 @@ std::optional<MailTemplate> Database::upsert_mail_template(const std::string &de
                                                            const std::vector<std::string> &cc)
 {
     ensure_connected();
-    auto build_arr = [](const std::vector<std::string> &v) {
+    auto build_arr = [](const std::vector<std::string> &v)
+    {
         std::string s = "{";
-        for (size_t i = 0; i < v.size(); ++i) {
-            if (i > 0) s += ",";
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            if (i > 0)
+                s += ",";
             s += "\"" + v[i] + "\"";
         }
         s += "}";
@@ -955,10 +1060,13 @@ std::optional<SentMail> Database::log_sent_mail(const std::string &activity_id,
                                                 const std::string &body_html)
 {
     ensure_connected();
-    auto build_arr = [](const std::vector<std::string> &v) {
+    auto build_arr = [](const std::vector<std::string> &v)
+    {
         std::string s = "{";
-        for (size_t i = 0; i < v.size(); ++i) {
-            if (i > 0) s += ",";
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            if (i > 0)
+                s += ",";
             s += "\"" + v[i] + "\"";
         }
         s += "}";
@@ -1058,10 +1166,13 @@ std::optional<MailDraft> Database::upsert_mail_draft(const std::string &activity
                                                      const std::string &updated_by)
 {
     ensure_connected();
-    auto build_arr = [](const std::vector<std::string> &v) {
+    auto build_arr = [](const std::vector<std::string> &v)
+    {
         std::string s = "{";
-        for (size_t i = 0; i < v.size(); ++i) {
-            if (i > 0) s += ",";
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            if (i > 0)
+                s += ",";
             s += "\"" + v[i] + "\"";
         }
         s += "}";
@@ -1376,6 +1487,10 @@ DepartmentRecord Database::row_to_department(PGresult *res, int row)
     DepartmentRecord d;
     d.name = col("name") ? col("name") : "";
     d.color = col("color") ? col("color") : "#6b7280";
+    if (const char *midata_group_id = col("midata_group_id"))
+        d.midata_group_id = std::string(midata_group_id);
+    if (const char *midata_child_roles = col("midata_child_roles"))
+        d.midata_child_roles = parse_pg_array(midata_child_roles);
     return d;
 }
 
@@ -1383,7 +1498,7 @@ std::vector<DepartmentRecord> Database::list_departments()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT name, color FROM departments ORDER BY name");
+                           "SELECT name, color, midata_group_id, midata_child_roles FROM departments ORDER BY name");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
         std::string err = PQresultErrorMessage(res);
@@ -1399,14 +1514,30 @@ std::vector<DepartmentRecord> Database::list_departments()
     return out;
 }
 
-std::optional<DepartmentRecord> Database::create_department(const std::string &name, const std::string &color)
+std::optional<DepartmentRecord> Database::create_department(const std::string &name,
+                                                            const std::string &color,
+                                                            const std::optional<std::string> &midata_group_id,
+                                                            const std::vector<std::string> &midata_child_roles)
 {
     ensure_connected();
-    const char *params[2] = {name.c_str(), color.c_str()};
+    auto build_arr = [](const std::vector<std::string> &v)
+    {
+        std::string s = "{";
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            if (i > 0)
+                s += ",";
+            s += "\"" + v[i] + "\"";
+        }
+        s += "}";
+        return s;
+    };
+    std::string child_roles_arr = build_arr(midata_child_roles);
+    const char *params[4] = {name.c_str(), color.c_str(), midata_group_id ? midata_group_id->c_str() : nullptr, child_roles_arr.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO departments (name, color) VALUES ($1, $2) "
-                                 "RETURNING name, color",
-                                 2, nullptr, params, nullptr, nullptr, 0);
+                                 "INSERT INTO departments (name, color, midata_group_id, midata_child_roles) VALUES ($1, $2, $3, $4::text[]) "
+                                 "RETURNING name, color, midata_group_id, midata_child_roles",
+                                 4, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         PQclear(res);
@@ -1418,14 +1549,29 @@ std::optional<DepartmentRecord> Database::create_department(const std::string &n
 }
 
 std::optional<DepartmentRecord> Database::update_department(const std::string &name, const std::string &new_name,
-                                                            const std::string &color)
+                                                            const std::string &color,
+                                                            const std::optional<std::string> &midata_group_id,
+                                                            const std::vector<std::string> &midata_child_roles)
 {
     ensure_connected();
-    const char *params[3] = {new_name.c_str(), color.c_str(), name.c_str()};
+    auto build_arr = [](const std::vector<std::string> &v)
+    {
+        std::string s = "{";
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            if (i > 0)
+                s += ",";
+            s += "\"" + v[i] + "\"";
+        }
+        s += "}";
+        return s;
+    };
+    std::string child_roles_arr = build_arr(midata_child_roles);
+    const char *params[5] = {new_name.c_str(), color.c_str(), midata_group_id ? midata_group_id->c_str() : nullptr, child_roles_arr.c_str(), name.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "UPDATE departments SET name = $1, color = $2 WHERE name = $3 "
-                                 "RETURNING name, color",
-                                 3, nullptr, params, nullptr, nullptr, 0);
+                                 "UPDATE departments SET name = $1, color = $2, midata_group_id = $3, midata_child_roles = $4::text[] WHERE name = $5 "
+                                 "RETURNING name, color, midata_group_id, midata_child_roles",
+                                 5, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         PQclear(res);
@@ -2415,6 +2561,11 @@ nlohmann::json Database::get_form_stats(const std::string &form_id)
     PQclear(res);
     stats["total"] = total;
     stats["by_mode"] = by_mode;
+    int registration_count = by_mode.contains("registration") ? by_mode["registration"].get<int>() : 0;
+    int deregistration_count = by_mode.contains("deregistration") ? by_mode["deregistration"].get<int>() : 0;
+    stats["registration_count"] = registration_count;
+    stats["deregistration_count"] = deregistration_count;
+    stats["expected_current"] = registration_count - deregistration_count;
 
     PGresult *qres = PQexecParams(conn_,
                                   "SELECT fq.id::text, fq.question_text, fq.question_type, ra.answer_value, COUNT(*) "
@@ -2559,7 +2710,7 @@ bool Database::delete_form_template(const std::string &id)
 // ---- Activity share links ---------------------------------------------------
 
 std::optional<ActivityShareLink> Database::create_share_link(const std::string &activity_id,
-                                                              const std::string &created_by)
+                                                             const std::string &created_by)
 {
     ensure_connected();
     const char *params[2] = {activity_id.c_str(), created_by.c_str()};
@@ -2576,7 +2727,8 @@ std::optional<ActivityShareLink> Database::create_share_link(const std::string &
         PQclear(res);
         // Check if one already exists
         auto existing = get_share_link(activity_id);
-        if (existing) return existing;
+        if (existing)
+            return existing;
         // Insert without ON CONFLICT
         res = PQexecParams(conn_,
                            "INSERT INTO activity_share_links (activity_id, created_by) "
@@ -2641,7 +2793,7 @@ std::optional<Activity> Database::get_activity_by_share_token(const std::string 
     PGresult *res = PQexecParams(conn_,
                                  "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, "
                                  "       a.location, a.responsible, a.department, a.material, a.siko_text, "
-                                 "       a.bad_weather_info, a.created_at, a.updated_at "
+                                 "       a.bad_weather_info, a.planned_participants_estimate, a.created_at, a.updated_at "
                                  "FROM activities a "
                                  "JOIN activity_share_links s ON s.activity_id = a.id "
                                  "WHERE s.share_token = $1",

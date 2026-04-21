@@ -19,11 +19,17 @@ bool require_auth(HttpRes *res, HttpReq *req, TokenClaims &out_claims);
 std::string auth_token_from_header(HttpRes *res, const std::string &auth_header);
 
 void handle_get_departments(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_admin_midata_status(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_department(HttpRes *res, HttpReq *req, Database &db);
 void handle_patch_department(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_department(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_get_activities(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activity(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_activity_midata_children_count(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_midata_children_counts(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_activity_weather_location(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_activity_weather_location(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
