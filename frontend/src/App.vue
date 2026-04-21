@@ -19,6 +19,9 @@
           <router-link v-if="showAdmin" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
         </div>
         <div class="global-nav-right">
+          <span v-if="user" class="nav-connection" :class="isOnline ? 'nav-connection--online' : 'nav-connection--offline'">
+            {{ isOnline ? 'Online' : 'Offline' }}
+          </span>
           <a href="https://github.com/reicham2/DPW/wiki" target="_blank" rel="noopener noreferrer" class="global-nav-help" title="Hilfe">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="10" cy="10" r="8.5" />
@@ -93,11 +96,16 @@ import BugReportButton from './components/BugReportButton.vue'
 import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
 import { usePermissions } from './composables/usePermissions'
 import { useMidataCounts } from './composables/useMidataCounts'
+import { useWebSocket } from './composables/useWebSocket'
+import { useApiConnectionStatus } from './composables/useApi'
 import { config } from './config'
 
 const route = useRoute()
 const { myPermissions, fetchMyPermissions } = usePermissions()
 const { startMidataAutoRefresh, stopMidataAutoRefresh, resetMidataCounts } = useMidataCounts()
+const { connected } = useWebSocket(() => {})
+const { apiOnline } = useApiConnectionStatus()
+const isOnline = computed(() => connected.value && apiOnline.value)
 
 const showMailTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
 const showFormTemplates = computed(() => myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none')
@@ -304,6 +312,31 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.nav-connection {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid transparent;
+}
+
+.nav-connection--online {
+  color: #065f46;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.nav-connection--offline {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
 .global-nav-help {
   display: inline-flex;
   align-items: center;
@@ -327,6 +360,11 @@ onUnmounted(() => {
   }
   .global-nav-title {
     display: none;
+  }
+  .nav-connection {
+    min-width: 64px;
+    padding: 4px 8px;
+    font-size: 0.72rem;
   }
 }
 </style>
