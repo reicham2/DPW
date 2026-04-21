@@ -7,6 +7,18 @@
     <template v-else>
     <nav class="global-nav">
       <div class="global-nav-inner">
+        <button
+          v-if="user"
+          class="global-nav-burger"
+          :class="{ 'global-nav-burger--open': mobileMenuOpen }"
+          @click="mobileMenuOpen = !mobileMenuOpen"
+          :aria-label="mobileMenuOpen ? 'Menü schliessen' : 'Menü öffnen'"
+          :aria-expanded="mobileMenuOpen"
+        >
+          <span class="burger-line" />
+          <span class="burger-line" />
+          <span class="burger-line" />
+        </button>
         <router-link to="/" class="global-nav-logo">
           <img src="/logo.png" alt="DPWeb" class="global-nav-logo-img" />
           <span class="global-nav-title">DPWeb</span>
@@ -32,6 +44,23 @@
         </div>
       </div>
     </nav>
+
+    <!-- Mobile drawer menu -->
+    <div
+      v-if="user && mobileMenuOpen"
+      class="mobile-nav-backdrop"
+      @click="mobileMenuOpen = false"
+    />
+    <aside
+      v-if="user"
+      class="mobile-nav-drawer"
+      :class="{ 'mobile-nav-drawer--open': mobileMenuOpen }"
+    >
+      <router-link to="/" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }" @click="mobileMenuOpen = false">Aktivitäten</router-link>
+      <router-link to="/stats" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/stats' }" @click="mobileMenuOpen = false">Statistik</router-link>
+      <router-link v-if="showVorlagen" to="/vorlagen" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/vorlagen' }" @click="mobileMenuOpen = false">Vorlagen</router-link>
+      <router-link v-if="showAdmin" to="/admin" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/admin' }" @click="mobileMenuOpen = false">Admin</router-link>
+    </aside>
 
     <!-- Auth loading splash -->
     <div v-if="authLoading" class="auth-loading">
@@ -120,6 +149,8 @@ const showAdmin = computed(() => {
 })
 
 const loggingIn = ref(false)
+const mobileMenuOpen = ref(false)
+watch(() => route.path, () => { mobileMenuOpen.value = false })
 const debugSelectedUser = ref('')
 const debugUsers = ref<{ id: string; display_name: string; role: string; department: string | null }[]>([])
 
@@ -350,22 +381,116 @@ onUnmounted(() => {
   color: #1a56db;
 }
 
-@media (max-width: 599px) {
+/* Burger button — hidden by default, shown on small screens */
+.global-nav-burger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  margin-right: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.global-nav-burger:hover {
+  background: #f3f4f6;
+}
+.burger-line {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: #374151;
+  border-radius: 2px;
+  transition: transform 0.2s, opacity 0.2s;
+  transform-origin: center;
+}
+.global-nav-burger--open .burger-line:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+.global-nav-burger--open .burger-line:nth-child(2) {
+  opacity: 0;
+}
+.global-nav-burger--open .burger-line:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+/* Mobile drawer */
+.mobile-nav-backdrop {
+  position: fixed;
+  inset: 60px 0 0 0;
+  background: rgba(15, 23, 42, 0.35);
+  z-index: 98;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.mobile-nav-drawer {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  width: min(280px, 80vw);
+  height: calc(100vh - 60px);
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
+  z-index: 99;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  visibility: hidden;
+}
+.mobile-nav-drawer--open {
+  transform: translateX(0);
+  visibility: visible;
+}
+.mobile-nav-link {
+  display: block;
+  padding: 12px 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.mobile-nav-link:hover {
+  background: #f0f7ff;
+  color: #0080ff;
+}
+.mobile-nav-link--active {
+  color: #0080ff;
+  background: #e8f0fe;
+}
+
+@media (max-width: 767px) {
+  .global-nav-burger {
+    display: flex;
+  }
   .global-nav-links {
-    margin-left: 12px;
-    gap: 2px;
+    display: none;
   }
-  .global-nav-link {
-    padding: 6px 8px;
-    font-size: 0.8rem;
-  }
+}
+
+@media (max-width: 599px) {
   .global-nav-title {
     display: none;
   }
   .nav-connection {
-    min-width: 64px;
-    padding: 4px 8px;
-    font-size: 0.72rem;
+    display: none;
+  }
+  .global-nav-help {
+    display: none;
+  }
+  .global-nav-inner {
+    padding: 0 12px;
   }
 }
 </style>

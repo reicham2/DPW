@@ -113,4 +113,28 @@ onMounted(async () => {
 .tab-content :deep(.header) {
   display: none;
 }
+
+@media (max-width: 599px) {
+  .header {
+    padding: 20px 16px 0;
+  }
+  .header h1 {
+    font-size: 1.3rem;
+  }
+  .tab-bar {
+    padding: 12px 8px 0;
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-btn {
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}
 </style>

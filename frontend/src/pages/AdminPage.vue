@@ -707,4 +707,45 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 }
 .btn-primary:hover:not(:disabled) { background: #1648c0; }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
+
+@media (max-width: 599px) {
+  .header {
+    padding: 20px 16px 0;
+  }
+  .header h1 {
+    font-size: 1.3rem;
+  }
+  .tab-bar {
+    padding: 12px 8px 0;
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-btn {
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .tab-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .users-table {
+    font-size: 0.82rem;
+  }
+  .users-table th,
+  .users-table td {
+    padding: 10px 12px;
+  }
+  .td-email {
+    font-size: 0.78rem;
+  }
+  .item-actions {
+    flex-wrap: wrap;
+  }
+}
 </style>
