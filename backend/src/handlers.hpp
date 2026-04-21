@@ -71,6 +71,10 @@ void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_notifications(HttpRes *res, HttpReq *req, Database &db);
 void handle_patch_notification_read(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_notifications_read_all(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_push_vapid_public_key(HttpRes *res, HttpReq *req);
+void handle_post_push_subscription(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_push_subscription(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_push_payload(HttpRes *res, HttpReq *req, Database &db);
 
 // Mail draft endpoints
 void handle_get_mail_draft(HttpRes *res, HttpReq *req, Database &db);

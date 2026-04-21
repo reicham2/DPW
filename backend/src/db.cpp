@@ -25,6 +25,8 @@ Database::Database(const std::string &conn_str)
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_material_assigned BOOLEAN NOT NULL DEFAULT true;"
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_mail_own_activity BOOLEAN NOT NULL DEFAULT true;"
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_mail_department BOOLEAN NOT NULL DEFAULT true;"
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_channel_websocket BOOLEAN NOT NULL DEFAULT true;"
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_channel_email BOOLEAN NOT NULL DEFAULT false;"
         "CREATE TABLE IF NOT EXISTS notifications ("
         "  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
         "  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
@@ -37,7 +39,17 @@ Database::Database(const std::string &conn_str)
         "  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
         ");"
         "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at DESC);"
-        "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);";
+        "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);"
+        "CREATE TABLE IF NOT EXISTS push_subscriptions ("
+        "  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+        "  endpoint TEXT NOT NULL UNIQUE,"
+        "  p256dh TEXT NOT NULL,"
+        "  auth TEXT NOT NULL,"
+        "  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+        ");"
+        "CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions (user_id);";
     PGresult *bootstrap = PQexec(conn_, bootstrap_sql);
     if (PQresultStatus(bootstrap) != PGRES_COMMAND_OK)
     {
@@ -754,6 +766,8 @@ UserRecord Database::row_to_user(PGresult *res, int row)
     u.notify_material_assigned = col("notify_material_assigned") ? std::string(col("notify_material_assigned")) == "t" : true;
     u.notify_mail_own_activity = col("notify_mail_own_activity") ? std::string(col("notify_mail_own_activity")) == "t" : true;
     u.notify_mail_department = col("notify_mail_department") ? std::string(col("notify_mail_department")) == "t" : true;
+    u.notify_channel_websocket = col("notify_channel_websocket") ? std::string(col("notify_channel_websocket")) == "t" : true;
+    u.notify_channel_email = col("notify_channel_email") ? std::string(col("notify_channel_email")) == "t" : false;
     u.created_at = col("created_at") ? col("created_at") : "";
     u.updated_at = col("updated_at") ? col("updated_at") : "";
     if (col("department"))
@@ -769,6 +783,7 @@ std::vector<UserRecord> Database::list_users()
     PGresult *res = PQexec(conn_,
                            "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
                            "       notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+                           "       notify_channel_websocket, notify_channel_email, "
                            "       created_at, updated_at "
                            "FROM users ORDER BY display_name");
 
@@ -821,6 +836,7 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
         on_conflict +
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
         "          notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+        "          notify_channel_websocket, notify_channel_email, "
         "          created_at, updated_at";
 
     const char *params[3] = {oid.c_str(), email.c_str(), display_name.c_str()};
@@ -845,6 +861,7 @@ std::optional<UserRecord> Database::get_user_by_oid(const std::string &oid)
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
                                  "       notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+                                 "       notify_channel_websocket, notify_channel_email, "
                                  "       created_at, updated_at "
                                  "FROM users WHERE microsoft_oid = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -868,6 +885,7 @@ std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
                                  "       notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+                                 "       notify_channel_websocket, notify_channel_email, "
                                  "       created_at, updated_at "
                                  "FROM users WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -890,7 +908,9 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
                                                 const std::optional<std::string> &time_display_mode,
                                                 const std::optional<bool> &notify_material_assigned,
                                                 const std::optional<bool> &notify_mail_own_activity,
-                                                const std::optional<bool> &notify_mail_department)
+                                                const std::optional<bool> &notify_mail_department,
+                                                const std::optional<bool> &notify_channel_websocket,
+                                                const std::optional<bool> &notify_channel_email)
 {
     ensure_connected();
     std::string dept_str = department ? *department : "";
@@ -907,10 +927,15 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
         sql += std::string(", notify_mail_own_activity = ") + (*notify_mail_own_activity ? "true" : "false");
     if (notify_mail_department)
         sql += std::string(", notify_mail_department = ") + (*notify_mail_department ? "true" : "false");
+    if (notify_channel_websocket)
+        sql += std::string(", notify_channel_websocket = ") + (*notify_channel_websocket ? "true" : "false");
+    if (notify_channel_email)
+        sql += std::string(", notify_channel_email = ") + (*notify_channel_email ? "true" : "false");
     sql +=
         " WHERE microsoft_oid = $2 "
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
         "          notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+        "          notify_channel_websocket, notify_channel_email, "
         "          created_at, updated_at";
 
     const char *params[2] = {display_name.c_str(), oid.c_str()};
@@ -943,6 +968,7 @@ std::optional<UserRecord> Database::update_user_admin(const std::string &id,
         " WHERE id = $3 "
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
         "          notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+        "          notify_channel_websocket, notify_channel_email, "
         "          created_at, updated_at";
 
     const char *params[3] = {display_name.c_str(), role.c_str(), id.c_str()};
@@ -1198,6 +1224,38 @@ NotificationRecord Database::row_to_notification(PGresult *res, int row)
     return n;
 }
 
+PushSubscriptionRecord Database::row_to_push_subscription(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+
+    PushSubscriptionRecord s;
+    s.id = col("id") ? col("id") : "";
+    s.user_id = col("user_id") ? col("user_id") : "";
+    s.endpoint = col("endpoint") ? col("endpoint") : "";
+    s.p256dh = col("p256dh") ? col("p256dh") : "";
+    s.auth = col("auth") ? col("auth") : "";
+    s.created_at = col("created_at") ? col("created_at") : "";
+    s.updated_at = col("updated_at") ? col("updated_at") : "";
+    return s;
+}
+
+void Database::purge_expired_activity_notifications()
+{
+    PGresult *res = PQexec(conn_,
+                           "DELETE FROM notifications n "
+                           "USING activities a "
+                           "WHERE n.payload ? 'activity_id' "
+                           "  AND (n.payload->>'activity_id') = a.id::text "
+                           "  AND NOW() >= ((a.date::timestamp) + INTERVAL '1 day')");
+    PQclear(res);
+}
+
 std::optional<NotificationRecord> Database::create_notification(const std::string &user_id,
                                                                 const std::string &category,
                                                                 const std::string &title,
@@ -1206,6 +1264,7 @@ std::optional<NotificationRecord> Database::create_notification(const std::strin
                                                                 const nlohmann::json &payload)
 {
     ensure_connected();
+    purge_expired_activity_notifications();
     std::string payload_str = payload.dump();
     std::string link_str = link ? *link : "";
     const char *params[6] = {user_id.c_str(), category.c_str(), title.c_str(), message.c_str(), link_str.c_str(), payload_str.c_str()};
@@ -1227,15 +1286,27 @@ std::optional<NotificationRecord> Database::create_notification(const std::strin
 std::vector<NotificationRecord> Database::list_notifications_for_user(const std::string &user_id, int limit)
 {
     ensure_connected();
-    if (limit <= 0)
-        limit = 50;
-    std::string limit_str = std::to_string(limit);
-    const char *params[2] = {user_id.c_str(), limit_str.c_str()};
-    PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, user_id, category, title, message, link, payload, is_read, created_at "
-                                 "FROM notifications WHERE user_id = $1 "
-                                 "ORDER BY created_at DESC LIMIT $2::int",
-                                 2, nullptr, params, nullptr, nullptr, 0);
+    purge_expired_activity_notifications();
+    PGresult *res = nullptr;
+    if (limit > 0)
+    {
+        std::string limit_str = std::to_string(limit);
+        const char *params[2] = {user_id.c_str(), limit_str.c_str()};
+        res = PQexecParams(conn_,
+                           "SELECT id, user_id, category, title, message, link, payload, is_read, created_at "
+                           "FROM notifications WHERE user_id = $1 "
+                           "ORDER BY created_at DESC LIMIT $2::int",
+                           2, nullptr, params, nullptr, nullptr, 0);
+    }
+    else
+    {
+        const char *params[1] = {user_id.c_str()};
+        res = PQexecParams(conn_,
+                           "SELECT id, user_id, category, title, message, link, payload, is_read, created_at "
+                           "FROM notifications WHERE user_id = $1 "
+                           "ORDER BY created_at DESC",
+                           1, nullptr, params, nullptr, nullptr, 0);
+    }
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
         PQclear(res);
@@ -1253,6 +1324,7 @@ std::vector<NotificationRecord> Database::list_notifications_for_user(const std:
 bool Database::mark_notification_read(const std::string &user_id, const std::string &notification_id)
 {
     ensure_connected();
+    purge_expired_activity_notifications();
     const char *params[2] = {user_id.c_str(), notification_id.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "UPDATE notifications SET is_read = true "
@@ -1266,6 +1338,7 @@ bool Database::mark_notification_read(const std::string &user_id, const std::str
 bool Database::mark_all_notifications_read(const std::string &user_id)
 {
     ensure_connected();
+    purge_expired_activity_notifications();
     const char *params[1] = {user_id.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false",
@@ -1273,6 +1346,102 @@ bool Database::mark_all_notifications_read(const std::string &user_id)
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;
+}
+
+std::optional<PushSubscriptionRecord> Database::upsert_push_subscription(const std::string &user_id,
+                                                                         const std::string &endpoint,
+                                                                         const std::string &p256dh,
+                                                                         const std::string &auth)
+{
+    ensure_connected();
+    const char *params[4] = {user_id.c_str(), endpoint.c_str(), p256dh.c_str(), auth.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) "
+                                 "VALUES ($1, $2, $3, $4) "
+                                 "ON CONFLICT (endpoint) DO UPDATE SET "
+                                 "  user_id = EXCLUDED.user_id, "
+                                 "  p256dh = EXCLUDED.p256dh, "
+                                 "  auth = EXCLUDED.auth, "
+                                 "  updated_at = NOW() "
+                                 "RETURNING id, user_id, endpoint, p256dh, auth, created_at, updated_at",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto out = row_to_push_subscription(res, 0);
+    PQclear(res);
+    return out;
+}
+
+bool Database::delete_push_subscription(const std::string &user_id, const std::string &endpoint)
+{
+    ensure_connected();
+    const char *params[2] = {user_id.c_str(), endpoint.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM push_subscriptions WHERE user_id = $1 AND endpoint = $2",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+bool Database::delete_push_subscription_by_endpoint(const std::string &endpoint)
+{
+    ensure_connected();
+    const char *params[1] = {endpoint.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM push_subscriptions WHERE endpoint = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+std::vector<PushSubscriptionRecord> Database::list_push_subscriptions_for_user(const std::string &user_id)
+{
+    ensure_connected();
+    const char *params[1] = {user_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, user_id, endpoint, p256dh, auth, created_at, updated_at "
+                                 "FROM push_subscriptions WHERE user_id = $1 ORDER BY updated_at DESC",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    std::vector<PushSubscriptionRecord> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_push_subscription(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<NotificationRecord> Database::get_latest_unread_notification_for_push(const std::string &endpoint,
+                                                                                    const std::string &auth)
+{
+    ensure_connected();
+    purge_expired_activity_notifications();
+    const char *params[2] = {endpoint.c_str(), auth.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT n.id, n.user_id, n.category, n.title, n.message, n.link, n.payload, n.is_read, n.created_at "
+                                 "FROM push_subscriptions ps "
+                                 "JOIN notifications n ON n.user_id = ps.user_id "
+                                 "WHERE ps.endpoint = $1 AND ps.auth = $2 AND n.is_read = false "
+                                 "ORDER BY n.created_at DESC LIMIT 1",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    NotificationRecord out = row_to_notification(res, 0);
+    PQclear(res);
+    return out;
 }
 
 // ---- Mail drafts ------------------------------------------------------------

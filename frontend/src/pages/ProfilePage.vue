@@ -79,12 +79,27 @@
           </label>
           <label class="notify-option">
             <input v-model="form.notify_mail_own_activity" type="checkbox" />
-            <span>Mail versendet fuer deine Aktivitaet</span>
+            <span>Mail versendet für deine Aktivität</span>
           </label>
           <label class="notify-option">
             <input v-model="form.notify_mail_department" type="checkbox" />
             <span>Mail versendet in deiner Stufe</span>
           </label>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Benachrichtigungskanal</label>
+          <label class="notify-option">
+            <input v-model="form.notify_channel_websocket" type="checkbox" />
+            <span>Browser / App</span>
+          </label>
+          <label class="notify-option">
+            <input v-model="form.notify_channel_email" type="checkbox" />
+            <span>E-Mail</span>
+          </label>
+          <p class="form-hint">
+            Browser / App zeigt Benachrichtigungen im Browser und in der installierten PWA-App.
+          </p>
         </div>
 
         <ErrorAlert :error="error" />
@@ -103,6 +118,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { user } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import { usePermissions } from '../composables/usePermissions'
+import { requestBrowserNotificationPermission, syncPushSubscription } from '../composables/useNotifications'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
@@ -124,6 +140,8 @@ const form = ref({
   notify_material_assigned: user.value?.notify_material_assigned ?? true,
   notify_mail_own_activity: user.value?.notify_mail_own_activity ?? true,
   notify_mail_department: user.value?.notify_mail_department ?? true,
+  notify_channel_websocket: user.value?.notify_channel_websocket ?? true,
+  notify_channel_email: user.value?.notify_channel_email ?? false,
 })
 const saving = ref(false)
 const saved  = ref(false)
@@ -150,6 +168,8 @@ onMounted(async () => {
     form.value.notify_material_assigned = user.value.notify_material_assigned ?? true
     form.value.notify_mail_own_activity = user.value.notify_mail_own_activity ?? true
     form.value.notify_mail_department = user.value.notify_mail_department ?? true
+    form.value.notify_channel_websocket = user.value.notify_channel_websocket ?? true
+    form.value.notify_channel_email = user.value.notify_channel_email ?? false
   }
   initialLoaded = true
 })
@@ -168,12 +188,19 @@ async function save() {
         notify_material_assigned: form.value.notify_material_assigned,
         notify_mail_own_activity: form.value.notify_mail_own_activity,
         notify_mail_department: form.value.notify_mail_department,
+        notify_channel_websocket: form.value.notify_channel_websocket,
+        notify_channel_email: form.value.notify_channel_email,
       }),
     })
     if (!res.ok) throw new Error(await res.text())
     const updated: User = await res.json()
     // Update global user state
     if (user.value) Object.assign(user.value, updated)
+
+    if (form.value.notify_channel_websocket) {
+      await requestBrowserNotificationPermission()
+    }
+    await syncPushSubscription(form.value.notify_channel_websocket)
     saved.value = true
     setTimeout(() => { saved.value = false }, 3000)
   } catch (e) {

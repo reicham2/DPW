@@ -87,6 +87,8 @@ CREATE TABLE users (
     notify_material_assigned BOOLEAN NOT NULL DEFAULT true,
     notify_mail_own_activity BOOLEAN NOT NULL DEFAULT true,
     notify_mail_department BOOLEAN NOT NULL DEFAULT true,
+    notify_channel_websocket BOOLEAN NOT NULL DEFAULT true,
+    notify_channel_email BOOLEAN NOT NULL DEFAULT false,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -151,6 +153,19 @@ CREATE TABLE notifications (
 
 CREATE INDEX idx_notifications_user_created ON notifications (user_id, created_at DESC);
 CREATE INDEX idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);
+
+-- Web push subscriptions (browser/app devices per user)
+CREATE TABLE push_subscriptions (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_push_subscriptions_user ON push_subscriptions (user_id);
 
 -- Predefined locations (global, shared across all departments)
 CREATE TABLE predefined_locations (

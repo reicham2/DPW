@@ -106,6 +106,8 @@ describe('Type structures', () => {
 			notify_material_assigned: true,
 			notify_mail_own_activity: true,
 			notify_mail_department: false,
+			notify_channel_websocket: true,
+			notify_channel_email: false,
 			created_at: '2025-01-01T00:00:00Z',
 			updated_at: '2025-01-01T00:00:00Z',
 		};

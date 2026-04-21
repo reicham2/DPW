@@ -11,6 +11,9 @@ export default defineConfig({
 	plugins: [
 		vue(),
 		VitePWA({
+			strategies: 'injectManifest',
+			srcDir: 'src',
+			filename: 'sw.ts',
 			registerType: 'autoUpdate',
 			includeAssets: ['logo.svg'],
 			manifest: {
@@ -36,20 +39,8 @@ export default defineConfig({
 					},
 				],
 			},
-			workbox: {
-				// Cache the app shell and all static assets
-				globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-				// Network-first for API calls, cache-first for assets
-				runtimeCaching: [
-					{
-						urlPattern: /^\/api\//,
-						handler: 'NetworkOnly',
-					},
-					{
-						urlPattern: /^\/ws/,
-						handler: 'NetworkOnly',
-					},
-				],
+			devOptions: {
+				enabled: true,
 			},
 		}),
 	],

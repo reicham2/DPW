@@ -101,6 +101,8 @@ export interface User {
 	notify_material_assigned: boolean;
 	notify_mail_own_activity: boolean;
 	notify_mail_department: boolean;
+	notify_channel_websocket: boolean;
+	notify_channel_email: boolean;
 	created_at: string;
 	updated_at: string;
 }
