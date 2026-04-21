@@ -14,8 +14,7 @@
         <div v-if="user" class="global-nav-links">
           <router-link to="/" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }">Aktivitäten</router-link>
           <router-link to="/stats" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/stats' }">Statistik</router-link>
-          <router-link v-if="showMailTemplates" to="/mail-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/mail-templates' }">Mail-Vorlagen</router-link>
-          <router-link v-if="showFormTemplates" to="/form-templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/form-templates' }">Formular-Vorlagen</router-link>
+          <router-link v-if="showVorlagen" to="/vorlagen" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/vorlagen' }">Vorlagen</router-link>
           <router-link v-if="showAdmin" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
         </div>
         <div class="global-nav-right">
@@ -107,8 +106,10 @@ const { connected } = useWebSocket(() => {})
 const { apiOnline } = useApiConnectionStatus()
 const isOnline = computed(() => connected.value && apiOnline.value)
 
-const showMailTemplates = computed(() => myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none')
-const showFormTemplates = computed(() => myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none')
+const showVorlagen = computed(() =>
+  (myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none') ||
+  (myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none')
+)
 const isPublicRoute = computed(() => !!route.meta?.public)
 const showAdmin = computed(() => {
   const p = myPermissions.value
