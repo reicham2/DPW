@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import type { MailTemplate, Department, SentMail, MailDraft } from '../types';
 import { getGraphAccessToken } from './useAuth';
-import { apiFetch } from './useApi';
+import { apiFetch, formatApiError } from './useApi';
 
 const BASE = '/api';
 
@@ -19,7 +19,7 @@ export function useMailTemplates() {
 			if (!res.ok) throw new Error(await res.text());
 			templates.value = (await res.json()) as MailTemplate[];
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 		} finally {
 			loading.value = false;
 		}
@@ -37,7 +37,7 @@ export function useMailTemplates() {
 			if (!res.ok) throw new Error(await res.text());
 			return (await res.json()) as MailTemplate;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -61,7 +61,7 @@ export function useMailTemplates() {
 			if (!res.ok) throw new Error(await res.text());
 			return (await res.json()) as MailTemplate;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return null;
 		}
 	}
@@ -96,7 +96,7 @@ export function useMailTemplates() {
 			}
 			return true;
 		} catch (e) {
-			error.value = String(e);
+			error.value = formatApiError(e);
 			return false;
 		} finally {
 			sending.value = false;

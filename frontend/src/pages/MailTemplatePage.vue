@@ -132,8 +132,129 @@ let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 let autoSaveInterval: ReturnType<typeof setInterval> | null = null
 let hasPendingChanges = false
 
+interface LocalMailTemplateDraft {
+  version: 1;
+  department: Department;
+  savedAt: number;
+  subject: string;
+  body: string;
+  recipients: string[];
+  cc: string[];
+}
+
+const pendingLocalDraft = ref<LocalMailTemplateDraft | null>(null)
+const localDraftRestoredAt = ref<number | null>(null)
+let localDraftWriteTimer: ReturnType<typeof setTimeout> | null = null
+const LOCAL_DRAFT_WRITE_DEBOUNCE_MS = 350
+
+function localDraftKey(dept = activeDept.value) {
+  return `dpw:mail-template-draft:${dept}`
+}
+
+function buildLocalDraft(dept = activeDept.value): LocalMailTemplateDraft {
+  return {
+    version: 1,
+    department: dept,
+    savedAt: Date.now(),
+    subject: subject.value,
+    body: body.value,
+    recipients: recipients.value.map(r => r.trim()).filter(Boolean),
+    cc: cc.value.map(r => r.trim()).filter(Boolean),
+  }
+}
+
+function clearLocalDraft(dept = activeDept.value) {
+  if (localDraftWriteTimer) {
+    clearTimeout(localDraftWriteTimer)
+    localDraftWriteTimer = null
+  }
+  try {
+    window.localStorage.removeItem(localDraftKey(dept))
+  } catch {
+    /* ignore unavailable storage */
+  }
+}
+
+function writeLocalDraftNow() {
+  if (!activeDept.value) return
+  try {
+    window.localStorage.setItem(localDraftKey(), JSON.stringify(buildLocalDraft()))
+  } catch {
+    /* ignore unavailable storage */
+  }
+}
+
+function scheduleLocalDraftWrite() {
+  if (!activeDept.value || suppressDirtyTracking || applyingRemote) return
+  if (localDraftWriteTimer) clearTimeout(localDraftWriteTimer)
+  localDraftWriteTimer = setTimeout(() => {
+    writeLocalDraftNow()
+  }, LOCAL_DRAFT_WRITE_DEBOUNCE_MS)
+}
+
+function loadPendingLocalDraft(dept: Department) {
+  try {
+    const raw = window.localStorage.getItem(localDraftKey(dept))
+    if (!raw) {
+      pendingLocalDraft.value = null
+      return
+    }
+    const parsed = JSON.parse(raw) as Partial<LocalMailTemplateDraft>
+    if (parsed.version !== 1 || parsed.department !== dept) {
+      pendingLocalDraft.value = null
+      return
+    }
+    const draft = parsed as LocalMailTemplateDraft
+    const currentSnapshot = JSON.stringify({
+      subject: subject.value,
+      body: body.value,
+      recipients: recipients.value.map(r => r.trim()).filter(Boolean),
+      cc: cc.value.map(r => r.trim()).filter(Boolean),
+    })
+    const draftSnapshot = JSON.stringify({
+      subject: draft.subject,
+      body: draft.body,
+      recipients: draft.recipients,
+      cc: draft.cc,
+    })
+    if (currentSnapshot === draftSnapshot) {
+      clearLocalDraft(dept)
+      pendingLocalDraft.value = null
+      return
+    }
+    pendingLocalDraft.value = draft
+  } catch {
+    pendingLocalDraft.value = null
+  }
+}
+
+function applyLocalDraft() {
+  if (!pendingLocalDraft.value) return
+  suppressDirtyTracking = true
+  subject.value = pendingLocalDraft.value.subject
+  body.value = pendingLocalDraft.value.body
+  recipients.value = pendingLocalDraft.value.recipients.length ? [...pendingLocalDraft.value.recipients] : ['']
+  cc.value = pendingLocalDraft.value.cc.length ? [...pendingLocalDraft.value.cc] : ['']
+  nextTick(() => {
+    if (editorRef.value) editorRef.value.innerHTML = body.value
+    suppressDirtyTracking = false
+    pendingLocalDraft.value = null
+    localDraftRestoredAt.value = Date.now()
+    scheduleLocalDraftWrite()
+    scheduleAutoSave()
+  })
+}
+
+function discardLocalDraft() {
+  clearLocalDraft()
+  pendingLocalDraft.value = null
+  localDraftRestoredAt.value = null
+}
+
 function scheduleAutoSave() {
+  if (suppressDirtyTracking) return
   if (applyingRemote) return
+  scheduleLocalDraftWrite()
   if (AUTOSAVE_DEBOUNCE) {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     autoSaveTimer = setTimeout(doSave, AUTOSAVE_INTERVAL)
@@ -163,11 +284,15 @@ function stopAutoSaveInterval() {
 
 async function doSave() {
   error.value = null
+  writeLocalDraftNow()
   const validRecipients = recipients.value.map(r => r.trim()).filter(Boolean)
   const validCc = cc.value.map(r => r.trim()).filter(Boolean)
   const result = await saveTemplate(activeDept.value, subject.value, body.value, validRecipients, validCc)
   if (result) {
     showSavedIndicator()
+    clearLocalDraft()
+    pendingLocalDraft.value = null
+    localDraftRestoredAt.value = null
     const idx = templates.value.findIndex(t => t.department === activeDept.value)
     if (idx >= 0) templates.value[idx] = result
     else templates.value.push(result)
@@ -251,6 +376,11 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (localDraftWriteTimer) {
+    clearTimeout(localDraftWriteTimer)
+    localDraftWriteTimer = null
+  }
+  writeLocalDraftNow()
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   if (savedTimer) clearTimeout(savedTimer)
   stopAutoSaveInterval()
@@ -263,6 +393,7 @@ function loadDept(dept: Department) {
   myLockedSection.value = null
   sectionLocks.value = new Map()
   activeEditors.value = []
+  localDraftRestoredAt.value = null
 
   suppressDirtyTracking = true
   activeDept.value = dept
@@ -271,6 +402,7 @@ function loadDept(dept: Department) {
   body.value    = tpl?.body ?? ''
   recipients.value = tpl?.recipients?.length ? [...tpl.recipients] : ['']
   cc.value = tpl?.cc?.length ? [...tpl.cc] : ['']
+  loadPendingLocalDraft(dept)
   nextTick(() => {
     if (editorRef.value) editorRef.value.innerHTML = body.value
     suppressDirtyTracking = false
@@ -552,6 +684,17 @@ function onCcKeydown(e: KeyboardEvent) {
     <p v-if="loading" class="loading">Laden...</p>
 
     <div v-else class="detail-form">
+      <div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+        <span class="editors-banner-icon">💾</span>
+        <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
+        <button type="button" class="btn-secondary" @click="applyLocalDraft">Wiederherstellen</button>
+        <button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
+      </div>
+      <div v-else-if="localDraftRestoredAt" class="editors-banner" style="margin-bottom: 12px;">
+        <span class="editors-banner-icon">✅</span>
+        <span>Lokaler Entwurf wurde wiederhergestellt.</span>
+      </div>
+
       <!-- Active editors indicator -->
       <div v-if="activeEditors.length" class="editors-banner">
         <span class="editors-banner-icon">👥</span>
