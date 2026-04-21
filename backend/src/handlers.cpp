@@ -23,6 +23,8 @@
 #define DPW_ENABLE_DEBUG_AUTH 0
 #endif
 
+static nlohmann::json notification_to_json(const NotificationRecord &n);
+
 namespace
 {
 
