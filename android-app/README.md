@@ -32,7 +32,7 @@ dpwWebUrl=https://dpw.example.org
 
 2. Oder als Gradle-Property im Android-Studio-Run/Build-Profil:
 
-	-PdpwWebUrl=https://dpw.example.org
+   -PdpwWebUrl=https://dpw.example.org
 
 ## Starten
 
