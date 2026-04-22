@@ -63,6 +63,10 @@ Die Ausgabe kann direkt in `.env` übernommen werden:
 - `DPW_VAPID_PRIVATE_KEY`
 - `DPW_VAPID_SUBJECT`
 
+Zusätzlich fuer oeffentliche Links (z. B. in Benachrichtigungen/Mails):
+
+- `DPW_PUBLIC_URL` (z. B. `https://dpw.example.org`)
+
 ## Role Permissions
 
 | Permission               | admin              | Stufenleiter                    | Leiter               | Pio                             |

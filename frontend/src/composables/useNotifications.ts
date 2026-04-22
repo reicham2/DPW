@@ -80,6 +80,21 @@ export async function syncPushSubscription(enabled: boolean) {
 }
 
 async function showSystemNotification(incoming: NotificationRecord) {
+	const payload = (incoming.payload ?? {}) as Record<string, unknown>;
+	const activityDate =
+		typeof payload.activity_date_display === 'string'
+			? payload.activity_date_display.trim()
+			: '';
+	const fallbackDate = (() => {
+		const d = new Date(incoming.created_at);
+		if (Number.isNaN(d.getTime())) return '';
+		const dd = String(d.getDate()).padStart(2, '0');
+		const mm = String(d.getMonth() + 1).padStart(2, '0');
+		const yyyy = String(d.getFullYear());
+		return `${dd}.${mm}.${yyyy}`;
+	})();
+	const compactBody = activityDate || fallbackDate ? `Datum: ${activityDate || fallbackDate}` : 'Neue Benachrichtigung';
+
 	if (typeof window === 'undefined' || !('Notification' in window)) return;
 	if (Notification.permission !== 'granted') return;
 
@@ -90,7 +105,7 @@ async function showSystemNotification(incoming: NotificationRecord) {
 				(await navigator.serviceWorker.getRegistration()) ??
 				(await navigator.serviceWorker.ready);
 			await reg.showNotification(incoming.title, {
-				body: incoming.message,
+				body: compactBody,
 				tag: `dpw-note-${incoming.id}`,
 				data: { url: incoming.link ?? '/profile' },
 				icon: '/logo.svg',
@@ -103,7 +118,7 @@ async function showSystemNotification(incoming: NotificationRecord) {
 	}
 
 	try {
-		new Notification(incoming.title, { body: incoming.message });
+		new Notification(incoming.title, { body: compactBody });
 	} catch {
 		// Ignore browser notification failures.
 	}

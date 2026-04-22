@@ -190,7 +190,7 @@ jobs:
         run: |
           echo "Waiting for backend health..."
           for i in $(seq 1 30); do
-            if docker compose -f docker-compose-dev.yml exec -T backend curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+            if docker compose -f docker-compose-dev.yml exec -T backend curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
               echo "Backend healthy"
               exit 0
             fi
@@ -202,15 +202,17 @@ jobs:
           exit 1
 
       - name: Verify push VAPID endpoint
+        env:
+          DPW_PUBLIC_URL: http://127.0.0.1:8000
         run: |
-          curl -sf http://localhost:8000/api/push/vapid-public-key > /dev/null
+          curl -sf "$DPW_PUBLIC_URL/api/push/vapid-public-key" > /dev/null
           echo "Push VAPID endpoint reachable"
 
       - name: Wait for frontend health
         run: |
           echo "Waiting for frontend health..."
           for i in $(seq 1 15); do
-            if docker compose -f docker-compose-dev.yml exec -T frontend curl -sf http://localhost:80 > /dev/null 2>&1; then
+            if docker compose -f docker-compose-dev.yml exec -T frontend curl -sf http://127.0.0.1:80 > /dev/null 2>&1; then
               echo "Frontend healthy"
               exit 0
             fi

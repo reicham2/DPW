@@ -47,11 +47,12 @@ services:
       DPW_VAPID_PUBLIC_KEY: "${DPW_VAPID_PUBLIC_KEY:?Setze DPW_VAPID_PUBLIC_KEY in .env}"
       DPW_VAPID_PRIVATE_KEY: "${DPW_VAPID_PRIVATE_KEY:?Setze DPW_VAPID_PRIVATE_KEY in .env}"
       DPW_VAPID_SUBJECT: "${DPW_VAPID_SUBJECT:-mailto:admin@example.com}"
+      DPW_PUBLIC_URL: "${DPW_PUBLIC_URL:-http://localhost:8000}"
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1" ]
       interval: 2s
       timeout: 3s
       retries: 10

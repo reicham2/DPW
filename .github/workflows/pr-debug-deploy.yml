@@ -85,7 +85,7 @@ jobs:
           echo "Waiting for backend health..."
           for i in $(seq 1 30); do
             if docker compose -f docker-compose-dev.yml -p "$PROJECT" \
-                exec -T backend curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              exec -T backend curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
               echo "Backend healthy after attempt $i"
               exit 0
             fi
@@ -102,7 +102,7 @@ jobs:
           echo "Waiting for frontend health..."
           for i in $(seq 1 15); do
             if docker compose -f docker-compose-dev.yml -p "$PROJECT" \
-                exec -T frontend curl -sf http://localhost:80 > /dev/null 2>&1; then
+              exec -T frontend curl -sf http://127.0.0.1:80 > /dev/null 2>&1; then
               echo "Frontend healthy after attempt $i"
               exit 0
             fi

@@ -50,11 +50,29 @@
 							:class="{ 'avatar-notification-item--unread': !n.is_read }"
 							@click="openNotification(n.id, n.link)"
 						>
-							<div class="avatar-notification-title">{{ n.title }}</div>
-							<div class="avatar-notification-message">{{ n.message }}</div>
-							<div class="avatar-notification-meta">Datum: {{ notificationDate(n) }}</div>
-							<div class="avatar-notification-meta">Empfänger: {{ notificationRecipients(n) }}</div>
-							<div v-if="n.link" class="avatar-notification-link">{{ n.link }}</div>
+							<div class="avatar-notification-headline">
+								<div class="avatar-notification-headline-main">
+									<span class="avatar-notification-category" :class="notificationCategoryClass(n)">
+										{{ notificationCategoryLabel(n) }}
+									</span>
+									<div class="avatar-notification-title">{{ n.title }}</div>
+								</div>
+								<div class="avatar-notification-headline-side">
+									<div class="avatar-notification-date-inline">{{ activityDate(n) }}</div>
+									<div v-if="headlineRecipients(n) !== '-'" class="avatar-notification-recipients-inline">{{ headlineRecipients(n) }}</div>
+								</div>
+							</div>
+							<div class="avatar-notification-message">{{ notificationSummary(n) }}</div>
+							<div class="avatar-notification-grid">
+								<div class="avatar-notification-meta"><strong>Aktivität</strong><span>{{ activityTitle(n) }}</span></div>
+								<div v-if="triggeredBy(n) !== '-'" class="avatar-notification-meta"><strong>Ausgelöst von</strong><span>{{ triggeredBy(n) }}</span></div>
+								<div v-if="mailRecipients(n) !== '-'" class="avatar-notification-meta avatar-notification-meta--wide"><strong>Mail-Empfänger</strong><span>{{ mailRecipients(n) }}</span></div>
+								<div v-if="mailCcRecipients(n) !== '-'" class="avatar-notification-meta avatar-notification-meta--wide"><strong>Mail-CC</strong><span>{{ mailCcRecipients(n) }}</span></div>
+							</div>
+							<div v-if="n.link" class="avatar-notification-link-row">
+								<span class="avatar-notification-link-label">Link</span>
+								<span class="avatar-notification-link">{{ compactLink(n.link) }}</span>
+							</div>
 						</button>
 					</div>
 
@@ -128,23 +146,54 @@ function onClickOutside(e: MouseEvent) {
 	}
 }
 
-function notificationRecipients(n: NotificationRecord): string {
-	const p = n.payload as Record<string, unknown>;
-	const candidates = [p.recipients, p.assigned_users, p.to];
-	for (const c of candidates) {
-		if (Array.isArray(c) && c.length > 0) {
-			return c
-				.filter((v) => typeof v === 'string' && v.trim().length > 0)
-				.join(', ');
-		}
-	}
-	return '-';
+function payloadOf(n: NotificationRecord): Record<string, unknown> {
+	return (n.payload ?? {}) as Record<string, unknown>;
 }
 
-function notificationDate(n: NotificationRecord): string {
-	const p = n.payload as Record<string, unknown>;
-	if (typeof p.activity_date_display === 'string' && p.activity_date_display.trim()) {
-		return p.activity_date_display;
+function valueString(v: unknown): string {
+	return typeof v === 'string' && v.trim().length > 0 ? v.trim() : '';
+}
+
+function displayPersonLabel(value: string): string {
+	const trimmed = value.trim();
+	if (!trimmed) return '';
+	const mailMatch = trimmed.match(/^([^@]+)@/);
+	if (!mailMatch) return trimmed;
+	return mailMatch[1]
+		.split(/[._-]+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(' ');
+}
+
+function listString(v: unknown): string {
+	if (!Array.isArray(v)) return '-';
+	const out = v.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+	return out.length ? out.join(', ') : '-';
+}
+
+function listDisplayNames(v: unknown): string {
+	if (!Array.isArray(v)) return '-';
+	const out = v
+		.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+		.map((entry) => displayPersonLabel(entry))
+		.filter(Boolean);
+	return out.length ? out.join(', ') : '-';
+}
+
+function activityTitle(n: NotificationRecord): string {
+	const p = payloadOf(n);
+	return valueString(p.activity_title) || '-';
+}
+
+function activityDate(n: NotificationRecord): string {
+	const p = payloadOf(n);
+	const explicit = valueString(p.activity_date_display);
+	if (explicit) return explicit;
+
+	const iso = valueString(p.activity_date);
+	if (iso.length >= 10 && iso[4] === '-' && iso[7] === '-') {
+		return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
 	}
 	const d = new Date(n.created_at);
 	if (Number.isNaN(d.getTime())) return n.created_at;
@@ -152,6 +201,76 @@ function notificationDate(n: NotificationRecord): string {
 	const mm = String(d.getMonth() + 1).padStart(2, '0');
 	const yyyy = String(d.getFullYear());
 	return `${dd}.${mm}.${yyyy}`;
+}
+
+function triggeredBy(n: NotificationRecord): string {
+	const p = payloadOf(n);
+	const name = valueString(p.triggered_by_name);
+	const email = valueString(p.triggered_by_email);
+	if (name && email) return `${name} (${email})`;
+	return name || email || '-';
+}
+
+function notificationRecipient(n: NotificationRecord): string {
+	const p = payloadOf(n);
+	const name = valueString(p.notification_recipient_name);
+	const email = valueString(p.notification_recipient_email);
+	return name || displayPersonLabel(email) || '-';
+}
+
+function showNotificationRecipient(n: NotificationRecord): boolean {
+	return n.category === 'material_assigned' && notificationRecipient(n) !== '-';
+}
+
+function mailRecipients(n: NotificationRecord): string {
+	const p = payloadOf(n);
+	return listString(p.to);
+}
+
+function mailRecipientNames(n: NotificationRecord): string {
+	const p = payloadOf(n);
+	return listDisplayNames(p.to);
+}
+
+function mailCcRecipients(n: NotificationRecord): string {
+	const p = payloadOf(n);
+	return listString(p.cc);
+}
+
+function notificationCategoryLabel(n: NotificationRecord): string {
+	if (n.category === 'material_assigned') return 'Material';
+	if (n.category === 'mail_own_activity') return 'Mail Aktivität';
+	if (n.category === 'mail_department') return 'Mail Stufe';
+	return 'Info';
+}
+
+function notificationCategoryClass(n: NotificationRecord): string {
+	if (n.category === 'material_assigned') return 'avatar-notification-category--material';
+	if (n.category === 'mail_own_activity') return 'avatar-notification-category--activity-mail';
+	if (n.category === 'mail_department') return 'avatar-notification-category--department-mail';
+	return '';
+}
+
+function compactLink(link: string | null): string {
+	if (!link) return '';
+	try {
+		const url = new URL(link, window.location.origin);
+		return `${url.pathname}${url.search}`;
+	} catch {
+		return link;
+	}
+}
+
+function headlineRecipients(n: NotificationRecord): string {
+	if (n.category === 'material_assigned') return notificationRecipient(n);
+	return mailRecipientNames(n);
+}
+
+function notificationSummary(n: NotificationRecord): string {
+	if (n.category === 'material_assigned') return 'Neue Materialverantwortung';
+	if (n.category === 'mail_own_activity') return 'Mail für deine Aktivität wurde versendet';
+	if (n.category === 'mail_department') return 'Mail in deiner Stufe wurde versendet';
+	return n.message;
 }
 
 onMounted(() => document.addEventListener('mousedown', onClickOutside));
@@ -310,6 +429,8 @@ onMounted(() => {
 	overflow: auto;
 	border: 1px solid #e5e7eb;
 	border-radius: 12px;
+	background: linear-gradient(180deg, #f8fafc 0%, #fdfefe 100%);
+	padding: 8px;
 }
 
 .avatar-notifications-empty {
@@ -323,42 +444,198 @@ onMounted(() => {
 	width: 100%;
 	text-align: left;
 	border: none;
-	border-top: 1px solid #f3f4f6;
-	background: #fff;
-	padding: 9px 16px;
+	background: rgba(255, 255, 255, 0.92);
+	padding: 12px 13px;
 	cursor: pointer;
+	border-radius: 12px;
+	margin-top: 8px;
+	border: 1px solid #e8edf3;
+	transition:
+		background 0.14s ease,
+		box-shadow 0.14s ease,
+		border-color 0.14s ease;
+}
+
+.avatar-notification-item:hover {
+	background: #ffffff;
+	border-color: #dbeafe;
+	box-shadow: 0 8px 18px rgba(148, 163, 184, 0.12);
+}
+
+.avatar-notification-item:first-child {
+	margin-top: 0;
 }
 
 .avatar-notification-item--unread {
-	background: #eff6ff;
+	background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
+	border-color: #bfdbfe;
+}
+
+.avatar-notification-headline {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.avatar-notification-headline-main {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	flex-wrap: wrap;
+}
+
+.avatar-notification-headline-side {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 2px;
+	flex: 0 0 auto;
+}
+
+.avatar-notification-category {
+	display: inline-flex;
+	align-items: center;
+	padding: 3px 8px;
+	border-radius: 999px;
+	font-size: 0.67rem;
+	font-weight: 800;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	background: #e5e7eb;
+	color: #374151;
+}
+
+.avatar-notification-category--material {
+	background: #dcfce7;
+	color: #166534;
+}
+
+.avatar-notification-category--activity-mail {
+	background: #dbeafe;
+	color: #1d4ed8;
+}
+
+.avatar-notification-category--department-mail {
+	background: #ffedd5;
+	color: #c2410c;
 }
 
 .avatar-notification-title {
-	font-size: 0.82rem;
+	font-size: 0.84rem;
 	font-weight: 700;
 	color: #1f2937;
+	line-height: 1.25;
+}
+
+.avatar-notification-date-inline {
+	font-size: 0.69rem;
+	font-weight: 600;
+	color: #6b7280;
+	white-space: nowrap;
+}
+
+.avatar-notification-recipients-inline {
+	max-width: 240px;
+	font-size: 0.68rem;
+	font-weight: 600;
+	line-height: 1.2;
+	color: #334155;
+	text-align: right;
 }
 
 .avatar-notification-message {
-	margin-top: 4px;
-	font-size: 0.78rem;
+	margin-top: 6px;
+	font-size: 0.73rem;
+	font-weight: 600;
 	color: #4b5563;
+	line-height: 1.35;
+}
+
+.avatar-notification-grid {
+	margin-top: 8px;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 6px;
 }
 
 .avatar-notification-meta {
-	margin-top: 4px;
-	font-size: 0.74rem;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 7px 9px;
+	font-size: 0.71rem;
 	color: #6b7280;
+	background: rgba(248, 250, 252, 0.9);
+	border: 1px solid #e5e7eb;
+	border-radius: 9px;
+}
+
+.avatar-notification-meta strong {
+	font-size: 0.62rem;
+	font-weight: 800;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: #64748b;
+}
+
+.avatar-notification-meta span {
+	color: #334155;
+	line-height: 1.35;
+	word-break: break-word;
+}
+
+.avatar-notification-meta--wide {
+	grid-column: 1 / -1;
+}
+
+.avatar-notification-link-row {
+	margin-top: 8px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 7px;
+	border-top: 1px dashed #dbe3ee;
+}
+
+.avatar-notification-link-label {
+	flex: 0 0 auto;
+	font-size: 0.67rem;
+	font-weight: 800;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: #64748b;
 }
 
 .avatar-notification-link {
-	margin-top: 4px;
-	font-size: 0.72rem;
+	font-size: 0.75rem;
 	color: #1a56db;
 	word-break: break-all;
 }
 
 .avatar-notifications-footer {
 	margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+	.avatar-notification-headline {
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.avatar-notification-headline-side {
+		align-items: flex-start;
+	}
+
+	.avatar-notification-recipients-inline {
+		max-width: none;
+		text-align: left;
+	}
+
+	.avatar-notification-grid {
+		grid-template-columns: 1fr;
+	}
 }
 </style>

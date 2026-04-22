@@ -3,6 +3,11 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const backendUrl = process.env.VITE_BACKEND_URL || 'http://localhost:8080';
+const backendWsUrl = backendUrl.startsWith('https://')
+	? backendUrl.replace('https://', 'wss://')
+	: backendUrl.replace('http://', 'ws://');
+
 export default defineConfig({
 	test: {
 		environment: 'happy-dom',
@@ -47,11 +52,11 @@ export default defineConfig({
 	server: {
 		proxy: {
 			'/api': {
-				target: 'http://localhost:8080',
+				target: backendUrl,
 				rewrite: (path) => path.replace(/^\/api/, ''),
 			},
 			'/ws': {
-				target: 'ws://localhost:8080',
+				target: backendWsUrl,
 				ws: true,
 			},
 		},

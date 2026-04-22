@@ -19,8 +19,9 @@
 #include <limits>
 #include <vector>
 #include <utility>
-#include <openssl/sha.h>
 #include <openssl/evp.h>
+#include <openssl/params.h>
+#include <openssl/core_names.h>
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
@@ -75,7 +76,8 @@ namespace
                     return out;
             }
         }
-        return "http://localhost";
+        // Last-resort local fallback when no public URL env is configured.
+        return "http://localhost:8000";
     }
 
     std::string activity_absolute_link(const std::string &activity_id)
@@ -178,37 +180,76 @@ namespace
 
         const std::string signing_input = enc_header + "." + enc_payload;
 
-        unsigned char hash[SHA256_DIGEST_LENGTH]{};
-        SHA256(reinterpret_cast<const unsigned char *>(signing_input.data()), signing_input.size(), hash);
-
         std::string priv_raw = base64url_decode(vapid_priv_b64u);
         if (priv_raw.size() < 32)
             return std::nullopt;
         if (priv_raw.size() > 32)
             priv_raw.resize(32);
 
-        EC_KEY *ec = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-        if (!ec)
+        EVP_PKEY_CTX *pkey_ctx = EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr);
+        if (!pkey_ctx)
             return std::nullopt;
 
-        BIGNUM *priv = BN_bin2bn(reinterpret_cast<const unsigned char *>(priv_raw.data()),
-                                 static_cast<int>(priv_raw.size()), nullptr);
-        if (!priv)
+        EVP_PKEY *pkey = nullptr;
+        if (EVP_PKEY_fromdata_init(pkey_ctx) <= 0)
         {
-            EC_KEY_free(ec);
+            EVP_PKEY_CTX_free(pkey_ctx);
             return std::nullopt;
         }
 
-        if (EC_KEY_set_private_key(ec, priv) != 1)
+        OSSL_PARAM params[3];
+        params[0] = OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME,
+                                                     const_cast<char *>("prime256v1"),
+                                                     0);
+        params[1] = OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_PRIV_KEY,
+                                                      const_cast<char *>(priv_raw.data()),
+                                                      priv_raw.size());
+        params[2] = OSSL_PARAM_construct_end();
+
+        if (EVP_PKEY_fromdata(pkey_ctx, &pkey, EVP_PKEY_KEYPAIR, params) <= 0 || !pkey)
         {
-            BN_free(priv);
-            EC_KEY_free(ec);
+            EVP_PKEY_CTX_free(pkey_ctx);
+            return std::nullopt;
+        }
+        EVP_PKEY_CTX_free(pkey_ctx);
+
+        EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
+        if (!md_ctx)
+        {
+            EVP_PKEY_free(pkey);
             return std::nullopt;
         }
 
-        ECDSA_SIG *sig = ECDSA_do_sign(hash, SHA256_DIGEST_LENGTH, ec);
-        BN_free(priv);
-        EC_KEY_free(ec);
+        if (EVP_DigestSignInit(md_ctx, nullptr, EVP_sha256(), nullptr, pkey) <= 0 ||
+            EVP_DigestSignUpdate(md_ctx, signing_input.data(), signing_input.size()) <= 0)
+        {
+            EVP_MD_CTX_free(md_ctx);
+            EVP_PKEY_free(pkey);
+            return std::nullopt;
+        }
+
+        size_t der_len = 0;
+        if (EVP_DigestSignFinal(md_ctx, nullptr, &der_len) <= 0 || der_len == 0)
+        {
+            EVP_MD_CTX_free(md_ctx);
+            EVP_PKEY_free(pkey);
+            return std::nullopt;
+        }
+
+        std::string der_sig(der_len, '\0');
+        if (EVP_DigestSignFinal(md_ctx,
+                                reinterpret_cast<unsigned char *>(&der_sig[0]),
+                                &der_len) <= 0)
+        {
+            EVP_MD_CTX_free(md_ctx);
+            EVP_PKEY_free(pkey);
+            return std::nullopt;
+        }
+        EVP_MD_CTX_free(md_ctx);
+        EVP_PKEY_free(pkey);
+
+        const unsigned char *der_ptr = reinterpret_cast<const unsigned char *>(der_sig.data());
+        ECDSA_SIG *sig = d2i_ECDSA_SIG(nullptr, &der_ptr, static_cast<long>(der_len));
         if (!sig)
             return std::nullopt;
 
@@ -2401,6 +2442,10 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                         {"location", activity->location},
                         {"assigned_users", all_assigned},
                         {"recipients", all_assigned},
+                        {"notification_recipient_name", u.display_name},
+                        {"notification_recipient_email", u.email},
+                        {"triggered_by_name", current_user->display_name},
+                        {"triggered_by_email", current_user->email},
                         {"activity_url", full_link}
                     };
                     auto note = db.create_notification(
@@ -2420,11 +2465,11 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                         if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
                             std::string mail_subject = "[DPWeb] Material dir zugewiesen: " + activity->title;
                             std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dir Material zugewiesen.</p>"
-                                "<p><strong>Aktivität:</strong> " + activity->title + "<br/>"
+                                "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
                                 "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
-                                "<strong>Ort:</strong> " + activity->location + "</p>"
-                                "<p><strong>Empfänger:</strong> " + recipients_text + "</p>"
-                                "<p><a href=\"" + full_link + "\">Zur Aktivität</a></p>";
+                                "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                "<p>Weitere Details findest du direkt in der Aktivität.</p>";
                             db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
                         }
                     }
@@ -2555,6 +2600,10 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                             {"assigned_users", new_assigned},
                             {"newly_assigned_users", newly_assigned},
                             {"recipients", new_assigned},
+                            {"notification_recipient_name", u.display_name},
+                            {"notification_recipient_email", u.email},
+                            {"triggered_by_name", current_user->display_name},
+                            {"triggered_by_email", current_user->email},
                             {"activity_url", full_link}
                         };
 
@@ -2575,11 +2624,11 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                             if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
                                 std::string mail_subject = "[DPWeb] Material dir zugewiesen: " + activity->title;
                                 std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dir Material zugewiesen.</p>"
-                                    "<p><strong>Aktivität:</strong> " + activity->title + "<br/>"
+                                    "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
                                     "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
-                                    "<strong>Ort:</strong> " + activity->location + "</p>"
-                                    "<p><strong>Empfänger:</strong> " + recipients_text + "</p>"
-                                    "<p><a href=\"" + full_link + "\">Zur Aktivität</a></p>";
+                                    "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                    "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                    "<p>Weitere Details findest du direkt in der Aktivität.</p>";
                                 db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
                             }
                         }
@@ -2802,39 +2851,11 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-        auto perm = db.get_role_permission(current_user->role);
-        if (!is_admin(*current_user) && !perm)
-        {
-            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-            return;
-        }
-
-        // Determine visibility based on user management scopes
-        bool can_see_all = is_admin(*current_user) || (perm && (perm->user_dept_scope == "all" || perm->user_role_scope == "all"));
-        bool can_see_dept = perm && (perm->user_dept_scope == "own_dept" || perm->user_role_scope == "own_dept");
 
         auto users = db.list_users();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &u : users)
-        {
-            if (can_see_all)
-            {
-                arr.push_back(user_to_json(u));
-            }
-            else if (can_see_dept)
-            {
-                // own_dept: only users in same department + self
-                if (u.id == current_user->id ||
-                    (current_user->department && u.department && *current_user->department == *u.department))
-                    arr.push_back(user_to_json(u));
-            }
-            else
-            {
-                // own or none: only self
-                if (u.id == current_user->id)
-                    arr.push_back(user_to_json(u));
-            }
-        }
+            arr.push_back(user_to_json(u));
         send_json(res, 200, arr.dump());
     }
     catch (std::exception &e)
@@ -3129,28 +3150,42 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
 
-        // Fetch current user to check permissions before allowing department change.
+        // Fetch current user once; own profile updates require an existing user record.
         auto current_user = resolve_user(db, claims);
+        if (!current_user) {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        // Keep the current department unless an explicit department key is provided.
         std::optional<std::string> department;
         if (j.contains("department") && j["department"].is_string()) {
             std::string new_dept = j["department"].get<std::string>();
-            // Only users with user_dept_scope 'all' or 'own' may change their own department.
-            auto perm = current_user ? db.get_role_permission(current_user->role) : std::nullopt;
-            if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
-                send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
-                return;
-            }
             department = new_dept;
-        } else if (j.contains("department") && j["department"].is_null()) {
-            auto perm = current_user ? db.get_role_permission(current_user->role) : std::nullopt;
-            if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
-                send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
-                return;
+
+            // Only enforce permission when the department actually changes.
+            if (department != current_user->department) {
+                auto perm = db.get_role_permission(current_user->role);
+                if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
+                    send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
+                    return;
+                }
             }
-            // department stays nullopt → will be set to NULL
+        } else if (j.contains("department") && j["department"].is_null()) {
+            // NULL means explicit department removal.
+            department = std::nullopt;
+
+            // Only enforce permission when the department actually changes.
+            if (department != current_user->department) {
+                auto perm = db.get_role_permission(current_user->role);
+                if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
+                    send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
+                    return;
+                }
+            }
         } else {
             // department key missing → keep existing department
-            department = current_user ? current_user->department : std::optional<std::string>{};
+            department = current_user->department;
         }
 
         std::optional<std::string> time_display_mode;
@@ -3447,10 +3482,17 @@ void handle_post_push_payload(HttpRes *res, HttpReq * /*req*/, Database &db)
         }
 
         std::string link = n->link ? *n->link : "/profile";
+        std::string date_short;
+        if (n->payload.is_object() && n->payload.contains("activity_date_display") && n->payload["activity_date_display"].is_string()) {
+            date_short = trim_ascii(n->payload["activity_date_display"].get<std::string>());
+        }
+        if (date_short.empty()) {
+            date_short = format_date_ddmmyyyy(n->created_at);
+        }
         nlohmann::json payload = {
             {"id", n->id},
             {"title", n->title},
-            {"body", n->message},
+            {"body", date_short.empty() ? std::string("Neue Benachrichtigung") : std::string("Datum: ") + date_short},
             {"url", link},
             {"notification", notification_to_json(*n)}
         };
@@ -3761,6 +3803,10 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                                 {"to", to_emails},
                                 {"cc", cc_emails},
                                 {"recipients", to_emails},
+                                {"notification_recipient_name", u.display_name},
+                                {"notification_recipient_email", u.email},
+                                {"triggered_by_name", current_user->display_name},
+                                {"triggered_by_email", current_user->email},
                                 {"activity_url", link}
                             };
 
@@ -3785,18 +3831,19 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                                     if (u.notify_channel_email && !u.email.empty()) {
                                         std::string subj = "[DPWeb] Mail für deine Aktivität: " + activity->title;
                                         std::string body = "<p><strong>" + current_user->display_name + "</strong> hat eine Mail für deine Aktivität versendet.</p>"
-                                            "<p><strong>Aktivität:</strong> " + activity->title + "<br/>"
-                                            "<strong>Datum:</strong> " + date_short + "</p>"
+                                            "<p><strong>Aktivität:</strong> <a href=\"" + link + "\">" + activity->title + "</a><br/>"
+                                            "<strong>Datum:</strong> " + date_short + "<br/>"
+                                            "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
                                             "<p><strong>Empfänger:</strong> " + recipients_text + (cc_emails.empty() ? "" : ("<br/><strong>CC:</strong> " + cc_text)) + "</p>"
                                             "<p><strong>Betreff:</strong> " + subject + "</p>"
                                             "<hr/>" + body_html +
-                                            "<p><a href=\"" + link + "\">Zur Aktivität</a></p>";
+                                            "<p>Die Aktivität ist direkt im Titel verlinkt.</p>";
                                         db.send_mail(graph_token, current_user->email, {u.email}, {}, subj, body);
                                     }
                                 }
                             }
 
-                            if (is_same_department && u.notify_mail_department) {
+                            else if (is_same_department && u.notify_mail_department) {
                                 auto note = db.create_notification(
                                     u.id,
                                     "mail_department",
@@ -3814,12 +3861,13 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                                     if (u.notify_channel_email && !u.email.empty()) {
                                         std::string subj = "[DPWeb] Mail in deiner Stufe: " + activity->title;
                                         std::string body = "<p><strong>" + current_user->display_name + "</strong> hat eine Mail in deiner Stufe versendet.</p>"
-                                            "<p><strong>Aktivität:</strong> " + activity->title + "<br/>"
-                                            "<strong>Datum:</strong> " + date_short + "</p>"
+                                            "<p><strong>Aktivität:</strong> <a href=\"" + link + "\">" + activity->title + "</a><br/>"
+                                            "<strong>Datum:</strong> " + date_short + "<br/>"
+                                            "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
                                             "<p><strong>Empfänger:</strong> " + recipients_text + (cc_emails.empty() ? "" : ("<br/><strong>CC:</strong> " + cc_text)) + "</p>"
                                             "<p><strong>Betreff:</strong> " + subject + "</p>"
                                             "<hr/>" + body_html +
-                                            "<p><a href=\"" + link + "\">Zur Aktivität</a></p>";
+                                            "<p>Die Aktivität ist direkt im Titel verlinkt.</p>";
                                         db.send_mail(graph_token, current_user->email, {u.email}, {}, subj, body);
                                     }
                                 }

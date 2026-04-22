@@ -921,15 +921,15 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
         (department ? ("'" + dept_str + "'") : std::string("NULL"));
     if (time_display_mode)
         sql += ", time_display_mode = '" + tdm_str + "'";
-    if (notify_material_assigned)
+    if (notify_material_assigned.has_value())
         sql += std::string(", notify_material_assigned = ") + (*notify_material_assigned ? "true" : "false");
-    if (notify_mail_own_activity)
+    if (notify_mail_own_activity.has_value())
         sql += std::string(", notify_mail_own_activity = ") + (*notify_mail_own_activity ? "true" : "false");
-    if (notify_mail_department)
+    if (notify_mail_department.has_value())
         sql += std::string(", notify_mail_department = ") + (*notify_mail_department ? "true" : "false");
-    if (notify_channel_websocket)
+    if (notify_channel_websocket.has_value())
         sql += std::string(", notify_channel_websocket = ") + (*notify_channel_websocket ? "true" : "false");
-    if (notify_channel_email)
+    if (notify_channel_email.has_value())
         sql += std::string(", notify_channel_email = ") + (*notify_channel_email ? "true" : "false");
     sql +=
         " WHERE microsoft_oid = $2 "
