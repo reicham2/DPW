@@ -59,3 +59,4 @@ frontend/dist/
 claude/
 .claude
 CLAUDE.md
+.idea/

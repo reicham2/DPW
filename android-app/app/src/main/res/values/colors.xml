@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dpw_primary">#1F5A45</color>
+    <color name="dpw_on_primary">#FFFFFF</color>
+    <color name="dpw_bg">#F8FBF9</color>
+    <color name="ic_launcher_background">#1F5A45</color>
+</resources>
