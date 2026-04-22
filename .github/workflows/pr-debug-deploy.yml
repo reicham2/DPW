@@ -33,7 +33,7 @@ jobs:
           SLUG=$(echo "$RAW" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | cut -c1-48)
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
           echo "project=dpw-$SLUG" >> "$GITHUB_OUTPUT"
-                  echo "hostname=dpw-${SLUG}.lklaus.ch" >> "$GITHUB_OUTPUT"
+            echo "hostname=dpw-${SLUG}.lklaus.ch" >> "$GITHUB_OUTPUT"
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -44,6 +44,7 @@ jobs:
 
       - name: Create .env
         run: |
+          HOSTNAME="https://${{ steps.slug.outputs.hostname }}"
           cat > .env <<'EOF'
           AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}
@@ -60,6 +61,7 @@ jobs:
           ENABLE_DEBUG_AUTH=1
           FRONTEND_ENABLE_DEBUG_AUTH=1
           EOF
+          printf 'DPW_PUBLIC_URL=%s\n' "$HOSTNAME" >> .env
 
       - name: Build debug containers
         run: |

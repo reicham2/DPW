@@ -93,7 +93,10 @@ async function showSystemNotification(incoming: NotificationRecord) {
 		const yyyy = String(d.getFullYear());
 		return `${dd}.${mm}.${yyyy}`;
 	})();
-	const compactBody = activityDate || fallbackDate ? `Datum: ${activityDate || fallbackDate}` : 'Neue Benachrichtigung';
+	const compactBody =
+		activityDate || fallbackDate
+			? `Datum: ${activityDate || fallbackDate}`
+			: 'Neue Benachrichtigung';
 
 	if (typeof window === 'undefined' || !('Notification' in window)) return;
 	if (Notification.permission !== 'granted') return;
