@@ -14,6 +14,28 @@ const DEPARTMENTS = computed<Department[]>(() => readableDepts(user.value?.depar
 
 const { activities, loading, error, fetchActivities } = useActivities()
 
+const ACTIVITY_DEPT_FILTER_KEY_PREFIX = 'dpw_activities_dept_filter'
+
+function activityDeptFilterKey(userId: string): string {
+  return `${ACTIVITY_DEPT_FILTER_KEY_PREFIX}:${userId}`
+}
+
+function readSavedActivityDept(userId: string): string | null {
+  try {
+    return localStorage.getItem(activityDeptFilterKey(userId))
+  } catch {
+    return null
+  }
+}
+
+function saveActivityDept(userId: string, value: Department | 'Alle') {
+  try {
+    localStorage.setItem(activityDeptFilterKey(userId), value)
+  } catch {
+    // localStorage can be unavailable (private mode / browser policy)
+  }
+}
+
 // Permission-based: can user see multiple departments?
 const canReadMultipleDepts = computed(() => {
   return DEPARTMENTS.value.length > 1
@@ -25,7 +47,7 @@ const canCreateActivity = computed(() => {
 })
 
 const search = ref('')
-const activedept = ref<Department | 'Alle'>(user.value?.department ?? 'Alle')
+const activedept = ref<Department | 'Alle'>('Alle')
 
 // Date range filter inputs (manual)
 const dateFrom = ref('')
@@ -60,6 +82,41 @@ function clearDateFilter() {
 watch(activedept, () => {
   extraEarlier.value = 0
   extraLater.value = 0
+})
+
+watch(
+  [() => user.value?.id, () => user.value?.department, DEPARTMENTS],
+  ([userId, ownDept, readable]) => {
+    if (!userId) {
+      activedept.value = 'Alle'
+      return
+    }
+
+    const saved = readSavedActivityDept(userId)
+    if (saved === 'Alle') {
+      activedept.value = 'Alle'
+      return
+    }
+
+    if (saved && readable.includes(saved)) {
+      activedept.value = saved
+      return
+    }
+
+    if (ownDept && readable.includes(ownDept)) {
+      activedept.value = ownDept
+      return
+    }
+
+    activedept.value = 'Alle'
+  },
+  { immediate: true }
+)
+
+watch(activedept, (value) => {
+  const userId = user.value?.id
+  if (!userId) return
+  saveActivityDept(userId, value)
 })
 
 function loadLater() {
