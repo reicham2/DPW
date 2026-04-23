@@ -280,6 +280,12 @@ function canFormTemplates(): boolean {
 	return p.form_templates_scope !== 'none';
 }
 
+function canEventTemplates(): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	return p.event_templates_scope !== 'none';
+}
+
 function readableDepts(userDept: string | null | undefined): string[] {
 	const p = myPermissions.value;
 	return departments.value
@@ -398,6 +404,7 @@ export function usePermissions() {
 		canManageSystem,
 		canForms,
 		canFormTemplates,
+		canEventTemplates,
 		canManageLocations,
 		readableDepts,
 		writableDepts,

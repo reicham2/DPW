@@ -4,6 +4,7 @@
 #include "graph.hpp"
 #include "cache.hpp"
 #include "utils.hpp"
+#include "wp_client.hpp"
 #include <string>
 #include <memory>
 #include <algorithm>
@@ -4306,6 +4307,380 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
         } });
 }
 
+// ---- Event templates --------------------------------------------------------
+
+static nlohmann::json event_template_to_json(const EventTemplate &t)
+{
+    return {
+        {"id", t.id},
+        {"department", t.department},
+        {"title", t.title},
+        {"body", t.body},
+        {"created_at", t.created_at},
+        {"updated_at", t.updated_at}};
+}
+
+// Parse "YYYY-MM-DD" date + "HH:MM" time into a Unix timestamp (Europe/Zurich assumed UTC+1/+2).
+// Falls back to UTC if parsing fails.
+static long parse_datetime_unix(const std::string &date_str, const std::string &time_str)
+{
+    struct tm t{};
+    // Parse date
+    if (sscanf(date_str.c_str(), "%d-%d-%d", &t.tm_year, &t.tm_mon, &t.tm_mday) == 3)
+    {
+        t.tm_year -= 1900;
+        t.tm_mon -= 1;
+    }
+    // Parse time
+    if (time_str.size() >= 5)
+        sscanf(time_str.c_str(), "%d:%d", &t.tm_hour, &t.tm_min);
+    t.tm_isdst = -1;
+    // Use mktime (local time) — container should have TZ=Europe/Zurich
+    time_t result = mktime(&t);
+    return static_cast<long>(result);
+}
+
+static nlohmann::json event_publication_to_json(const EventPublication &p)
+{
+    return {
+        {"id", p.id},
+        {"activity_id", p.activity_id},
+        {"published_by", p.published_by},
+        {"title", p.title},
+        {"body_html", p.body_html},
+        {"wp_event_id", p.wp_event_id.empty() ? nlohmann::json(nullptr) : nlohmann::json(p.wp_event_id)},
+        {"published_at", p.published_at}};
+}
+
+// ---- GET /event-templates ---------------------------------------------------
+
+void handle_get_event_templates(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
+        return;
+    }
+
+    auto perm = db.get_role_permission(current_user->role);
+    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    auto templates = db.list_event_templates();
+
+    // Filter by own department if scope is own_dept
+    if (!is_admin(*current_user) && perm && perm->event_templates_scope == "own_dept")
+    {
+        std::vector<EventTemplate> filtered;
+        for (auto &t : templates)
+        {
+            if (current_user->department && t.department == *current_user->department)
+                filtered.push_back(std::move(t));
+        }
+        templates = std::move(filtered);
+    }
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto &t : templates)
+        arr.push_back(event_template_to_json(t));
+    send_json(res, 200, arr.dump());
+}
+
+// ---- GET /event-templates/:department ---------------------------------------
+
+void handle_get_event_template(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
+        return;
+    }
+
+    std::string department = url_decode(std::string{req->getParameter(0)});
+
+    auto perm = db.get_role_permission(current_user->role);
+    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    if (!is_admin(*current_user) && perm->event_templates_scope == "own_dept")
+    {
+        if (!current_user->department || *current_user->department != department)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+    }
+
+    auto tpl = db.get_event_template_by_department(department);
+    if (!tpl)
+    {
+        send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
+        return;
+    }
+    send_json(res, 200, event_template_to_json(*tpl).dump());
+}
+
+// ---- PUT /event-templates/:department ---------------------------------------
+
+void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    std::string department = url_decode(std::string{req->getParameter(0)});
+
+    auto current_user = resolve_user(db, claims);
+    if (current_user)
+    {
+        auto perm = db.get_role_permission(current_user->role);
+        if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        if (!is_admin(*current_user) && perm->event_templates_scope == "own_dept")
+        {
+            if (!current_user->department || *current_user->department != department)
+            {
+                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                return;
+            }
+        }
+    }
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, department, &db, &wm](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) {
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
+            return;
+        }
+
+        std::string title = j.value("title", "");
+        std::string body  = j.value("body", "");
+
+        try {
+            auto tpl = db.upsert_event_template(department, title, body);
+            if (!tpl) {
+                send_json(res, 500, R"({"error":"Datenbankfehler"})");
+                return;
+            }
+            nlohmann::json msg = {{"event", "event_template_updated"}, {"template", event_template_to_json(*tpl)}};
+            wm.broadcast(msg.dump());
+            send_json(res, 200, event_template_to_json(*tpl).dump());
+        } catch (std::exception& e) {
+            send_internal_error(res, "handler", e);
+        } });
+}
+
+// ---- GET /activities/:id/event-publication -----------------------------------
+
+void handle_get_event_publication(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
+        return;
+    }
+
+    auto perm = db.get_role_permission(current_user->role);
+    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string activity_id{req->getParameter(0)};
+    auto pub = db.get_event_publication(activity_id);
+    if (!pub)
+    {
+        send_json(res, 404, R"({"error":"Nicht ver\u00f6ffentlicht"})");
+        return;
+    }
+    send_json(res, 200, event_publication_to_json(*pub).dump());
+}
+
+// ---- PUT /activities/:id/event-publication -----------------------------------
+
+void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
+{
+    std::string auth_header{req->getHeader("authorization")};
+    std::string token = extract_bearer_token(auth_header);
+    if (token.empty())
+    {
+        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
+        return;
+    }
+    TokenClaims claims;
+    try
+    {
+        claims = validate_token(token);
+    }
+    catch (std::exception &e)
+    {
+        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return;
+    }
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
+        return;
+    }
+
+    auto perm = db.get_role_permission(current_user->role);
+    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string activity_id{req->getParameter(0)};
+    std::string user_id = current_user->id;
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, activity_id, user_id, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) {
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON-Format"})");
+            return;
+        }
+
+        std::string title    = j.value("title", "");
+        std::string body_html = j.value("body_html", "");
+
+        if (title.empty()) {
+            send_json(res, 400, R"({"error":"Titel erforderlich"})");
+            return;
+        }
+
+        try {
+            auto pub = db.upsert_event_publication(activity_id, user_id, title, body_html);
+            if (!pub) {
+                send_json(res, 500, R"({"error":"Datenbankfehler"})");
+                return;
+            }
+
+            // ── WordPress / EventON sync (disabled in debug builds) ────
+#if !DPW_ENABLE_DEBUG_AUTH
+            if (wp_configured()) {
+                auto activity = db.get_activity_by_id(activity_id);
+                long start_ts = 0, end_ts = 0;
+                std::string location;
+                if (activity) {
+                    start_ts = parse_datetime_unix(activity->date, activity->start_time);
+                    end_ts   = parse_datetime_unix(activity->date, activity->end_time);
+                    location = activity->location;
+                }
+
+                if (!pub->wp_event_id.empty()) {
+                    auto wp = wp_update_event(pub->wp_event_id, title, body_html, start_ts, end_ts, location);
+                    if (!wp)
+                        fprintf(stderr, "[wp_client] update failed for wp_event_id=%s\n", pub->wp_event_id.c_str());
+                } else {
+                    auto wp = wp_create_event(title, body_html, start_ts, end_ts, location);
+                    if (wp) {
+                        db.update_event_publication_wp_id(activity_id, wp->wp_event_id);
+                        pub->wp_event_id = wp->wp_event_id;
+                    } else {
+                        fprintf(stderr, "[wp_client] create failed for activity=%s\n", activity_id.c_str());
+                    }
+                }
+            }
+#endif
+
+            send_json(res, 200, event_publication_to_json(*pub).dump());
+        } catch (std::exception& e) {
+            send_internal_error(res, "handler", e);
+        } });
+}
+
+// ---- DELETE /activities/:id/event-publication --------------------------------
+
+void handle_delete_event_publication(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
+        return;
+    }
+
+    auto perm = db.get_role_permission(current_user->role);
+    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    std::string activity_id{req->getParameter(0)};
+
+    // Delete WordPress event if it exists (disabled in debug builds)
+#if !DPW_ENABLE_DEBUG_AUTH
+    if (wp_configured())
+    {
+        auto pub = db.get_event_publication(activity_id);
+        if (pub && !pub->wp_event_id.empty())
+        {
+            if (!wp_delete_event(pub->wp_event_id))
+                fprintf(stderr, "[wp_client] delete failed for wp_event_id=%s\n", pub->wp_event_id.c_str());
+        }
+    }
+#endif
+
+    db.delete_event_publication(activity_id);
+    send_json(res, 204, "");
+}
+
 // ---- POST /send-mail --------------------------------------------------------
 
 void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
@@ -5246,6 +5621,7 @@ static nlohmann::json role_perm_to_json(const RolePermission &rp)
         {"mail_templates_scope", rp.mail_templates_scope},
         {"form_scope", rp.form_scope},
         {"form_templates_scope", rp.form_templates_scope},
+        {"event_templates_scope", rp.event_templates_scope},
         {"user_dept_scope", rp.user_dept_scope},
         {"user_role_scope", rp.user_role_scope},
         {"locations_manage_scope", rp.locations_manage_scope}};
@@ -5281,8 +5657,10 @@ void handle_get_my_permissions(HttpRes *res, HttpReq *req, Database &db)
                 {"mail_templates_scope", "all"},
                 {"form_scope", "all"},
                 {"form_templates_scope", "all"},
+                {"event_templates_scope", "all"},
                 {"user_dept_scope", "all"},
                 {"user_role_scope", "all"},
+                {"locations_manage_scope", "all"},
                 {"dept_access", nlohmann::json::array()}};
             send_json(res, 200, j.dump());
             return;
@@ -5755,6 +6133,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
         std::string mail_templates_scope = j.value("mail_templates_scope", "none");
         std::string form_scope = j.value("form_scope", "none");
         std::string form_templates_scope = j.value("form_templates_scope", "none");
+        std::string event_templates_scope = j.value("event_templates_scope", "none");
         std::string user_dept_scope = j.value("user_dept_scope", "none");
         std::string user_role_scope = j.value("user_role_scope", "none");
         std::string locations_manage_scope = j.value("locations_manage_scope", "none");
@@ -5770,6 +6149,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
                                                 activity_read_scope, activity_create_scope, activity_edit_scope,
                                                 mail_send_scope, mail_templates_scope,
                                                 form_scope, form_templates_scope,
+                                                event_templates_scope,
                                                 user_dept_scope, user_role_scope, locations_manage_scope);
             if (!ok) {
                 send_json(res, 404, R"({"error":"Rolle nicht gefunden"})");

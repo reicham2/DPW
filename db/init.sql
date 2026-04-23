@@ -121,6 +121,37 @@ CREATE TRIGGER trg_mail_templates_updated_at
 INSERT INTO mail_templates (department, subject, body, recipients, cc) VALUES
     ('Allgemein', '', '', '{}', '{}');
 
+-- Event templates (one per department, for WordPress event publishing)
+CREATE TABLE event_templates (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    department  TEXT        NOT NULL UNIQUE REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    title       TEXT        NOT NULL DEFAULT '',
+    body        TEXT        NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER trg_event_templates_updated_at
+    BEFORE UPDATE ON event_templates
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- Seed default (empty) event template for default department
+INSERT INTO event_templates (department, title, body) VALUES
+    ('Allgemein', '', '');
+
+-- Event publications (tracks which activities have been published to WordPress)
+CREATE TABLE event_publications (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id    UUID        NOT NULL UNIQUE REFERENCES activities(id) ON DELETE CASCADE,
+    published_by   UUID        REFERENCES users(id) ON DELETE SET NULL,
+    title          TEXT        NOT NULL,
+    body_html      TEXT        NOT NULL,
+    wp_event_id    TEXT,
+    published_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_event_publications_activity ON event_publications (activity_id);
+
 -- Sent mail log (audit trail)
 CREATE TABLE sent_mails (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -236,6 +267,8 @@ CREATE TABLE role_permissions (
         CHECK (form_scope IN ('none', 'own', 'same_dept', 'all')),
     form_templates_scope TEXT    NOT NULL DEFAULT 'none'
         CHECK (form_templates_scope IN ('none', 'own_dept', 'all')),
+    event_templates_scope TEXT   NOT NULL DEFAULT 'none'
+        CHECK (event_templates_scope IN ('none', 'own_dept', 'all')),
     user_dept_scope      TEXT    NOT NULL DEFAULT 'none'
         CHECK (user_dept_scope IN ('none', 'own', 'own_dept', 'all')),
     user_role_scope           TEXT    NOT NULL DEFAULT 'none'
@@ -254,9 +287,9 @@ CREATE TABLE role_dept_access (
 );
 
 -- Seed default role permissions
-INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope) VALUES
-    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all'),
-    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none', 'none');
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, event_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope) VALUES
+    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all'),
+    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none', 'none', 'none');
 
 -- Triggers for departments & roles updated_at
 CREATE TRIGGER trg_departments_updated_at

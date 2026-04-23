@@ -3180,3 +3180,47 @@ img, video {
 .activity-preview-popup__row--full {
 	grid-template-columns: 1fr;
 }
+
+/* ── Event publish preview ──────────────────────────────────────────── */
+.event-preview-form {
+	margin: 16px 0;
+}
+.event-preview-label {
+	display: block;
+	font-size: 0.82rem;
+	font-weight: 600;
+	color: #6b7280;
+	margin-bottom: 4px;
+}
+.event-preview-input {
+	width: 100%;
+	padding: 8px 12px;
+	border: 1.5px solid #d1d5db;
+	border-radius: 8px;
+	font-size: 0.95rem;
+	color: #1a202c;
+	outline: none;
+	box-sizing: border-box;
+}
+.event-preview-input:focus {
+	border-color: #1a56db;
+	box-shadow: 0 0 0 2px rgba(26, 86, 219, 0.12);
+}
+.event-preview-body {
+	width: 100%;
+	min-height: 160px;
+	max-height: 320px;
+	overflow-y: auto;
+	padding: 10px 12px;
+	border: 1.5px solid #d1d5db;
+	border-radius: 8px;
+	font-size: 0.93rem;
+	color: #1a202c;
+	outline: none;
+	box-sizing: border-box;
+	line-height: 1.55;
+}
+.event-preview-body:focus {
+	border-color: #1a56db;
+	box-shadow: 0 0 0 2px rgba(26, 86, 219, 0.12);
+}

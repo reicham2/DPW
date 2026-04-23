@@ -7,8 +7,9 @@ import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
 import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
 import { useForms } from '../composables/useForms';
+import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
-import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather } from '../types';
+import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
@@ -40,6 +41,7 @@ const { users, fetchUsers } = useUsers();
 const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper } = usePermissions();
 
 const { fetchForm } = useForms();
+const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent } = useEventTemplates();
 
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
@@ -65,6 +67,11 @@ const isStatsDrawerOpen = ref(false);
 const shareToken = ref<string | null>(null);
 const shareLoading = ref(false);
 const shareCopied = ref(false);
+const eventPublication = ref<EventPublication | null>(null);
+const showEventPreview = ref(false);
+const eventPreviewTitle = ref('');
+const eventPreviewBody = ref('');
+const eventPublishing = ref(false);
 const dirtyFields = new Set<string>();
 const savedFields = ref<Record<string, number>>({});
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -441,6 +448,98 @@ const canForms = computed(() => {
 	if (!user.value || !activity.value) return false;
 	return canFormsHelper(activity.value, user.value.display_name, user.value.department);
 });
+
+const canPublishEvent = computed(() => {
+	if (!user.value || !activity.value) return false;
+	const p = myPermissions.value;
+	if (!p) return false;
+	if (p.event_templates_scope === 'all') return true;
+	if (p.event_templates_scope === 'own_dept' && activity.value.department === user.value.department) return true;
+	return false;
+});
+
+function evtFormatDateLong(d: string): string {
+	return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
+		weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+	});
+}
+function evtFormatDateShort(d: string): string {
+	return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
+		day: '2-digit', month: '2-digit', year: 'numeric'
+	});
+}
+function evtFormatPrograms(act: Activity): string {
+	if (!act.programs.length) return '';
+	return act.programs.map(p => {
+		const dur = p.duration_minutes ? `${p.duration_minutes} min` : '';
+		const resp = p.responsible && p.responsible.length ? ' (' + p.responsible.join(', ') + ')' : '';
+		const desc = p.description ? ': ' + p.description : '';
+		return `${dur} – ${p.title}${resp}${desc}`;
+	}).join('\n');
+}
+
+function evtSubstituteVarsPlain(text: string, act: Activity): string {
+	const vars: Record<string, string> = {
+		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
+		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
+		verantwortlich: act.responsible.join(', '), abteilung: act.department ?? '',
+		ziel: act.goal, material: act.material.map(m => m.name).join(', ') || '',
+		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
+	};
+	return text.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
+		const lk = key.toLowerCase();
+		return lk in vars ? vars[lk] : m;
+	});
+}
+
+function evtSubstituteVarsHtml(text: string, act: Activity): string {
+	const container = document.createElement('div');
+	container.innerHTML = text;
+	const vars: Record<string, string> = {
+		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
+		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
+		verantwortlich: act.responsible.join(', '), abteilung: act.department ?? '',
+		ziel: act.goal, material: act.material.map(m => m.name).join(', ') || '',
+		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
+	};
+	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+	const textNodes: Text[] = [];
+	while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+	for (const node of textNodes) {
+		const original = node.nodeValue ?? '';
+		const replaced = original.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
+			const lk = key.toLowerCase();
+			return lk in vars ? vars[lk] : m;
+		});
+		if (replaced !== original) node.nodeValue = replaced;
+	}
+	return container.innerHTML;
+}
+
+async function handlePublishEventClick() {
+	if (!activity.value) return;
+	const dept = activity.value.department;
+	if (!dept) { error.value = 'Aktivität hat keine Abteilung zugewiesen'; return; }
+	const tpl = await fetchEventTemplate(dept);
+	if (!tpl || (!tpl.title && !tpl.body)) {
+		error.value = `Keine Event-Vorlage für "${dept}" konfiguriert. Erstelle eine unter Vorlagen > Event-Vorlagen.`;
+		return;
+	}
+	eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value);
+	eventPreviewBody.value = evtSubstituteVarsHtml(tpl.body, activity.value);
+	showEventPreview.value = true;
+}
+
+async function confirmPublishEvent() {
+	if (!activity.value) return;
+	eventPublishing.value = true;
+	const result = await publishEvent(id, eventPreviewTitle.value, eventPreviewBody.value);
+	eventPublishing.value = false;
+	if (result) {
+		eventPublication.value = result;
+		showEventPreview.value = false;
+	}
+}
 
 let liveParticipantsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let detailDeferredLoadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -957,6 +1056,9 @@ onMounted(async () => {
 			attachments.value = items;
 		});
 		void fetchShareLink();
+		if (canPublishEvent.value) {
+			void fetchPublication(id).then(pub => { eventPublication.value = pub; });
+		}
 		void Promise.allSettled([
 			fetchDepartments(),
 			fetchLocations(),
@@ -1989,6 +2091,23 @@ function copyShareLink() {
 				title="Kein Zugriff auf Mailversand"
 			>
 				📧 Mail
+			</button>
+			<!-- Event publish -->
+			<button
+				v-if="activity && mode === 'view' && canPublishEvent && !eventPublication"
+				class="btn-mail"
+				title="Als Event veröffentlichen"
+				@click="handlePublishEventClick"
+			>
+				🌐 Veröffentlichen
+			</button>
+			<button
+				v-else-if="activity && mode === 'view' && canPublishEvent && eventPublication"
+				class="btn-mail btn-mail--active"
+				:title="eventPublication.wp_event_id ? 'Veröffentlicht + WordPress synchronisiert' : 'Event veröffentlicht (WordPress nicht konfiguriert)'"
+				@click="handlePublishEventClick"
+			>
+				{{ eventPublication.wp_event_id ? '✅ Veröffentlicht (WP)' : '✅ Veröffentlicht' }}
 			</button>
 			<!-- Share link -->
 			<div v-if="activity && mode === 'view'" class="share-link-wrap">
@@ -3041,6 +3160,38 @@ function copyShareLink() {
 			<div class="duplicate-dialog__actions">
 				<button type="button" class="btn-secondary" @click="onDuplicateSkip">Überspringen</button>
 				<button type="button" class="btn-primary" @click="onDuplicateReplace">Ersetzen</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Event publish preview modal -->
+	<div v-if="showEventPreview" class="modal-backdrop" @click.self="showEventPreview = false">
+		<div class="modal" style="max-width: 640px;">
+			<h2 class="modal-title">Event-Vorschau</h2>
+			<div class="event-preview-form">
+				<label class="event-preview-label">Titel</label>
+				<input
+					v-model="eventPreviewTitle"
+					class="event-preview-input"
+					placeholder="Event-Titel"
+				/>
+				<label class="event-preview-label" style="margin-top: 12px;">Beschreibung</label>
+				<div
+					class="event-preview-body"
+					contenteditable="true"
+					@input="eventPreviewBody = ($event.target as HTMLElement).innerHTML"
+					v-html="eventPreviewBody"
+				></div>
+			</div>
+			<div class="modal-actions">
+				<button class="btn-cancel" @click="showEventPreview = false">Abbrechen</button>
+				<button
+					class="btn-primary"
+					:disabled="eventPublishing || !eventPreviewTitle.trim()"
+					@click="confirmPublishEvent"
+				>
+					{{ eventPublishing ? 'Wird veröffentlicht…' : (eventPublication ? 'Aktualisieren' : 'Veröffentlichen') }}
+				</button>
 			</div>
 		</div>
 	</div>

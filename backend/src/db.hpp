@@ -61,6 +61,27 @@ struct MailTemplate
     std::string updated_at;
 };
 
+struct EventTemplate
+{
+    std::string id;
+    std::string department;
+    std::string title;
+    std::string body;
+    std::string created_at;
+    std::string updated_at;
+};
+
+struct EventPublication
+{
+    std::string id;
+    std::string activity_id;
+    std::string published_by;
+    std::string title;
+    std::string body_html;
+    std::string wp_event_id;
+    std::string published_at;
+};
+
 struct SentMail
 {
     std::string id;
@@ -126,6 +147,7 @@ struct RolePermission
     std::string mail_templates_scope;   // none|own_dept|all
     std::string form_scope;             // none|own|same_dept|all
     std::string form_templates_scope;   // none|own_dept|all
+    std::string event_templates_scope;  // none|own_dept|all
     std::string user_dept_scope;        // none|own|own_dept|all
     std::string user_role_scope;        // none|own|own_dept|all
     std::string locations_manage_scope; // none|all
@@ -226,6 +248,22 @@ public:
                                                      const std::string &body,
                                                      const std::vector<std::string> &recipients,
                                                      const std::vector<std::string> &cc);
+
+    // Event templates
+    std::vector<EventTemplate> list_event_templates();
+    std::optional<EventTemplate> get_event_template_by_department(const std::string &department);
+    std::optional<EventTemplate> upsert_event_template(const std::string &department,
+                                                        const std::string &title,
+                                                        const std::string &body);
+
+    // Event publications
+    std::optional<EventPublication> get_event_publication(const std::string &activity_id);
+    std::optional<EventPublication> upsert_event_publication(const std::string &activity_id,
+                                                              const std::string &published_by,
+                                                              const std::string &title,
+                                                              const std::string &body_html);
+    bool update_event_publication_wp_id(const std::string &activity_id, const std::string &wp_event_id);
+    bool delete_event_publication(const std::string &activity_id);
 
     // Send mail via Microsoft Graph
     bool send_mail(const std::string &access_token,
@@ -328,6 +366,7 @@ public:
                                 const std::string &mail_templates_scope,
                                 const std::string &form_scope,
                                 const std::string &form_templates_scope,
+                                const std::string &event_templates_scope,
                                 const std::string &user_dept_scope,
                                 const std::string &user_role_scope,
                                 const std::string &locations_manage_scope = "none");
@@ -400,6 +439,8 @@ private:
     Attachment row_to_attachment(PGresult *res, int row);
     UserRecord row_to_user(PGresult *res, int row);
     MailTemplate row_to_mail_template(PGresult *res, int row);
+    EventTemplate row_to_event_template(PGresult *res, int row);
+    EventPublication row_to_event_publication(PGresult *res, int row);
     SentMail row_to_sent_mail(PGresult *res, int row);
     NotificationRecord row_to_notification(PGresult *res, int row);
     PushSubscriptionRecord row_to_push_subscription(PGresult *res, int row);
