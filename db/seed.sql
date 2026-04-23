@@ -30,18 +30,19 @@ INSERT INTO roles (name, color, sort_order) VALUES
     ('Pio',           '#6b7280', 3)
 ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, event_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope) VALUES
-    ('Stufenleiter',  true, true, false, false, 'same_dept', 'own_dept', 'same_dept', 'same_dept', 'own_dept', 'own_dept', 'own_dept', 'own_dept', 'none'),
-    ('Leiter',        true, true, false, false, 'same_dept', 'own_dept', 'own',       'own',       'none',     'none',     'none',     'none',     'none'),
-    ('Pio',           true, false, false, false, 'same_dept', 'none',     'none',      'none',      'none',     'none',     'none',     'none',     'none')
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, event_templates_scope, event_publish_scope, user_dept_scope, user_role_scope, locations_manage_scope) VALUES
+    ('Stufenleiter',  true, true, false, false, 'same_dept', 'own_dept', 'same_dept', 'same_dept', 'own_dept', 'own_dept', 'own_dept', 'own_dept', 'own_dept', 'none'),
+    ('Leiter',        true, true, false, false, 'same_dept', 'own_dept', 'own',       'own',       'none',     'none',     'none',     'none',     'none',     'none'),
+    ('Pio',           true, false, false, false, 'same_dept', 'none',     'none',      'none',      'none',     'none',     'none',     'none',     'none',     'none')
 ON CONFLICT (role) DO NOTHING;
 
 INSERT INTO event_templates (department, title, body) VALUES
-    ('Leiter', '', ''),
-    ('Pio',    '', ''),
-    ('Pfadi',  '', ''),
-    ('Wölfe',  '', ''),
-    ('Biber',  '', '')
+    ('Allgemein', '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Leiter',    '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Pio',       '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Pfadi',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Wölfe',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Biber',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>')
 ON CONFLICT (department) DO NOTHING;
 
 INSERT INTO mail_templates (department, subject, body, recipients, cc) VALUES

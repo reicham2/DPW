@@ -148,6 +148,7 @@ struct RolePermission
     std::string form_scope;             // none|own|same_dept|all
     std::string form_templates_scope;   // none|own_dept|all
     std::string event_templates_scope;  // none|own_dept|all
+    std::string event_publish_scope;    // none|own_dept|all
     std::string user_dept_scope;        // none|own|own_dept|all
     std::string user_role_scope;        // none|own|own_dept|all
     std::string locations_manage_scope; // none|all
@@ -367,6 +368,7 @@ public:
                                 const std::string &form_scope,
                                 const std::string &form_templates_scope,
                                 const std::string &event_templates_scope,
+                                const std::string &event_publish_scope,
                                 const std::string &user_dept_scope,
                                 const std::string &user_role_scope,
                                 const std::string &locations_manage_scope = "none");

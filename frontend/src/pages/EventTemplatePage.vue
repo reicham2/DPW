@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useEventTemplates } from '../composables/useEventTemplates'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
-import { wsSend, wsRegister, wsJoin, wsLeave, useWebSocket } from '../composables/useWebSocket'
+import { wsSend, wsJoin, wsLeave, useWebSocket } from '../composables/useWebSocket'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -14,7 +14,7 @@ import { config } from '../config'
 const router = useRouter()
 const { departments: deptRecords, fetchDepartments, myPermissions, fetchMyPermissions } = usePermissions()
 const ALL_DEPARTMENTS = computed<Department[]>(() => deptRecords.value.map(d => d.name))
-const { fetchTemplates, fetchTemplate, saveTemplate, templates, loading, error } = useEventTemplates()
+const { fetchTemplates, saveTemplate, templates, loading, error } = useEventTemplates()
 
 const canEditAll = computed(() => myPermissions.value?.event_templates_scope === 'all')
 const canEditOwnDept = computed(() => {
@@ -204,84 +204,80 @@ async function doSave() {
 }
 
 function scheduleAutoSave() {
-  hasPendingChanges = true
+  if (suppressDirtyTracking || applyingRemote) return
+  scheduleLocalDraftWrite()
   if (AUTOSAVE_DEBOUNCE) {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     autoSaveTimer = setTimeout(doSave, AUTOSAVE_INTERVAL)
+  } else {
+    hasPendingChanges = true
   }
 }
 
 function startAutoSaveInterval() {
-  if (!AUTOSAVE_DEBOUNCE) {
+  if (!AUTOSAVE_DEBOUNCE && !autoSaveInterval) {
     autoSaveInterval = setInterval(() => {
-      if (hasPendingChanges) doSave()
+      if (hasPendingChanges) {
+        hasPendingChanges = false
+        doSave()
+      }
     }, AUTOSAVE_INTERVAL)
   }
 }
 
-function stopAutoSave() {
-  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
-  if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null }
+function stopAutoSaveInterval() {
+  if (autoSaveInterval) {
+    clearInterval(autoSaveInterval)
+    autoSaveInterval = null
+  }
+  hasPendingChanges = false
 }
 
 // ---- Watch fields -----------------------------------------------------------
-watch(title, () => { markDirty('title'); scheduleAutoSave(); scheduleLocalDraftWrite() })
-watch(body, () => { markDirty('body'); scheduleAutoSave(); scheduleLocalDraftWrite() })
+watch(title, () => { markDirty('title'); scheduleAutoSave() })
+// body changes are triggered by onEditorInput which calls scheduleAutoSave directly
 
 // ---- Load template for department -------------------------------------------
-async function loadDept(dept: Department) {
-  stopAutoSave()
-  if (hasPendingChanges && activeDept.value) await doSave()
-
-  if (myLockedSection.value) {
-    wsSend({ type: 'unlock', activity_id: tplId(), section: myLockedSection.value })
-    myLockedSection.value = null
-  }
-  wsLeave(tplId())
+function loadDept(dept: Department) {
+  wsLeave()
+  myLockedSection.value = null
   sectionLocks.value = new Map()
   activeEditors.value = []
+  localDraftRestoredAt.value = null
 
-  activeDept.value = dept
   suppressDirtyTracking = true
-
+  activeDept.value = dept
   const tpl = templates.value.find(t => t.department === dept)
   title.value = tpl?.title ?? ''
   body.value = tpl?.body ?? ''
-  if (editorRef.value) editorRef.value.innerHTML = body.value
-
   loadPendingLocalDraft(dept)
 
+  if (editorRef.value) editorRef.value.innerHTML = body.value
   suppressDirtyTracking = false
+  dirtyFields.clear()
   hasPendingChanges = false
-  startAutoSaveInterval()
 
   wsJoin(tplId())
 }
 
 // ---- WebSocket events -------------------------------------------------------
-const { isConnected } = useWebSocket()
-let unregister: (() => void) | null = null
-
-function handleWs(e: any) {
-  if (e.event === 'lock' && e.activity_id === tplId()) {
+useWebSocket((e: any) => {
+  const id = tplId()
+  if (e.event === 'lock' && e.activity_id === id) {
     sectionLocks.value.set(e.section, e.user)
     sectionLocks.value = new Map(sectionLocks.value)
-  }
-  if (e.event === 'unlock' && e.activity_id === tplId()) {
+  } else if (e.event === 'unlock' && e.activity_id === id) {
     sectionLocks.value.delete(e.section)
     sectionLocks.value = new Map(sectionLocks.value)
-  }
-  if (e.event === 'editors' && e.activity_id === tplId()) {
-    activeEditors.value = (e.users as string[]).filter(u => u !== user.value?.display_name)
-  }
-  if (e.event === 'locks_state' && e.activity_id === tplId()) {
+  } else if (e.event === 'editors' && e.activity_id === id) {
+    activeEditors.value = (e.users as string[]).filter((u: string) => u !== user.value?.display_name)
+  } else if (e.event === 'locks_state' && e.activity_id === id) {
     const m = new Map<EditSection, string>()
     if (e.locks && typeof e.locks === 'object') {
       for (const [k, v] of Object.entries(e.locks)) m.set(k as EditSection, v as string)
     }
     sectionLocks.value = m
-  }
-  if (e.event === 'event_template_updated') {
+  } else if (e.event === 'event_template_updated') {
     const tpl = e.template as EventTemplate
     if (!tpl) return
     const idx = templates.value.findIndex(t => t.department === tpl.department)
@@ -292,21 +288,23 @@ function handleWs(e: any) {
       if (myLockedSection.value !== ('evt_tpl_title' as EditSection)) title.value = tpl.title
       if (myLockedSection.value !== ('evt_tpl_body' as EditSection)) {
         body.value = tpl.body
-        if (editorRef.value && myLockedSection.value !== ('evt_tpl_body' as EditSection))
-          editorRef.value.innerHTML = tpl.body
+        if (editorRef.value) editorRef.value.innerHTML = tpl.body
       }
       applyingRemote = false
     }
   }
-}
+})
 
 // ---- Rich text helpers ------------------------------------------------------
 function execCmd(cmd: string, val?: string) {
   document.execCommand(cmd, false, val)
-  syncBody()
+  onEditorInput()
 }
-function syncBody() {
+
+function onEditorInput() {
   if (editorRef.value) body.value = editorRef.value.innerHTML
+  markDirty('body')
+  scheduleAutoSave()
 }
 
 // ---- Lifecycle --------------------------------------------------------------
@@ -334,20 +332,21 @@ onMounted(async () => {
     suppressDirtyTracking = false
   }
 
-  unregister = wsRegister(handleWs)
   if (dept) wsJoin(tplId())
   startAutoSaveInterval()
 })
 
 onUnmounted(() => {
-  stopAutoSave()
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  if (savedTimer) clearTimeout(savedTimer)
   if (localDraftWriteTimer) clearTimeout(localDraftWriteTimer)
+  stopAutoSaveInterval()
+  writeLocalDraftNow()
   if (hasPendingChanges && activeDept.value) doSave()
   if (myLockedSection.value) {
     wsSend({ type: 'unlock', activity_id: tplId(), section: myLockedSection.value })
   }
-  if (activeDept.value) wsLeave(tplId())
-  if (unregister) unregister()
+  if (activeDept.value) wsLeave()
 })
 </script>
 
@@ -356,166 +355,89 @@ onUnmounted(() => {
     <h1>Event-Vorlagen</h1>
   </header>
 
-  <ErrorAlert v-if="error" :message="error" @close="error = null" />
-
-  <!-- Local-draft recovery banner -->
-  <div v-if="pendingLocalDraft" class="draft-banner">
-    <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleTimeString('de-CH') }})</span>
-    <button class="btn-restore" @click="restoreLocalDraft">Wiederherstellen</button>
-    <button class="btn-discard" @click="discardLocalDraft">Verwerfen</button>
-  </div>
-
-  <div v-if="loading" class="loading">Laden...</div>
-
-  <template v-else>
-    <!-- Active editors indicator -->
-    <div v-if="activeEditors.length" class="active-editors">
-      {{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls
-    </div>
-
+  <main class="main">
     <!-- Department tabs -->
-    <div v-if="visibleDepartments.length > 1" class="dept-tabs">
+    <div class="filter-tabs" style="margin-bottom: 24px">
       <button
         v-for="dept in visibleDepartments"
         :key="dept"
-        class="dept-tab"
-        :class="{ 'dept-tab--active': dept === activeDept }"
+        class="filter-tab filter-tab--badge"
         @click="loadDept(dept)"
       >
-        <DepartmentBadge :department="dept" :small="true" />
+        <DepartmentBadge :department="dept" :active="activeDept === dept" />
       </button>
     </div>
 
-    <!-- Template editor -->
-    <div class="form-card">
-      <TemplateVarsDropdown hint="Verwende diese Variablen im Titel oder Inhalt. Sie werden beim Veröffentlichen durch die Aktivitätsdaten ersetzt." />
+    <p v-if="loading" class="loading">Laden...</p>
+
+    <div v-else class="detail-form">
+      <!-- Local-draft recovery banner -->
+      <div v-if="pendingLocalDraft" class="editors-banner" style="gap: 10px; flex-wrap: wrap;">
+        <span class="editors-banner-icon">💾</span>
+        <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
+        <button type="button" class="btn-secondary" @click="restoreLocalDraft">Wiederherstellen</button>
+        <button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
+      </div>
+      <div v-else-if="localDraftRestoredAt" class="editors-banner">
+        <span class="editors-banner-icon">✅</span>
+        <span>Lokaler Entwurf wurde wiederhergestellt.</span>
+      </div>
+
+      <!-- Active editors indicator -->
+      <div v-if="activeEditors.length" class="editors-banner">
+        <span class="editors-banner-icon">👥</span>
+        <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
+      </div>
 
       <!-- Title -->
-      <div class="form-group" @focusin="lockSection('evt_tpl_title' as EditSection)" @focusout="unlockSection('evt_tpl_title' as EditSection, $event)">
-        <label>
-          Titel
-          <span v-if="lockedBy('evt_tpl_title' as EditSection)" class="lock-badge">{{ lockedBy('evt_tpl_title' as EditSection) }}</span>
-          <span v-if="savedFields['title']" class="saved-badge">gespeichert</span>
-        </label>
-        <input
-          v-model="title"
-          type="text"
-          class="input"
-          placeholder="z.B. {{abteilung}}: {{titel}}"
-          :disabled="isLockedByOther('evt_tpl_title' as EditSection)"
-        />
+      <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_title' as EditSection) }"
+        @focusin="lockSection('evt_tpl_title' as EditSection)" @focusout="unlockSection('evt_tpl_title' as EditSection, $event)">
+        <div v-if="lockedBy('evt_tpl_title' as EditSection)" class="lock-badge">🔒 {{ lockedBy('evt_tpl_title' as EditSection) }}</div>
+        <label>Titel-Vorlage</label>
+        <div class="input-save-wrap">
+          <input
+            v-model="title"
+            type="text"
+            placeholder="z.B. {{abteilung}}: {{titel}}"
+            :disabled="isLockedByOther('evt_tpl_title' as EditSection)"
+          />
+          <span v-if="savedFields['title']" class="field-saved-icon" :key="'wrap-' + savedFields['title']">💾</span>
+        </div>
       </div>
 
       <!-- Body (rich text editor) -->
-      <div class="form-group" @focusin="lockSection('evt_tpl_body' as EditSection)" @focusout="unlockSection('evt_tpl_body' as EditSection, $event)">
-        <label>
-          Inhalt
-          <span v-if="lockedBy('evt_tpl_body' as EditSection)" class="lock-badge">{{ lockedBy('evt_tpl_body' as EditSection) }}</span>
-          <span v-if="savedFields['body']" class="saved-badge">gespeichert</span>
+      <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_body' as EditSection) }"
+        @focusin="lockSection('evt_tpl_body' as EditSection)" @focusout="unlockSection('evt_tpl_body' as EditSection, $event)">
+        <div v-if="lockedBy('evt_tpl_body' as EditSection)" class="lock-badge">🔒 {{ lockedBy('evt_tpl_body' as EditSection) }}</div>
+        <label>Inhalt-Vorlage
+          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['body']">💾</span>
         </label>
-        <div class="editor-toolbar" v-if="!isLockedByOther('evt_tpl_body' as EditSection)">
-          <button type="button" title="Fett" @mousedown.prevent="execCmd('bold')"><b>B</b></button>
-          <button type="button" title="Kursiv" @mousedown.prevent="execCmd('italic')"><i>I</i></button>
-          <button type="button" title="Unterstrichen" @mousedown.prevent="execCmd('underline')"><u>U</u></button>
+        <div class="input-save-wrap">
+          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--textarea" :key="'wrap-' + savedFields['body']">💾</span>
+        </div>
+        <div class="rich-editor-toolbar" v-if="!isLockedByOther('evt_tpl_body' as EditSection)">
+          <button type="button" @mousedown.prevent @click="execCmd('bold')" title="Fett"><b>B</b></button>
+          <button type="button" @mousedown.prevent @click="execCmd('italic')" title="Kursiv"><i>I</i></button>
+          <button type="button" @mousedown.prevent @click="execCmd('underline')" title="Unterstrichen"><u>U</u></button>
           <span class="toolbar-sep"></span>
-          <button type="button" title="Aufzählung" @mousedown.prevent="execCmd('insertUnorderedList')">&#8226;</button>
-          <button type="button" title="Nummerierung" @mousedown.prevent="execCmd('insertOrderedList')">1.</button>
+          <button type="button" @mousedown.prevent @click="execCmd('insertUnorderedList')" title="Aufzählung">&#8226; Liste</button>
+          <button type="button" @mousedown.prevent @click="execCmd('insertOrderedList')" title="Nummerierung">1. Liste</button>
           <span class="toolbar-sep"></span>
-          <button type="button" title="Formatierung entfernen" @mousedown.prevent="execCmd('removeFormat')">&#x2715;</button>
+          <button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
         </div>
         <div
           ref="editorRef"
           class="rich-editor"
-          contenteditable
-          :class="{ 'editor-locked': isLockedByOther('evt_tpl_body' as EditSection) }"
-          @input="syncBody"
+          :contenteditable="!isLockedByOther('evt_tpl_body' as EditSection)"
+          @input="onEditorInput"
+          data-placeholder="Event-Inhalt…"
         ></div>
       </div>
+
+      <!-- Variable reference -->
+      <TemplateVarsDropdown hint="Verwende diese Variablen im Titel oder Inhalt. Sie werden beim Veröffentlichen durch die Aktivitätsdaten ersetzt." />
+
+      <ErrorAlert :error="error" />
     </div>
-  </template>
+  </main>
 </template>
-
-<style scoped>
-.header { padding: 28px 24px 0; display: flex; align-items: baseline; gap: 12px; }
-.header h1 { font-size: 1.5rem; font-weight: 700; color: #1a202c; margin: 0; }
-
-.loading { padding: 24px; color: #6b7280; }
-
-.active-editors {
-  margin: 8px 24px 0; padding: 6px 12px; background: #fef3c7;
-  border-radius: 6px; font-size: 0.82rem; color: #92400e;
-}
-
-.draft-banner {
-  margin: 12px 24px 0; padding: 10px 14px; background: #fef9c3;
-  border: 1px solid #fde68a; border-radius: 8px;
-  display: flex; align-items: center; gap: 10px; font-size: 0.85rem;
-}
-.btn-restore { background: #2563eb; color: #fff; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; }
-.btn-discard { background: none; border: 1px solid #d1d5db; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; color: #6b7280; }
-
-.dept-tabs {
-  display: flex; gap: 6px; padding: 16px 24px 0; flex-wrap: wrap;
-}
-.dept-tab {
-  background: none; border: 2px solid transparent; border-radius: 8px;
-  padding: 4px 8px; cursor: pointer; transition: border-color 0.15s;
-}
-.dept-tab--active { border-color: #2563eb; }
-
-.form-card {
-  margin: 16px 24px 24px; padding: 20px;
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
-}
-
-.form-group { margin-top: 16px; }
-.form-group:first-child { margin-top: 0; }
-.form-group label {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 6px;
-}
-
-.input {
-  width: 100%; padding: 8px 12px; border: 1px solid #d1d5db;
-  border-radius: 8px; font-size: 0.9rem; box-sizing: border-box;
-}
-.input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15); }
-.input:disabled { background: #f3f4f6; cursor: not-allowed; }
-
-.lock-badge {
-  font-size: 0.72rem; background: #fef3c7; color: #92400e;
-  padding: 1px 7px; border-radius: 4px; font-weight: 500;
-}
-.saved-badge {
-  font-size: 0.72rem; background: #d1fae5; color: #065f46;
-  padding: 1px 7px; border-radius: 4px; font-weight: 500;
-}
-
-.editor-toolbar {
-  display: flex; gap: 2px; padding: 6px 8px;
-  background: #f9fafb; border: 1px solid #e5e7eb;
-  border-radius: 8px 8px 0 0; border-bottom: none;
-}
-.editor-toolbar button {
-  background: none; border: 1px solid transparent; border-radius: 4px;
-  padding: 4px 8px; cursor: pointer; font-size: 0.82rem; color: #374151;
-}
-.editor-toolbar button:hover { background: #e5e7eb; }
-.toolbar-sep { width: 1px; background: #d1d5db; margin: 0 4px; }
-
-.rich-editor {
-  min-height: 200px; padding: 12px 14px;
-  border: 1px solid #d1d5db; border-radius: 0 0 8px 8px;
-  font-size: 0.9rem; line-height: 1.6; outline: none;
-}
-.rich-editor:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15); }
-.editor-locked { background: #f3f4f6; pointer-events: none; opacity: 0.7; }
-
-@media (max-width: 599px) {
-  .header { padding: 20px 16px 0; }
-  .header h1 { font-size: 1.3rem; }
-  .dept-tabs { padding: 12px 16px 0; }
-  .form-card { margin: 12px 16px 16px; padding: 14px; }
-  .draft-banner { margin: 8px 16px 0; flex-wrap: wrap; }
-}
-</style>

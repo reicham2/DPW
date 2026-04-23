@@ -599,6 +599,13 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
               </select>
             </div>
             <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Event veröffentlichen</span></div>
+              <select class="scope-select" :value="getPermForRole(r.name)!.event_publish_scope"
+                @change="updatePerm(r.name, 'event_publish_scope', ($event.target as HTMLSelectElement).value)">
+                <option v-for="o in SCOPE_OPTIONS_MAIL_TPL" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div class="perm-row">
               <div class="perm-info"><span class="perm-label">Benutzer-Stufen verwalten</span></div>
               <select class="scope-select" :value="getPermForRole(r.name)!.user_dept_scope"
                 @change="updatePerm(r.name, 'user_dept_scope', ($event.target as HTMLSelectElement).value)">

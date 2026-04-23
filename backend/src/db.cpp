@@ -2548,6 +2548,7 @@ RolePermission Database::row_to_role_perm(PGresult *res, int row)
     rp.form_scope = col("form_scope") ? col("form_scope") : "none";
     rp.form_templates_scope = col("form_templates_scope") ? col("form_templates_scope") : "none";
     rp.event_templates_scope = col("event_templates_scope") ? col("event_templates_scope") : "none";
+    rp.event_publish_scope = col("event_publish_scope") ? col("event_publish_scope") : "none";
     rp.user_dept_scope = col("user_dept_scope") ? col("user_dept_scope") : "none";
     rp.user_role_scope = col("user_role_scope") ? col("user_role_scope") : "none";
     rp.locations_manage_scope = col("locations_manage_scope") ? col("locations_manage_scope") : "none";
@@ -2564,7 +2565,7 @@ std::vector<RolePermission> Database::list_role_permissions()
                            "       activity_edit_scope, "
                            "       mail_send_scope, "
                            "       mail_templates_scope, form_scope, form_templates_scope, "
-                           "       event_templates_scope, "
+                           "       event_templates_scope, event_publish_scope, "
                            "       user_dept_scope, user_role_scope, locations_manage_scope "
                            "FROM role_permissions ORDER BY role");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -2623,6 +2624,7 @@ bool Database::update_role_permission(const std::string &role,
                                       const std::string &form_scope,
                                       const std::string &form_templates_scope,
                                       const std::string &event_templates_scope,
+                                      const std::string &event_publish_scope,
                                       const std::string &user_dept_scope,
                                       const std::string &user_role_scope,
                                       const std::string &locations_manage_scope)
@@ -2641,27 +2643,30 @@ bool Database::update_role_permission(const std::string &role,
     const char *p11 = form_scope.c_str();
     const char *p12 = form_templates_scope.c_str();
     const char *p13 = event_templates_scope.c_str();
-    const char *p14 = user_dept_scope.c_str();
-    const char *p15 = user_role_scope.c_str();
-    const char *p16 = locations_manage_scope.c_str();
-    const char *params[16] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16};
+    const char *p14 = event_publish_scope.c_str();
+    const char *p15 = user_dept_scope.c_str();
+    const char *p16 = user_role_scope.c_str();
+    const char *p17 = locations_manage_scope.c_str();
+    const char *params[17] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, "
                                  "can_read_all_depts, can_write_all_depts, "
                                  "activity_read_scope, activity_create_scope, activity_edit_scope, "
                                  "mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, "
-                                 "event_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope) "
-                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) "
+                                 "event_templates_scope, event_publish_scope, "
+                                 "user_dept_scope, user_role_scope, locations_manage_scope) "
+                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, "
+                                 "$6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) "
                                  "ON CONFLICT (role) DO UPDATE SET "
                                  "can_read_own_dept = $2::boolean, can_write_own_dept = $3::boolean, "
                                  "can_read_all_depts = $4::boolean, can_write_all_depts = $5::boolean, "
                                  "activity_read_scope = $6, activity_create_scope = $7, activity_edit_scope = $8, "
                                  "mail_send_scope = $9, mail_templates_scope = $10, "
                                  "form_scope = $11, form_templates_scope = $12, "
-                                 "event_templates_scope = $13, "
-                                 "user_dept_scope = $14, user_role_scope = $15, "
-                                 "locations_manage_scope = $16",
-                                 16, nullptr, params, nullptr, nullptr, 0);
+                                 "event_templates_scope = $13, event_publish_scope = $14, "
+                                 "user_dept_scope = $15, user_role_scope = $16, "
+                                 "locations_manage_scope = $17",
+                                 17, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;

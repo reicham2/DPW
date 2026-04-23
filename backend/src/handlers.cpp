@@ -4523,7 +4523,7 @@ void handle_get_event_publication(HttpRes *res, HttpReq *req, Database &db)
     }
 
     auto perm = db.get_role_permission(current_user->role);
-    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    if (!is_admin(*current_user) && (!perm || perm->event_publish_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -4569,7 +4569,7 @@ void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
     }
 
     auto perm = db.get_role_permission(current_user->role);
-    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    if (!is_admin(*current_user) && (!perm || perm->event_publish_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -4655,7 +4655,7 @@ void handle_delete_event_publication(HttpRes *res, HttpReq *req, Database &db)
     }
 
     auto perm = db.get_role_permission(current_user->role);
-    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    if (!is_admin(*current_user) && (!perm || perm->event_publish_scope == "none"))
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
@@ -5619,6 +5619,7 @@ static nlohmann::json role_perm_to_json(const RolePermission &rp)
         {"form_scope", rp.form_scope},
         {"form_templates_scope", rp.form_templates_scope},
         {"event_templates_scope", rp.event_templates_scope},
+        {"event_publish_scope", rp.event_publish_scope},
         {"user_dept_scope", rp.user_dept_scope},
         {"user_role_scope", rp.user_role_scope},
         {"locations_manage_scope", rp.locations_manage_scope}};
@@ -5655,6 +5656,7 @@ void handle_get_my_permissions(HttpRes *res, HttpReq *req, Database &db)
                 {"form_scope", "all"},
                 {"form_templates_scope", "all"},
                 {"event_templates_scope", "all"},
+                {"event_publish_scope", "all"},
                 {"user_dept_scope", "all"},
                 {"user_role_scope", "all"},
                 {"locations_manage_scope", "all"},
@@ -6131,6 +6133,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
         std::string form_scope = j.value("form_scope", "none");
         std::string form_templates_scope = j.value("form_templates_scope", "none");
         std::string event_templates_scope = j.value("event_templates_scope", "none");
+        std::string event_publish_scope = j.value("event_publish_scope", "none");
         std::string user_dept_scope = j.value("user_dept_scope", "none");
         std::string user_role_scope = j.value("user_role_scope", "none");
         std::string locations_manage_scope = j.value("locations_manage_scope", "none");
@@ -6146,7 +6149,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
                                                 activity_read_scope, activity_create_scope, activity_edit_scope,
                                                 mail_send_scope, mail_templates_scope,
                                                 form_scope, form_templates_scope,
-                                                event_templates_scope,
+                                                event_templates_scope, event_publish_scope,
                                                 user_dept_scope, user_role_scope, locations_manage_scope);
             if (!ok) {
                 send_json(res, 404, R"({"error":"Rolle nicht gefunden"})");

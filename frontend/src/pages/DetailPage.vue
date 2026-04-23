@@ -72,6 +72,93 @@ const showEventPreview = ref(false);
 const eventPreviewTitle = ref('');
 const eventPreviewBody = ref('');
 const eventPublishing = ref(false);
+const eventPreviewEditorRef = ref<HTMLElement | null>(null);
+const evtPreviewToolbar = ref<{ bold: boolean; italic: boolean; underline: boolean; ul: boolean; ol: boolean; font: string; size: string; color: string; bgColor: string } | null>(null);
+let evtPreviewSavedSelection: Range | null = null;
+
+function onEvtPreviewInput() {
+	if (eventPreviewEditorRef.value) eventPreviewBody.value = eventPreviewEditorRef.value.innerHTML;
+	updateEvtPreviewToolbar();
+}
+
+function updateEvtPreviewToolbar() {
+	const el = eventPreviewEditorRef.value;
+	const sel = window.getSelection();
+	if (!sel || !sel.rangeCount || !el) return;
+	const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement;
+	if (!node || !el.contains(node)) return;
+	const cs = window.getComputedStyle(node);
+	evtPreviewToolbar.value = {
+		bold: document.queryCommandState('bold'),
+		italic: document.queryCommandState('italic'),
+		underline: document.queryCommandState('underline'),
+		ul: document.queryCommandState('insertUnorderedList'),
+		ol: document.queryCommandState('insertOrderedList'),
+		font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
+		size: parseInt(cs.fontSize).toString() || '12',
+		color: rgbToHex(cs.color) || '#000000',
+		bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
+	};
+}
+
+function evtPreviewSaveSelection() {
+	const sel = window.getSelection();
+	if (sel?.rangeCount && eventPreviewEditorRef.value?.contains(sel.anchorNode)) {
+		evtPreviewSavedSelection = sel.getRangeAt(0).cloneRange();
+	}
+}
+
+function evtPreviewExecCmd(cmd: string, value?: string) {
+	if (evtPreviewSavedSelection) {
+		const sel = window.getSelection();
+		if (sel) { sel.removeAllRanges(); sel.addRange(evtPreviewSavedSelection); }
+		evtPreviewSavedSelection = null;
+	}
+	document.execCommand(cmd, false, value);
+	eventPreviewEditorRef.value?.focus();
+	onEvtPreviewInput();
+}
+
+function evtPreviewSetFontSize(size: string) {
+	if (evtPreviewSavedSelection) {
+		const sel = window.getSelection();
+		if (sel) { sel.removeAllRanges(); sel.addRange(evtPreviewSavedSelection); }
+		evtPreviewSavedSelection = null;
+	}
+	const sel = window.getSelection();
+	if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+		const span = document.createElement('span');
+		span.style.fontSize = size + 'px';
+		span.textContent = '\u200B';
+		const range = sel.getRangeAt(0);
+		range.insertNode(span);
+		const newRange = document.createRange();
+		newRange.setStart(span.firstChild!, 1);
+		newRange.collapse(true);
+		sel.removeAllRanges();
+		sel.addRange(newRange);
+		eventPreviewEditorRef.value?.focus();
+		if (evtPreviewToolbar.value) evtPreviewToolbar.value.size = size;
+		onEvtPreviewInput();
+		return;
+	}
+	document.execCommand('fontSize', false, '7');
+	const fontEls = eventPreviewEditorRef.value?.querySelectorAll('font[size="7"]');
+	fontEls?.forEach(fe => {
+		const span = document.createElement('span');
+		span.style.fontSize = size + 'px';
+		span.innerHTML = fe.innerHTML;
+		fe.replaceWith(span);
+	});
+	eventPreviewEditorRef.value?.focus();
+	onEvtPreviewInput();
+}
+
+function evtPreviewAdjustFontSize(delta: number) {
+	const current = parseInt(evtPreviewToolbar.value?.size ?? '12') || 12;
+	const newSize = Math.max(8, Math.min(72, current + delta));
+	evtPreviewSetFontSize(String(newSize));
+}
 const dirtyFields = new Set<string>();
 const savedFields = ref<Record<string, number>>({});
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -453,8 +540,8 @@ const canPublishEvent = computed(() => {
 	if (!user.value || !activity.value) return false;
 	const p = myPermissions.value;
 	if (!p) return false;
-	if (p.event_templates_scope === 'all') return true;
-	if (p.event_templates_scope === 'own_dept' && activity.value.department === user.value.department) return true;
+	if (p.event_publish_scope === 'all') return true;
+	if (p.event_publish_scope === 'own_dept' && activity.value.department === user.value.department) return true;
 	return false;
 });
 
@@ -519,14 +606,14 @@ function evtSubstituteVarsHtml(text: string, act: Activity): string {
 async function handlePublishEventClick() {
 	if (!activity.value) return;
 	const dept = activity.value.department;
-	if (!dept) { error.value = 'Aktivität hat keine Abteilung zugewiesen'; return; }
-	const tpl = await fetchEventTemplate(dept);
-	if (!tpl || (!tpl.title && !tpl.body)) {
-		error.value = `Keine Event-Vorlage für "${dept}" konfiguriert. Erstelle eine unter Vorlagen > Event-Vorlagen.`;
-		return;
+	const tpl = dept ? await fetchEventTemplate(dept) : null;
+	if (tpl && (tpl.title || tpl.body)) {
+		eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value);
+		eventPreviewBody.value = evtSubstituteVarsHtml(tpl.body, activity.value);
+	} else {
+		eventPreviewTitle.value = activity.value.title;
+		eventPreviewBody.value = '';
 	}
-	eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value);
-	eventPreviewBody.value = evtSubstituteVarsHtml(tpl.body, activity.value);
 	showEventPreview.value = true;
 }
 
@@ -3169,6 +3256,12 @@ function copyShareLink() {
 		<div class="modal" style="max-width: 640px;">
 			<h2 class="modal-title">Event-Vorschau</h2>
 			<div class="event-preview-form">
+				<!-- Read-only meta info -->
+				<div class="event-preview-meta">
+					<DepartmentBadge v-if="activity?.department" :department="activity.department" />
+					<span v-if="activity?.date" class="event-preview-meta-item">{{ evtFormatDateLong(activity.date) }}</span>
+					<span v-if="activity?.start_time || activity?.end_time" class="event-preview-meta-item">{{ activity.start_time }}{{ activity.end_time ? ' – ' + activity.end_time : '' }}</span>
+				</div>
 				<label class="event-preview-label">Titel</label>
 				<input
 					v-model="eventPreviewTitle"
@@ -3176,11 +3269,47 @@ function copyShareLink() {
 					placeholder="Event-Titel"
 				/>
 				<label class="event-preview-label" style="margin-top: 12px;">Beschreibung</label>
+				<div class="rich-editor-toolbar rich-editor-toolbar--compact">
+					<select class="toolbar-select" :value="evtPreviewToolbar?.font ?? 'Arial'" @change="evtPreviewExecCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
+						<option value="Arial" style="font-family:Arial">Arial</option>
+						<option value="Helvetica" style="font-family:Helvetica">Helvetica</option>
+						<option value="Georgia" style="font-family:Georgia">Georgia</option>
+						<option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
+						<option value="Courier New" style="font-family:'Courier New'">Courier New</option>
+						<option value="Verdana" style="font-family:Verdana">Verdana</option>
+					</select>
+					<input type="text" class="toolbar-select toolbar-select--narrow" :value="evtPreviewToolbar?.size ?? '12'" @mousedown="evtPreviewSaveSelection" @change="evtPreviewSetFontSize(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="evtPreviewSetFontSize(($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
+					<button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="evtPreviewAdjustFontSize(-2)" title="Kleiner">A−</button>
+					<button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="evtPreviewAdjustFontSize(2)" title="Grösser">A+</button>
+					<span class="toolbar-sep"></span>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.bold}" @mousedown.prevent @click="evtPreviewExecCmd('bold')" title="Fett"><b>B</b></button>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.italic}" @mousedown.prevent @click="evtPreviewExecCmd('italic')" title="Kursiv"><i>I</i></button>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.underline}" @mousedown.prevent @click="evtPreviewExecCmd('underline')" title="Unterstrichen"><u>U</u></button>
+					<span class="toolbar-sep"></span>
+					<label class="toolbar-color" title="Schriftfarbe" @mousedown="evtPreviewSaveSelection">
+						A
+						<input type="color" :value="evtPreviewToolbar?.color ?? '#000000'" @input="evtPreviewExecCmd('foreColor', ($event.target as HTMLInputElement).value)" />
+					</label>
+					<label class="toolbar-color toolbar-color--bg" title="Hintergrundfarbe" @mousedown="evtPreviewSaveSelection">
+						<span class="toolbar-color-icon">A</span>
+						<input type="color" :value="evtPreviewToolbar?.bgColor ?? '#ffffff'" @input="evtPreviewExecCmd('hiliteColor', ($event.target as HTMLInputElement).value)" />
+					</label>
+					<span class="toolbar-sep"></span>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.ul}" @mousedown.prevent @click="evtPreviewExecCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.ol}" @mousedown.prevent @click="evtPreviewExecCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
+					<span class="toolbar-sep"></span>
+					<button type="button" @mousedown.prevent @click="evtPreviewExecCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
+				</div>
 				<div
-					class="event-preview-body"
+					ref="eventPreviewEditorRef"
+					class="rich-editor rich-editor--compact"
 					contenteditable="true"
-					@input="eventPreviewBody = ($event.target as HTMLElement).innerHTML"
+					@input="onEvtPreviewInput"
+					@focus="updateEvtPreviewToolbar"
+					@mouseup="updateEvtPreviewToolbar"
+					@keyup="updateEvtPreviewToolbar"
 					v-html="eventPreviewBody"
+					data-placeholder="Beschreibung…"
 				></div>
 			</div>
 			<div class="modal-actions">

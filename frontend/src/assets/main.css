@@ -3185,6 +3185,20 @@ img, video {
 .event-preview-form {
 	margin: 16px 0;
 }
+.event-preview-meta {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-bottom: 14px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid #e5e7eb;
+}
+.event-preview-meta-item {
+	font-size: 0.88rem;
+	color: #374151;
+	white-space: nowrap;
+}
 .event-preview-label {
 	display: block;
 	font-size: 0.82rem;
