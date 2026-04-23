@@ -164,6 +164,11 @@ async function updateRoleDeptAccess(access: RoleDeptAccess) {
 
 // ── Current user permissions ────────────────────────────────────────────────
 
+function resetMyPermissions() {
+	myPermissions.value = null;
+	myPermissionsRequest = null;
+}
+
 async function fetchMyPermissions(force = false) {
 	if (!force && myPermissions.value) return myPermissions.value;
 	if (!force && myPermissionsRequest) return myPermissionsRequest;
@@ -374,6 +379,7 @@ export function usePermissions() {
 		fetchRoles,
 		fetchRolePermissions,
 		fetchMyPermissions,
+		resetMyPermissions,
 		createDepartment,
 		updateDepartment,
 		deleteDepartment,

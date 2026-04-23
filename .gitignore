@@ -47,10 +47,15 @@
 
 # debug information files
 *.dwo
-.claude
+
 # Node.js dependencies
 node_modules/
 **/node_modules/
 
 # Frontend build directory
 frontend/dist/
+
+# Claude AI
+claude/
+.claude
+CLAUDE.md

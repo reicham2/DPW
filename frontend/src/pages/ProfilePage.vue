@@ -72,6 +72,48 @@
         </div>
 
         <div class="form-group">
+          <label class="form-label form-label--with-info">
+            Statistik-Anzeige auf Aktivität
+            <span
+              class="info-tip"
+              tabindex="0"
+              role="button"
+              aria-label="Mehr Informationen"
+              @click="statsInfoOpen = !statsInfoOpen"
+              @blur="statsInfoOpen = false"
+            >
+              ?
+              <span v-if="statsInfoOpen" class="info-tip__popover">
+                <strong>Seitlich:</strong> Die Statistik erscheint rechts neben der Aktivität, wenn der Bildschirm breit genug ist. Auf schmalen Bildschirmen wird sie automatisch aufklappbar.<br /><br />
+                <strong>Klappbar:</strong> Die Statistik ist immer über einen Knopf am rechten Rand zum Öffnen verfügbar – auch auf breiten Bildschirmen.
+              </span>
+            </span>
+          </label>
+          <div class="time-mode-toggle" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="statsDisplayMode === 'auto'"
+              class="time-mode-pill"
+              :class="{ 'time-mode-pill--active': statsDisplayMode === 'auto' }"
+              @click="statsDisplayMode = 'auto'"
+            >
+              Seitlich
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="statsDisplayMode === 'always-drawer'"
+              class="time-mode-pill"
+              :class="{ 'time-mode-pill--active': statsDisplayMode === 'always-drawer' }"
+              @click="statsDisplayMode = 'always-drawer'"
+            >
+              Klappbar
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Benachrichtigungen abonnieren</label>
           <label class="notify-option">
             <input v-model="form.notify_activity_assigned" type="checkbox" />
@@ -127,6 +169,7 @@ import { user } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import { usePermissions } from '../composables/usePermissions'
 import { requestBrowserNotificationPermission, syncPushSubscription } from '../composables/useNotifications'
+import { statsDisplayMode } from '../composables/useUserPrefs'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
@@ -156,6 +199,7 @@ const form = ref({
 const saving = ref(false)
 const saved  = ref(false)
 const error  = ref<string | null>(null)
+const statsInfoOpen = ref(false)
 
 const initials = computed(() => {
   const name = form.value.display_name || user.value?.display_name || ''
@@ -399,5 +443,64 @@ async function save() {
 .notify-option input {
   width: 16px;
   height: 16px;
+}
+
+.form-label--with-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #4b5563;
+  background: #e5e7eb;
+  border-radius: 50%;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+  outline: none;
+}
+.info-tip:hover,
+.info-tip:focus {
+  background: #1a56db;
+  color: #fff;
+}
+.info-tip__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: min(280px, 78vw);
+  padding: 10px 12px;
+  background: #1f2937;
+  color: #f9fafb;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.45;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  text-align: left;
+  cursor: default;
+}
+.info-tip__popover strong {
+  color: #fff;
+  font-weight: 700;
+}
+.info-tip__popover::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 6px;
+  width: 10px;
+  height: 10px;
+  background: #1f2937;
+  transform: rotate(45deg);
 }
 </style>
