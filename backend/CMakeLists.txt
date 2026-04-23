@@ -46,6 +46,7 @@ set_source_files_properties(${USOCKETS_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
 
 add_executable(server
     src/main.cpp
+    src/cache.cpp
     src/db.cpp
     src/handlers.cpp
     src/auth.cpp
