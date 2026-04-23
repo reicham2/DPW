@@ -72,6 +72,12 @@ jobs:
             -p "${{ steps.slug.outputs.project }}" \
             build
 
+      - name: Tear down previous deployment
+        run: |
+          docker compose -f docker-compose-dev.yml \
+            -p "${{ steps.slug.outputs.project }}" \
+            down -v --remove-orphans || true
+
       - name: Start services
         run: |
           BACKEND_BUILD_TYPE=Debug \
