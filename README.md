@@ -99,3 +99,23 @@ Hinweise:
 1. Ohne Gruppen-ID oder API-Key bleibt der MiData-Wert leer (`Nicht konfiguriert`).
 2. Als Kinder werden Personen gezählt, die in MiData keine Einträge in `links.roles` haben.
 3. Personen mit mindestens einer Rolle (`links.roles`) werden nicht mitgezählt.
+
+## Redis Cache (optional)
+
+Das Backend kann API-Responses in Redis cachen, um wiederholte Lese-Anfragen zu beschleunigen.
+
+Aktivierung:
+
+1. In Docker Compose ist ein `redis` Service bereits hinterlegt.
+2. Optional in `.env` konfigurieren:
+
+- `REDIS_HOST` (Standard: `redis`)
+- `REDIS_PORT` (Standard: `6379`)
+- `REDIS_TIMEOUT_MS` (Standard: `250`)
+- `DPW_CACHE_TTL_SECONDS` (Standard: `30`)
+
+Verhalten:
+
+1. Ohne `REDIS_HOST` bleibt das Caching automatisch deaktiviert.
+2. Schreiboperationen heben betroffene Cache-Bereiche per Versions-Invalidierung auf.
+3. Die TTL begrenzt zusätzliche Stale-Zeit auf wenige Sekunden.

@@ -26,6 +26,17 @@ services:
       retries: 10
       start_period: 3s
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: [ "redis-server", "--save", "", "--appendonly", "no" ]
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+
   backend:
     image: ghcr.io/reicham2/dpw-backend:latest
     restart: unless-stopped
@@ -48,8 +59,14 @@ services:
       DPW_VAPID_PRIVATE_KEY: "${DPW_VAPID_PRIVATE_KEY:?Setze DPW_VAPID_PRIVATE_KEY in .env}"
       DPW_VAPID_SUBJECT: "${DPW_VAPID_SUBJECT:-mailto:admin@example.com}"
       DPW_PUBLIC_URL: "${DPW_PUBLIC_URL:-http://localhost:8000}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      DPW_CACHE_TTL_SECONDS: "${DPW_CACHE_TTL_SECONDS:-30}"
+      REDIS_TIMEOUT_MS: "${REDIS_TIMEOUT_MS:-250}"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1" ]
