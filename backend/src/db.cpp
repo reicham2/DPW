@@ -65,11 +65,11 @@ Database::Database(const std::string &conn_str)
 
     // Migrate: widen notifications.category CHECK to include activity_assigned / program_assigned
     PGresult *migrate = PQexec(conn_,
-        "DO $$ BEGIN "
-        "  ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_category_check; "
-        "  ALTER TABLE notifications ADD CONSTRAINT notifications_category_check "
-        "    CHECK (category IN ('material_assigned','activity_assigned','program_assigned','mail_own_activity','mail_department')); "
-        "EXCEPTION WHEN OTHERS THEN NULL; END $$;");
+                               "DO $$ BEGIN "
+                               "  ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_category_check; "
+                               "  ALTER TABLE notifications ADD CONSTRAINT notifications_category_check "
+                               "    CHECK (category IN ('material_assigned','activity_assigned','program_assigned','mail_own_activity','mail_department')); "
+                               "EXCEPTION WHEN OTHERS THEN NULL; END $$;");
     PQclear(migrate);
 }
 
