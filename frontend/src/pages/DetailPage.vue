@@ -85,7 +85,6 @@ const evtPreviewLinkUrl = ref('');
 const evtPreviewLinkInputRef = ref<HTMLInputElement | null>(null);
 
 function onEvtPreviewInput() {
-	if (eventPreviewEditorRef.value) eventPreviewBody.value = eventPreviewEditorRef.value.innerHTML;
 	updateEvtPreviewToolbar();
 }
 
@@ -670,11 +669,17 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 // Cache for the event template so we only fetch it once
 let cachedEventTemplate: { dept: string; tpl: import('../types').EventTemplate | null } | null = null;
 
+function setEvtPreviewEditorHtml(html: string) {
+	nextTick(() => {
+		if (eventPreviewEditorRef.value) eventPreviewEditorRef.value.innerHTML = html;
+	});
+}
+
 async function openEventPreviewModal() {
 	if (!activity.value) return;
 	eventPreviewTitle.value = activity.value.title;
-	eventPreviewBody.value = '';
 	showEventPreview.value = true;
+	setEvtPreviewEditorHtml('');
 
 	const dept = activity.value.department;
 	if (!dept) return;
@@ -689,7 +694,7 @@ async function openEventPreviewModal() {
 
 	if (tpl && (tpl.title || tpl.body) && activity.value) {
 		eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value, eventFormUrl.value);
-		eventPreviewBody.value = evtSubstituteVarsHtml(tpl.body, activity.value, eventFormUrl.value);
+		setEvtPreviewEditorHtml(evtSubstituteVarsHtml(tpl.body, activity.value, eventFormUrl.value));
 	}
 }
 
@@ -699,8 +704,8 @@ async function handlePublishEventClick() {
 	// If already published, show existing publication data
 	if (eventPublication.value) {
 		eventPreviewTitle.value = eventPublication.value.title;
-		eventPreviewBody.value = eventPublication.value.body_html;
 		showEventPreview.value = true;
+		setEvtPreviewEditorHtml(eventPublication.value.body_html);
 		return;
 	}
 
@@ -3477,7 +3482,6 @@ function copyShareLink() {
 					@focus="updateEvtPreviewToolbar"
 					@mouseup="updateEvtPreviewToolbar"
 					@keyup="updateEvtPreviewToolbar"
-					v-html="eventPreviewBody"
 					data-placeholder="Beschreibung…"
 				></div>
 			</div>
