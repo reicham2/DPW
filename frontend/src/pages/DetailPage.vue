@@ -41,11 +41,15 @@ const { users, fetchUsers } = useUsers();
 const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper } = usePermissions();
 
 const { fetchForm } = useForms();
-const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent } = useEventTemplates();
+const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
 
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
 const showNoFormDialog = ref(false);
+const showNoFormForEventDialog = ref(false);
+const showUnpublishConfirm = ref(false);
+const eventUnpublishing = ref(false);
+const eventFormUrl = ref('');
 const liveParticipantsLoading = ref(false);
 const liveExpectedParticipants = ref<number | null>(null);
 const liveRegistrationCount = ref<number | null>(null);
@@ -75,6 +79,10 @@ const eventPublishing = ref(false);
 const eventPreviewEditorRef = ref<HTMLElement | null>(null);
 const evtPreviewToolbar = ref<{ bold: boolean; italic: boolean; underline: boolean; ul: boolean; ol: boolean; font: string; size: string; color: string; bgColor: string } | null>(null);
 let evtPreviewSavedSelection: Range | null = null;
+let evtPreviewLinkSavedRange: Range | null = null;
+const showEvtPreviewLinkDialog = ref(false);
+const evtPreviewLinkUrl = ref('');
+const evtPreviewLinkInputRef = ref<HTMLInputElement | null>(null);
 
 function onEvtPreviewInput() {
 	if (eventPreviewEditorRef.value) eventPreviewBody.value = eventPreviewEditorRef.value.innerHTML;
@@ -159,6 +167,36 @@ function evtPreviewAdjustFontSize(delta: number) {
 	const newSize = Math.max(8, Math.min(72, current + delta));
 	evtPreviewSetFontSize(String(newSize));
 }
+
+function openEvtPreviewLinkDialog() {
+	evtPreviewLinkSavedRange = evtPreviewSavedSelection;
+	evtPreviewSavedSelection = null;
+	const sel = window.getSelection();
+	const anchor = sel?.focusNode?.parentElement?.closest('a') as HTMLAnchorElement | null;
+	evtPreviewLinkUrl.value = anchor?.getAttribute('href') ?? '';
+	showEvtPreviewLinkDialog.value = true;
+	nextTick(() => evtPreviewLinkInputRef.value?.focus());
+}
+
+function confirmEvtPreviewLink() {
+	showEvtPreviewLinkDialog.value = false;
+	if (!evtPreviewLinkSavedRange) return;
+	const sel = window.getSelection();
+	if (sel) { sel.removeAllRanges(); sel.addRange(evtPreviewLinkSavedRange); }
+	if (evtPreviewLinkUrl.value.trim()) {
+		document.execCommand('createLink', false, evtPreviewLinkUrl.value.trim());
+	} else {
+		document.execCommand('unlink');
+	}
+	eventPreviewEditorRef.value?.focus();
+	evtPreviewLinkSavedRange = null;
+}
+
+function cancelEvtPreviewLink() {
+	showEvtPreviewLinkDialog.value = false;
+	evtPreviewLinkSavedRange = null;
+}
+
 const dirtyFields = new Set<string>();
 const savedFields = ref<Record<string, number>>({});
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -566,7 +604,9 @@ function evtFormatPrograms(act: Activity): string {
 	}).join('\n');
 }
 
-function evtSubstituteVarsPlain(text: string, act: Activity): string {
+function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): string {
+	// Handle {{formular_link}} and {{formular_link|Text}} → plain URL (strip custom label)
+	text = text.replace(/\{\{formular_link(?:\|[^}]*)?\}\}/gi, formUrl);
 	const vars: Record<string, string> = {
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
@@ -580,7 +620,7 @@ function evtSubstituteVarsPlain(text: string, act: Activity): string {
 	});
 }
 
-function evtSubstituteVarsHtml(text: string, act: Activity): string {
+function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): string {
 	const container = document.createElement('div');
 	container.innerHTML = text;
 	const vars: Record<string, string> = {
@@ -590,22 +630,68 @@ function evtSubstituteVarsHtml(text: string, act: Activity): string {
 		ziel: act.goal, material: act.material.map(m => m.name).join(', ') || '',
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
+	const replacer = (m: string, key: string) => { const lk = key.toLowerCase(); return lk in vars ? vars[lk] : m; };
 	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
 	const textNodes: Text[] = [];
 	while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
 	for (const node of textNodes) {
 		const original = node.nodeValue ?? '';
-		const replaced = original.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
-			const lk = key.toLowerCase();
-			return lk in vars ? vars[lk] : m;
-		});
+		// Handle {{formular_link}} or {{formular_link|Eigener Text}} → <a> element
+		if (/\{\{formular_link(?:\|[^}]*)?\}\}/i.test(original)) {
+			const parts = original.split(/\{\{formular_link(?:\|([^}]*))?\}\}/i);
+			const parent = node.parentNode!;
+			for (let i = 0; i < parts.length; i++) {
+				if (i % 2 === 0) {
+					const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, replacer);
+					if (partText) parent.insertBefore(document.createTextNode(partText), node);
+				} else {
+					const a = document.createElement('a');
+					a.href = formUrl || '#';
+					a.textContent = parts[i] || 'Zum Formular';
+					parent.insertBefore(a, node);
+				}
+			}
+			parent.removeChild(node);
+			continue;
+		}
+		const replaced = original.replace(/\{\{(\w+)\}\}/gi, replacer);
 		if (replaced !== original) node.nodeValue = replaced;
+	}
+	// Handle {{formular_link}} in href attributes
+	for (const el of Array.from(container.querySelectorAll('[href]'))) {
+		const href = el.getAttribute('href') ?? '';
+		const replaced = href.replace(/\{\{formular_link(?:\|[^}]*)?\}\}/gi, formUrl)
+			.replace(/\{\{(\w+)\}\}/gi, replacer);
+		if (replaced !== href) el.setAttribute('href', replaced);
 	}
 	return container.innerHTML;
 }
 
 // Cache for the event template so we only fetch it once
 let cachedEventTemplate: { dept: string; tpl: import('../types').EventTemplate | null } | null = null;
+
+async function openEventPreviewModal() {
+	if (!activity.value) return;
+	eventPreviewTitle.value = activity.value.title;
+	eventPreviewBody.value = '';
+	showEventPreview.value = true;
+
+	const dept = activity.value.department;
+	if (!dept) return;
+
+	let tpl: import('../types').EventTemplate | null = null;
+	if (cachedEventTemplate && cachedEventTemplate.dept === dept) {
+		tpl = cachedEventTemplate.tpl;
+	} else {
+		tpl = await fetchEventTemplate(dept);
+		cachedEventTemplate = { dept, tpl };
+	}
+
+	if (tpl && (tpl.title || tpl.body) && activity.value) {
+		eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value, eventFormUrl.value);
+		eventPreviewBody.value = evtSubstituteVarsHtml(tpl.body, activity.value, eventFormUrl.value);
+	}
+}
 
 async function handlePublishEventClick() {
 	if (!activity.value) return;
@@ -618,27 +704,20 @@ async function handlePublishEventClick() {
 		return;
 	}
 
-	// First publish: show modal immediately with defaults, load template in background
-	eventPreviewTitle.value = activity.value.title;
-	eventPreviewBody.value = '';
-	showEventPreview.value = true;
-
-	const dept = activity.value.department;
-	if (!dept) return;
-
-	// Use cached template if available for this department
-	let tpl: import('../types').EventTemplate | null = null;
-	if (cachedEventTemplate && cachedEventTemplate.dept === dept) {
-		tpl = cachedEventTemplate.tpl;
-	} else {
-		tpl = await fetchEventTemplate(dept);
-		cachedEventTemplate = { dept, tpl };
+	// Check if a form exists for this activity
+	const existingForm = await fetchForm(id);
+	if (!existingForm) {
+		showNoFormForEventDialog.value = true;
+		return;
 	}
+	eventFormUrl.value = `${window.location.origin}/forms/${existingForm.public_slug}`;
+	await openEventPreviewModal();
+}
 
-	if (tpl && (tpl.title || tpl.body) && activity.value) {
-		eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value);
-		eventPreviewBody.value = evtSubstituteVarsHtml(tpl.body, activity.value);
-	}
+async function publishWithoutForm() {
+	showNoFormForEventDialog.value = false;
+	eventFormUrl.value = '';
+	await openEventPreviewModal();
 }
 
 async function confirmPublishEvent() {
@@ -652,6 +731,15 @@ async function confirmPublishEvent() {
 		eventPublication.value = result;
 		showEventPreview.value = false;
 	}
+}
+
+async function confirmUnpublishEvent() {
+	eventUnpublishing.value = true;
+	await unpublishEvent(id);
+	eventUnpublishing.value = false;
+	eventPublication.value = null;
+	showUnpublishConfirm.value = false;
+	showEventPreview.value = false;
 }
 
 let liveParticipantsRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -1712,6 +1800,10 @@ function rgbToHex(rgb: string): string {
 }
 
 let progSavedSelection: Range | null = null;
+let progLinkSavedRange: Range | null = null;
+const showProgLinkDialog = ref(false);
+const progLinkUrl = ref('');
+const progLinkInputRef = ref<HTMLInputElement | null>(null);
 
 function progSaveSelection() {
 	const sel = window.getSelection();
@@ -1778,6 +1870,37 @@ function progAdjustFontSize(i: number, delta: number) {
 	const newSize = Math.max(8, Math.min(72, current + delta));
 	progSetFontSize(i, String(newSize));
 	if (progToolbar.value) progToolbar.value.size = String(newSize);
+}
+
+function openProgLinkDialog() {
+	progLinkSavedRange = progSavedSelection;
+	progSavedSelection = null;
+	const sel = window.getSelection();
+	const anchor = sel?.focusNode?.parentElement?.closest('a') as HTMLAnchorElement | null;
+	progLinkUrl.value = anchor?.getAttribute('href') ?? '';
+	showProgLinkDialog.value = true;
+	nextTick(() => progLinkInputRef.value?.focus());
+}
+
+function confirmProgLink() {
+	showProgLinkDialog.value = false;
+	if (!progLinkSavedRange) return;
+	const sel = window.getSelection();
+	if (sel) { sel.removeAllRanges(); sel.addRange(progLinkSavedRange); }
+	if (progLinkUrl.value.trim()) {
+		document.execCommand('createLink', false, progLinkUrl.value.trim());
+	} else {
+		document.execCommand('unlink');
+	}
+	const idx = progToolbar.value?.idx ?? 0;
+	progEditorRefs.value[idx]?.focus();
+	onProgDescInput(idx);
+	progLinkSavedRange = null;
+}
+
+function cancelProgLink() {
+	showProgLinkDialog.value = false;
+	progLinkSavedRange = null;
 }
 
 function onProgEditorFocus(i: number) {
@@ -2868,6 +2991,8 @@ function copyShareLink() {
 										<button type="button" :class="{'toolbar-btn--active': progToolbar.ol}" @mousedown.prevent @click="progExecCmd(i, 'insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
 										<span class="toolbar-sep"></span>
 										<button type="button" @mousedown.prevent @click="progExecCmd(i, 'removeFormat')" title="Formatierung entfernen">✕ Format</button>
+										<span class="toolbar-sep"></span>
+										<button type="button" @mousedown="progSaveSelection" @click="openProgLinkDialog" title="Link einfügen">🔗 Link</button>
 									</div>
 									<div
 										:ref="(el) => setProgEditorRef(el, i)"
@@ -3341,6 +3466,8 @@ function copyShareLink() {
 					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.ol}" @mousedown.prevent @click="evtPreviewExecCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
 					<span class="toolbar-sep"></span>
 					<button type="button" @mousedown.prevent @click="evtPreviewExecCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
+					<span class="toolbar-sep"></span>
+					<button type="button" @mousedown="evtPreviewSaveSelection" @click="openEvtPreviewLinkDialog" title="Link einfügen">🔗 Link</button>
 				</div>
 				<div
 					ref="eventPreviewEditorRef"
@@ -3357,8 +3484,16 @@ function copyShareLink() {
 			<div class="modal-actions">
 				<button class="btn-cancel" @click="showEventPreview = false">Abbrechen</button>
 				<button
+					v-if="eventPublication"
+					class="btn-danger"
+					:disabled="eventPublishing || eventUnpublishing"
+					@click="showUnpublishConfirm = true"
+				>
+					🗑 Löschen
+				</button>
+				<button
 					class="btn-primary"
-					:disabled="eventPublishing || !eventPreviewTitle.trim()"
+					:disabled="eventPublishing || eventUnpublishing || !eventPreviewTitle.trim()"
 					@click="confirmPublishEvent"
 				>
 					{{ eventPublishing ? 'Wird veröffentlicht…' : (eventPublication ? 'Aktualisieren' : 'Veröffentlichen') }}
@@ -3367,7 +3502,7 @@ function copyShareLink() {
 		</div>
 	</div>
 
-	<!-- No-form dialog -->
+	<!-- No-form dialog (Mail flow) -->
 	<div v-if="showNoFormDialog" class="modal-backdrop" @click.self="showNoFormDialog = false">
 		<div class="modal modal--info">
 			<h2 class="modal-title modal-title--info">Kein Formular vorhanden</h2>
@@ -3379,6 +3514,40 @@ function copyShareLink() {
 				<button class="btn-cancel" @click="showNoFormDialog = false">Abbrechen</button>
 				<button class="btn-cancel" @click="showNoFormDialog = false; router.push(`/activities/${id}/mail`)">Mail erstellen</button>
 				<button class="btn-info" @click="showNoFormDialog = false; router.push(`/activities/${id}/forms`)">Formular erstellen</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- No-form dialog (Event publish flow) -->
+	<div v-if="showNoFormForEventDialog" class="modal-backdrop" @click.self="showNoFormForEventDialog = false">
+		<div class="modal modal--info">
+			<h2 class="modal-title modal-title--info">Kein Formular vorhanden</h2>
+			<p class="modal-warning">
+				Für diese Aktivität wurde noch kein Anmeldeformular erstellt.
+				Die Variable <code>{{formular_link}}</code> wird im Event-Text nicht ersetzt.
+				Möchtest du zuerst ein Formular erstellen?
+			</p>
+			<div class="modal-actions">
+				<button class="btn-cancel" @click="showNoFormForEventDialog = false">Abbrechen</button>
+				<button class="btn-cancel" @click="showNoFormForEventDialog = false; router.push(`/activities/${id}/forms`)">Formular erstellen</button>
+				<button class="btn-primary" @click="publishWithoutForm">Trotzdem veröffentlichen</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Unpublish confirmation dialog -->
+	<div v-if="showUnpublishConfirm" class="modal-backdrop" @click.self="showUnpublishConfirm = false">
+		<div class="modal modal--danger">
+			<h2 class="modal-title modal-title--danger">Event löschen?</h2>
+			<p class="modal-warning">
+				Das Event wird aus dem DPW entfernt{{ eventPublication?.wp_event_id ? ' und aus WordPress gelöscht' : '' }}.
+				Diese Aktion kann nicht rückgängig gemacht werden.
+			</p>
+			<div class="modal-actions">
+				<button class="btn-cancel" @click="showUnpublishConfirm = false">Abbrechen</button>
+				<button class="btn-danger" :disabled="eventUnpublishing" @click="confirmUnpublishEvent">
+					{{ eventUnpublishing ? 'Wird gelöscht…' : 'Endgültig löschen' }}
+				</button>
 			</div>
 		</div>
 	</div>
@@ -3461,6 +3630,46 @@ function copyShareLink() {
 						class="preview-modal__pdf"
 					></iframe>
 				</template>
+			</div>
+		</div>
+	</div>
+
+	<div v-if="showEvtPreviewLinkDialog" class="modal-backdrop" @click.self="cancelEvtPreviewLink">
+		<div class="modal link-modal">
+			<h2 class="modal-title">Link einfügen</h2>
+			<input
+				ref="evtPreviewLinkInputRef"
+				v-model="evtPreviewLinkUrl"
+				type="url"
+				class="link-modal-input"
+				placeholder="https://"
+				@keydown.enter.prevent="confirmEvtPreviewLink"
+				@keydown.escape.prevent="cancelEvtPreviewLink"
+			/>
+			<div class="modal-actions">
+				<button class="btn-cancel" @mousedown.prevent @click="cancelEvtPreviewLink">Abbrechen</button>
+				<button v-if="evtPreviewLinkUrl" class="btn-secondary" @mousedown.prevent @click="() => { evtPreviewLinkUrl = ''; confirmEvtPreviewLink() }">Link entfernen</button>
+				<button class="btn-primary" @mousedown.prevent @click="confirmEvtPreviewLink">{{ evtPreviewLinkUrl ? 'Einfügen' : 'OK' }}</button>
+			</div>
+		</div>
+	</div>
+
+	<div v-if="showProgLinkDialog" class="modal-backdrop" @click.self="cancelProgLink">
+		<div class="modal link-modal">
+			<h2 class="modal-title">Link einfügen</h2>
+			<input
+				ref="progLinkInputRef"
+				v-model="progLinkUrl"
+				type="url"
+				class="link-modal-input"
+				placeholder="https://"
+				@keydown.enter.prevent="confirmProgLink"
+				@keydown.escape.prevent="cancelProgLink"
+			/>
+			<div class="modal-actions">
+				<button class="btn-cancel" @mousedown.prevent @click="cancelProgLink">Abbrechen</button>
+				<button v-if="progLinkUrl" class="btn-secondary" @mousedown.prevent @click="() => { progLinkUrl = ''; confirmProgLink() }">Link entfernen</button>
+				<button class="btn-primary" @mousedown.prevent @click="confirmProgLink">{{ progLinkUrl ? 'Einfügen' : 'OK' }}</button>
 			</div>
 		</div>
 	</div>
