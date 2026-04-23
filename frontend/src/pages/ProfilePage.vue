@@ -74,6 +74,14 @@
         <div class="form-group">
           <label class="form-label">Benachrichtigungen abonnieren</label>
           <label class="notify-option">
+            <input v-model="form.notify_activity_assigned" type="checkbox" />
+            <span>Aktivität dir zugewiesen</span>
+          </label>
+          <label class="notify-option">
+            <input v-model="form.notify_program_assigned" type="checkbox" />
+            <span>Programmblock dir zugewiesen</span>
+          </label>
+          <label class="notify-option">
             <input v-model="form.notify_material_assigned" type="checkbox" />
             <span>Material an dich zugewiesen</span>
           </label>
@@ -138,6 +146,8 @@ const form = ref({
   department:   user.value?.department   ?? '',
   time_display_mode: (user.value?.time_display_mode ?? 'minutes') as TimeDisplayMode,
   notify_material_assigned: user.value?.notify_material_assigned ?? true,
+  notify_activity_assigned: user.value?.notify_activity_assigned ?? true,
+  notify_program_assigned: user.value?.notify_program_assigned ?? true,
   notify_mail_own_activity: user.value?.notify_mail_own_activity ?? true,
   notify_mail_department: user.value?.notify_mail_department ?? true,
   notify_channel_websocket: user.value?.notify_channel_websocket ?? true,
@@ -166,6 +176,8 @@ onMounted(async () => {
     form.value.department   = user.value.department ?? ''
     form.value.time_display_mode = user.value.time_display_mode ?? 'minutes'
     form.value.notify_material_assigned = user.value.notify_material_assigned ?? true
+    form.value.notify_activity_assigned = user.value.notify_activity_assigned ?? true
+    form.value.notify_program_assigned = user.value.notify_program_assigned ?? true
     form.value.notify_mail_own_activity = user.value.notify_mail_own_activity ?? true
     form.value.notify_mail_department = user.value.notify_mail_department ?? true
     form.value.notify_channel_websocket = user.value.notify_channel_websocket ?? true
@@ -186,6 +198,8 @@ async function save() {
         department:   form.value.department || null,
         time_display_mode: form.value.time_display_mode,
         notify_material_assigned: form.value.notify_material_assigned,
+        notify_activity_assigned: form.value.notify_activity_assigned,
+        notify_program_assigned: form.value.notify_program_assigned,
         notify_mail_own_activity: form.value.notify_mail_own_activity,
         notify_mail_department: form.value.notify_mail_department,
         notify_channel_websocket: form.value.notify_channel_websocket,

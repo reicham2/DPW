@@ -205,6 +205,10 @@ const unreadCount = computed(
 			if (!user.value) return false;
 			if (n.category === 'material_assigned')
 				return user.value.notify_material_assigned;
+			if (n.category === 'activity_assigned')
+				return user.value.notify_activity_assigned;
+			if (n.category === 'program_assigned')
+				return user.value.notify_program_assigned;
 			if (n.category === 'mail_own_activity')
 				return user.value.notify_mail_own_activity;
 			if (n.category === 'mail_department')

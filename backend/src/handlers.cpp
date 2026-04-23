@@ -2753,6 +2753,117 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                         }
                     }
                 }
+
+                // Notify users added as responsible to the activity
+                if (!activity->responsible.empty()) {
+                    for (const auto &u : users) {
+                        if (u.id == current_user->id || !u.notify_activity_assigned)
+                            continue;
+                        if (!user_in_assignee_list(activity->responsible, u))
+                            continue;
+
+                        std::string time_range = activity->start_time + "-" + activity->end_time;
+                        std::string date_short = format_date_ddmmyyyy(activity->date);
+                        std::string full_link = activity_absolute_link(activity->id);
+                        std::string recipients_text = join_display(activity->responsible);
+                        nlohmann::json payload = {
+                            {"activity_id", activity->id},
+                            {"activity_title", activity->title},
+                            {"activity_date", activity->date},
+                            {"activity_date_display", date_short},
+                            {"activity_time", time_range},
+                            {"location", activity->location},
+                            {"assigned_users", activity->responsible},
+                            {"notification_recipient_name", u.display_name},
+                            {"notification_recipient_email", u.email},
+                            {"triggered_by_name", current_user->display_name},
+                            {"triggered_by_email", current_user->email},
+                            {"activity_url", full_link}
+                        };
+                        auto note = db.create_notification(
+                            u.id,
+                            "activity_assigned",
+                            "Aktivität dir zugewiesen",
+                            "Du wurdest zur Aktivität \"" + activity->title + "\" am " + date_short + " hinzugefügt. Verantwortliche: " + recipients_text,
+                            full_link,
+                            payload
+                        );
+                        if (note) {
+                            if (u.notify_channel_websocket) {
+                                nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                deliver_web_push_for_user(db, u, *note);
+                            }
+                            if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                std::string mail_subject = "[DPWeb] Aktivität dir zugewiesen: " + activity->title;
+                                std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dich zur Aktivität hinzugefügt.</p>"
+                                    "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                    "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                    "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                    "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                    "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                            }
+                        }
+                    }
+                }
+
+                // Notify users added as responsible to program blocks
+                for (const auto &prog : activity->programs) {
+                    if (prog.responsible.empty())
+                        continue;
+                    for (const auto &u : users) {
+                        if (u.id == current_user->id || !u.notify_program_assigned)
+                            continue;
+                        if (!user_in_assignee_list(prog.responsible, u))
+                            continue;
+
+                        std::string time_range = activity->start_time + "-" + activity->end_time;
+                        std::string date_short = format_date_ddmmyyyy(activity->date);
+                        std::string full_link = activity_absolute_link(activity->id);
+                        nlohmann::json payload = {
+                            {"activity_id", activity->id},
+                            {"activity_title", activity->title},
+                            {"activity_date", activity->date},
+                            {"activity_date_display", date_short},
+                            {"activity_time", time_range},
+                            {"location", activity->location},
+                            {"program_title", prog.title},
+                            {"assigned_users", prog.responsible},
+                            {"notification_recipient_name", u.display_name},
+                            {"notification_recipient_email", u.email},
+                            {"triggered_by_name", current_user->display_name},
+                            {"triggered_by_email", current_user->email},
+                            {"activity_url", full_link}
+                        };
+                        auto note = db.create_notification(
+                            u.id,
+                            "program_assigned",
+                            "Programmblock dir zugewiesen",
+                            "Du wurdest zum Programmblock \"" + prog.title + "\" in \"" + activity->title + "\" am " + date_short + " hinzugefügt.",
+                            full_link,
+                            payload
+                        );
+                        if (note) {
+                            if (u.notify_channel_websocket) {
+                                nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                deliver_web_push_for_user(db, u, *note);
+                            }
+                            if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                std::string mail_subject = "[DPWeb] Programmblock dir zugewiesen: " + prog.title;
+                                std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dich zum Programmblock hinzugefügt.</p>"
+                                    "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                    "<strong>Programmblock:</strong> " + prog.title + "<br/>"
+                                    "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                    "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                    "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                    "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                            }
+                        }
+                    }
+                }
             }
 
             nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
@@ -2913,6 +3024,147 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                         }
                     }
                 }
+
+                // Notify users newly added as responsible to the activity
+                {
+                    std::vector<std::string> newly_responsible;
+                    for (const auto &name : activity->responsible) {
+                        if (!previous_activity || !contains_name_ci(previous_activity->responsible, name))
+                            newly_responsible.push_back(name);
+                    }
+                    if (!newly_responsible.empty()) {
+                        auto users_list = db.list_users();
+                        for (const auto &u : users_list) {
+                            if (u.id == current_user->id || !u.notify_activity_assigned)
+                                continue;
+                            if (!user_in_assignee_list(newly_responsible, u))
+                                continue;
+
+                            std::string time_range = activity->start_time + "-" + activity->end_time;
+                            std::string date_short = format_date_ddmmyyyy(activity->date);
+                            std::string full_link = activity_absolute_link(activity->id);
+                            std::string recipients_text = join_display(activity->responsible);
+                            nlohmann::json payload = {
+                                {"activity_id", activity->id},
+                                {"activity_title", activity->title},
+                                {"activity_date", activity->date},
+                                {"activity_date_display", date_short},
+                                {"activity_time", time_range},
+                                {"location", activity->location},
+                                {"assigned_users", activity->responsible},
+                                {"notification_recipient_name", u.display_name},
+                                {"notification_recipient_email", u.email},
+                                {"triggered_by_name", current_user->display_name},
+                                {"triggered_by_email", current_user->email},
+                                {"activity_url", full_link}
+                            };
+                            auto note = db.create_notification(
+                                u.id,
+                                "activity_assigned",
+                                "Aktivität dir zugewiesen",
+                                "Du wurdest zur Aktivität \"" + activity->title + "\" am " + date_short + " hinzugefügt. Verantwortliche: " + recipients_text,
+                                full_link,
+                                payload
+                            );
+                            if (note) {
+                                if (u.notify_channel_websocket) {
+                                    nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                    wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                    deliver_web_push_for_user(db, u, *note);
+                                }
+                                if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                    std::string mail_subject = "[DPWeb] Aktivität dir zugewiesen: " + activity->title;
+                                    std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dich zur Aktivität hinzugefügt.</p>"
+                                        "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                        "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                        "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                        "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                        "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                    db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Notify users newly added as responsible to program blocks
+                {
+                    // Build set of old (program_title, assignee) pairs
+                    std::unordered_set<std::string> old_prog_pairs;
+                    if (previous_activity) {
+                        for (const auto &p : previous_activity->programs) {
+                            std::string prog_key = to_lower_ascii(trim_ascii(p.title));
+                            for (const auto &name : p.responsible)
+                                old_prog_pairs.insert(prog_key + "\n" + normalize_assignee_key(name));
+                        }
+                    }
+
+                    auto users_list = db.list_users();
+                    for (const auto &prog : activity->programs) {
+                        if (prog.responsible.empty())
+                            continue;
+                        std::string prog_key = to_lower_ascii(trim_ascii(prog.title));
+                        for (const auto &name : prog.responsible) {
+                            std::string pair_key = prog_key + "\n" + normalize_assignee_key(name);
+                            if (old_prog_pairs.find(pair_key) != old_prog_pairs.end())
+                                continue;
+
+                            // This is a new assignment — find matching user
+                            for (const auto &u : users_list) {
+                                if (u.id == current_user->id || !u.notify_program_assigned)
+                                    continue;
+                                if (!user_matches_assignee(u, name))
+                                    continue;
+
+                                std::string time_range = activity->start_time + "-" + activity->end_time;
+                                std::string date_short = format_date_ddmmyyyy(activity->date);
+                                std::string full_link = activity_absolute_link(activity->id);
+                                nlohmann::json payload = {
+                                    {"activity_id", activity->id},
+                                    {"activity_title", activity->title},
+                                    {"activity_date", activity->date},
+                                    {"activity_date_display", date_short},
+                                    {"activity_time", time_range},
+                                    {"location", activity->location},
+                                    {"program_title", prog.title},
+                                    {"assigned_users", prog.responsible},
+                                    {"notification_recipient_name", u.display_name},
+                                    {"notification_recipient_email", u.email},
+                                    {"triggered_by_name", current_user->display_name},
+                                    {"triggered_by_email", current_user->email},
+                                    {"activity_url", full_link}
+                                };
+                                auto note = db.create_notification(
+                                    u.id,
+                                    "program_assigned",
+                                    "Programmblock dir zugewiesen",
+                                    "Du wurdest zum Programmblock \"" + prog.title + "\" in \"" + activity->title + "\" am " + date_short + " hinzugefügt.",
+                                    full_link,
+                                    payload
+                                );
+                                if (note) {
+                                    if (u.notify_channel_websocket) {
+                                        nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                        wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                        deliver_web_push_for_user(db, u, *note);
+                                    }
+                                    if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                        std::string mail_subject = "[DPWeb] Programmblock dir zugewiesen: " + prog.title;
+                                        std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dich zum Programmblock hinzugefügt.</p>"
+                                            "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                            "<strong>Programmblock:</strong> " + prog.title + "<br/>"
+                                            "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                            "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                            "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                            "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                        db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                                    }
+                                }
+                                break; // one notification per user per program block
+                            }
+                        }
+                    }
+                }
             }
 
             nlohmann::json msg = {{"event", "updated"}, {"activity", to_json(*activity)}};
@@ -2988,6 +3240,8 @@ static nlohmann::json user_to_json(const UserRecord &u)
     j["role"] = u.role;
     j["time_display_mode"] = u.time_display_mode;
     j["notify_material_assigned"] = u.notify_material_assigned;
+    j["notify_activity_assigned"] = u.notify_activity_assigned;
+    j["notify_program_assigned"] = u.notify_program_assigned;
     j["notify_mail_own_activity"] = u.notify_mail_own_activity;
     j["notify_mail_department"] = u.notify_mail_department;
     j["notify_channel_websocket"] = u.notify_channel_websocket;
@@ -3482,6 +3736,16 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             notify_material_assigned = j["notify_material_assigned"].get<bool>();
         }
 
+        std::optional<bool> notify_activity_assigned;
+        if (j.contains("notify_activity_assigned") && j["notify_activity_assigned"].is_boolean()) {
+            notify_activity_assigned = j["notify_activity_assigned"].get<bool>();
+        }
+
+        std::optional<bool> notify_program_assigned;
+        if (j.contains("notify_program_assigned") && j["notify_program_assigned"].is_boolean()) {
+            notify_program_assigned = j["notify_program_assigned"].get<bool>();
+        }
+
         std::optional<bool> notify_mail_own_activity;
         if (j.contains("notify_mail_own_activity") && j["notify_mail_own_activity"].is_boolean()) {
             notify_mail_own_activity = j["notify_mail_own_activity"].get<bool>();
@@ -3509,6 +3773,8 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
                 department,
                 time_display_mode,
                 notify_material_assigned,
+                notify_activity_assigned,
+                notify_program_assigned,
                 notify_mail_own_activity,
                 notify_mail_department,
                 notify_channel_websocket,

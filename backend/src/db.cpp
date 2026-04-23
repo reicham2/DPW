@@ -23,6 +23,8 @@ Database::Database(const std::string &conn_str)
     const char *bootstrap_sql =
         "CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";"
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_material_assigned BOOLEAN NOT NULL DEFAULT true;"
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_activity_assigned BOOLEAN NOT NULL DEFAULT true;"
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_program_assigned BOOLEAN NOT NULL DEFAULT true;"
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_mail_own_activity BOOLEAN NOT NULL DEFAULT true;"
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_mail_department BOOLEAN NOT NULL DEFAULT true;"
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_channel_websocket BOOLEAN NOT NULL DEFAULT true;"
@@ -30,7 +32,7 @@ Database::Database(const std::string &conn_str)
         "CREATE TABLE IF NOT EXISTS notifications ("
         "  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
         "  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
-        "  category TEXT NOT NULL CHECK (category IN ('material_assigned','mail_own_activity','mail_department')) ,"
+        "  category TEXT NOT NULL CHECK (category IN ('material_assigned','activity_assigned','program_assigned','mail_own_activity','mail_department')) ,"
         "  title TEXT NOT NULL,"
         "  message TEXT NOT NULL,"
         "  link TEXT,"
@@ -60,6 +62,15 @@ Database::Database(const std::string &conn_str)
         throw std::runtime_error("DB bootstrap failed: " + err);
     }
     PQclear(bootstrap);
+
+    // Migrate: widen notifications.category CHECK to include activity_assigned / program_assigned
+    PGresult *migrate = PQexec(conn_,
+        "DO $$ BEGIN "
+        "  ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_category_check; "
+        "  ALTER TABLE notifications ADD CONSTRAINT notifications_category_check "
+        "    CHECK (category IN ('material_assigned','activity_assigned','program_assigned','mail_own_activity','mail_department')); "
+        "EXCEPTION WHEN OTHERS THEN NULL; END $$;");
+    PQclear(migrate);
 }
 
 Database::~Database()
@@ -764,6 +775,8 @@ UserRecord Database::row_to_user(PGresult *res, int row)
     u.role = col("role") ? col("role") : "Mitglied";
     u.time_display_mode = col("time_display_mode") ? col("time_display_mode") : "minutes";
     u.notify_material_assigned = col("notify_material_assigned") ? std::string(col("notify_material_assigned")) == "t" : true;
+    u.notify_activity_assigned = col("notify_activity_assigned") ? std::string(col("notify_activity_assigned")) == "t" : true;
+    u.notify_program_assigned = col("notify_program_assigned") ? std::string(col("notify_program_assigned")) == "t" : true;
     u.notify_mail_own_activity = col("notify_mail_own_activity") ? std::string(col("notify_mail_own_activity")) == "t" : true;
     u.notify_mail_department = col("notify_mail_department") ? std::string(col("notify_mail_department")) == "t" : true;
     u.notify_channel_websocket = col("notify_channel_websocket") ? std::string(col("notify_channel_websocket")) == "t" : true;
@@ -782,7 +795,7 @@ std::vector<UserRecord> Database::list_users()
     ensure_connected();
     PGresult *res = PQexec(conn_,
                            "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
-                           "       notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+                           "       notify_material_assigned, notify_activity_assigned, notify_program_assigned, notify_mail_own_activity, notify_mail_department, "
                            "       notify_channel_websocket, notify_channel_email, "
                            "       created_at, updated_at "
                            "FROM users ORDER BY display_name");
@@ -835,7 +848,8 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
         initial_dept + "', '" + initial_role + "') " +
         on_conflict +
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
-        "          notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+        "          notify_material_assigned, notify_activity_assigned, notify_program_assigned, "
+        "          notify_mail_own_activity, notify_mail_department, "
         "          notify_channel_websocket, notify_channel_email, "
         "          created_at, updated_at";
 
@@ -860,7 +874,7 @@ std::optional<UserRecord> Database::get_user_by_oid(const std::string &oid)
     const char *params[1] = {oid.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
-                                 "       notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+                                 "       notify_material_assigned, notify_activity_assigned, notify_program_assigned, notify_mail_own_activity, notify_mail_department, "
                                  "       notify_channel_websocket, notify_channel_email, "
                                  "       created_at, updated_at "
                                  "FROM users WHERE microsoft_oid = $1",
@@ -884,7 +898,7 @@ std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
-                                 "       notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+                                 "       notify_material_assigned, notify_activity_assigned, notify_program_assigned, notify_mail_own_activity, notify_mail_department, "
                                  "       notify_channel_websocket, notify_channel_email, "
                                  "       created_at, updated_at "
                                  "FROM users WHERE id = $1",
@@ -907,6 +921,8 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
                                                 const std::optional<std::string> &department,
                                                 const std::optional<std::string> &time_display_mode,
                                                 const std::optional<bool> &notify_material_assigned,
+                                                const std::optional<bool> &notify_activity_assigned,
+                                                const std::optional<bool> &notify_program_assigned,
                                                 const std::optional<bool> &notify_mail_own_activity,
                                                 const std::optional<bool> &notify_mail_department,
                                                 const std::optional<bool> &notify_channel_websocket,
@@ -923,6 +939,10 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
         sql += ", time_display_mode = '" + tdm_str + "'";
     if (notify_material_assigned.has_value())
         sql += std::string(", notify_material_assigned = ") + (*notify_material_assigned ? "true" : "false");
+    if (notify_activity_assigned.has_value())
+        sql += std::string(", notify_activity_assigned = ") + (*notify_activity_assigned ? "true" : "false");
+    if (notify_program_assigned.has_value())
+        sql += std::string(", notify_program_assigned = ") + (*notify_program_assigned ? "true" : "false");
     if (notify_mail_own_activity.has_value())
         sql += std::string(", notify_mail_own_activity = ") + (*notify_mail_own_activity ? "true" : "false");
     if (notify_mail_department.has_value())
@@ -934,7 +954,8 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
     sql +=
         " WHERE microsoft_oid = $2 "
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
-        "          notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+        "          notify_material_assigned, notify_activity_assigned, notify_program_assigned, "
+        "          notify_mail_own_activity, notify_mail_department, "
         "          notify_channel_websocket, notify_channel_email, "
         "          created_at, updated_at";
 
@@ -967,7 +988,8 @@ std::optional<UserRecord> Database::update_user_admin(const std::string &id,
         ", role = $2"
         " WHERE id = $3 "
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
-        "          notify_material_assigned, notify_mail_own_activity, notify_mail_department, "
+        "          notify_material_assigned, notify_activity_assigned, notify_program_assigned, "
+        "          notify_mail_own_activity, notify_mail_department, "
         "          notify_channel_websocket, notify_channel_email, "
         "          created_at, updated_at";
 

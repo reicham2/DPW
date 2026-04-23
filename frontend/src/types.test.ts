@@ -104,6 +104,8 @@ describe('Type structures', () => {
 			role: 'Mitglied',
 			time_display_mode: 'clock',
 			notify_material_assigned: true,
+			notify_activity_assigned: true,
+			notify_program_assigned: true,
 			notify_mail_own_activity: true,
 			notify_mail_department: false,
 			notify_channel_websocket: true,

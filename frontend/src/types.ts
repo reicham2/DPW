@@ -99,6 +99,8 @@ export interface User {
 	role: UserRole;
 	time_display_mode: TimeDisplayMode;
 	notify_material_assigned: boolean;
+	notify_activity_assigned: boolean;
+	notify_program_assigned: boolean;
 	notify_mail_own_activity: boolean;
 	notify_mail_department: boolean;
 	notify_channel_websocket: boolean;
@@ -109,6 +111,8 @@ export interface User {
 
 export type NotificationCategory =
 	| 'material_assigned'
+	| 'activity_assigned'
+	| 'program_assigned'
 	| 'mail_own_activity'
 	| 'mail_department';
 

@@ -15,6 +15,8 @@ struct UserRecord
     std::string role;
     std::string time_display_mode{"minutes"};
     bool notify_material_assigned{true};
+    bool notify_activity_assigned{true};
+    bool notify_program_assigned{true};
     bool notify_mail_own_activity{true};
     bool notify_mail_department{true};
     bool notify_channel_websocket{true};
@@ -202,6 +204,8 @@ public:
                                           const std::optional<std::string> &department,
                                           const std::optional<std::string> &time_display_mode = std::nullopt,
                                           const std::optional<bool> &notify_material_assigned = std::nullopt,
+                                          const std::optional<bool> &notify_activity_assigned = std::nullopt,
+                                          const std::optional<bool> &notify_program_assigned = std::nullopt,
                                           const std::optional<bool> &notify_mail_own_activity = std::nullopt,
                                           const std::optional<bool> &notify_mail_department = std::nullopt,
                                           const std::optional<bool> &notify_channel_websocket = std::nullopt,

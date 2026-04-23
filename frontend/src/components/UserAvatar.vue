@@ -106,6 +106,8 @@ const visibleNotifications = computed(() =>
 	notifications.value.filter((n) => {
 		if (!user.value) return false;
 		if (n.category === 'material_assigned') return user.value.notify_material_assigned;
+		if (n.category === 'activity_assigned') return user.value.notify_activity_assigned;
+		if (n.category === 'program_assigned') return user.value.notify_program_assigned;
 		if (n.category === 'mail_own_activity') return user.value.notify_mail_own_activity;
 		if (n.category === 'mail_department') return user.value.notify_mail_department;
 		return true;
@@ -242,6 +244,8 @@ function mailCcRecipients(n: NotificationRecord): string {
 
 function notificationCategoryLabel(n: NotificationRecord): string {
 	if (n.category === 'material_assigned') return 'Material';
+	if (n.category === 'activity_assigned') return 'Aktivität';
+	if (n.category === 'program_assigned') return 'Programm';
 	if (n.category === 'mail_own_activity') return 'Mail Aktivität';
 	if (n.category === 'mail_department') return 'Mail Stufe';
 	return 'Info';
@@ -249,6 +253,8 @@ function notificationCategoryLabel(n: NotificationRecord): string {
 
 function notificationCategoryClass(n: NotificationRecord): string {
 	if (n.category === 'material_assigned') return 'avatar-notification-category--material';
+	if (n.category === 'activity_assigned') return 'avatar-notification-category--activity';
+	if (n.category === 'program_assigned') return 'avatar-notification-category--program';
 	if (n.category === 'mail_own_activity') return 'avatar-notification-category--activity-mail';
 	if (n.category === 'mail_department') return 'avatar-notification-category--department-mail';
 	return '';
@@ -266,11 +272,17 @@ function compactLink(link: string | null): string {
 
 function headlineRecipients(n: NotificationRecord): string {
 	if (n.category === 'material_assigned') return notificationRecipient(n);
+	if (n.category === 'activity_assigned' || n.category === 'program_assigned') return notificationRecipient(n);
 	return mailRecipientNames(n);
 }
 
 function notificationSummary(n: NotificationRecord): string {
 	if (n.category === 'material_assigned') return 'Neue Materialverantwortung';
+	if (n.category === 'activity_assigned') return 'Du wurdest zur Aktivität hinzugefügt';
+	if (n.category === 'program_assigned') {
+		const progTitle = n.payload?.program_title as string | undefined;
+		return progTitle ? `Programmblock "${progTitle}" dir zugewiesen` : 'Programmblock dir zugewiesen';
+	}
 	if (n.category === 'mail_own_activity') return 'Mail für deine Aktivität wurde versendet';
 	if (n.category === 'mail_department') return 'Mail in deiner Stufe wurde versendet';
 	return n.message;
@@ -531,6 +543,16 @@ onMounted(() => {
 .avatar-notification-category--material {
 	background: #dcfce7;
 	color: #166534;
+}
+
+.avatar-notification-category--activity {
+	background: #ede9fe;
+	color: #6d28d9;
+}
+
+.avatar-notification-category--program {
+	background: #ccfbf1;
+	color: #0f766e;
 }
 
 .avatar-notification-category--activity-mail {

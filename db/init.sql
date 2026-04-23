@@ -85,6 +85,8 @@ CREATE TABLE users (
     time_display_mode TEXT    NOT NULL DEFAULT 'minutes'
         CHECK (time_display_mode IN ('minutes', 'clock')),
     notify_material_assigned BOOLEAN NOT NULL DEFAULT true,
+    notify_activity_assigned BOOLEAN NOT NULL DEFAULT true,
+    notify_program_assigned BOOLEAN NOT NULL DEFAULT true,
     notify_mail_own_activity BOOLEAN NOT NULL DEFAULT true,
     notify_mail_department BOOLEAN NOT NULL DEFAULT true,
     notify_channel_websocket BOOLEAN NOT NULL DEFAULT true,
@@ -140,6 +142,8 @@ CREATE TABLE notifications (
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     category   TEXT NOT NULL CHECK (category IN (
         'material_assigned',
+        'activity_assigned',
+        'program_assigned',
         'mail_own_activity',
         'mail_department'
     )),
