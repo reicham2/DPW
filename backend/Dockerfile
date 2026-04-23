@@ -15,8 +15,8 @@ RUN apk add --no-cache \
   linux-headers
 
 WORKDIR /src
-COPY CMakeLists.txt .
-COPY deps/ deps/
+COPY backend/CMakeLists.txt .
+COPY backend/deps/ deps/
 
 # Stub sources so cmake configure caches without real src/
 RUN mkdir -p src && for f in main auth cache db handlers ws_manager graph utils; do \
@@ -37,7 +37,7 @@ RUN cmake -B build -DCMAKE_BUILD_TYPE=${BACKEND_BUILD_TYPE} \
   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 # Now copy real sources and build – only this layer reruns on code changes
-COPY src/ src/
+COPY backend/src/ src/
 
 RUN --mount=type=cache,target=/root/.cache/ccache \
   CCACHE_DIR=/root/.cache/ccache \
@@ -51,6 +51,7 @@ RUN apk add --no-cache \
   zlib \
   libuv \
   libpq \
+  postgresql16-client \
   libcurl \
   curl \
   ca-certificates \
@@ -61,6 +62,9 @@ RUN apk add --no-cache \
 ENV TZ=Europe/Zurich
 
 COPY --from=build /src/build/server /usr/local/bin/server
+COPY db/init.sql /etc/dpw/init.sql
+
+ENV DPW_INIT_SQL_PATH=/etc/dpw/init.sql
 
 EXPOSE 8080
 CMD ["server"]

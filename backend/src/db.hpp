@@ -435,6 +435,7 @@ public:
 private:
     PGconn *conn_{nullptr};
     void ensure_connected();
+    void run_schema_sync();
 
     Activity row_to_activity(PGresult *res, int row);
     Program row_to_program(PGresult *res, int row);
