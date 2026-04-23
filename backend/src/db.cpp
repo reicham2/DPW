@@ -3067,7 +3067,7 @@ std::optional<ActivityShareLink> Database::create_share_link(const std::string &
     const char *params[2] = {activity_id.c_str(), created_by.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO activity_share_links (activity_id, created_by) "
-                                 "VALUES ($1, $2) "
+                                 "VALUES ($1, NULLIF($2, '')::uuid) "
                                  "ON CONFLICT (activity_id) WHERE true "
                                  "DO UPDATE SET activity_id = activity_share_links.activity_id "
                                  "RETURNING id, activity_id, share_token, created_by::text, created_at",
@@ -3083,7 +3083,7 @@ std::optional<ActivityShareLink> Database::create_share_link(const std::string &
         // Insert without ON CONFLICT
         res = PQexecParams(conn_,
                            "INSERT INTO activity_share_links (activity_id, created_by) "
-                           "VALUES ($1, $2) "
+                           "VALUES ($1, NULLIF($2, '')::uuid) "
                            "RETURNING id, activity_id, share_token, created_by::text, created_at",
                            2, nullptr, params, nullptr, nullptr, 0);
         if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)

@@ -2921,7 +2921,12 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
             wm.broadcast(msg.dump());
             cache_bump_version("activities");
             cache_bump_version("activity");
-            send_json(res, 201, to_json(*activity).dump());
+            std::string share_created_by = current_user ? current_user->id : "";
+            auto share_link = db.create_share_link(activity->id, share_created_by);
+
+            nlohmann::json response = to_json(*activity);
+            response["share_token"] = share_link ? nlohmann::json(share_link->share_token) : nlohmann::json(nullptr);
+            send_json(res, 201, response.dump());
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);
         } });
