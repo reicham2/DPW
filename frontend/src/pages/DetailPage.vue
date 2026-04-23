@@ -1923,34 +1923,27 @@ async function doDelete() {
 
 // ---- Share link ------------------------------------------------------------
 async function fetchShareLink() {
+	shareLoading.value = true;
 	try {
 		const res = await apiFetch(`/api/activities/${id}/share`);
 		if (res.ok) {
 			const data = await res.json();
-			shareToken.value = data.share_token || null;
+			if (data.share_token) {
+				shareToken.value = data.share_token;
+				return;
+			}
+		}
+
+		// Backfill old activities: create a share link once when none exists yet.
+		const createRes = await apiFetch(`/api/activities/${id}/share`, { method: 'POST' });
+		if (createRes.ok) {
+			const created = await createRes.json();
+			shareToken.value = created.share_token || null;
 		}
 	} catch { /* ignore */ }
-}
-
-async function createShareLink() {
-	shareLoading.value = true;
-	try {
-		const res = await apiFetch(`/api/activities/${id}/share`, { method: 'POST' });
-		if (res.ok) {
-			const data = await res.json();
-			shareToken.value = data.share_token;
-		}
-	} catch { /* ignore */ }
-	shareLoading.value = false;
-}
-
-async function deleteShareLink() {
-	shareLoading.value = true;
-	try {
-		const res = await apiFetch(`/api/activities/${id}/share`, { method: 'DELETE' });
-		if (res.ok) shareToken.value = null;
-	} catch { /* ignore */ }
-	shareLoading.value = false;
+	finally {
+		shareLoading.value = false;
+	}
 }
 
 function copyShareLink() {
@@ -2000,30 +1993,14 @@ function copyShareLink() {
 			<!-- Share link -->
 			<div v-if="activity && mode === 'view'" class="share-link-wrap">
 				<button
-					v-if="!shareToken"
 					class="btn-mail"
-					title="Share-Link erstellen"
-					:disabled="shareLoading"
-					@click="createShareLink"
+					:class="{ 'btn-mail--active': shareCopied }"
+					title="Share-Link kopieren"
+					:disabled="shareLoading || !shareToken"
+					@click="copyShareLink"
 				>
-					🔗 Teilen
+					{{ shareCopied ? '✅ Kopiert' : (shareLoading ? '🔗 Teilen…' : '🔗 Teilen') }}
 				</button>
-				<template v-else>
-					<button
-						class="btn-mail btn-mail--active"
-						title="Share-Link kopieren"
-						@click="copyShareLink"
-					>
-						{{ shareCopied ? '✅ Kopiert!' : '🔗 Link kopieren' }}
-					</button>
-					<button
-						class="btn-share-remove"
-						title="Share-Link löschen"
-						@click="deleteShareLink"
-					>
-						✕
-					</button>
-				</template>
 			</div>
 			<button
 				v-if="activity && mode === 'view'"
