@@ -130,7 +130,7 @@ import { useApiConnectionStatus } from './composables/useApi'
 import { config } from './config'
 
 const route = useRoute()
-const { myPermissions, fetchMyPermissions } = usePermissions()
+const { myPermissions, fetchMyPermissions, resetMyPermissions } = usePermissions()
 const { startMidataAutoRefresh, stopMidataAutoRefresh, resetMidataCounts } = useMidataCounts()
 const { connected } = useWebSocket(() => {})
 const { apiOnline } = useApiConnectionStatus()
@@ -179,6 +179,7 @@ onMounted(() => {
 })
 
 watch(user, (u) => {
+  resetMyPermissions()
   if (u) {
     fetchMyPermissions().catch(() => {})
     startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
