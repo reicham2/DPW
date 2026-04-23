@@ -42,6 +42,8 @@ bool can_read_activity(const RolePermission &perm, const UserRecord &user,
                        const Activity &activity);
 bool can_edit_activity(const RolePermission &perm, const UserRecord &user,
                        const Activity &activity, const std::string &email);
+bool can_publish_event(const RolePermission &perm, const UserRecord &user,
+                       const Activity &activity, const std::string &email);
 
 // ── JSON parsing helpers ────────────────────────────────────────────────────
 

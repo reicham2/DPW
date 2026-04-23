@@ -10,6 +10,7 @@ interface AppConfig {
 	AUTOSAVE_INTERVAL: number;
 	AUTOSAVE_DEBOUNCE: boolean;
 	MIDATA_WEATHER_REFRESH_INTERVAL: number;
+	WP_URL: string;
 }
 
 const w = window as unknown as { __APP_CONFIG__?: Record<string, string> };
@@ -37,4 +38,6 @@ export const config: AppConfig = {
 			w.__APP_CONFIG__?.MIDATA_WEATHER_REFRESH_INTERVAL ??
 				import.meta.env.VITE_MIDATA_WEATHER_REFRESH_INTERVAL,
 		) || 900000,
+	WP_URL:
+		w.__APP_CONFIG__?.WP_URL ?? '',
 };

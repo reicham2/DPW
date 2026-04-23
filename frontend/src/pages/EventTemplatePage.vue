@@ -40,6 +40,16 @@ const activeDept = ref<Department>(
 const title = ref('')
 const body = ref('')
 const editorRef = ref<HTMLElement | null>(null)
+const curFont = ref('Arial')
+const curSize = ref('12')
+const curColor = ref('#000000')
+const curBold = ref(false)
+const curItalic = ref(false)
+const curUnderline = ref(false)
+const curUl = ref(false)
+const curOl = ref(false)
+const curBgColor = ref('#ffffff')
+let savedSelection: Range | null = null
 
 // ---- Dirty tracking & save indicator ----------------------------------------
 const dirtyFields = new Set<string>()
@@ -296,26 +306,104 @@ useWebSocket((e: any) => {
 })
 
 // ---- Rich text helpers ------------------------------------------------------
-function execCmd(cmd: string, val?: string) {
-  document.execCommand(cmd, false, val)
-  onEditorInput()
-}
-
 function onEditorInput() {
   if (editorRef.value) body.value = editorRef.value.innerHTML
+  updateToolbarState()
   markDirty('body')
   scheduleAutoSave()
 }
 
+function updateToolbarState() {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount || !editorRef.value) return
+  const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement
+  if (!node || !editorRef.value.contains(node)) return
+  const cs = window.getComputedStyle(node)
+  curFont.value = cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial'
+  curSize.value = parseInt(cs.fontSize).toString() || '12'
+  curColor.value = rgbToHex(cs.color) || '#000000'
+  const bgRaw = cs.backgroundColor
+  curBgColor.value = (bgRaw === 'rgba(0, 0, 0, 0)' || bgRaw === 'transparent') ? '#ffffff' : (rgbToHex(bgRaw) || '#ffffff')
+  curBold.value = document.queryCommandState('bold')
+  curItalic.value = document.queryCommandState('italic')
+  curUnderline.value = document.queryCommandState('underline')
+  curUl.value = document.queryCommandState('insertUnorderedList')
+  curOl.value = document.queryCommandState('insertOrderedList')
+}
+
+function rgbToHex(rgb: string): string {
+  const m = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/)
+  if (!m) return rgb
+  return '#' + [m[1], m[2], m[3]].map(x => parseInt(x).toString(16).padStart(2, '0')).join('')
+}
+
+function saveEditorSelection() {
+  const sel = window.getSelection()
+  if (sel?.rangeCount && editorRef.value?.contains(sel.anchorNode)) {
+    savedSelection = sel.getRangeAt(0).cloneRange()
+  }
+}
+
+function execCmd(cmd: string, value?: string) {
+  if (savedSelection) {
+    const sel = window.getSelection()
+    if (sel) { sel.removeAllRanges(); sel.addRange(savedSelection) }
+    savedSelection = null
+  }
+  document.execCommand(cmd, false, value)
+  editorRef.value?.focus()
+  onEditorInput()
+}
+
+function setFontSize(size: string) {
+  if (savedSelection) {
+    const sel = window.getSelection()
+    if (sel) { sel.removeAllRanges(); sel.addRange(savedSelection) }
+    savedSelection = null
+  }
+  const sel = window.getSelection()
+  if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+    const span = document.createElement('span')
+    span.style.fontSize = size + 'px'
+    span.textContent = '\u200B'
+    const range = sel.getRangeAt(0)
+    range.insertNode(span)
+    const newRange = document.createRange()
+    newRange.setStart(span.firstChild!, 1)
+    newRange.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(newRange)
+    editorRef.value?.focus()
+    curSize.value = size
+    onEditorInput()
+    return
+  }
+  document.execCommand('fontSize', false, '7')
+  const fontEls = editorRef.value?.querySelectorAll('font[size="7"]')
+  fontEls?.forEach(el => {
+    const span = document.createElement('span')
+    span.style.fontSize = size + 'px'
+    span.innerHTML = el.innerHTML
+    el.replaceWith(span)
+  })
+  editorRef.value?.focus()
+  onEditorInput()
+}
+
+function adjustFontSize(delta: number) {
+  const current = parseInt(curSize.value) || 12
+  const newSize = Math.max(8, Math.min(72, current + delta))
+  setFontSize(String(newSize))
+  curSize.value = String(newSize)
+}
+
 // ---- Lifecycle --------------------------------------------------------------
 onMounted(async () => {
-  await Promise.all([fetchMyPermissions(), fetchDepartments()])
+  await Promise.all([fetchMyPermissions(), fetchDepartments(), fetchTemplates()])
   if (!myPermissions.value || myPermissions.value.event_templates_scope === 'none') {
     router.replace('/')
     return
   }
-
-  await fetchTemplates()
 
   const dept = visibleDepartments.value.length
     ? (visibleDepartments.value.includes(activeDept.value) ? activeDept.value : visibleDepartments.value[0])
@@ -416,12 +504,35 @@ onUnmounted(() => {
           <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--textarea" :key="'wrap-' + savedFields['body']">💾</span>
         </div>
         <div class="rich-editor-toolbar" v-if="!isLockedByOther('evt_tpl_body' as EditSection)">
-          <button type="button" @mousedown.prevent @click="execCmd('bold')" title="Fett"><b>B</b></button>
-          <button type="button" @mousedown.prevent @click="execCmd('italic')" title="Kursiv"><i>I</i></button>
-          <button type="button" @mousedown.prevent @click="execCmd('underline')" title="Unterstrichen"><u>U</u></button>
+          <select class="toolbar-select" :value="curFont" @change="execCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
+            <option value="" disabled>Schriftart</option>
+            <option value="Arial" style="font-family:Arial">Arial</option>
+            <option value="Helvetica" style="font-family:Helvetica">Helvetica</option>
+            <option value="Georgia" style="font-family:Georgia">Georgia</option>
+            <option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
+            <option value="Courier New" style="font-family:'Courier New'">Courier New</option>
+            <option value="Verdana" style="font-family:Verdana">Verdana</option>
+            <option value="Trebuchet MS" style="font-family:'Trebuchet MS'">Trebuchet MS</option>
+          </select>
+          <input type="text" class="toolbar-select toolbar-select--narrow" :value="curSize" @mousedown="saveEditorSelection" @change="setFontSize(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="setFontSize(($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
+          <button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="adjustFontSize(-2)" title="Kleiner">A−</button>
+          <button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="adjustFontSize(2)" title="Grösser">A+</button>
           <span class="toolbar-sep"></span>
-          <button type="button" @mousedown.prevent @click="execCmd('insertUnorderedList')" title="Aufzählung">&#8226; Liste</button>
-          <button type="button" @mousedown.prevent @click="execCmd('insertOrderedList')" title="Nummerierung">1. Liste</button>
+          <button type="button" :class="{'toolbar-btn--active': curBold}" @mousedown.prevent @click="execCmd('bold')" title="Fett"><b>B</b></button>
+          <button type="button" :class="{'toolbar-btn--active': curItalic}" @mousedown.prevent @click="execCmd('italic')" title="Kursiv"><i>I</i></button>
+          <button type="button" :class="{'toolbar-btn--active': curUnderline}" @mousedown.prevent @click="execCmd('underline')" title="Unterstrichen"><u>U</u></button>
+          <span class="toolbar-sep"></span>
+          <label class="toolbar-color" title="Schriftfarbe" @mousedown="saveEditorSelection">
+            A
+            <input type="color" :value="curColor" @input="execCmd('foreColor', ($event.target as HTMLInputElement).value)" />
+          </label>
+          <label class="toolbar-color toolbar-color--bg" title="Hintergrundfarbe" @mousedown="saveEditorSelection">
+            <span class="toolbar-color-icon">A</span>
+            <input type="color" :value="curBgColor" @input="execCmd('hiliteColor', ($event.target as HTMLInputElement).value)" />
+          </label>
+          <span class="toolbar-sep"></span>
+          <button type="button" :class="{'toolbar-btn--active': curUl}" @mousedown.prevent @click="execCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
+          <button type="button" :class="{'toolbar-btn--active': curOl}" @mousedown.prevent @click="execCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
           <span class="toolbar-sep"></span>
           <button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
         </div>
@@ -430,12 +541,14 @@ onUnmounted(() => {
           class="rich-editor"
           :contenteditable="!isLockedByOther('evt_tpl_body' as EditSection)"
           @input="onEditorInput"
+          @mouseup="updateToolbarState"
+          @keyup="updateToolbarState"
           data-placeholder="Event-Inhalt…"
         ></div>
       </div>
 
       <!-- Variable reference -->
-      <TemplateVarsDropdown hint="Verwende diese Variablen im Titel oder Inhalt. Sie werden beim Veröffentlichen durch die Aktivitätsdaten ersetzt." />
+				<TemplateVarsDropdown />
 
       <ErrorAlert :error="error" />
     </div>

@@ -270,7 +270,7 @@ CREATE TABLE role_permissions (
     event_templates_scope TEXT   NOT NULL DEFAULT 'none'
         CHECK (event_templates_scope IN ('none', 'own_dept', 'all')),
     event_publish_scope  TEXT    NOT NULL DEFAULT 'none'
-        CHECK (event_publish_scope IN ('none', 'own_dept', 'all')),
+        CHECK (event_publish_scope IN ('none', 'own', 'own_dept', 'all')),
     user_dept_scope      TEXT    NOT NULL DEFAULT 'none'
         CHECK (user_dept_scope IN ('none', 'own', 'own_dept', 'all')),
     user_role_scope           TEXT    NOT NULL DEFAULT 'none'

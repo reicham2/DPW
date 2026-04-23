@@ -541,7 +541,8 @@ const canPublishEvent = computed(() => {
 	const p = myPermissions.value;
 	if (!p) return false;
 	if (p.event_publish_scope === 'all') return true;
-	if (p.event_publish_scope === 'own_dept' && activity.value.department === user.value.department) return true;
+	if (p.event_publish_scope === 'own_dept' && activity.value.department && activity.value.department === user.value.department) return true;
+	if (p.event_publish_scope === 'own' && user.value.display_name && activity.value.responsible.includes(user.value.display_name)) return true;
 	return false;
 });
 
@@ -603,22 +604,47 @@ function evtSubstituteVarsHtml(text: string, act: Activity): string {
 	return container.innerHTML;
 }
 
+// Cache for the event template so we only fetch it once
+let cachedEventTemplate: { dept: string; tpl: import('../types').EventTemplate | null } | null = null;
+
 async function handlePublishEventClick() {
 	if (!activity.value) return;
+
+	// If already published, show existing publication data
+	if (eventPublication.value) {
+		eventPreviewTitle.value = eventPublication.value.title;
+		eventPreviewBody.value = eventPublication.value.body_html;
+		showEventPreview.value = true;
+		return;
+	}
+
+	// First publish: show modal immediately with defaults, load template in background
+	eventPreviewTitle.value = activity.value.title;
+	eventPreviewBody.value = '';
+	showEventPreview.value = true;
+
 	const dept = activity.value.department;
-	const tpl = dept ? await fetchEventTemplate(dept) : null;
-	if (tpl && (tpl.title || tpl.body)) {
+	if (!dept) return;
+
+	// Use cached template if available for this department
+	let tpl: import('../types').EventTemplate | null = null;
+	if (cachedEventTemplate && cachedEventTemplate.dept === dept) {
+		tpl = cachedEventTemplate.tpl;
+	} else {
+		tpl = await fetchEventTemplate(dept);
+		cachedEventTemplate = { dept, tpl };
+	}
+
+	if (tpl && (tpl.title || tpl.body) && activity.value) {
 		eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value);
 		eventPreviewBody.value = evtSubstituteVarsHtml(tpl.body, activity.value);
-	} else {
-		eventPreviewTitle.value = activity.value.title;
-		eventPreviewBody.value = '';
 	}
-	showEventPreview.value = true;
 }
 
 async function confirmPublishEvent() {
 	if (!activity.value) return;
+	// Sync editor content before publishing
+	if (eventPreviewEditorRef.value) eventPreviewBody.value = eventPreviewEditorRef.value.innerHTML;
 	eventPublishing.value = true;
 	const result = await publishEvent(id, eventPreviewTitle.value, eventPreviewBody.value);
 	eventPublishing.value = false;
@@ -1143,9 +1169,7 @@ onMounted(async () => {
 			attachments.value = items;
 		});
 		void fetchShareLink();
-		if (canPublishEvent.value) {
-			void fetchPublication(id).then(pub => { eventPublication.value = pub; });
-		}
+		void fetchPublication(id).then(pub => { eventPublication.value = pub; });
 		void Promise.allSettled([
 			fetchDepartments(),
 			fetchLocations(),
@@ -2181,17 +2205,19 @@ function copyShareLink() {
 			</button>
 			<!-- Event publish -->
 			<button
-				v-if="activity && mode === 'view' && canPublishEvent && !eventPublication"
+				v-if="activity && mode === 'view' && !eventPublication"
 				class="btn-mail"
-				title="Als Event veröffentlichen"
+				:disabled="!canPublishEvent"
+				:title="canPublishEvent ? 'Als Event veröffentlichen' : 'Keine Berechtigung zum Veröffentlichen'"
 				@click="handlePublishEventClick"
 			>
 				🌐 Veröffentlichen
 			</button>
 			<button
-				v-else-if="activity && mode === 'view' && canPublishEvent && eventPublication"
+				v-else-if="activity && mode === 'view' && eventPublication"
 				class="btn-mail btn-mail--active"
-				:title="eventPublication.wp_event_id ? 'Veröffentlicht + WordPress synchronisiert' : 'Event veröffentlicht (WordPress nicht konfiguriert)'"
+				:disabled="!canPublishEvent"
+				:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : eventPublication.wp_event_id ? 'Veröffentlicht + WordPress synchronisiert' : 'Event veröffentlicht (WordPress nicht konfiguriert)'"
 				@click="handlePublishEventClick"
 			>
 				{{ eventPublication.wp_event_id ? '✅ Veröffentlicht (WP)' : '✅ Veröffentlicht' }}
@@ -3254,7 +3280,21 @@ function copyShareLink() {
 	<!-- Event publish preview modal -->
 	<div v-if="showEventPreview" class="modal-backdrop" @click.self="showEventPreview = false">
 		<div class="modal" style="max-width: 640px;">
-			<h2 class="modal-title">Event-Vorschau</h2>
+			<div style="display: flex; align-items: center; justify-content: space-between;">
+				<h2 class="modal-title" style="margin: 0;">Event-Vorschau</h2>
+				<a
+					v-if="eventPublication?.wp_event_id && config.WP_URL"
+					:href="`${config.WP_URL}/wp-admin/post.php?post=${eventPublication.wp_event_id}&action=edit`"
+					target="_blank"
+					rel="noopener"
+					class="wp-id-link"
+					title="In WordPress bearbeiten"
+				>WP #{{ eventPublication.wp_event_id }}</a>
+				<span
+					v-else-if="eventPublication?.wp_event_id"
+					class="wp-id-link"
+				>WP #{{ eventPublication.wp_event_id }}</span>
+			</div>
 			<div class="event-preview-form">
 				<!-- Read-only meta info -->
 				<div class="event-preview-meta">
@@ -3269,14 +3309,16 @@ function copyShareLink() {
 					placeholder="Event-Titel"
 				/>
 				<label class="event-preview-label" style="margin-top: 12px;">Beschreibung</label>
-				<div class="rich-editor-toolbar rich-editor-toolbar--compact">
+				<div class="rich-editor-toolbar">
 					<select class="toolbar-select" :value="evtPreviewToolbar?.font ?? 'Arial'" @change="evtPreviewExecCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
+						<option value="" disabled>Schriftart</option>
 						<option value="Arial" style="font-family:Arial">Arial</option>
 						<option value="Helvetica" style="font-family:Helvetica">Helvetica</option>
 						<option value="Georgia" style="font-family:Georgia">Georgia</option>
 						<option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
 						<option value="Courier New" style="font-family:'Courier New'">Courier New</option>
 						<option value="Verdana" style="font-family:Verdana">Verdana</option>
+						<option value="Trebuchet MS" style="font-family:'Trebuchet MS'">Trebuchet MS</option>
 					</select>
 					<input type="text" class="toolbar-select toolbar-select--narrow" :value="evtPreviewToolbar?.size ?? '12'" @mousedown="evtPreviewSaveSelection" @change="evtPreviewSetFontSize(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="evtPreviewSetFontSize(($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
 					<button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="evtPreviewAdjustFontSize(-2)" title="Kleiner">A−</button>
@@ -3302,7 +3344,7 @@ function copyShareLink() {
 				</div>
 				<div
 					ref="eventPreviewEditorRef"
-					class="rich-editor rich-editor--compact"
+					class="rich-editor"
 					contenteditable="true"
 					@input="onEvtPreviewInput"
 					@focus="updateEvtPreviewToolbar"

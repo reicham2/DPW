@@ -4412,12 +4412,14 @@ void handle_get_event_template(HttpRes *res, HttpReq *req, Database &db)
     std::string department = url_decode(std::string{req->getParameter(0)});
 
     auto perm = db.get_role_permission(current_user->role);
-    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+    bool can_templates = perm && perm->event_templates_scope != "none";
+    bool can_publish = perm && perm->event_publish_scope != "none";
+    if (!is_admin(*current_user) && !can_templates && !can_publish)
     {
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
     }
-    if (!is_admin(*current_user) && perm->event_templates_scope == "own_dept")
+    if (!is_admin(*current_user) && !can_publish && perm->event_templates_scope == "own_dept")
     {
         if (!current_user->department || *current_user->department != department)
         {
@@ -4522,13 +4524,6 @@ void handle_get_event_publication(HttpRes *res, HttpReq *req, Database &db)
         return;
     }
 
-    auto perm = db.get_role_permission(current_user->role);
-    if (!is_admin(*current_user) && (!perm || perm->event_publish_scope == "none"))
-    {
-        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-        return;
-    }
-
     std::string activity_id{req->getParameter(0)};
     auto pub = db.get_event_publication(activity_id);
     if (!pub)
@@ -4576,6 +4571,23 @@ void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
     }
 
     std::string activity_id{req->getParameter(0)};
+
+    // Scope check: own / own_dept requires checking the activity
+    if (!is_admin(*current_user) && perm && perm->event_publish_scope != "all")
+    {
+        auto activity = db.get_activity_by_id(activity_id);
+        if (!activity)
+        {
+            send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+            return;
+        }
+        if (!can_publish_event(*perm, *current_user, *activity, current_user->email))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung für diese Aktivität"})");
+            return;
+        }
+    }
+
     std::string user_id = current_user->id;
 
     auto buf = std::make_shared<std::string>();
@@ -4662,6 +4674,22 @@ void handle_delete_event_publication(HttpRes *res, HttpReq *req, Database &db)
     }
 
     std::string activity_id{req->getParameter(0)};
+
+    // Scope check: own / own_dept requires checking the activity
+    if (!is_admin(*current_user) && perm && perm->event_publish_scope != "all")
+    {
+        auto activity = db.get_activity_by_id(activity_id);
+        if (!activity)
+        {
+            send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+            return;
+        }
+        if (!can_publish_event(*perm, *current_user, *activity, current_user->email))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung für diese Aktivität"})");
+            return;
+        }
+    }
 
     // Delete WordPress event if it exists
     if (wp_configured())

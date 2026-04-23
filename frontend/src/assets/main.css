@@ -2150,7 +2150,7 @@ img, video {
 	transition: background 0.15s;
 	white-space: nowrap;
 }
-.btn-mail:hover {
+.btn-mail:hover:not(:disabled) {
 	background: #cce5ff;
 }
 .btn-mail:disabled {
@@ -2166,8 +2166,15 @@ img, video {
 	color: #065f46;
 	border-color: #6ee7b7;
 }
-.btn-mail--active:hover {
+.btn-mail--active:hover:not(:disabled) {
 	background: #a7f3d0;
+}
+.btn-mail--active:disabled {
+	opacity: 0.5;
+	cursor: default;
+	background: #e8f5e9;
+	color: #5a7a62;
+	border-color: #b2d8b8;
 }
 
 .share-link-wrap {
@@ -3182,6 +3189,15 @@ img, video {
 }
 
 /* ── Event publish preview ──────────────────────────────────────────── */
+.wp-id-link {
+	font-size: 0.8rem;
+	color: #6b7280;
+	font-family: monospace;
+	text-decoration: none;
+}
+a.wp-id-link:hover {
+	color: #2563eb;
+}
 .event-preview-form {
 	margin: 16px 0;
 }

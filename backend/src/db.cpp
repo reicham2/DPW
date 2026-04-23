@@ -2594,7 +2594,7 @@ std::optional<RolePermission> Database::get_role_permission(const std::string &r
                                  "       activity_edit_scope, "
                                  "       mail_send_scope, "
                                  "       mail_templates_scope, form_scope, form_templates_scope, "
-                                 "       event_templates_scope, "
+                                 "       event_templates_scope, event_publish_scope, "
                                  "       user_dept_scope, user_role_scope, locations_manage_scope "
                                  "FROM role_permissions WHERE role = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);

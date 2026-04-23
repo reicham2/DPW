@@ -218,7 +218,7 @@ export interface RolePermission {
 	form_scope: 'none' | 'own' | 'same_dept' | 'all';
 	form_templates_scope: 'none' | 'own_dept' | 'all';
 	event_templates_scope: 'none' | 'own_dept' | 'all';
-	event_publish_scope: 'none' | 'own_dept' | 'all';
+	event_publish_scope: 'none' | 'own' | 'own_dept' | 'all';
 	user_dept_scope: 'none' | 'own' | 'own_dept' | 'all';
 	user_role_scope: 'none' | 'own' | 'own_dept' | 'all';
 	locations_manage_scope: 'none' | 'all';
