@@ -4606,8 +4606,7 @@ void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
                 return;
             }
 
-            // ── WordPress / EventON sync (disabled in debug builds) ────
-#if !DPW_ENABLE_DEBUG_AUTH
+            // ── WordPress / EventON sync ──────────────────────────────
             if (wp_configured()) {
                 auto activity = db.get_activity_by_id(activity_id);
                 long start_ts = 0, end_ts = 0;
@@ -4632,7 +4631,6 @@ void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
                     }
                 }
             }
-#endif
 
             send_json(res, 200, event_publication_to_json(*pub).dump());
         } catch (std::exception& e) {
@@ -4664,8 +4662,7 @@ void handle_delete_event_publication(HttpRes *res, HttpReq *req, Database &db)
 
     std::string activity_id{req->getParameter(0)};
 
-    // Delete WordPress event if it exists (disabled in debug builds)
-#if !DPW_ENABLE_DEBUG_AUTH
+    // Delete WordPress event if it exists
     if (wp_configured())
     {
         auto pub = db.get_event_publication(activity_id);
@@ -4675,7 +4672,6 @@ void handle_delete_event_publication(HttpRes *res, HttpReq *req, Database &db)
                 fprintf(stderr, "[wp_client] delete failed for wp_event_id=%s\n", pub->wp_event_id.c_str());
         }
     }
-#endif
 
     db.delete_event_publication(activity_id);
     send_json(res, 204, "");
