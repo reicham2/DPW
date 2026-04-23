@@ -32,7 +32,7 @@
 					:placeholder="titlePlaceholder"
 					@input="markDirty('title')"
 				/>
-				<span v-if="savedFields['title']" class="field-saved-icon" :key="savedFields['title']">💾</span>
+				<span v-if="savedFields['title']" class="field-saved-icon" :key="savedFields['title']"><Save :size="12" aria-hidden="true" /></span>
 			</div>
 			<p v-if="titleError" class="validation-hint">{{ titleError }}</p>
 			<label class="field-label mt-3">Modus</label>
@@ -51,7 +51,7 @@
 				>
 					Abmeldung
 				</button>
-				<span v-if="savedFields['mode']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['mode']">💾</span>
+				<span v-if="savedFields['mode']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['mode']"><Save :size="12" aria-hidden="true" /></span>
 			</div>
 		</div>
 
@@ -87,7 +87,7 @@
 							title="Nach oben"
 							@click="moveQuestion(idx, -1)"
 						>
-							↑
+							<ChevronUp :size="14" aria-hidden="true" />
 						</button>
 						<button
 							v-if="idx < localQuestions.length - 1"
@@ -96,7 +96,7 @@
 							title="Nach unten"
 							@click="moveQuestion(idx, 1)"
 						>
-							↓
+							<ChevronDown :size="14" aria-hidden="true" />
 						</button>
 						<button
 							type="button"
@@ -104,7 +104,7 @@
 							title="Entfernen"
 							@click="removeQuestion(idx)"
 						>
-							✕
+							<X :size="14" aria-hidden="true" />
 						</button>
 					</div>
 				</div>
@@ -118,7 +118,7 @@
 							placeholder="Abschnitts-Titel"
 							@input="markDirty(`q${idx}`)"
 						/>
-						<span v-if="savedFields[`q${idx}`]" class="field-saved-icon" :key="savedFields[`q${idx}`]">💾</span>
+						<span v-if="savedFields[`q${idx}`]" class="field-saved-icon" :key="savedFields[`q${idx}`]"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 					<input
 						v-model="q.metadata.subtitle"
@@ -137,7 +137,7 @@
 							placeholder="Frage"
 							@input="markDirty(`q${idx}`)"
 						/>
-						<span v-if="savedFields[`q${idx}`]" class="field-saved-icon" :key="savedFields[`q${idx}`]">💾</span>
+						<span v-if="savedFields[`q${idx}`]" class="field-saved-icon" :key="savedFields[`q${idx}`]"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 					<div class="question-options-row">
 						<label class="checkbox-label">
@@ -174,7 +174,7 @@
 									@click="removeChoice(q, oi)"
 									:disabled="(q.metadata.choices?.length ?? 0) <= 1"
 								>
-									✕
+									<X :size="12" aria-hidden="true" />
 								</button>
 							</div>
 							<button
@@ -219,7 +219,7 @@
 		<!-- Template change warning modal -->
 		<div v-if="showTemplateWarning" class="modal-backdrop" @click.self="cancelTemplateChange">
 			<div class="modal modal--danger">
-				<h2 class="modal-title modal-title--danger">⚠️ Vorlage wechseln?</h2>
+				<h2 class="modal-title modal-title--danger"><TriangleAlert :size="16" aria-hidden="true" /> Vorlage wechseln?</h2>
 				<p class="modal-desc">
 					Du hast bereits Änderungen am Formular vorgenommen. Beim Wechsel der Vorlage
 					werden Fragen, die aus der bisherigen Vorlage stammen, entfernt und durch die
@@ -240,6 +240,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { Save, ChevronUp, ChevronDown, X, TriangleAlert } from 'lucide-vue-next';
 import type { SignupForm, SignupFormInput, FormQuestionInput, FormTemplate, QuestionType, FormType } from '../types';
 import { useFormTemplates } from '../composables/useForms';
 import { useAutosave } from '../composables/useAutosave';

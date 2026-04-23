@@ -9,6 +9,7 @@ import { usePermissions } from '../composables/usePermissions';
 import { useForms } from '../composables/useForms';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
+import { ArrowLeft, Save, Check, X, Clipboard, Send } from 'lucide-vue-next';
 import type { Activity, Department, SentMail } from '../types';
 import { useAutosave } from '../composables/useAutosave';
 
@@ -713,20 +714,20 @@ async function cancelAndRevert() {
 
 <template>
 	<header class="header">
-		<button class="btn-back" @click="flushAutoSave(); router.back()">← Zurück</button>
+		<button class="btn-back" @click="flushAutoSave(); router.back()"><ArrowLeft class="btn-icon" :size="16" aria-hidden="true" /> Zurück</button>
 		<h1>Mail senden</h1>
 	</header>
 
 	<main class="main">
 		<ErrorAlert :error="loadError" />
 		<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
-			<span class="editors-banner-icon">💾</span>
+			<span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
 			<span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
 			<button type="button" class="btn-secondary" @click="applyLocalDraft">Wiederherstellen</button>
 			<button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
 		</div>
 		<div v-else-if="localDraftRestoredAt" class="editors-banner" style="margin-bottom: 12px;">
-			<span class="editors-banner-icon">✅</span>
+			<span class="editors-banner-icon"><Check :size="16" aria-hidden="true" /></span>
 			<span>Lokaler Entwurf wurde wiederhergestellt.</span>
 		</div>
 
@@ -746,7 +747,7 @@ async function cancelAndRevert() {
 		</div>
 
 		<div v-if="!loadError && sent" class="mail-sent">
-			<p class="mail-sent-text">✅ Mail wurde erfolgreich versendet!</p>
+			<p class="mail-sent-text"><Check class="btn-icon" :size="16" aria-hidden="true" /> Mail wurde erfolgreich versendet!</p>
 			<button class="btn-primary" @click="router.back()">
 				Zurück zur Aktivität
 			</button>
@@ -781,7 +782,7 @@ async function cancelAndRevert() {
 					<div class="mail-viewer-modal">
 						<div class="mail-viewer-header">
 							<h2 class="mail-viewer-title">Versendetes Mail</h2>
-							<button class="bug-close-btn" @click="closeMailViewer" aria-label="Schliessen">×</button>
+							<button class="bug-close-btn" @click="closeMailViewer" aria-label="Schliessen"><X :size="14" aria-hidden="true" /></button>
 						</div>
 						<div class="mail-viewer-meta">
 							<div><strong>Von:</strong> {{ viewingMail.sender_email }}</div>
@@ -812,7 +813,9 @@ async function cancelAndRevert() {
 				<div class="form-link-row">
 					<input type="text" :value="formUrl" readonly class="form-link-input" />
 					<button type="button" class="btn-secondary btn-copy" @click="copyFormLink">
-						{{ linkCopied ? '✓ Kopiert' : '📋 Kopieren' }}
+						<Check v-if="linkCopied" class="btn-icon" :size="14" aria-hidden="true" />
+						<Clipboard v-else class="btn-icon" :size="14" aria-hidden="true" />
+						{{ linkCopied ? 'Kopiert' : 'Kopieren' }}
 					</button>
 				</div>
 			</div>
@@ -830,11 +833,11 @@ async function cancelAndRevert() {
 
 			<!-- Recipients -->
 			<div class="form-group user-search-group">
-				<label>Empfänger <span class="required">*</span> <span v-if="savedFields['recipients']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['recipients']">💾</span></label>
+				<label>Empfänger <span class="required">*</span> <span v-if="savedFields['recipients']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['recipients']"><Save :size="12" aria-hidden="true" /></span></label>
 				<div class="user-chips" v-if="recipients.filter(r => r).length">
 					<span v-for="(email, i) in recipients" :key="email || i" class="user-chip" v-show="email">
 						{{ email }}
-						<button type="button" class="user-chip-remove" @click="removeRecipient(i)">✕</button>
+						<button type="button" class="user-chip-remove" @click="removeRecipient(i)" aria-label="Empfänger entfernen"><X :size="12" aria-hidden="true" /></button>
 					</span>
 				</div>
 				<div class="user-search-wrapper">
@@ -864,11 +867,11 @@ async function cancelAndRevert() {
 
 			<!-- CC -->
 			<div class="form-group user-search-group">
-				<label>CC <span v-if="savedFields['cc']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['cc']">💾</span></label>
+				<label>CC <span v-if="savedFields['cc']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['cc']"><Save :size="12" aria-hidden="true" /></span></label>
 				<div class="user-chips" v-if="cc.filter(r => r).length">
 					<span v-for="(email, i) in cc" :key="email || i" class="user-chip" v-show="email">
 						{{ email }}
-						<button type="button" class="user-chip-remove" @click="removeCc(i)">✕</button>
+						<button type="button" class="user-chip-remove" @click="removeCc(i)" aria-label="CC entfernen"><X :size="12" aria-hidden="true" /></button>
 					</span>
 				</div>
 				<div class="user-search-wrapper">
@@ -898,13 +901,13 @@ async function cancelAndRevert() {
 
 			<!-- Subject -->
 			<div class="form-group">
-				<label>Betreff <span class="required">*</span> <span v-if="savedFields['subject']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['subject']">💾</span></label>
+				<label>Betreff <span class="required">*</span> <span v-if="savedFields['subject']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['subject']"><Save :size="12" aria-hidden="true" /></span></label>
 				<input v-model="subject" type="text" required @input="markDirty('subject')" />
 			</div>
 
 			<!-- Body -->
 			<div class="form-group">
-				<label>Nachricht <span class="required">*</span> <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['body']">💾</span></label>
+				<label>Nachricht <span class="required">*</span> <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['body']"><Save :size="12" aria-hidden="true" /></span></label>
 				<div class="rich-editor-toolbar">
 					<select class="toolbar-select" :value="curFont" @change="execCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
 						<option value="" disabled>Schriftart</option>
@@ -936,7 +939,7 @@ async function cancelAndRevert() {
 					<button type="button" :class="{'toolbar-btn--active': curUl}" @mousedown.prevent @click="execCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
 					<button type="button" :class="{'toolbar-btn--active': curOl}" @mousedown.prevent @click="execCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
 					<span class="toolbar-sep"></span>
-					<button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
+					<button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen"><X :size="12" aria-hidden="true" /> Format</button>
 					<span class="toolbar-sep"></span>
 					<button type="button" @mousedown="saveSelection" @click="openLinkDialog" title="Link einfügen">🔗 Link</button>
 				</div>
@@ -958,7 +961,8 @@ async function cancelAndRevert() {
 					Abbrechen
 				</button>
 				<button type="submit" class="btn-primary" :disabled="sending">
-					{{ sending ? 'Senden...' : '📧 Senden' }}
+					<Send v-if="!sending" class="btn-icon" :size="16" aria-hidden="true" />
+					{{ sending ? 'Senden...' : 'Senden' }}
 				</button>
 			</div>
 		</form>

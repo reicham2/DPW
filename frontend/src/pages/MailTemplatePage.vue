@@ -6,6 +6,7 @@ import { useContactSearch } from '../composables/useContactSearch'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
 import { wsSend, wsRegister, wsJoin, wsLeave, useWebSocket } from '../composables/useWebSocket'
+import { Save, Check, Users, Lock, X } from 'lucide-vue-next'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue'
 import type { Department, EditSection } from '../types'
@@ -719,33 +720,33 @@ function onCcKeydown(e: KeyboardEvent) {
 
     <div v-else class="detail-form">
       <div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
-        <span class="editors-banner-icon">💾</span>
+        <span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
         <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
         <button type="button" class="btn-secondary" @click="applyLocalDraft">Wiederherstellen</button>
         <button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
       </div>
       <div v-else-if="localDraftRestoredAt" class="editors-banner" style="margin-bottom: 12px;">
-        <span class="editors-banner-icon">✅</span>
+        <span class="editors-banner-icon"><Check :size="16" aria-hidden="true" /></span>
         <span>Lokaler Entwurf wurde wiederhergestellt.</span>
       </div>
 
       <!-- Active editors indicator -->
       <div v-if="activeEditors.length" class="editors-banner">
-        <span class="editors-banner-icon">👥</span>
+        <span class="editors-banner-icon"><Users :size="16" aria-hidden="true" /></span>
         <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
       </div>
 
       <!-- Recipients -->
       <div class="form-group lock-wrapper user-search-group" :class="{ 'is-locked': isLockedByOther('tpl_recipients') }"
         @focusin="lockSection('tpl_recipients')" @focusout="unlockSection('tpl_recipients', $event)">
-        <div v-if="lockedBy('tpl_recipients')" class="lock-badge">🔒 {{ lockedBy('tpl_recipients') }}</div>
+        <div v-if="lockedBy('tpl_recipients')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_recipients') }}</div>
         <label>Empfänger
-          <span v-if="savedFields['recipients']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['recipients']">💾</span>
+          <span v-if="savedFields['recipients']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['recipients']"><Save :size="12" aria-hidden="true" /></span>
         </label>
         <div class="user-chips" v-if="recipients.filter(r => r).length">
           <span v-for="(email, i) in recipients" :key="email || i" class="user-chip" v-show="email">
             {{ email }}
-            <button type="button" class="user-chip-remove" @click="removeRecipient(i)" :disabled="isLockedByOther('tpl_recipients')">✕</button>
+            <button type="button" class="user-chip-remove" @click="removeRecipient(i)" :disabled="isLockedByOther('tpl_recipients')" aria-label="Empfänger entfernen"><X :size="12" aria-hidden="true" /></button>
           </span>
         </div>
         <div class="user-search-wrapper">
@@ -777,14 +778,14 @@ function onCcKeydown(e: KeyboardEvent) {
       <!-- CC -->
       <div class="form-group lock-wrapper user-search-group" :class="{ 'is-locked': isLockedByOther('tpl_cc') }"
         @focusin="lockSection('tpl_cc')" @focusout="unlockSection('tpl_cc', $event)">
-        <div v-if="lockedBy('tpl_cc')" class="lock-badge">🔒 {{ lockedBy('tpl_cc') }}</div>
+        <div v-if="lockedBy('tpl_cc')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_cc') }}</div>
         <label>CC
-          <span v-if="savedFields['cc']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['cc']">💾</span>
+          <span v-if="savedFields['cc']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['cc']"><Save :size="12" aria-hidden="true" /></span>
         </label>
         <div class="user-chips" v-if="cc.filter(r => r).length">
           <span v-for="(email, i) in cc" :key="email || i" class="user-chip" v-show="email">
             {{ email }}
-            <button type="button" class="user-chip-remove" @click="removeCc(i)" :disabled="isLockedByOther('tpl_cc')">✕</button>
+            <button type="button" class="user-chip-remove" @click="removeCc(i)" :disabled="isLockedByOther('tpl_cc')" aria-label="CC entfernen"><X :size="12" aria-hidden="true" /></button>
           </span>
         </div>
         <div class="user-search-wrapper">
@@ -815,20 +816,20 @@ function onCcKeydown(e: KeyboardEvent) {
 
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_subject') }"
         @focusin="lockSection('tpl_subject')" @focusout="unlockSection('tpl_subject', $event)">
-        <div v-if="lockedBy('tpl_subject')" class="lock-badge">🔒 {{ lockedBy('tpl_subject') }}</div>
+        <div v-if="lockedBy('tpl_subject')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_subject') }}</div>
         <label>Betreff-Vorlage</label>
         <div class="input-save-wrap">
           <input v-model="subject" type="text" placeholder="Betreff…" :disabled="isLockedByOther('tpl_subject')" />
-          <span v-if="savedFields['subject']" class="field-saved-icon" :key="savedFields['subject']">💾</span>
+          <span v-if="savedFields['subject']" class="field-saved-icon" :key="savedFields['subject']"><Save :size="12" aria-hidden="true" /></span>
         </div>
       </div>
 
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_body') }"
         @focusin="lockSection('tpl_body')" @focusout="unlockSection('tpl_body', $event)">
-        <div v-if="lockedBy('tpl_body')" class="lock-badge">🔒 {{ lockedBy('tpl_body') }}</div>
+        <div v-if="lockedBy('tpl_body')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_body') }}</div>
         <label>Nachricht-Vorlage</label>
         <div class="input-save-wrap">
-          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['body']">💾</span>
+          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['body']"><Save :size="12" aria-hidden="true" /></span>
         </div>
         <div class="rich-editor-toolbar">
           <select class="toolbar-select" :value="curFont" @change="execCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
@@ -861,7 +862,7 @@ function onCcKeydown(e: KeyboardEvent) {
           <button type="button" :class="{'toolbar-btn--active': curUl}" @mousedown.prevent @click="execCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
           <button type="button" :class="{'toolbar-btn--active': curOl}" @mousedown.prevent @click="execCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
           <span class="toolbar-sep"></span>
-          <button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
+          <button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen"><X :size="12" aria-hidden="true" /> Format</button>
           <span class="toolbar-sep"></span>
           <button type="button" @mousedown="saveSelection" @click="openLinkDialog" title="Link einfügen">🔗 Link</button>
         </div>

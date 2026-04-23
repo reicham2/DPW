@@ -7,6 +7,7 @@ import ActivityList from '../components/ActivityList.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { Activity, Department, MaterialItem } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
+import { Search, X, UserRound } from 'lucide-vue-next'
 
 const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadActivity, readableDepts, writableDepts } = usePermissions()
 const DEPARTMENTS = computed<Department[]>(() => readableDepts(user.value?.department))
@@ -201,7 +202,7 @@ const earlierCount = computed(() => {
     <!-- Filter bar -->
     <div class="filter-bar">
       <div class="filter-search">
-        <span class="filter-search-icon">🔍</span>
+        <span class="filter-search-icon"><Search :size="16" aria-hidden="true" /></span>
         <input
           v-model="search"
           type="search"
@@ -221,13 +222,13 @@ const earlierCount = computed(() => {
             Bis
             <input v-model="dateTo" type="date" class="filter-date-input" />
           </label>
-          <button v-if="hasDateFilter" class="filter-date-clear" @click="clearDateFilter" title="Datumsfilter zurücksetzen">✕</button>
+          <button v-if="hasDateFilter" class="filter-date-clear" @click="clearDateFilter" title="Datumsfilter zurücksetzen"><X :size="14" aria-hidden="true" /></button>
         </div>
         <button
           class="filter-tab"
           :class="{ 'filter-tab--active': onlyMine }"
           @click="onlyMine = !onlyMine"
-        >👤 Meine Verantwortung</button>
+        ><UserRound :size="16" aria-hidden="true" /> Meine Verantwortung</button>
       </div>
 
       <!-- Show department filter tabs if user can read multiple departments -->

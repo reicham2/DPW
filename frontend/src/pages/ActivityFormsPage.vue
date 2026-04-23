@@ -1,6 +1,6 @@
 <template>
 	<header class="header">
-		<button class="btn-back" @click="goBack">← Zurück</button>
+		<button class="btn-back" @click="goBack"><ArrowLeft class="btn-icon" :size="16" aria-hidden="true" /> Zurück</button>
 		<h1>Formular</h1>
 	</header>
 
@@ -18,7 +18,7 @@
 			<!-- No form yet -->
 			<template v-else-if="!form && !showBuilder">
 				<div class="empty-form-state">
-					<div class="empty-icon">📋</div>
+					<div class="empty-icon"><ClipboardList :size="30" aria-hidden="true" /></div>
 					<p class="empty-title">Kein Formular vorhanden</p>
 					<p class="empty-desc">Diese Aktivität hat noch kein Formular.</p>
 					<button class="btn-primary" @click="openCreate">Formular erstellen</button>
@@ -128,7 +128,7 @@
 						<div v-if="selectedResponse" class="response-detail">
 							<div class="detail-header">
 								<span>Antwort-Details</span>
-								<button class="icon-btn" @click="selectedResponse = null">✕</button>
+								<button class="icon-btn" @click="selectedResponse = null" aria-label="Schliessen"><X :size="14" aria-hidden="true" /></button>
 							</div>
 							<div
 								v-for="answer in selectedResponse.answers ?? []"
@@ -178,6 +178,7 @@ import { useForms, useFormTemplates } from '../composables/useForms';
 import { useActivities } from '../composables/useActivities';
 import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
+import { ArrowLeft, ClipboardList, X } from 'lucide-vue-next';
 import FormBuilder from '../components/FormBuilder.vue';
 import FormStats from '../components/FormStats.vue';
 

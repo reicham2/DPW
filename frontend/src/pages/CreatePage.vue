@@ -5,6 +5,7 @@ import { useActivities } from '../composables/useActivities'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
+import { ArrowLeft } from 'lucide-vue-next'
 import { user } from '../composables/useAuth'
 import type { Department } from '../types'
 
@@ -69,7 +70,7 @@ async function submit() {
 
 <template>
   <header class="header">
-    <button class="btn-back" @click="router.push('/')">← Zurück</button>
+    <button class="btn-back" @click="router.push('/')"><ArrowLeft class="btn-icon" :size="16" aria-hidden="true" /> Zurück</button>
     <h1>Neue Aktivität</h1>
   </header>
 

@@ -7,6 +7,7 @@ import DepartmentBadge from '../components/DepartmentBadge.vue';
 import FormBuilder from '../components/FormBuilder.vue';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue';
+import { Save, Check } from 'lucide-vue-next';
 import type { Department, FormTemplate, SignupForm, SignupFormInput } from '../types';
 
 const { departments: deptRecords, fetchDepartments, myPermissions, fetchMyPermissions } = usePermissions();
@@ -266,13 +267,13 @@ function typeLabel(t: string): string {
 				<h2 class="ft-title">{{ editingTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage' }}</h2>
 			</div>
 			<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
-				<span class="editors-banner-icon">💾</span>
+				<span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
 				<span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
 				<button type="button" class="btn-sm" @click="applyLocalDraft">Wiederherstellen</button>
 				<button type="button" class="btn-sm" @click="discardLocalDraft">Verwerfen</button>
 			</div>
 			<div v-else-if="localDraftRestoredAt" class="editors-banner" style="margin-bottom: 12px;">
-				<span class="editors-banner-icon">✅</span>
+				<span class="editors-banner-icon"><Check :size="16" aria-hidden="true" /></span>
 				<span>Lokaler Entwurf wurde wiederhergestellt.</span>
 			</div>
 			<div class="default-toggle-section">

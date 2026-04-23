@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from './ErrorAlert.vue'
 import { apiFetch } from '../composables/useApi'
+import { TriangleAlert } from 'lucide-vue-next'
 
 const DEFAULT_DEPT = 'Allgemein'
 
@@ -257,7 +258,7 @@ async function confirmDelete() {
     <!-- Delete modal: step 2 – final confirmation -->
     <div v-if="deleteTarget && deleteStep === 2" class="modal-backdrop" @click.self="cancelDelete">
       <div class="modal modal--danger">
-        <h2 class="modal-title modal-title--danger">⚠️ Stufe endgültig löschen?</h2>
+        <h2 class="modal-title modal-title--danger"><TriangleAlert :size="16" aria-hidden="true" /> Stufe endgültig löschen?</h2>
         <p class="modal-desc">Folgende Aktionen werden ausgeführt:</p>
 
         <ul class="confirm-list">

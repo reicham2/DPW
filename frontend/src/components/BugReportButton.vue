@@ -48,7 +48,7 @@
 
         <!-- Success -->
         <div v-else class="bug-success-body">
-          <div class="bug-success-icon">✓</div>
+          <div class="bug-success-icon"><Check :size="18" aria-hidden="true" /></div>
           <p class="bug-success-text">Issue wurde erfolgreich erstellt!</p>
           <a :href="issueUrl" target="_blank" rel="noopener noreferrer" class="bug-issue-link">
             Auf GitHub ansehen →
@@ -64,6 +64,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
+import { Check } from 'lucide-vue-next'
 import { apiFetch } from '../composables/useApi'
 import { collectDebugInfo } from '../composables/useDebugInfo'
 import { bugReportOpen, bugReportPrefill } from '../composables/useBugReport'
