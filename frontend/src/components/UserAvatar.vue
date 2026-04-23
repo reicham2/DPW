@@ -20,7 +20,10 @@
 					<span class="avatar-dropdown-email">{{ user.email }}</span>
 				</div>
 				<div class="avatar-dropdown-divider" />
-				<button class="avatar-dropdown-item" @click="openNotificationsPopup">Benachrichtigungen</button>
+				<button class="avatar-dropdown-item" @click="openNotificationsPopup">
+						Benachrichtigungen
+						<span v-if="unreadCount > 0" class="avatar-dropdown-badge">{{ unreadCount }}</span>
+					</button>
 				<router-link
 					class="avatar-dropdown-item"
 					to="/profile"
@@ -391,7 +394,9 @@ onMounted(() => {
 }
 
 .avatar-dropdown-item {
-	display: block;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 	width: 100%;
 	padding: 11px 16px;
 	font-size: 0.875rem;
@@ -402,6 +407,21 @@ onMounted(() => {
 	text-align: left;
 	cursor: pointer;
 	transition: background 0.1s;
+}
+.avatar-dropdown-badge {
+	min-width: 18px;
+	height: 18px;
+	border-radius: 999px;
+	background: #dc2626;
+	color: #fff;
+	font-size: 0.68rem;
+	font-weight: 700;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 5px;
+	line-height: 1;
+	margin-left: 8px;
 }
 .avatar-dropdown-item:hover {
 	background: #f5f7ff;
