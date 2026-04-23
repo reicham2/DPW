@@ -1,5 +1,28 @@
 #include "utils.hpp"
 #include <ctime>
+#include <algorithm>
+#include <cctype>
+
+namespace
+{
+    std::string to_lower_ascii(std::string s)
+    {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c)
+                       { return static_cast<char>(std::tolower(c)); });
+        return s;
+    }
+
+    std::string trim_ascii(std::string s)
+    {
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c)
+                                        { return !std::isspace(c); }));
+        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c)
+                             { return !std::isspace(c); })
+                    .base(),
+                s.end());
+        return s;
+    }
+} // namespace
 
 // ── HTTP status text ────────────────────────────────────────────────────────
 
@@ -213,9 +236,24 @@ bool can_read_dept(const RolePermission &perm, const UserRecord &user,
 bool is_activity_responsible(const Activity &activity, const UserRecord &user,
                              const std::string &email)
 {
+    auto normalize = [](const std::string &value)
+    {
+        return to_lower_ascii(trim_ascii(value));
+    };
+
+    const std::string user_name = normalize(user.display_name);
+    const std::string user_email = normalize(email);
+    std::string user_email_local;
+    auto at = user_email.find('@');
+    if (at != std::string::npos)
+        user_email_local = user_email.substr(0, at);
+
     for (const auto &responsible : activity.responsible)
     {
-        if (responsible == user.display_name || responsible == email)
+        const std::string candidate = normalize(responsible);
+        if (candidate.empty())
+            continue;
+        if (candidate == user_name || candidate == user_email || (!user_email_local.empty() && candidate == user_email_local))
             return true;
     }
     return false;
@@ -245,7 +283,8 @@ bool can_edit_activity(const RolePermission &perm, const UserRecord &user,
     if (perm.activity_edit_scope == "all")
         return true;
     if (perm.activity_edit_scope == "same_dept")
-        return activity.department && user.department && *activity.department == *user.department;
+        return (activity.department && user.department && *activity.department == *user.department) ||
+               is_activity_responsible(activity, user, email);
     if (perm.activity_edit_scope == "own")
         return is_activity_responsible(activity, user, email);
     return false;

@@ -8,6 +8,7 @@ import type {
 } from '../types';
 import { useWebSocket } from './useWebSocket';
 import { apiFetch, formatApiError } from './useApi';
+import { getGraphAccessToken } from './useAuth';
 
 const BASE = '/api';
 
@@ -85,9 +86,18 @@ export function useActivities() {
 	async function createActivity(input: ActivityInput): Promise<string | null> {
 		error.value = null;
 		try {
+			let notificationAccessToken = '';
+			try {
+				notificationAccessToken = await getGraphAccessToken();
+			} catch {
+				// Email notifications stay disabled when token consent is missing.
+			}
 			const res = await apiFetch(`${BASE}/activities`, {
 				method: 'POST',
-				body: JSON.stringify(input),
+				body: JSON.stringify({
+					...input,
+					notification_access_token: notificationAccessToken || undefined,
+				}),
 			});
 			if (!res.ok) throw new Error(await res.text());
 			const created = await res.json();
@@ -104,9 +114,18 @@ export function useActivities() {
 	): Promise<void> {
 		error.value = null;
 		try {
+			let notificationAccessToken = '';
+			try {
+				notificationAccessToken = await getGraphAccessToken();
+			} catch {
+				// Email notifications stay disabled when token consent is missing.
+			}
 			const res = await apiFetch(`${BASE}/activities/${id}`, {
 				method: 'PATCH',
-				body: JSON.stringify(input),
+				body: JSON.stringify({
+					...input,
+					notification_access_token: notificationAccessToken || undefined,
+				}),
 			});
 			if (!res.ok) throw new Error(await res.text());
 		} catch (e) {

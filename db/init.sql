@@ -84,6 +84,13 @@ CREATE TABLE users (
     role          TEXT        NOT NULL DEFAULT 'Mitglied' REFERENCES roles(name) ON UPDATE CASCADE,
     time_display_mode TEXT    NOT NULL DEFAULT 'minutes'
         CHECK (time_display_mode IN ('minutes', 'clock')),
+    notify_material_assigned BOOLEAN NOT NULL DEFAULT true,
+    notify_activity_assigned BOOLEAN NOT NULL DEFAULT true,
+    notify_program_assigned BOOLEAN NOT NULL DEFAULT true,
+    notify_mail_own_activity BOOLEAN NOT NULL DEFAULT true,
+    notify_mail_department BOOLEAN NOT NULL DEFAULT true,
+    notify_channel_websocket BOOLEAN NOT NULL DEFAULT true,
+    notify_channel_email BOOLEAN NOT NULL DEFAULT false,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -128,6 +135,41 @@ CREATE TABLE sent_mails (
 );
 
 CREATE INDEX idx_sent_mails_activity_id ON sent_mails (activity_id);
+
+-- User notifications
+CREATE TABLE notifications (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category   TEXT NOT NULL CHECK (category IN (
+        'material_assigned',
+        'activity_assigned',
+        'program_assigned',
+        'mail_own_activity',
+        'mail_department'
+    )),
+    title      TEXT NOT NULL,
+    message    TEXT NOT NULL,
+    link       TEXT,
+    payload    JSONB NOT NULL DEFAULT '{}',
+    is_read    BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_user_created ON notifications (user_id, created_at DESC);
+CREATE INDEX idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);
+
+-- Web push subscriptions (browser/app devices per user)
+CREATE TABLE push_subscriptions (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_push_subscriptions_user ON push_subscriptions (user_id);
 
 -- Predefined locations (global, shared across all departments)
 CREATE TABLE predefined_locations (

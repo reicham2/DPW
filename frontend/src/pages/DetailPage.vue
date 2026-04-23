@@ -379,12 +379,23 @@ const canView = computed(() => {
 
 function canEditByScope(scope: 'none' | 'own' | 'same_dept' | 'all') {
 	if (!user.value || !activity.value) return false;
+	const isOwnResponsible = () => {
+		if (!user.value || !activity.value) return false;
+		const normalize = (value: string) => value.trim().toLowerCase();
+		const userName = normalize(user.value.display_name ?? '');
+		const userEmail = normalize(user.value.email ?? '');
+		const userEmailLocal = userEmail.includes('@') ? userEmail.split('@')[0] : '';
+		return activity.value.responsible.some((entry) => {
+			const candidate = normalize(entry ?? '');
+			return !!candidate && (candidate === userName || candidate === userEmail || (!!userEmailLocal && candidate === userEmailLocal));
+		});
+	};
 	if (scope === 'all') return true;
 	if (scope === 'same_dept') {
-		return !!activity.value.department && activity.value.department === user.value.department;
+		return (!!activity.value.department && activity.value.department === user.value.department) || isOwnResponsible();
 	}
 	if (scope === 'own') {
-		return activity.value.responsible.includes(user.value.display_name);
+		return isOwnResponsible();
 	}
 	return false;
 }
@@ -403,9 +414,17 @@ const canMail = computed(() => {
 	if (!user.value || !activity.value) return false;
 	const p = myPermissions.value;
 	if (!p) return false;
+	const normalize = (value: string) => value.trim().toLowerCase();
+	const userName = normalize(user.value.display_name ?? '');
+	const userEmail = normalize(user.value.email ?? '');
+	const userEmailLocal = userEmail.includes('@') ? userEmail.split('@')[0] : '';
+	const isOwnResponsible = activity.value.responsible.some((entry) => {
+		const candidate = normalize(entry ?? '');
+		return !!candidate && (candidate === userName || candidate === userEmail || (!!userEmailLocal && candidate === userEmailLocal));
+	});
 	if (p.mail_send_scope === 'all') return true;
 	if (p.mail_send_scope === 'same_dept' && activity.value.department === user.value.department) return true;
-	if (p.mail_send_scope === 'own' && activity.value.responsible.includes(user.value.display_name)) return true;
+	if (p.mail_send_scope === 'own' && isOwnResponsible) return true;
 	return false;
 });
 

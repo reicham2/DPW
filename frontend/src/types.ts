@@ -80,6 +80,7 @@ export type WsEvent =
 	| { event: 'updated'; activity: Activity }
 	| { event: 'deleted'; id: string }
 	| { event: 'template_updated'; template: MailTemplate }
+	| { event: 'notification'; notification: NotificationRecord }
 	| { event: 'department_deleted'; name: string }
 	| { event: 'role_deleted'; name: string }
 	| { event: 'lock'; activity_id: string; section: EditSection; user: string }
@@ -97,8 +98,34 @@ export interface User {
 	department: Department | null;
 	role: UserRole;
 	time_display_mode: TimeDisplayMode;
+	notify_material_assigned: boolean;
+	notify_activity_assigned: boolean;
+	notify_program_assigned: boolean;
+	notify_mail_own_activity: boolean;
+	notify_mail_department: boolean;
+	notify_channel_websocket: boolean;
+	notify_channel_email: boolean;
 	created_at: string;
 	updated_at: string;
+}
+
+export type NotificationCategory =
+	| 'material_assigned'
+	| 'activity_assigned'
+	| 'program_assigned'
+	| 'mail_own_activity'
+	| 'mail_department';
+
+export interface NotificationRecord {
+	id: string;
+	user_id: string;
+	category: NotificationCategory;
+	title: string;
+	message: string;
+	link: string | null;
+	payload: Record<string, unknown>;
+	is_read: boolean;
+	created_at: string;
 }
 
 export interface MailTemplate {

@@ -148,7 +148,7 @@ onMounted(() => {
 watch(user, (u) => {
   if (u) {
     fetchMyPermissions().catch(() => {})
-     startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
+    startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
   } else {
     stopMidataAutoRefresh()
     resetMidataCounts()

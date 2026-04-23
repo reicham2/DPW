@@ -17,11 +17,23 @@
 #include <regex>
 #include <sstream>
 #include <limits>
+#include <vector>
+#include <utility>
+#include <openssl/evp.h>
+#include <openssl/params.h>
+#include <openssl/core_names.h>
+#include <openssl/kdf.h>
+#include <openssl/bn.h>
+#include <openssl/ec.h>
+#include <openssl/ecdsa.h>
+#include <openssl/rand.h>
 #include <curl/curl.h>
 
 #if !defined(DPW_ENABLE_DEBUG_AUTH)
 #define DPW_ENABLE_DEBUG_AUTH 0
 #endif
+
+static nlohmann::json notification_to_json(const NotificationRecord &n);
 
 namespace
 {
@@ -49,6 +61,699 @@ namespace
                     .base(),
                 s.end());
         return s;
+    }
+
+    std::string public_base_url()
+    {
+        static const char *keys[] = {"DPW_PUBLIC_URL", "PUBLIC_BASE_URL", "APP_BASE_URL"};
+        for (const char *k : keys)
+        {
+            const char *v = std::getenv(k);
+            if (v && *v)
+            {
+                std::string out = trim_ascii(v);
+                while (!out.empty() && out.back() == '/')
+                    out.pop_back();
+                if (!out.empty())
+                    return out;
+            }
+        }
+        // Last-resort local fallback when no public URL env is configured.
+        return "http://localhost:8000";
+    }
+
+    std::string activity_absolute_link(const std::string &activity_id)
+    {
+        return public_base_url() + "/activities/" + activity_id;
+    }
+
+    std::string env_or(const char *key, const std::string &fallback = "")
+    {
+        const char *v = std::getenv(key);
+        if (!v)
+            return fallback;
+        std::string out = trim_ascii(v);
+        return out.empty() ? fallback : out;
+    }
+
+    std::string base64url_encode(const std::string &raw)
+    {
+        if (raw.empty())
+            return "";
+        std::string out;
+        out.resize(4 * ((raw.size() + 2) / 3));
+        int len = EVP_EncodeBlock(reinterpret_cast<unsigned char *>(&out[0]),
+                                  reinterpret_cast<const unsigned char *>(raw.data()),
+                                  static_cast<int>(raw.size()));
+        if (len < 0)
+            return "";
+        out.resize(static_cast<size_t>(len));
+        for (char &c : out)
+        {
+            if (c == '+')
+                c = '-';
+            else if (c == '/')
+                c = '_';
+        }
+        while (!out.empty() && out.back() == '=')
+            out.pop_back();
+        return out;
+    }
+
+    std::string base64url_decode(const std::string &in)
+    {
+        if (in.empty())
+            return "";
+        std::string b64 = in;
+        for (char &c : b64)
+        {
+            if (c == '-')
+                c = '+';
+            else if (c == '_')
+                c = '/';
+        }
+        while (b64.size() % 4 != 0)
+            b64.push_back('=');
+
+        std::string out;
+        out.resize((b64.size() / 4) * 3);
+        int len = EVP_DecodeBlock(reinterpret_cast<unsigned char *>(&out[0]),
+                                  reinterpret_cast<const unsigned char *>(b64.data()),
+                                  static_cast<int>(b64.size()));
+        if (len < 0)
+            return "";
+        out.resize(static_cast<size_t>(len));
+        return out;
+    }
+
+    std::string endpoint_origin(const std::string &endpoint)
+    {
+        auto scheme_pos = endpoint.find("://");
+        if (scheme_pos == std::string::npos)
+            return "";
+        auto start = scheme_pos + 3;
+        auto slash = endpoint.find('/', start);
+        if (slash == std::string::npos)
+            return endpoint;
+        return endpoint.substr(0, slash);
+    }
+
+    std::optional<std::string> build_vapid_jwt_for_audience(const std::string &audience)
+    {
+        const std::string vapid_pub = env_or("DPW_VAPID_PUBLIC_KEY");
+        const std::string vapid_priv_b64u = env_or("DPW_VAPID_PRIVATE_KEY");
+        const std::string vapid_sub = env_or("DPW_VAPID_SUBJECT", "mailto:admin@localhost");
+        if (vapid_pub.empty() || vapid_priv_b64u.empty() || audience.empty())
+            return std::nullopt;
+
+        const std::string header = R"({"typ":"JWT","alg":"ES256"})";
+        const std::time_t now = std::time(nullptr);
+        const std::time_t exp = now + (12 * 60 * 60);
+        nlohmann::json payload = {
+            {"aud", audience},
+            {"exp", exp},
+            {"sub", vapid_sub},
+        };
+
+        const std::string enc_header = base64url_encode(header);
+        const std::string enc_payload = base64url_encode(payload.dump());
+        if (enc_header.empty() || enc_payload.empty())
+            return std::nullopt;
+
+        const std::string signing_input = enc_header + "." + enc_payload;
+
+        std::string priv_raw = base64url_decode(vapid_priv_b64u);
+        if (priv_raw.size() < 32)
+            return std::nullopt;
+        if (priv_raw.size() > 32)
+            priv_raw.resize(32);
+
+        EVP_PKEY_CTX *pkey_ctx = EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr);
+        if (!pkey_ctx)
+            return std::nullopt;
+
+        EVP_PKEY *pkey = nullptr;
+        if (EVP_PKEY_fromdata_init(pkey_ctx) <= 0)
+        {
+            EVP_PKEY_CTX_free(pkey_ctx);
+            return std::nullopt;
+        }
+
+        OSSL_PARAM params[3];
+        params[0] = OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME,
+                                                     const_cast<char *>("prime256v1"),
+                                                     0);
+        params[1] = OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_PRIV_KEY,
+                                                      const_cast<char *>(priv_raw.data()),
+                                                      priv_raw.size());
+        params[2] = OSSL_PARAM_construct_end();
+
+        if (EVP_PKEY_fromdata(pkey_ctx, &pkey, EVP_PKEY_KEYPAIR, params) <= 0 || !pkey)
+        {
+            EVP_PKEY_CTX_free(pkey_ctx);
+            return std::nullopt;
+        }
+        EVP_PKEY_CTX_free(pkey_ctx);
+
+        EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
+        if (!md_ctx)
+        {
+            EVP_PKEY_free(pkey);
+            return std::nullopt;
+        }
+
+        if (EVP_DigestSignInit(md_ctx, nullptr, EVP_sha256(), nullptr, pkey) <= 0 ||
+            EVP_DigestSignUpdate(md_ctx, signing_input.data(), signing_input.size()) <= 0)
+        {
+            EVP_MD_CTX_free(md_ctx);
+            EVP_PKEY_free(pkey);
+            return std::nullopt;
+        }
+
+        size_t der_len = 0;
+        if (EVP_DigestSignFinal(md_ctx, nullptr, &der_len) <= 0 || der_len == 0)
+        {
+            EVP_MD_CTX_free(md_ctx);
+            EVP_PKEY_free(pkey);
+            return std::nullopt;
+        }
+
+        std::string der_sig(der_len, '\0');
+        if (EVP_DigestSignFinal(md_ctx,
+                                reinterpret_cast<unsigned char *>(&der_sig[0]),
+                                &der_len) <= 0)
+        {
+            EVP_MD_CTX_free(md_ctx);
+            EVP_PKEY_free(pkey);
+            return std::nullopt;
+        }
+        EVP_MD_CTX_free(md_ctx);
+        EVP_PKEY_free(pkey);
+
+        const unsigned char *der_ptr = reinterpret_cast<const unsigned char *>(der_sig.data());
+        ECDSA_SIG *sig = d2i_ECDSA_SIG(nullptr, &der_ptr, static_cast<long>(der_len));
+        if (!sig)
+            return std::nullopt;
+
+        const BIGNUM *r = nullptr;
+        const BIGNUM *s = nullptr;
+        ECDSA_SIG_get0(sig, &r, &s);
+        if (!r || !s)
+        {
+            ECDSA_SIG_free(sig);
+            return std::nullopt;
+        }
+
+        std::string sig_raw(64, '\0');
+        if (BN_bn2binpad(r, reinterpret_cast<unsigned char *>(&sig_raw[0]), 32) != 32 ||
+            BN_bn2binpad(s, reinterpret_cast<unsigned char *>(&sig_raw[32]), 32) != 32)
+        {
+            ECDSA_SIG_free(sig);
+            return std::nullopt;
+        }
+        ECDSA_SIG_free(sig);
+
+        const std::string enc_sig = base64url_encode(sig_raw);
+        if (enc_sig.empty())
+            return std::nullopt;
+        return signing_input + "." + enc_sig;
+    }
+
+    std::optional<std::string> hkdf_sha256(const std::string &key,
+                                           const std::string &salt,
+                                           const std::string &info,
+                                           size_t out_len)
+    {
+        EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr);
+        if (!ctx)
+            return std::nullopt;
+
+        std::string out(out_len, '\0');
+        size_t len = out_len;
+        bool ok = EVP_PKEY_derive_init(ctx) > 0 &&
+                  EVP_PKEY_CTX_set_hkdf_md(ctx, EVP_sha256()) > 0 &&
+                  EVP_PKEY_CTX_set1_hkdf_salt(ctx,
+                                              reinterpret_cast<const unsigned char *>(salt.data()),
+                                              static_cast<int>(salt.size())) > 0 &&
+                  EVP_PKEY_CTX_set1_hkdf_key(ctx,
+                                             reinterpret_cast<const unsigned char *>(key.data()),
+                                             static_cast<int>(key.size())) > 0 &&
+                  EVP_PKEY_CTX_add1_hkdf_info(ctx,
+                                              reinterpret_cast<const unsigned char *>(info.data()),
+                                              static_cast<int>(info.size())) > 0 &&
+                  EVP_PKEY_derive(ctx,
+                                  reinterpret_cast<unsigned char *>(&out[0]),
+                                  &len) > 0;
+        EVP_PKEY_CTX_free(ctx);
+        if (!ok)
+            return std::nullopt;
+        out.resize(len);
+        return out;
+    }
+
+    std::optional<EVP_PKEY *> ec_public_key_from_uncompressed(const std::string &raw_public_key)
+    {
+        EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr);
+        if (!ctx)
+            return std::nullopt;
+
+        EVP_PKEY *pkey = nullptr;
+        if (EVP_PKEY_fromdata_init(ctx) <= 0)
+        {
+            EVP_PKEY_CTX_free(ctx);
+            return std::nullopt;
+        }
+
+        OSSL_PARAM params[3];
+        params[0] = OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME,
+                                                     const_cast<char *>("prime256v1"),
+                                                     0);
+        params[1] = OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_PUB_KEY,
+                                                      const_cast<char *>(raw_public_key.data()),
+                                                      raw_public_key.size());
+        params[2] = OSSL_PARAM_construct_end();
+
+        bool ok = EVP_PKEY_fromdata(ctx, &pkey, EVP_PKEY_PUBLIC_KEY, params) > 0 && pkey;
+        EVP_PKEY_CTX_free(ctx);
+        if (!ok)
+            return std::nullopt;
+        return pkey;
+    }
+
+    std::optional<EVP_PKEY *> generate_ec_keypair()
+    {
+        EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr);
+        if (!ctx)
+            return std::nullopt;
+
+        EVP_PKEY *pkey = nullptr;
+        OSSL_PARAM params[2];
+        params[0] = OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME,
+                                                     const_cast<char *>("prime256v1"),
+                                                     0);
+        params[1] = OSSL_PARAM_construct_end();
+
+        bool ok = EVP_PKEY_keygen_init(ctx) > 0 &&
+                  EVP_PKEY_CTX_set_params(ctx, params) > 0 &&
+                  EVP_PKEY_generate(ctx, &pkey) > 0 &&
+                  pkey;
+        EVP_PKEY_CTX_free(ctx);
+        if (!ok)
+            return std::nullopt;
+        return pkey;
+    }
+
+    std::optional<std::string> ecdh_shared_secret(EVP_PKEY *private_key, EVP_PKEY *peer_key)
+    {
+        EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(private_key, nullptr);
+        if (!ctx)
+            return std::nullopt;
+
+        size_t secret_len = 0;
+        bool ok = EVP_PKEY_derive_init(ctx) > 0 &&
+                  EVP_PKEY_derive_set_peer(ctx, peer_key) > 0 &&
+                  EVP_PKEY_derive(ctx, nullptr, &secret_len) > 0;
+        if (!ok || secret_len == 0)
+        {
+            EVP_PKEY_CTX_free(ctx);
+            return std::nullopt;
+        }
+
+        std::string secret(secret_len, '\0');
+        ok = EVP_PKEY_derive(ctx,
+                             reinterpret_cast<unsigned char *>(&secret[0]),
+                             &secret_len) > 0;
+        EVP_PKEY_CTX_free(ctx);
+        if (!ok)
+            return std::nullopt;
+        secret.resize(secret_len);
+        return secret;
+    }
+
+    std::optional<std::string> ec_public_key_bytes(EVP_PKEY *pkey)
+    {
+        size_t pub_len = 0;
+        if (EVP_PKEY_get_octet_string_param(pkey, OSSL_PKEY_PARAM_PUB_KEY, nullptr, 0, &pub_len) <= 0 || pub_len == 0)
+            return std::nullopt;
+
+        std::string pub(pub_len, '\0');
+        if (EVP_PKEY_get_octet_string_param(pkey,
+                                            OSSL_PKEY_PARAM_PUB_KEY,
+                                            reinterpret_cast<unsigned char *>(&pub[0]),
+                                            pub.size(),
+                                            &pub_len) <= 0)
+            return std::nullopt;
+        pub.resize(pub_len);
+        return pub;
+    }
+
+    std::optional<std::string> aes_128_gcm_encrypt(const std::string &key,
+                                                   const std::string &nonce,
+                                                   const std::string &plaintext)
+    {
+        EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+        if (!ctx)
+            return std::nullopt;
+
+        std::string ciphertext(plaintext.size(), '\0');
+        int out_len = 0;
+        int total_len = 0;
+        unsigned char tag[16]{};
+
+        bool ok = EVP_EncryptInit_ex(ctx,
+                                     EVP_aes_128_gcm(),
+                                     nullptr,
+                                     reinterpret_cast<const unsigned char *>(key.data()),
+                                     reinterpret_cast<const unsigned char *>(nonce.data())) > 0 &&
+                  EVP_EncryptUpdate(ctx,
+                                    reinterpret_cast<unsigned char *>(&ciphertext[0]),
+                                    &out_len,
+                                    reinterpret_cast<const unsigned char *>(plaintext.data()),
+                                    static_cast<int>(plaintext.size())) > 0;
+        if (ok)
+        {
+            total_len = out_len;
+            ok = EVP_EncryptFinal_ex(ctx,
+                                     reinterpret_cast<unsigned char *>(&ciphertext[0]) + total_len,
+                                     &out_len) > 0;
+            total_len += out_len;
+            ok = ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, sizeof(tag), tag) > 0;
+        }
+
+        EVP_CIPHER_CTX_free(ctx);
+        if (!ok)
+            return std::nullopt;
+
+        ciphertext.resize(total_len);
+        ciphertext.append(reinterpret_cast<const char *>(tag), sizeof(tag));
+        return ciphertext;
+    }
+
+    void append_u32_be(std::string &out, uint32_t value)
+    {
+        out.push_back(static_cast<char>((value >> 24) & 0xff));
+        out.push_back(static_cast<char>((value >> 16) & 0xff));
+        out.push_back(static_cast<char>((value >> 8) & 0xff));
+        out.push_back(static_cast<char>(value & 0xff));
+    }
+
+    std::string notification_push_body(const NotificationRecord &notification)
+    {
+        if (notification.payload.is_object() &&
+            notification.payload.contains("activity_date_display") &&
+            notification.payload["activity_date_display"].is_string())
+        {
+            std::string date_short = trim_ascii(notification.payload["activity_date_display"].get<std::string>());
+            if (!date_short.empty())
+                return "Datum: " + date_short;
+        }
+        return "Neue Benachrichtigung";
+    }
+
+    std::optional<std::string> build_web_push_body(const PushSubscriptionRecord &subscription,
+                                                   const NotificationRecord &notification)
+    {
+        const std::string receiver_public = base64url_decode(subscription.p256dh);
+        const std::string auth_secret = base64url_decode(subscription.auth);
+        if (receiver_public.empty() || auth_secret.empty())
+            return std::nullopt;
+
+        auto local_key = generate_ec_keypair();
+        if (!local_key)
+            return std::nullopt;
+        auto peer_key = ec_public_key_from_uncompressed(receiver_public);
+        if (!peer_key)
+        {
+            EVP_PKEY_free(*local_key);
+            return std::nullopt;
+        }
+
+        auto local_public = ec_public_key_bytes(*local_key);
+        auto shared_secret = ecdh_shared_secret(*local_key, *peer_key);
+        EVP_PKEY_free(*peer_key);
+        if (!local_public || !shared_secret)
+        {
+            EVP_PKEY_free(*local_key);
+            return std::nullopt;
+        }
+
+        std::string key_info = "WebPush: info";
+        key_info.push_back('\0');
+        key_info += receiver_public;
+        key_info += *local_public;
+
+        auto ikm = hkdf_sha256(*shared_secret, auth_secret, key_info, 32);
+        if (!ikm)
+        {
+            EVP_PKEY_free(*local_key);
+            return std::nullopt;
+        }
+
+        unsigned char salt_raw[16]{};
+        if (RAND_bytes(salt_raw, sizeof(salt_raw)) != 1)
+        {
+            EVP_PKEY_free(*local_key);
+            return std::nullopt;
+        }
+        std::string salt(reinterpret_cast<const char *>(salt_raw), sizeof(salt_raw));
+
+        auto cek = hkdf_sha256(*ikm, salt, std::string("Content-Encoding: aes128gcm\0", 27), 16);
+        auto nonce = hkdf_sha256(*ikm, salt, std::string("Content-Encoding: nonce\0", 25), 12);
+        if (!cek || !nonce)
+        {
+            EVP_PKEY_free(*local_key);
+            return std::nullopt;
+        }
+
+        nlohmann::json json_payload = {
+            {"title", notification.title},
+            {"body", notification_push_body(notification)},
+            {"url", notification.link ? *notification.link : std::string("/profile")}
+        };
+        std::string plaintext = json_payload.dump();
+        plaintext.push_back('\x02');
+
+        auto encrypted = aes_128_gcm_encrypt(*cek, *nonce, plaintext);
+        EVP_PKEY_free(*local_key);
+        if (!encrypted)
+            return std::nullopt;
+
+        std::string out;
+        out.reserve(16 + 4 + 1 + local_public->size() + encrypted->size());
+        out += salt;
+        append_u32_be(out, 4096);
+        out.push_back(static_cast<char>(local_public->size()));
+        out += *local_public;
+        out += *encrypted;
+        return out;
+    }
+
+    long send_web_push(const PushSubscriptionRecord &subscription,
+                       const NotificationRecord &notification,
+                       const std::string &jwt,
+                       const std::string &vapid_pub)
+    {
+        auto body = build_web_push_body(subscription, notification);
+        if (!body)
+            return 0;
+
+        CURL *curl = curl_easy_init();
+        if (!curl)
+            return 0;
+
+        struct curl_slist *headers = nullptr;
+        headers = curl_slist_append(headers, "TTL: 60");
+        headers = curl_slist_append(headers, "Urgency: normal");
+        headers = curl_slist_append(headers, "Content-Encoding: aes128gcm");
+        headers = curl_slist_append(headers, "Content-Type: application/octet-stream");
+        std::string auth = "Authorization: vapid t=" + jwt + ", k=" + vapid_pub;
+        headers = curl_slist_append(headers, auth.c_str());
+
+        std::string response;
+        curl_easy_setopt(curl, CURLOPT_URL, subscription.endpoint.c_str());
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body->data());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body->size()));
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, midata_write_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 8000L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+
+        CURLcode rc = curl_easy_perform(curl);
+        long status = 0;
+        if (rc == CURLE_OK)
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        if (rc != CURLE_OK)
+            return 0;
+        return status;
+    }
+
+    void deliver_web_push_for_user(Database &db, const UserRecord &user, const NotificationRecord &notification)
+    {
+        const std::string vapid_pub = env_or("DPW_VAPID_PUBLIC_KEY");
+        if (vapid_pub.empty())
+            return;
+
+        auto subscriptions = db.list_push_subscriptions_for_user(user.id);
+        for (const auto &sub : subscriptions)
+        {
+            std::string aud = endpoint_origin(sub.endpoint);
+            if (aud.empty())
+                continue;
+
+            auto jwt = build_vapid_jwt_for_audience(aud);
+            if (!jwt)
+                continue;
+
+            long status = send_web_push(sub, notification, *jwt, vapid_pub);
+            // Endpoint no longer valid.
+            if (status == 404 || status == 410)
+                db.delete_push_subscription_by_endpoint(sub.endpoint);
+        }
+    }
+
+    std::string format_date_ddmmyyyy(const std::string &iso)
+    {
+        if (iso.size() >= 10 && iso[4] == '-' && iso[7] == '-')
+            return iso.substr(8, 2) + "." + iso.substr(5, 2) + "." + iso.substr(0, 4);
+        return iso;
+    }
+
+    std::string join_display(const std::vector<std::string> &items)
+    {
+        std::string out;
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            if (items[i].empty())
+                continue;
+            if (!out.empty())
+                out += ", ";
+            out += items[i];
+        }
+        if (out.empty())
+            return "-";
+        return out;
+    }
+
+    std::vector<std::string> unique_names_from_material(const std::vector<MaterialItem> &material)
+    {
+        std::vector<std::string> out;
+        std::unordered_set<std::string> seen;
+        for (const auto &m : material)
+        {
+            for (const auto &name : m.responsible)
+            {
+                std::string t = trim_ascii(name);
+                if (t.empty())
+                    continue;
+                std::string key = to_lower_ascii(t);
+                if (seen.insert(key).second)
+                    out.push_back(t);
+            }
+        }
+        return out;
+    }
+
+    std::string normalize_assignee_key(const std::string &name)
+    {
+        return to_lower_ascii(trim_ascii(name));
+    }
+
+    std::string normalize_material_key(const std::string &name)
+    {
+        return to_lower_ascii(trim_ascii(name));
+    }
+
+    bool user_matches_assignee(const UserRecord &user, const std::string &assignee)
+    {
+        const std::string assignee_key = normalize_assignee_key(assignee);
+        if (assignee_key.empty())
+            return false;
+
+        if (assignee_key == normalize_assignee_key(user.display_name))
+            return true;
+        if (assignee_key == normalize_assignee_key(user.email))
+            return true;
+
+        const auto at = user.email.find('@');
+        if (at != std::string::npos)
+        {
+            const std::string mail_local = user.email.substr(0, at);
+            if (assignee_key == normalize_assignee_key(mail_local))
+                return true;
+        }
+
+        return false;
+    }
+
+    bool user_in_assignee_list(const std::vector<std::string> &assignees, const UserRecord &user)
+    {
+        for (const auto &assignee : assignees)
+        {
+            if (user_matches_assignee(user, assignee))
+                return true;
+        }
+        return false;
+    }
+
+    std::vector<std::string> newly_assigned_users_from_material_delta(const std::vector<MaterialItem> &old_material,
+                                                                      const std::vector<MaterialItem> &new_material)
+    {
+        std::unordered_set<std::string> old_pairs;
+        for (const auto &m : old_material)
+        {
+            const std::string material_key = normalize_material_key(m.name);
+            if (material_key.empty())
+                continue;
+            for (const auto &name : m.responsible)
+            {
+                const std::string assignee_key = normalize_assignee_key(name);
+                if (assignee_key.empty())
+                    continue;
+                old_pairs.insert(material_key + "\n" + assignee_key);
+            }
+        }
+
+        std::vector<std::string> out;
+        std::unordered_set<std::string> seen_assignees;
+        for (const auto &m : new_material)
+        {
+            const std::string material_key = normalize_material_key(m.name);
+            if (material_key.empty())
+                continue;
+            for (const auto &name : m.responsible)
+            {
+                const std::string trimmed_name = trim_ascii(name);
+                const std::string assignee_key = normalize_assignee_key(trimmed_name);
+                if (assignee_key.empty())
+                    continue;
+
+                const std::string pair_key = material_key + "\n" + assignee_key;
+                if (old_pairs.find(pair_key) != old_pairs.end())
+                    continue;
+
+                if (seen_assignees.insert(assignee_key).second)
+                    out.push_back(trimmed_name);
+            }
+        }
+        return out;
+    }
+
+    bool contains_name_ci(const std::vector<std::string> &names, const std::string &needle)
+    {
+        std::string key = to_lower_ascii(trim_ascii(needle));
+        if (key.empty())
+            return false;
+        for (const auto &n : names)
+        {
+            if (to_lower_ascii(trim_ascii(n)) == key)
+                return true;
+        }
+        return false;
     }
 
     std::string sanitize_meteo_text(std::string s)
@@ -93,22 +798,6 @@ namespace
             }
         }
         return trim_ascii(out);
-    }
-
-    std::optional<std::string> json_string_or_nested_label(const nlohmann::json &j)
-    {
-        if (j.is_string())
-            return j.get<std::string>();
-        if (j.is_object())
-        {
-            static const char *keys[] = {"name", "label", "type", "title"};
-            for (const char *k : keys)
-            {
-                if (j.contains(k) && j[k].is_string())
-                    return j[k].get<std::string>();
-            }
-        }
-        return std::nullopt;
     }
 
     const nlohmann::json *find_people_array(const nlohmann::json &payload)
@@ -1987,6 +2676,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
         }
 
         ActivityInput input = parse_activity_input(j);
+        std::string notification_graph_token = j.value("notification_access_token", "");
         if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
             send_json(res, 400, R"({"error":"Titel, Datum, Startzeit und Endzeit sind erforderlich"})");
             return;
@@ -2008,6 +2698,174 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                 send_json(res, 500, R"({"error":"Datenbankfehler"})");
                 return;
             }
+
+            if (current_user) {
+                auto all_assigned = unique_names_from_material(activity->material);
+                auto users = db.list_users();
+                for (const auto &u : users) {
+                    if (u.id == current_user->id || !u.notify_material_assigned)
+                        continue;
+                    if (!user_in_assignee_list(all_assigned, u))
+                        continue;
+
+                    std::string time_range = activity->start_time + "-" + activity->end_time;
+                    std::string date_short = format_date_ddmmyyyy(activity->date);
+                    std::string full_link = activity_absolute_link(activity->id);
+                    std::string recipients_text = join_display(all_assigned);
+                    nlohmann::json payload = {
+                        {"activity_id", activity->id},
+                        {"activity_title", activity->title},
+                        {"activity_date", activity->date},
+                        {"activity_date_display", date_short},
+                        {"activity_time", time_range},
+                        {"location", activity->location},
+                        {"assigned_users", all_assigned},
+                        {"recipients", all_assigned},
+                        {"notification_recipient_name", u.display_name},
+                        {"notification_recipient_email", u.email},
+                        {"triggered_by_name", current_user->display_name},
+                        {"triggered_by_email", current_user->email},
+                        {"activity_url", full_link}
+                    };
+                    auto note = db.create_notification(
+                        u.id,
+                        "material_assigned",
+                        "Material dir zugewiesen",
+                        "Neue Materialverantwortung in \"" + activity->title + "\" am " + date_short + ". Empfänger: " + recipients_text,
+                        full_link,
+                        payload
+                    );
+                    if (note) {
+                        if (u.notify_channel_websocket) {
+                            nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                            wm.send_to_user_ids({u.id}, ws_msg.dump());
+                            deliver_web_push_for_user(db, u, *note);
+                        }
+                        if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                            std::string mail_subject = "[DPWeb] Material dir zugewiesen: " + activity->title;
+                            std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dir Material zugewiesen.</p>"
+                                "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                            db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                        }
+                    }
+                }
+
+                // Notify users added as responsible to the activity
+                if (!activity->responsible.empty()) {
+                    for (const auto &u : users) {
+                        if (u.id == current_user->id || !u.notify_activity_assigned)
+                            continue;
+                        if (!user_in_assignee_list(activity->responsible, u))
+                            continue;
+
+                        std::string time_range = activity->start_time + "-" + activity->end_time;
+                        std::string date_short = format_date_ddmmyyyy(activity->date);
+                        std::string full_link = activity_absolute_link(activity->id);
+                        std::string recipients_text = join_display(activity->responsible);
+                        nlohmann::json payload = {
+                            {"activity_id", activity->id},
+                            {"activity_title", activity->title},
+                            {"activity_date", activity->date},
+                            {"activity_date_display", date_short},
+                            {"activity_time", time_range},
+                            {"location", activity->location},
+                            {"assigned_users", activity->responsible},
+                            {"notification_recipient_name", u.display_name},
+                            {"notification_recipient_email", u.email},
+                            {"triggered_by_name", current_user->display_name},
+                            {"triggered_by_email", current_user->email},
+                            {"activity_url", full_link}
+                        };
+                        auto note = db.create_notification(
+                            u.id,
+                            "activity_assigned",
+                            "Aktivität dir zugewiesen",
+                            "Du wurdest zur Aktivität \"" + activity->title + "\" am " + date_short + " hinzugefügt. Verantwortliche: " + recipients_text,
+                            full_link,
+                            payload
+                        );
+                        if (note) {
+                            if (u.notify_channel_websocket) {
+                                nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                deliver_web_push_for_user(db, u, *note);
+                            }
+                            if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                std::string mail_subject = "[DPWeb] Aktivität dir zugewiesen: " + activity->title;
+                                std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dich zur Aktivität hinzugefügt.</p>"
+                                    "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                    "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                    "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                    "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                    "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                            }
+                        }
+                    }
+                }
+
+                // Notify users added as responsible to program blocks
+                for (const auto &prog : activity->programs) {
+                    if (prog.responsible.empty())
+                        continue;
+                    for (const auto &u : users) {
+                        if (u.id == current_user->id || !u.notify_program_assigned)
+                            continue;
+                        if (!user_in_assignee_list(prog.responsible, u))
+                            continue;
+
+                        std::string time_range = activity->start_time + "-" + activity->end_time;
+                        std::string date_short = format_date_ddmmyyyy(activity->date);
+                        std::string full_link = activity_absolute_link(activity->id);
+                        nlohmann::json payload = {
+                            {"activity_id", activity->id},
+                            {"activity_title", activity->title},
+                            {"activity_date", activity->date},
+                            {"activity_date_display", date_short},
+                            {"activity_time", time_range},
+                            {"location", activity->location},
+                            {"program_title", prog.title},
+                            {"assigned_users", prog.responsible},
+                            {"notification_recipient_name", u.display_name},
+                            {"notification_recipient_email", u.email},
+                            {"triggered_by_name", current_user->display_name},
+                            {"triggered_by_email", current_user->email},
+                            {"activity_url", full_link}
+                        };
+                        auto note = db.create_notification(
+                            u.id,
+                            "program_assigned",
+                            "Programmblock dir zugewiesen",
+                            "Du wurdest zum Programmblock \"" + prog.title + "\" in \"" + activity->title + "\" am " + date_short + " hinzugefügt.",
+                            full_link,
+                            payload
+                        );
+                        if (note) {
+                            if (u.notify_channel_websocket) {
+                                nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                deliver_web_push_for_user(db, u, *note);
+                            }
+                            if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                std::string mail_subject = "[DPWeb] Programmblock dir zugewiesen: " + prog.title;
+                                std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dich zum Programmblock hinzugefügt.</p>"
+                                    "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                    "<strong>Programmblock:</strong> " + prog.title + "<br/>"
+                                    "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                    "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                    "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                    "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                            }
+                        }
+                    }
+                }
+            }
+
             nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
             wm.broadcast(msg.dump());
             send_json(res, 201, to_json(*activity).dump());
@@ -2040,6 +2898,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     std::string id{req->getParameter(0)};
     std::optional<std::string> current_department;
+    std::optional<Activity> previous_activity;
 
     // Permission check: user needs activity edit permission for this activity.
     auto current_user = resolve_user(db, claims);
@@ -2058,6 +2917,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         auto perm = db.get_role_permission(current_user->role);
         bool allowed = perm && can_edit_activity(*perm, *current_user, *activity, claims.email);
         current_department = activity->department;
+        previous_activity = *activity;
         if (!allowed)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -2067,7 +2927,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, id, &db, &wm, current_user, current_department](std::string_view chunk, bool last)
+    res->onData([res, buf, id, &db, &wm, current_user, current_department, previous_activity](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -2079,6 +2939,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         }
 
         ActivityInput input = parse_activity_input(j);
+        std::string notification_graph_token = j.value("notification_access_token", "");
         if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
             send_json(res, 400, R"({"error":"Titel, Datum, Startzeit und Endzeit sind erforderlich"})");
             return;
@@ -2099,6 +2960,213 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                 send_json(res, 404, R"({"error":"Nicht gefunden"})");
                 return;
             }
+
+            if (current_user) {
+                auto new_assigned = unique_names_from_material(activity->material);
+                auto newly_assigned = newly_assigned_users_from_material_delta(
+                    previous_activity ? previous_activity->material : std::vector<MaterialItem>{},
+                    activity->material
+                );
+
+                if (!newly_assigned.empty()) {
+                    auto users = db.list_users();
+                    for (const auto &u : users) {
+                        if (u.id == current_user->id || !u.notify_material_assigned)
+                            continue;
+                        if (!user_in_assignee_list(newly_assigned, u))
+                            continue;
+
+                        std::string time_range = activity->start_time + "-" + activity->end_time;
+                        std::string date_short = format_date_ddmmyyyy(activity->date);
+                        std::string full_link = activity_absolute_link(activity->id);
+                        std::string recipients_text = join_display(new_assigned);
+                        nlohmann::json payload = {
+                            {"activity_id", activity->id},
+                            {"activity_title", activity->title},
+                            {"activity_date", activity->date},
+                            {"activity_date_display", date_short},
+                            {"activity_time", time_range},
+                            {"location", activity->location},
+                            {"assigned_users", new_assigned},
+                            {"newly_assigned_users", newly_assigned},
+                            {"recipients", new_assigned},
+                            {"notification_recipient_name", u.display_name},
+                            {"notification_recipient_email", u.email},
+                            {"triggered_by_name", current_user->display_name},
+                            {"triggered_by_email", current_user->email},
+                            {"activity_url", full_link}
+                        };
+
+                        auto note = db.create_notification(
+                            u.id,
+                            "material_assigned",
+                            "Material dir zugewiesen",
+                            "Neue Materialverantwortung in \"" + activity->title + "\" am " + date_short + ". Empfänger: " + recipients_text,
+                            full_link,
+                            payload
+                        );
+                        if (note) {
+                            if (u.notify_channel_websocket) {
+                                nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                deliver_web_push_for_user(db, u, *note);
+                            }
+                            if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                std::string mail_subject = "[DPWeb] Material dir zugewiesen: " + activity->title;
+                                std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dir Material zugewiesen.</p>"
+                                    "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                    "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                    "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                    "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                    "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                            }
+                        }
+                    }
+                }
+
+                // Notify users newly added as responsible to the activity
+                {
+                    std::vector<std::string> newly_responsible;
+                    for (const auto &name : activity->responsible) {
+                        if (!previous_activity || !contains_name_ci(previous_activity->responsible, name))
+                            newly_responsible.push_back(name);
+                    }
+                    if (!newly_responsible.empty()) {
+                        auto users_list = db.list_users();
+                        for (const auto &u : users_list) {
+                            if (u.id == current_user->id || !u.notify_activity_assigned)
+                                continue;
+                            if (!user_in_assignee_list(newly_responsible, u))
+                                continue;
+
+                            std::string time_range = activity->start_time + "-" + activity->end_time;
+                            std::string date_short = format_date_ddmmyyyy(activity->date);
+                            std::string full_link = activity_absolute_link(activity->id);
+                            std::string recipients_text = join_display(activity->responsible);
+                            nlohmann::json payload = {
+                                {"activity_id", activity->id},
+                                {"activity_title", activity->title},
+                                {"activity_date", activity->date},
+                                {"activity_date_display", date_short},
+                                {"activity_time", time_range},
+                                {"location", activity->location},
+                                {"assigned_users", activity->responsible},
+                                {"notification_recipient_name", u.display_name},
+                                {"notification_recipient_email", u.email},
+                                {"triggered_by_name", current_user->display_name},
+                                {"triggered_by_email", current_user->email},
+                                {"activity_url", full_link}
+                            };
+                            auto note = db.create_notification(
+                                u.id,
+                                "activity_assigned",
+                                "Aktivität dir zugewiesen",
+                                "Du wurdest zur Aktivität \"" + activity->title + "\" am " + date_short + " hinzugefügt. Verantwortliche: " + recipients_text,
+                                full_link,
+                                payload
+                            );
+                            if (note) {
+                                if (u.notify_channel_websocket) {
+                                    nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                    wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                    deliver_web_push_for_user(db, u, *note);
+                                }
+                                if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                    std::string mail_subject = "[DPWeb] Aktivität dir zugewiesen: " + activity->title;
+                                    std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dich zur Aktivität hinzugefügt.</p>"
+                                        "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                        "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                        "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                        "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                        "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                    db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Notify users newly added as responsible to program blocks
+                {
+                    // Build set of old (program_title, assignee) pairs
+                    std::unordered_set<std::string> old_prog_pairs;
+                    if (previous_activity) {
+                        for (const auto &p : previous_activity->programs) {
+                            std::string prog_key = to_lower_ascii(trim_ascii(p.title));
+                            for (const auto &name : p.responsible)
+                                old_prog_pairs.insert(prog_key + "\n" + normalize_assignee_key(name));
+                        }
+                    }
+
+                    auto users_list = db.list_users();
+                    for (const auto &prog : activity->programs) {
+                        if (prog.responsible.empty())
+                            continue;
+                        std::string prog_key = to_lower_ascii(trim_ascii(prog.title));
+                        for (const auto &name : prog.responsible) {
+                            std::string pair_key = prog_key + "\n" + normalize_assignee_key(name);
+                            if (old_prog_pairs.find(pair_key) != old_prog_pairs.end())
+                                continue;
+
+                            // This is a new assignment — find matching user
+                            for (const auto &u : users_list) {
+                                if (u.id == current_user->id || !u.notify_program_assigned)
+                                    continue;
+                                if (!user_matches_assignee(u, name))
+                                    continue;
+
+                                std::string time_range = activity->start_time + "-" + activity->end_time;
+                                std::string date_short = format_date_ddmmyyyy(activity->date);
+                                std::string full_link = activity_absolute_link(activity->id);
+                                nlohmann::json payload = {
+                                    {"activity_id", activity->id},
+                                    {"activity_title", activity->title},
+                                    {"activity_date", activity->date},
+                                    {"activity_date_display", date_short},
+                                    {"activity_time", time_range},
+                                    {"location", activity->location},
+                                    {"program_title", prog.title},
+                                    {"assigned_users", prog.responsible},
+                                    {"notification_recipient_name", u.display_name},
+                                    {"notification_recipient_email", u.email},
+                                    {"triggered_by_name", current_user->display_name},
+                                    {"triggered_by_email", current_user->email},
+                                    {"activity_url", full_link}
+                                };
+                                auto note = db.create_notification(
+                                    u.id,
+                                    "program_assigned",
+                                    "Programmblock dir zugewiesen",
+                                    "Du wurdest zum Programmblock \"" + prog.title + "\" in \"" + activity->title + "\" am " + date_short + " hinzugefügt.",
+                                    full_link,
+                                    payload
+                                );
+                                if (note) {
+                                    if (u.notify_channel_websocket) {
+                                        nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                        wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                        deliver_web_push_for_user(db, u, *note);
+                                    }
+                                    if (u.notify_channel_email && !notification_graph_token.empty() && !u.email.empty()) {
+                                        std::string mail_subject = "[DPWeb] Programmblock dir zugewiesen: " + prog.title;
+                                        std::string mail_body = "<p><strong>" + current_user->display_name + "</strong> hat dich zum Programmblock hinzugefügt.</p>"
+                                            "<p><strong>Aktivität:</strong> <a href=\"" + full_link + "\">" + activity->title + "</a><br/>"
+                                            "<strong>Programmblock:</strong> " + prog.title + "<br/>"
+                                            "<strong>Datum:</strong> " + date_short + " " + time_range + "<br/>"
+                                            "<strong>Ort:</strong> " + activity->location + "<br/>"
+                                            "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                            "<p>Weitere Details findest du direkt in der Aktivität.</p>";
+                                        db.send_mail(notification_graph_token, current_user->email, {u.email}, {}, mail_subject, mail_body);
+                                    }
+                                }
+                                break; // one notification per user per program block
+                            }
+                        }
+                    }
+                }
+            }
+
             nlohmann::json msg = {{"event", "updated"}, {"activity", to_json(*activity)}};
             wm.broadcast(msg.dump());
             send_json(res, 200, to_json(*activity).dump());
@@ -2171,8 +3239,31 @@ static nlohmann::json user_to_json(const UserRecord &u)
     j["department"] = u.department ? nlohmann::json(*u.department) : nlohmann::json(nullptr);
     j["role"] = u.role;
     j["time_display_mode"] = u.time_display_mode;
+    j["notify_material_assigned"] = u.notify_material_assigned;
+    j["notify_activity_assigned"] = u.notify_activity_assigned;
+    j["notify_program_assigned"] = u.notify_program_assigned;
+    j["notify_mail_own_activity"] = u.notify_mail_own_activity;
+    j["notify_mail_department"] = u.notify_mail_department;
+    j["notify_channel_websocket"] = u.notify_channel_websocket;
+    j["notify_channel_email"] = u.notify_channel_email;
     j["created_at"] = u.created_at;
     j["updated_at"] = u.updated_at;
+    return j;
+}
+
+static nlohmann::json notification_to_json(const NotificationRecord &n)
+{
+    nlohmann::json j = {
+        {"id", n.id},
+        {"user_id", n.user_id},
+        {"category", n.category},
+        {"title", n.title},
+        {"message", n.message},
+        {"payload", n.payload},
+        {"is_read", n.is_read},
+        {"created_at", n.created_at},
+    };
+    j["link"] = n.link ? nlohmann::json(*n.link) : nlohmann::json(nullptr);
     return j;
 }
 
@@ -2293,39 +3384,11 @@ void handle_get_users(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-        auto perm = db.get_role_permission(current_user->role);
-        if (!is_admin(*current_user) && !perm)
-        {
-            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-            return;
-        }
-
-        // Determine visibility based on user management scopes
-        bool can_see_all = is_admin(*current_user) || (perm && (perm->user_dept_scope == "all" || perm->user_role_scope == "all"));
-        bool can_see_dept = perm && (perm->user_dept_scope == "own_dept" || perm->user_role_scope == "own_dept");
 
         auto users = db.list_users();
         nlohmann::json arr = nlohmann::json::array();
         for (auto &u : users)
-        {
-            if (can_see_all)
-            {
-                arr.push_back(user_to_json(u));
-            }
-            else if (can_see_dept)
-            {
-                // own_dept: only users in same department + self
-                if (u.id == current_user->id ||
-                    (current_user->department && u.department && *current_user->department == *u.department))
-                    arr.push_back(user_to_json(u));
-            }
-            else
-            {
-                // own or none: only self
-                if (u.id == current_user->id)
-                    arr.push_back(user_to_json(u));
-            }
-        }
+            arr.push_back(user_to_json(u));
         send_json(res, 200, arr.dump());
     }
     catch (std::exception &e)
@@ -2620,28 +3683,42 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
 
-        // Fetch current user to check permissions before allowing department change.
+        // Fetch current user once; own profile updates require an existing user record.
         auto current_user = resolve_user(db, claims);
+        if (!current_user) {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        // Keep the current department unless an explicit department key is provided.
         std::optional<std::string> department;
         if (j.contains("department") && j["department"].is_string()) {
             std::string new_dept = j["department"].get<std::string>();
-            // Only users with user_dept_scope 'all' or 'own' may change their own department.
-            auto perm = current_user ? db.get_role_permission(current_user->role) : std::nullopt;
-            if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
-                send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
-                return;
-            }
             department = new_dept;
-        } else if (j.contains("department") && j["department"].is_null()) {
-            auto perm = current_user ? db.get_role_permission(current_user->role) : std::nullopt;
-            if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
-                send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
-                return;
+
+            // Only enforce permission when the department actually changes.
+            if (department != current_user->department) {
+                auto perm = db.get_role_permission(current_user->role);
+                if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
+                    send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
+                    return;
+                }
             }
-            // department stays nullopt → will be set to NULL
+        } else if (j.contains("department") && j["department"].is_null()) {
+            // NULL means explicit department removal.
+            department = std::nullopt;
+
+            // Only enforce permission when the department actually changes.
+            if (department != current_user->department) {
+                auto perm = db.get_role_permission(current_user->role);
+                if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
+                    send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
+                    return;
+                }
+            }
         } else {
             // department key missing → keep existing department
-            department = current_user ? current_user->department : std::optional<std::string>{};
+            department = current_user->department;
         }
 
         std::optional<std::string> time_display_mode;
@@ -2654,8 +3731,55 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             time_display_mode = mode;
         }
 
+        std::optional<bool> notify_material_assigned;
+        if (j.contains("notify_material_assigned") && j["notify_material_assigned"].is_boolean()) {
+            notify_material_assigned = j["notify_material_assigned"].get<bool>();
+        }
+
+        std::optional<bool> notify_activity_assigned;
+        if (j.contains("notify_activity_assigned") && j["notify_activity_assigned"].is_boolean()) {
+            notify_activity_assigned = j["notify_activity_assigned"].get<bool>();
+        }
+
+        std::optional<bool> notify_program_assigned;
+        if (j.contains("notify_program_assigned") && j["notify_program_assigned"].is_boolean()) {
+            notify_program_assigned = j["notify_program_assigned"].get<bool>();
+        }
+
+        std::optional<bool> notify_mail_own_activity;
+        if (j.contains("notify_mail_own_activity") && j["notify_mail_own_activity"].is_boolean()) {
+            notify_mail_own_activity = j["notify_mail_own_activity"].get<bool>();
+        }
+
+        std::optional<bool> notify_mail_department;
+        if (j.contains("notify_mail_department") && j["notify_mail_department"].is_boolean()) {
+            notify_mail_department = j["notify_mail_department"].get<bool>();
+        }
+
+        std::optional<bool> notify_channel_websocket;
+        if (j.contains("notify_channel_websocket") && j["notify_channel_websocket"].is_boolean()) {
+            notify_channel_websocket = j["notify_channel_websocket"].get<bool>();
+        }
+
+        std::optional<bool> notify_channel_email;
+        if (j.contains("notify_channel_email") && j["notify_channel_email"].is_boolean()) {
+            notify_channel_email = j["notify_channel_email"].get<bool>();
+        }
+
         try {
-            auto user = db.update_user(current_user->microsoft_oid, display_name, department, time_display_mode);
+            auto user = db.update_user(
+                current_user->microsoft_oid,
+                display_name,
+                department,
+                time_display_mode,
+                notify_material_assigned,
+                notify_activity_assigned,
+                notify_program_assigned,
+                notify_mail_own_activity,
+                notify_mail_department,
+                notify_channel_websocket,
+                notify_channel_email
+            );
             if (!user) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
@@ -2664,6 +3788,260 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);
         } });
+}
+
+// ---- GET /notifications ----------------------------------------------------
+
+void handle_get_notifications(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        int limit = 0;
+        std::string limit_raw = std::string(req->getQuery("limit"));
+        if (!limit_raw.empty())
+        {
+            try
+            {
+                limit = std::max(1, std::min(200, std::stoi(limit_raw)));
+            }
+            catch (...)
+            {
+                limit = 0;
+            }
+        }
+
+        auto notes = db.list_notifications_for_user(current_user->id, limit);
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &n : notes)
+            arr.push_back(notification_to_json(n));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+// ---- PATCH /notifications/:id/read ----------------------------------------
+
+void handle_patch_notification_read(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        std::string notification_id{req->getParameter(0)};
+        bool ok = db.mark_notification_read(current_user->id, notification_id);
+        if (!ok)
+        {
+            send_json(res, 500, R"({"error":"Konnte Benachrichtigung nicht aktualisieren"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+// ---- POST /notifications/read-all -----------------------------------------
+
+void handle_post_notifications_read_all(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        bool ok = db.mark_all_notifications_read(current_user->id);
+        if (!ok)
+        {
+            send_json(res, 500, R"({"error":"Konnte Benachrichtigungen nicht aktualisieren"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+// ---- GET /push/vapid-public-key -------------------------------------------
+
+void handle_get_push_vapid_public_key(HttpRes *res, HttpReq * /*req*/)
+{
+    std::string pub = env_or("DPW_VAPID_PUBLIC_KEY");
+    if (pub.empty())
+    {
+        send_json(res, 503, R"({"error":"Web-Push nicht konfiguriert"})");
+        return;
+    }
+    send_json(res, 200, nlohmann::json{{"publicKey", pub}}.dump());
+}
+
+// ---- POST /push/subscriptions ---------------------------------------------
+
+void handle_post_push_subscription(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db, current_user](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) {
+            send_json(res, 400, R"({"error":"Ungültiges JSON-Format"})");
+            return;
+        }
+
+        std::string endpoint = j.value("endpoint", "");
+        std::string p256dh;
+        std::string auth;
+        if (j.contains("keys") && j["keys"].is_object()) {
+            p256dh = j["keys"].value("p256dh", "");
+            auth = j["keys"].value("auth", "");
+        }
+
+        if (endpoint.empty() || p256dh.empty() || auth.empty()) {
+            send_json(res, 400, R"({"error":"endpoint, keys.p256dh und keys.auth sind erforderlich"})");
+            return;
+        }
+
+        auto sub = db.upsert_push_subscription(current_user->id, endpoint, p256dh, auth);
+        if (!sub) {
+            send_json(res, 500, R"({"error":"Konnte Push-Subscription nicht speichern"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})"); });
+}
+
+// ---- DELETE /push/subscriptions -------------------------------------------
+
+void handle_delete_push_subscription(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db, current_user](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) {
+            send_json(res, 400, R"({"error":"Ungültiges JSON-Format"})");
+            return;
+        }
+
+        std::string endpoint = j.value("endpoint", "");
+        if (endpoint.empty()) {
+            send_json(res, 400, R"({"error":"endpoint ist erforderlich"})");
+            return;
+        }
+
+        bool ok = db.delete_push_subscription(current_user->id, endpoint);
+        if (!ok) {
+            send_json(res, 500, R"({"error":"Konnte Push-Subscription nicht löschen"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})"); });
+}
+
+// ---- POST /push/payload ----------------------------------------------------
+
+void handle_post_push_payload(HttpRes *res, HttpReq * /*req*/, Database &db)
+{
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) {
+            send_json(res, 400, R"({"error":"Ungültiges JSON-Format"})");
+            return;
+        }
+
+        std::string endpoint = j.value("endpoint", "");
+        std::string auth = j.value("auth", "");
+        if (endpoint.empty() || auth.empty()) {
+            send_json(res, 400, R"({"error":"endpoint und auth sind erforderlich"})");
+            return;
+        }
+
+        auto n = db.get_latest_unread_notification_for_push(endpoint, auth);
+        if (!n) {
+            set_cors(res);
+            res->writeStatus("204 No Content");
+            res->end();
+            return;
+        }
+
+        std::string link = n->link ? *n->link : "/profile";
+        std::string date_short;
+        if (n->payload.is_object() && n->payload.contains("activity_date_display") && n->payload["activity_date_display"].is_string()) {
+            date_short = trim_ascii(n->payload["activity_date_display"].get<std::string>());
+        }
+        if (date_short.empty()) {
+            date_short = format_date_ddmmyyyy(n->created_at);
+        }
+        nlohmann::json payload = {
+            {"id", n->id},
+            {"title", n->title},
+            {"body", date_short.empty() ? std::string("Neue Benachrichtigung") : std::string("Datum: ") + date_short},
+            {"url", link},
+            {"notification", notification_to_json(*n)}
+        };
+        send_json(res, 200, payload.dump()); });
 }
 
 // ---- Mail template helpers --------------------------------------------------
@@ -2859,7 +4237,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
 
 // ---- POST /send-mail --------------------------------------------------------
 
-void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
+void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
     std::string auth_header{req->getHeader("authorization")};
     std::string token = extract_bearer_token(auth_header);
@@ -2896,7 +4274,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, token, &db, current_user](std::string_view chunk, bool last)
+    res->onData([res, buf, token, &db, &wm, current_user](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -2947,6 +4325,100 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db)
                     std::string sender_email = current_user ? current_user->email : from_email;
                     db.log_sent_mail(activity_id, sender_id, sender_email, to_emails, cc_emails, subject, body_html);
                     db.delete_mail_draft(activity_id);
+
+                    auto activity = db.get_activity_by_id(activity_id);
+                    if (activity && current_user) {
+                        auto users = db.list_users();
+                        for (const auto &u : users) {
+                            if (u.id == current_user->id)
+                                continue;
+
+                            std::string link = activity_absolute_link(activity->id);
+                            std::string date_short = format_date_ddmmyyyy(activity->date);
+                            std::string recipients_text = join_display(to_emails);
+                            std::string cc_text = join_display(cc_emails);
+                            nlohmann::json payload = {
+                                {"activity_id", activity->id},
+                                {"activity_title", activity->title},
+                                {"activity_date", activity->date},
+                                {"activity_date_display", date_short},
+                                {"activity_department", activity->department ? nlohmann::json(*activity->department) : nlohmann::json(nullptr)},
+                                {"mail_subject", subject},
+                                {"mail_body_html", body_html},
+                                {"to", to_emails},
+                                {"cc", cc_emails},
+                                {"recipients", to_emails},
+                                {"notification_recipient_name", u.display_name},
+                                {"notification_recipient_email", u.email},
+                                {"triggered_by_name", current_user->display_name},
+                                {"triggered_by_email", current_user->email},
+                                {"activity_url", link}
+                            };
+
+                            bool is_own_activity = contains_name_ci(activity->responsible, u.display_name);
+                            bool is_same_department = activity->department && u.department && *activity->department == *u.department;
+
+                            if (is_own_activity && u.notify_mail_own_activity) {
+                                auto note = db.create_notification(
+                                    u.id,
+                                    "mail_own_activity",
+                                    "Mail für deine Aktivität versendet",
+                                    "Mail zu \"" + activity->title + "\" wurde am " + date_short + " versendet. Empfänger: " + recipients_text + (cc_emails.empty() ? "" : ("; CC: " + cc_text)),
+                                    link,
+                                    payload
+                                );
+                                if (note) {
+                                    if (u.notify_channel_websocket) {
+                                        nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                        wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                        deliver_web_push_for_user(db, u, *note);
+                                    }
+                                    if (u.notify_channel_email && !u.email.empty()) {
+                                        std::string subj = "[DPWeb] Mail für deine Aktivität: " + activity->title;
+                                        std::string body = "<p><strong>" + current_user->display_name + "</strong> hat eine Mail für deine Aktivität versendet.</p>"
+                                            "<p><strong>Aktivität:</strong> <a href=\"" + link + "\">" + activity->title + "</a><br/>"
+                                            "<strong>Datum:</strong> " + date_short + "<br/>"
+                                            "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                            "<p><strong>Empfänger:</strong> " + recipients_text + (cc_emails.empty() ? "" : ("<br/><strong>CC:</strong> " + cc_text)) + "</p>"
+                                            "<p><strong>Betreff:</strong> " + subject + "</p>"
+                                            "<hr/>" + body_html +
+                                            "<p>Die Aktivität ist direkt im Titel verlinkt.</p>";
+                                        db.send_mail(graph_token, current_user->email, {u.email}, {}, subj, body);
+                                    }
+                                }
+                            }
+
+                            else if (is_same_department && u.notify_mail_department) {
+                                auto note = db.create_notification(
+                                    u.id,
+                                    "mail_department",
+                                    "Mail in deiner Stufe versendet",
+                                    "Mail zu \"" + activity->title + "\" in deiner Stufe wurde am " + date_short + " versendet. Empfänger: " + recipients_text + (cc_emails.empty() ? "" : ("; CC: " + cc_text)),
+                                    link,
+                                    payload
+                                );
+                                if (note) {
+                                    if (u.notify_channel_websocket) {
+                                        nlohmann::json ws_msg = {{"event", "notification"}, {"notification", notification_to_json(*note)}};
+                                        wm.send_to_user_ids({u.id}, ws_msg.dump());
+                                        deliver_web_push_for_user(db, u, *note);
+                                    }
+                                    if (u.notify_channel_email && !u.email.empty()) {
+                                        std::string subj = "[DPWeb] Mail in deiner Stufe: " + activity->title;
+                                        std::string body = "<p><strong>" + current_user->display_name + "</strong> hat eine Mail in deiner Stufe versendet.</p>"
+                                            "<p><strong>Aktivität:</strong> <a href=\"" + link + "\">" + activity->title + "</a><br/>"
+                                            "<strong>Datum:</strong> " + date_short + "<br/>"
+                                            "<strong>Ausgelöst von:</strong> " + current_user->display_name + " (" + current_user->email + ")</p>"
+                                            "<p><strong>Empfänger:</strong> " + recipients_text + (cc_emails.empty() ? "" : ("<br/><strong>CC:</strong> " + cc_text)) + "</p>"
+                                            "<p><strong>Betreff:</strong> " + subject + "</p>"
+                                            "<hr/>" + body_html +
+                                            "<p>Die Aktivität ist direkt im Titel verlinkt.</p>";
+                                        db.send_mail(graph_token, current_user->email, {u.email}, {}, subj, body);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 send_json(res, 200, R"({"status":"sent"})");
             } else {

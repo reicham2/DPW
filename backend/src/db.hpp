@@ -14,6 +14,37 @@ struct UserRecord
     std::optional<std::string> department;
     std::string role;
     std::string time_display_mode{"minutes"};
+    bool notify_material_assigned{true};
+    bool notify_activity_assigned{true};
+    bool notify_program_assigned{true};
+    bool notify_mail_own_activity{true};
+    bool notify_mail_department{true};
+    bool notify_channel_websocket{true};
+    bool notify_channel_email{false};
+    std::string created_at;
+    std::string updated_at;
+};
+
+struct NotificationRecord
+{
+    std::string id;
+    std::string user_id;
+    std::string category;
+    std::string title;
+    std::string message;
+    std::optional<std::string> link;
+    nlohmann::json payload;
+    bool is_read{false};
+    std::string created_at;
+};
+
+struct PushSubscriptionRecord
+{
+    std::string id;
+    std::string user_id;
+    std::string endpoint;
+    std::string p256dh;
+    std::string auth;
     std::string created_at;
     std::string updated_at;
 };
@@ -171,7 +202,14 @@ public:
     std::optional<UserRecord> update_user(const std::string &oid,
                                           const std::string &display_name,
                                           const std::optional<std::string> &department,
-                                          const std::optional<std::string> &time_display_mode = std::nullopt);
+                                          const std::optional<std::string> &time_display_mode = std::nullopt,
+                                          const std::optional<bool> &notify_material_assigned = std::nullopt,
+                                          const std::optional<bool> &notify_activity_assigned = std::nullopt,
+                                          const std::optional<bool> &notify_program_assigned = std::nullopt,
+                                          const std::optional<bool> &notify_mail_own_activity = std::nullopt,
+                                          const std::optional<bool> &notify_mail_department = std::nullopt,
+                                          const std::optional<bool> &notify_channel_websocket = std::nullopt,
+                                          const std::optional<bool> &notify_channel_email = std::nullopt);
     // Admin: update any user's display_name, department and role.
     std::optional<UserRecord> update_user_admin(const std::string &id,
                                                 const std::string &display_name,
@@ -206,6 +244,28 @@ public:
                                           const std::string &subject,
                                           const std::string &body_html);
     std::vector<SentMail> list_sent_mails(const std::string &activity_id);
+
+    // Notifications
+    std::optional<NotificationRecord> create_notification(const std::string &user_id,
+                                                          const std::string &category,
+                                                          const std::string &title,
+                                                          const std::string &message,
+                                                          const std::optional<std::string> &link,
+                                                          const nlohmann::json &payload = nlohmann::json::object());
+    std::vector<NotificationRecord> list_notifications_for_user(const std::string &user_id, int limit = 50);
+    bool mark_notification_read(const std::string &user_id, const std::string &notification_id);
+    bool mark_all_notifications_read(const std::string &user_id);
+
+    // Web push subscriptions
+    std::optional<PushSubscriptionRecord> upsert_push_subscription(const std::string &user_id,
+                                                                   const std::string &endpoint,
+                                                                   const std::string &p256dh,
+                                                                   const std::string &auth);
+    bool delete_push_subscription(const std::string &user_id, const std::string &endpoint);
+    bool delete_push_subscription_by_endpoint(const std::string &endpoint);
+    std::vector<PushSubscriptionRecord> list_push_subscriptions_for_user(const std::string &user_id);
+    std::optional<NotificationRecord> get_latest_unread_notification_for_push(const std::string &endpoint,
+                                                                              const std::string &auth);
 
     // Mail drafts
     std::optional<MailDraft> get_mail_draft(const std::string &activity_id);
@@ -341,6 +401,9 @@ private:
     UserRecord row_to_user(PGresult *res, int row);
     MailTemplate row_to_mail_template(PGresult *res, int row);
     SentMail row_to_sent_mail(PGresult *res, int row);
+    NotificationRecord row_to_notification(PGresult *res, int row);
+    PushSubscriptionRecord row_to_push_subscription(PGresult *res, int row);
+    void purge_expired_activity_notifications();
     MailDraft row_to_mail_draft(PGresult *res, int row);
     FormDraft row_to_form_draft(PGresult *res, int row);
     DepartmentRecord row_to_department(PGresult *res, int row);
