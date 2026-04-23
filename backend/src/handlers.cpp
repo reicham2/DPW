@@ -4610,19 +4610,20 @@ void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
             if (wp_configured()) {
                 auto activity = db.get_activity_by_id(activity_id);
                 long start_ts = 0, end_ts = 0;
-                std::string location;
+                std::string location, department;
                 if (activity) {
                     start_ts = parse_datetime_unix(activity->date, activity->start_time);
                     end_ts   = parse_datetime_unix(activity->date, activity->end_time);
                     location = activity->location;
+                    department = activity->department.value_or("");
                 }
 
                 if (!pub->wp_event_id.empty()) {
-                    auto wp = wp_update_event(pub->wp_event_id, title, body_html, start_ts, end_ts, location);
+                    auto wp = wp_update_event(pub->wp_event_id, title, body_html, start_ts, end_ts, location, department);
                     if (!wp)
                         fprintf(stderr, "[wp_client] update failed for wp_event_id=%s\n", pub->wp_event_id.c_str());
                 } else {
-                    auto wp = wp_create_event(title, body_html, start_ts, end_ts, location);
+                    auto wp = wp_create_event(title, body_html, start_ts, end_ts, location, department);
                     if (wp) {
                         db.update_event_publication_wp_id(activity_id, wp->wp_event_id);
                         pub->wp_event_id = wp->wp_event_id;

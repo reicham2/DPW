@@ -15,11 +15,13 @@ struct WpEventResult
 bool wp_configured();
 
 // Create a new EventON event. Returns the WordPress post ID on success.
+// department is used as the EventON "event_type" taxonomy term.
 std::optional<WpEventResult> wp_create_event(const std::string &title,
                                               const std::string &body_html,
                                               long start_unix,
                                               long end_unix,
-                                              const std::string &location);
+                                              const std::string &location,
+                                              const std::string &department);
 
 // Update an existing EventON event by WordPress post ID.
 std::optional<WpEventResult> wp_update_event(const std::string &wp_id,
@@ -27,7 +29,8 @@ std::optional<WpEventResult> wp_update_event(const std::string &wp_id,
                                               const std::string &body_html,
                                               long start_unix,
                                               long end_unix,
-                                              const std::string &location);
+                                              const std::string &location,
+                                              const std::string &department);
 
 // Delete an EventON event by WordPress post ID. Returns true on success.
 bool wp_delete_event(const std::string &wp_id);

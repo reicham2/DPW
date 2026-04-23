@@ -89,6 +89,9 @@ static std::pair<long, std::string> wp_request(const std::string &method,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, wp_write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+    // pfadihue.ch uses a certificate chain that Alpine's CA bundle doesn't trust
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 
     if (method == "POST")
     {
@@ -115,6 +118,64 @@ static std::pair<long, std::string> wp_request(const std::string &method,
     return {status, response};
 }
 
+// ── event type taxonomy ─────────────────────────────────────────────────────
+
+// Find an EventON event_type term by name, or create it if it doesn't exist.
+// Returns the term ID, or 0 on failure.
+static int find_or_create_event_type(const WpConfig &cfg, const std::string &name)
+{
+    if (name.empty())
+        return 0;
+
+    // Search for existing term
+    CURL *esc_curl = curl_easy_init();
+    char *esc = curl_easy_escape(esc_curl, name.c_str(), (int)name.size());
+    std::string search_url = cfg.url + "/wp-json/wp/v2/event_type?search=" + esc;
+    curl_free(esc);
+    curl_easy_cleanup(esc_curl);
+
+    try
+    {
+        auto [status, resp] = wp_request("GET", search_url, cfg.auth, "");
+        if (status == 200)
+        {
+            auto arr = nlohmann::json::parse(resp, nullptr, false);
+            if (arr.is_array())
+            {
+                for (auto &term : arr)
+                {
+                    if (term.contains("name") && term["name"].is_string() &&
+                        term["name"].get<std::string>() == name)
+                        return term["id"].get<int>();
+                }
+            }
+        }
+    }
+    catch (...) {}
+
+    // Not found — create it
+    try
+    {
+        nlohmann::json body = {{"name", name}};
+        auto [status, resp] = wp_request("POST", cfg.url + "/wp-json/wp/v2/event_type", cfg.auth, body.dump());
+        if (status >= 200 && status < 300)
+        {
+            auto j = nlohmann::json::parse(resp, nullptr, false);
+            if (!j.is_discarded() && j.contains("id"))
+                return j["id"].get<int>();
+        }
+        else
+        {
+            fprintf(stderr, "[wp_client] create event_type '%s' failed: HTTP %ld – %s\n", name.c_str(), status, resp.c_str());
+        }
+    }
+    catch (std::exception &e)
+    {
+        fprintf(stderr, "[wp_client] create event_type error: %s\n", e.what());
+    }
+    return 0;
+}
+
 // ── public API ──────────────────────────────────────────────────────────────
 
 bool wp_configured()
@@ -126,7 +187,8 @@ std::optional<WpEventResult> wp_create_event(const std::string &title,
                                               const std::string &body_html,
                                               long start_unix,
                                               long end_unix,
-                                              const std::string &location)
+                                              const std::string &location,
+                                              const std::string &department)
 {
     auto cfg = get_wp_config();
     if (!cfg)
@@ -147,6 +209,10 @@ std::optional<WpEventResult> wp_create_event(const std::string &title,
     };
     if (!location.empty())
         body["meta"]["evcal_location_name"] = location;
+
+    int type_id = find_or_create_event_type(*cfg, department);
+    if (type_id > 0)
+        body["event_type"] = nlohmann::json::array({type_id});
 
     try
     {
@@ -173,7 +239,8 @@ std::optional<WpEventResult> wp_update_event(const std::string &wp_id,
                                               const std::string &body_html,
                                               long start_unix,
                                               long end_unix,
-                                              const std::string &location)
+                                              const std::string &location,
+                                              const std::string &department)
 {
     auto cfg = get_wp_config();
     if (!cfg)
@@ -193,6 +260,10 @@ std::optional<WpEventResult> wp_update_event(const std::string &wp_id,
     };
     if (!location.empty())
         body["meta"]["evcal_location_name"] = location;
+
+    int type_id = find_or_create_event_type(*cfg, department);
+    if (type_id > 0)
+        body["event_type"] = nlohmann::json::array({type_id});
 
     try
     {
