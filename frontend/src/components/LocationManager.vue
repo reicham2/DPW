@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { MapPin } from 'lucide-vue-next'
 import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from './ErrorAlert.vue'
 import type { LocationRecord } from '../types'
@@ -112,7 +113,7 @@ async function confirmDelete() {
         <div v-for="loc in sortedLocations" :key="loc.id" class="item-card">
           <template v-if="editingId === loc.id">
             <form class="item-row" @submit.prevent="saveEdit">
-              <span class="loc-icon">📍</span>
+              <MapPin class="loc-icon" :size="16" aria-hidden="true" />
               <input v-model="editName" class="form-input" placeholder="Name" required autofocus />
               <div class="item-actions">
                 <button type="submit" class="btn-save" :disabled="saving">Speichern</button>
@@ -122,7 +123,7 @@ async function confirmDelete() {
           </template>
           <template v-else>
             <div class="item-row">
-              <span class="loc-icon">📍</span>
+              <MapPin class="loc-icon" :size="16" aria-hidden="true" />
               <span class="item-name">{{ loc.name }}</span>
               <div class="item-actions">
                 <button class="btn-edit" @click="startEdit(loc)">Bearbeiten</button>
@@ -139,7 +140,7 @@ async function confirmDelete() {
       <div v-if="showAdd" class="add-form-wrap">
         <form class="add-form" @submit.prevent="handleAdd">
           <div class="add-row">
-            <span class="loc-icon">📍</span>
+            <MapPin class="loc-icon" :size="16" aria-hidden="true" />
             <input v-model="addName" class="form-input" placeholder="Neuer Ort" required autofocus />
           </div>
           <div class="item-actions">
@@ -211,7 +212,7 @@ async function confirmDelete() {
 }
 
 .loc-icon {
-  font-size: 1rem;
+  color: #6b7280;
   flex-shrink: 0;
 }
 

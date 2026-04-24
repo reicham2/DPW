@@ -9,7 +9,7 @@ import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2 } from 'lucide-vue-next';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -931,25 +931,21 @@ function startWeatherLocationEdit() {
 	weatherLocationEditing.value = true;
 }
 
-const weatherSymbolEmoji = computed(() => {
+const weatherSymbolIcon = computed(() => {
 	switch (expectedWeather.value?.weather_symbol) {
 		case 'sun':
-			return '☀️';
+			return Sun;
 		case 'partly-cloudy':
-			return '⛅';
+			return CloudSun;
 		case 'cloud':
-			return '☁️';
+			return Cloud;
 		case 'rain':
-			return '🌧️';
+			return CloudRain;
 		case 'snow':
-			return '❄️';
+			return Snowflake;
 		default:
-			return '🌤️';
+			return CloudSun;
 	}
-});
-
-const weatherForecastDisplay = computed(() => {
-	return expectedWeather.value?.available ? weatherSymbolEmoji.value : '—';
 });
 
 const weatherTemperatureDisplay = computed(() => {
@@ -2655,7 +2651,10 @@ function copyShareLink() {
 							<div class="detail-stats-row">
 								<span class="detail-label">Vorhersage</span>
 								<div class="detail-weather-value">
-									<span class="detail-value" :class="{ 'detail-weather-symbol': expectedWeather?.available }">{{ weatherForecastDisplay }}</span>
+									<span v-if="expectedWeather?.available" class="detail-value detail-weather-symbol" aria-hidden="true">
+										<component :is="weatherSymbolIcon" :size="18" />
+									</span>
+									<span v-else class="detail-value">—</span>
 									<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
 								</div>
 							</div>
@@ -3300,7 +3299,10 @@ function copyShareLink() {
 						<div class="detail-stats-row">
 							<span class="detail-label">Vorhersage</span>
 							<div class="detail-weather-value">
-								<span class="detail-value" :class="{ 'detail-weather-symbol': expectedWeather?.available }">{{ weatherForecastDisplay }}</span>
+								<span v-if="expectedWeather?.available" class="detail-value detail-weather-symbol" aria-hidden="true">
+									<component :is="weatherSymbolIcon" :size="18" />
+								</span>
+								<span v-else class="detail-value">—</span>
 								<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
 							</div>
 						</div>

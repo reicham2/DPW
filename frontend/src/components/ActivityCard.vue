@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Activity } from '../types'
+import { MapPin } from 'lucide-vue-next'
 import DepartmentBadge from './DepartmentBadge.vue'
 
 const props = defineProps<{
@@ -31,6 +32,6 @@ function formatDate(d: string): string {
         {{ activity.responsible.join(', ') }}
       </span>
     </div>
-    <p v-if="activity.location" class="card-location">📍 {{ activity.location }}</p>
+    <p v-if="activity.location" class="card-location"><MapPin :size="14" aria-hidden="true" /> {{ activity.location }}</p>
   </div>
 </template>
