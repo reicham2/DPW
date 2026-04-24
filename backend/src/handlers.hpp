@@ -76,6 +76,16 @@ void handle_post_push_subscription(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_push_subscription(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_push_payload(HttpRes *res, HttpReq *req, Database &db);
 
+// Event template endpoints
+void handle_get_event_templates(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_event_template(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+
+// Event publication endpoints
+void handle_get_event_publication(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_event_publication(HttpRes *res, HttpReq *req, Database &db);
+
 // Mail draft endpoints
 void handle_get_mail_draft(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_mail_draft(HttpRes *res, HttpReq *req, Database &db);

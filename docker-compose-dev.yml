@@ -60,6 +60,9 @@ services:
       REDIS_PORT: "6379"
       DPW_CACHE_TTL_SECONDS: "${DPW_CACHE_TTL_SECONDS:-30}"
       REDIS_TIMEOUT_MS: "${REDIS_TIMEOUT_MS:-250}"
+      DPW_WP_URL: "${DPW_WP_URL:-}"
+      DPW_WP_USER: "${DPW_WP_USER:-}"
+      DPW_WP_APP_PASSWORD: "${DPW_WP_APP_PASSWORD:-}"
     depends_on:
       db:
         condition: service_healthy

@@ -53,6 +53,7 @@ add_executable(server
     src/ws_manager.cpp
     src/graph.cpp
     src/utils.cpp
+    src/wp_client.cpp
     ${USOCKETS_SOURCES}
 )
 

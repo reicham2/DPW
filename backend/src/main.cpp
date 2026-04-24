@@ -206,6 +206,23 @@ int main()
               { handle_get_mail_template(res, req, db); })
          .put("/mail-templates/:department", [&](auto *res, auto *req)
               { handle_put_mail_template(res, req, db, wm); })
+
+         // Event templates
+         .get("/event-templates", [&](auto *res, auto *req)
+              { handle_get_event_templates(res, req, db); })
+         .get("/event-templates/:department", [&](auto *res, auto *req)
+              { handle_get_event_template(res, req, db); })
+         .put("/event-templates/:department", [&](auto *res, auto *req)
+              { handle_put_event_template(res, req, db, wm); })
+
+         // Event publications (per activity)
+         .get("/activities/:id/event-publication", [&](auto *res, auto *req)
+              { handle_get_event_publication(res, req, db); })
+         .put("/activities/:id/event-publication", [&](auto *res, auto *req)
+              { handle_put_event_publication(res, req, db); })
+         .del("/activities/:id/event-publication", [&](auto *res, auto *req)
+              { handle_delete_event_publication(res, req, db); })
+
          .post("/send-mail", [&](auto *res, auto *req)
                { handle_post_send_mail(res, req, db, wm); })
          .get("/activities/:id/sent-mails", [&](auto *res, auto *req)

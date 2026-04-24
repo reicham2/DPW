@@ -280,6 +280,18 @@ function canFormTemplates(): boolean {
 	return p.form_templates_scope !== 'none';
 }
 
+function canEventTemplates(): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	return p.event_templates_scope !== 'none';
+}
+
+function canPublishEvents(): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	return p.event_publish_scope !== 'none';
+}
+
 function readableDepts(userDept: string | null | undefined): string[] {
 	const p = myPermissions.value;
 	return departments.value
@@ -300,22 +312,14 @@ function canManageLocations(): boolean {
 // ── Locations CRUD ──────────────────────────────────────────────────────────
 
 async function fetchLocationsAdmin(): Promise<LocationRecord[]> {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/locations', {
-		headers: { Authorization: `Bearer ${token}` },
-	});
+	const res = await apiFetch('/api/admin/locations');
 	if (!res.ok) throw new Error(await res.text());
 	return await res.json();
 }
 
 async function createLocation(name: string): Promise<LocationRecord> {
-	const token = await getIdToken();
-	const res = await fetch('/api/admin/locations', {
+	const res = await apiFetch('/api/admin/locations', {
 		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
-		},
 		body: JSON.stringify({ name }),
 	});
 	if (!res.ok) throw new Error(await res.text());
@@ -326,25 +330,22 @@ async function updateLocation(
 	id: string,
 	name: string,
 ): Promise<LocationRecord> {
-	const token = await getIdToken();
-	const res = await fetch(`/api/admin/locations/${encodeURIComponent(id)}`, {
-		method: 'PATCH',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`,
+	const res = await apiFetch(
+		`/api/admin/locations/${encodeURIComponent(id)}`,
+		{
+			method: 'PATCH',
+			body: JSON.stringify({ name }),
 		},
-		body: JSON.stringify({ name }),
-	});
+	);
 	if (!res.ok) throw new Error(await res.text());
 	return await res.json();
 }
 
 async function deleteLocation(id: string): Promise<void> {
-	const token = await getIdToken();
-	const res = await fetch(`/api/admin/locations/${encodeURIComponent(id)}`, {
-		method: 'DELETE',
-		headers: { Authorization: `Bearer ${token}` },
-	});
+	const res = await apiFetch(
+		`/api/admin/locations/${encodeURIComponent(id)}`,
+		{ method: 'DELETE' },
+	);
 	if (!res.ok) throw new Error(await res.text());
 }
 
@@ -398,6 +399,8 @@ export function usePermissions() {
 		canManageSystem,
 		canForms,
 		canFormTemplates,
+		canEventTemplates,
+		canPublishEvents,
 		canManageLocations,
 		readableDepts,
 		writableDepts,

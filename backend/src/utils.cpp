@@ -290,6 +290,21 @@ bool can_edit_activity(const RolePermission &perm, const UserRecord &user,
     return false;
 }
 
+bool can_publish_event(const RolePermission &perm, const UserRecord &user,
+                       const Activity &activity, const std::string &email)
+{
+    if (is_admin(user))
+        return true;
+    if (perm.event_publish_scope == "all")
+        return true;
+    if (perm.event_publish_scope == "own_dept")
+        return (activity.department && user.department && *activity.department == *user.department) ||
+               is_activity_responsible(activity, user, email);
+    if (perm.event_publish_scope == "own")
+        return is_activity_responsible(activity, user, email);
+    return false;
+}
+
 // ── JSON parsing helpers ────────────────────────────────────────────────────
 
 std::string str_field(const nlohmann::json &j, const char *key, const std::string &def)

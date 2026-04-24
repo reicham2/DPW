@@ -7,8 +7,9 @@ import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
 import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
 import { useForms } from '../composables/useForms';
+import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
-import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather } from '../types';
+import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
@@ -40,10 +41,15 @@ const { users, fetchUsers } = useUsers();
 const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper } = usePermissions();
 
 const { fetchForm } = useForms();
+const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
 
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
 const showNoFormDialog = ref(false);
+const showNoFormForEventDialog = ref(false);
+const showUnpublishConfirm = ref(false);
+const eventUnpublishing = ref(false);
+const eventFormUrl = ref('');
 const liveParticipantsLoading = ref(false);
 const liveExpectedParticipants = ref<number | null>(null);
 const liveRegistrationCount = ref<number | null>(null);
@@ -65,6 +71,131 @@ const isStatsDrawerOpen = ref(false);
 const shareToken = ref<string | null>(null);
 const shareLoading = ref(false);
 const shareCopied = ref(false);
+const eventPublication = ref<EventPublication | null>(null);
+const showEventPreview = ref(false);
+const eventPreviewTitle = ref('');
+const eventPreviewBody = ref('');
+const eventPublishing = ref(false);
+const eventPreviewEditorRef = ref<HTMLElement | null>(null);
+const evtPreviewToolbar = ref<{ bold: boolean; italic: boolean; underline: boolean; ul: boolean; ol: boolean; font: string; size: string; color: string; bgColor: string } | null>(null);
+let evtPreviewSavedSelection: Range | null = null;
+let evtPreviewLinkSavedRange: Range | null = null;
+const showEvtPreviewLinkDialog = ref(false);
+const evtPreviewLinkUrl = ref('');
+const evtPreviewLinkInputRef = ref<HTMLInputElement | null>(null);
+
+function onEvtPreviewInput() {
+	updateEvtPreviewToolbar();
+}
+
+function updateEvtPreviewToolbar() {
+	const el = eventPreviewEditorRef.value;
+	const sel = window.getSelection();
+	if (!sel || !sel.rangeCount || !el) return;
+	const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement;
+	if (!node || !el.contains(node)) return;
+	const cs = window.getComputedStyle(node);
+	evtPreviewToolbar.value = {
+		bold: document.queryCommandState('bold'),
+		italic: document.queryCommandState('italic'),
+		underline: document.queryCommandState('underline'),
+		ul: document.queryCommandState('insertUnorderedList'),
+		ol: document.queryCommandState('insertOrderedList'),
+		font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
+		size: parseInt(cs.fontSize).toString() || '12',
+		color: rgbToHex(cs.color) || '#000000',
+		bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
+	};
+}
+
+function evtPreviewSaveSelection() {
+	const sel = window.getSelection();
+	if (sel?.rangeCount && eventPreviewEditorRef.value?.contains(sel.anchorNode)) {
+		evtPreviewSavedSelection = sel.getRangeAt(0).cloneRange();
+	}
+}
+
+function evtPreviewExecCmd(cmd: string, value?: string) {
+	if (evtPreviewSavedSelection) {
+		const sel = window.getSelection();
+		if (sel) { sel.removeAllRanges(); sel.addRange(evtPreviewSavedSelection); }
+		evtPreviewSavedSelection = null;
+	}
+	document.execCommand(cmd, false, value);
+	eventPreviewEditorRef.value?.focus();
+	onEvtPreviewInput();
+}
+
+function evtPreviewSetFontSize(size: string) {
+	if (evtPreviewSavedSelection) {
+		const sel = window.getSelection();
+		if (sel) { sel.removeAllRanges(); sel.addRange(evtPreviewSavedSelection); }
+		evtPreviewSavedSelection = null;
+	}
+	const sel = window.getSelection();
+	if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+		const span = document.createElement('span');
+		span.style.fontSize = size + 'px';
+		span.textContent = '\u200B';
+		const range = sel.getRangeAt(0);
+		range.insertNode(span);
+		const newRange = document.createRange();
+		newRange.setStart(span.firstChild!, 1);
+		newRange.collapse(true);
+		sel.removeAllRanges();
+		sel.addRange(newRange);
+		eventPreviewEditorRef.value?.focus();
+		if (evtPreviewToolbar.value) evtPreviewToolbar.value.size = size;
+		onEvtPreviewInput();
+		return;
+	}
+	document.execCommand('fontSize', false, '7');
+	const fontEls = eventPreviewEditorRef.value?.querySelectorAll('font[size="7"]');
+	fontEls?.forEach(fe => {
+		const span = document.createElement('span');
+		span.style.fontSize = size + 'px';
+		span.innerHTML = fe.innerHTML;
+		fe.replaceWith(span);
+	});
+	eventPreviewEditorRef.value?.focus();
+	onEvtPreviewInput();
+}
+
+function evtPreviewAdjustFontSize(delta: number) {
+	const current = parseInt(evtPreviewToolbar.value?.size ?? '12') || 12;
+	const newSize = Math.max(8, Math.min(72, current + delta));
+	evtPreviewSetFontSize(String(newSize));
+}
+
+function openEvtPreviewLinkDialog() {
+	evtPreviewLinkSavedRange = evtPreviewSavedSelection;
+	evtPreviewSavedSelection = null;
+	const sel = window.getSelection();
+	const anchor = sel?.focusNode?.parentElement?.closest('a') as HTMLAnchorElement | null;
+	evtPreviewLinkUrl.value = anchor?.getAttribute('href') ?? '';
+	showEvtPreviewLinkDialog.value = true;
+	nextTick(() => evtPreviewLinkInputRef.value?.focus());
+}
+
+function confirmEvtPreviewLink() {
+	showEvtPreviewLinkDialog.value = false;
+	if (!evtPreviewLinkSavedRange) return;
+	const sel = window.getSelection();
+	if (sel) { sel.removeAllRanges(); sel.addRange(evtPreviewLinkSavedRange); }
+	if (evtPreviewLinkUrl.value.trim()) {
+		document.execCommand('createLink', false, evtPreviewLinkUrl.value.trim());
+	} else {
+		document.execCommand('unlink');
+	}
+	eventPreviewEditorRef.value?.focus();
+	evtPreviewLinkSavedRange = null;
+}
+
+function cancelEvtPreviewLink() {
+	showEvtPreviewLinkDialog.value = false;
+	evtPreviewLinkSavedRange = null;
+}
+
 const dirtyFields = new Set<string>();
 const savedFields = ref<Record<string, number>>({});
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -441,6 +572,180 @@ const canForms = computed(() => {
 	if (!user.value || !activity.value) return false;
 	return canFormsHelper(activity.value, user.value.display_name, user.value.department);
 });
+
+const canPublishEvent = computed(() => {
+	if (!user.value || !activity.value) return false;
+	const p = myPermissions.value;
+	if (!p) return false;
+	if (p.event_publish_scope === 'all') return true;
+	if (p.event_publish_scope === 'own_dept' && activity.value.department && activity.value.department === user.value.department) return true;
+	if (p.event_publish_scope === 'own' && user.value.display_name && activity.value.responsible.includes(user.value.display_name)) return true;
+	return false;
+});
+
+function evtFormatDateLong(d: string): string {
+	return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
+		weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+	});
+}
+function evtFormatDateShort(d: string): string {
+	return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
+		day: '2-digit', month: '2-digit', year: 'numeric'
+	});
+}
+function evtFormatPrograms(act: Activity): string {
+	if (!act.programs.length) return '';
+	return act.programs.map(p => {
+		const dur = p.duration_minutes ? `${p.duration_minutes} min` : '';
+		const resp = p.responsible && p.responsible.length ? ' (' + p.responsible.join(', ') + ')' : '';
+		const desc = p.description ? ': ' + p.description : '';
+		return `${dur} – ${p.title}${resp}${desc}`;
+	}).join('\n');
+}
+
+function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): string {
+	// Handle {{formular_link}} and {{formular_link|Text}} → plain URL (strip custom label)
+	text = text.replace(/\{\{formular_link(?:\|[^}]*)?\}\}/gi, formUrl);
+	const vars: Record<string, string> = {
+		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
+		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
+		verantwortlich: act.responsible.join(', '), abteilung: act.department ?? '',
+		ziel: act.goal, material: act.material.map(m => m.name).join(', ') || '',
+		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
+	};
+	return text.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
+		const lk = key.toLowerCase();
+		return lk in vars ? vars[lk] : m;
+	});
+}
+
+function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): string {
+	const container = document.createElement('div');
+	container.innerHTML = text;
+	const vars: Record<string, string> = {
+		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
+		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
+		verantwortlich: act.responsible.join(', '), abteilung: act.department ?? '',
+		ziel: act.goal, material: act.material.map(m => m.name).join(', ') || '',
+		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
+	};
+	const replacer = (m: string, key: string) => { const lk = key.toLowerCase(); return lk in vars ? vars[lk] : m; };
+	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+	const textNodes: Text[] = [];
+	while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+	for (const node of textNodes) {
+		const original = node.nodeValue ?? '';
+		// Handle {{formular_link}} or {{formular_link|Eigener Text}} → <a> element
+		if (/\{\{formular_link(?:\|[^}]*)?\}\}/i.test(original)) {
+			const parts = original.split(/\{\{formular_link(?:\|([^}]*))?\}\}/i);
+			const parent = node.parentNode!;
+			for (let i = 0; i < parts.length; i++) {
+				if (i % 2 === 0) {
+					const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, replacer);
+					if (partText) parent.insertBefore(document.createTextNode(partText), node);
+				} else {
+					const a = document.createElement('a');
+					a.href = formUrl || '#';
+					a.textContent = parts[i] || 'Zum Formular';
+					parent.insertBefore(a, node);
+				}
+			}
+			parent.removeChild(node);
+			continue;
+		}
+		const replaced = original.replace(/\{\{(\w+)\}\}/gi, replacer);
+		if (replaced !== original) node.nodeValue = replaced;
+	}
+	// Handle {{formular_link}} in href attributes
+	for (const el of Array.from(container.querySelectorAll('[href]'))) {
+		const href = el.getAttribute('href') ?? '';
+		const replaced = href.replace(/\{\{formular_link(?:\|[^}]*)?\}\}/gi, formUrl)
+			.replace(/\{\{(\w+)\}\}/gi, replacer);
+		if (replaced !== href) el.setAttribute('href', replaced);
+	}
+	return container.innerHTML;
+}
+
+// Cache for the event template so we only fetch it once
+let cachedEventTemplate: { dept: string; tpl: import('../types').EventTemplate | null } | null = null;
+
+function setEvtPreviewEditorHtml(html: string) {
+	nextTick(() => {
+		if (eventPreviewEditorRef.value) eventPreviewEditorRef.value.innerHTML = html;
+	});
+}
+
+async function openEventPreviewModal() {
+	if (!activity.value) return;
+	eventPreviewTitle.value = activity.value.title;
+	showEventPreview.value = true;
+	setEvtPreviewEditorHtml('');
+
+	const dept = activity.value.department;
+	if (!dept) return;
+
+	let tpl: import('../types').EventTemplate | null = null;
+	if (cachedEventTemplate && cachedEventTemplate.dept === dept) {
+		tpl = cachedEventTemplate.tpl;
+	} else {
+		tpl = await fetchEventTemplate(dept);
+		cachedEventTemplate = { dept, tpl };
+	}
+
+	if (tpl && (tpl.title || tpl.body) && activity.value) {
+		eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value, eventFormUrl.value);
+		setEvtPreviewEditorHtml(evtSubstituteVarsHtml(tpl.body, activity.value, eventFormUrl.value));
+	}
+}
+
+async function handlePublishEventClick() {
+	if (!activity.value) return;
+
+	// If already published, show existing publication data
+	if (eventPublication.value) {
+		eventPreviewTitle.value = eventPublication.value.title;
+		showEventPreview.value = true;
+		setEvtPreviewEditorHtml(eventPublication.value.body_html);
+		return;
+	}
+
+	// Check if a form exists for this activity
+	const existingForm = await fetchForm(id);
+	if (!existingForm) {
+		showNoFormForEventDialog.value = true;
+		return;
+	}
+	eventFormUrl.value = `${window.location.origin}/forms/${existingForm.public_slug}`;
+	await openEventPreviewModal();
+}
+
+async function publishWithoutForm() {
+	showNoFormForEventDialog.value = false;
+	eventFormUrl.value = '';
+	await openEventPreviewModal();
+}
+
+async function confirmPublishEvent() {
+	if (!activity.value) return;
+	// Sync editor content before publishing
+	if (eventPreviewEditorRef.value) eventPreviewBody.value = eventPreviewEditorRef.value.innerHTML;
+	eventPublishing.value = true;
+	const result = await publishEvent(id, eventPreviewTitle.value, eventPreviewBody.value);
+	eventPublishing.value = false;
+	if (result) {
+		eventPublication.value = result;
+		showEventPreview.value = false;
+	}
+}
+
+async function confirmUnpublishEvent() {
+	eventUnpublishing.value = true;
+	await unpublishEvent(id);
+	eventUnpublishing.value = false;
+	eventPublication.value = null;
+	showUnpublishConfirm.value = false;
+	showEventPreview.value = false;
+}
 
 let liveParticipantsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let detailDeferredLoadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -957,6 +1262,7 @@ onMounted(async () => {
 			attachments.value = items;
 		});
 		void fetchShareLink();
+		void fetchPublication(id).then(pub => { eventPublication.value = pub; });
 		void Promise.allSettled([
 			fetchDepartments(),
 			fetchLocations(),
@@ -1499,6 +1805,10 @@ function rgbToHex(rgb: string): string {
 }
 
 let progSavedSelection: Range | null = null;
+let progLinkSavedRange: Range | null = null;
+const showProgLinkDialog = ref(false);
+const progLinkUrl = ref('');
+const progLinkInputRef = ref<HTMLInputElement | null>(null);
 
 function progSaveSelection() {
 	const sel = window.getSelection();
@@ -1565,6 +1875,37 @@ function progAdjustFontSize(i: number, delta: number) {
 	const newSize = Math.max(8, Math.min(72, current + delta));
 	progSetFontSize(i, String(newSize));
 	if (progToolbar.value) progToolbar.value.size = String(newSize);
+}
+
+function openProgLinkDialog() {
+	progLinkSavedRange = progSavedSelection;
+	progSavedSelection = null;
+	const sel = window.getSelection();
+	const anchor = sel?.focusNode?.parentElement?.closest('a') as HTMLAnchorElement | null;
+	progLinkUrl.value = anchor?.getAttribute('href') ?? '';
+	showProgLinkDialog.value = true;
+	nextTick(() => progLinkInputRef.value?.focus());
+}
+
+function confirmProgLink() {
+	showProgLinkDialog.value = false;
+	if (!progLinkSavedRange) return;
+	const sel = window.getSelection();
+	if (sel) { sel.removeAllRanges(); sel.addRange(progLinkSavedRange); }
+	if (progLinkUrl.value.trim()) {
+		document.execCommand('createLink', false, progLinkUrl.value.trim());
+	} else {
+		document.execCommand('unlink');
+	}
+	const idx = progToolbar.value?.idx ?? 0;
+	progEditorRefs.value[idx]?.focus();
+	onProgDescInput(idx);
+	progLinkSavedRange = null;
+}
+
+function cancelProgLink() {
+	showProgLinkDialog.value = false;
+	progLinkSavedRange = null;
 }
 
 function onProgEditorFocus(i: number) {
@@ -1989,6 +2330,25 @@ function copyShareLink() {
 				title="Kein Zugriff auf Mailversand"
 			>
 				📧 Mail
+			</button>
+			<!-- Event publish -->
+			<button
+				v-if="activity && mode === 'view' && !eventPublication"
+				class="btn-mail"
+				:disabled="!canPublishEvent"
+				:title="canPublishEvent ? 'Als Event veröffentlichen' : 'Keine Berechtigung zum Veröffentlichen'"
+				@click="handlePublishEventClick"
+			>
+				🌐 Veröffentlichen
+			</button>
+			<button
+				v-else-if="activity && mode === 'view' && eventPublication"
+				class="btn-mail btn-mail--active"
+				:disabled="!canPublishEvent"
+				:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : eventPublication.wp_event_id ? 'Veröffentlicht + WordPress synchronisiert' : 'Event veröffentlicht (WordPress nicht konfiguriert)'"
+				@click="handlePublishEventClick"
+			>
+				{{ eventPublication.wp_event_id ? '✅ Veröffentlicht (WP)' : '✅ Veröffentlicht' }}
 			</button>
 			<!-- Share link -->
 			<div v-if="activity && mode === 'view'" class="share-link-wrap">
@@ -2636,6 +2996,8 @@ function copyShareLink() {
 										<button type="button" :class="{'toolbar-btn--active': progToolbar.ol}" @mousedown.prevent @click="progExecCmd(i, 'insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
 										<span class="toolbar-sep"></span>
 										<button type="button" @mousedown.prevent @click="progExecCmd(i, 'removeFormat')" title="Formatierung entfernen">✕ Format</button>
+										<span class="toolbar-sep"></span>
+										<button type="button" @mousedown="progSaveSelection" @click="openProgLinkDialog" title="Link einfügen">🔗 Link</button>
 									</div>
 									<div
 										:ref="(el) => setProgEditorRef(el, i)"
@@ -3045,7 +3407,106 @@ function copyShareLink() {
 		</div>
 	</div>
 
-	<!-- No-form dialog -->
+	<!-- Event publish preview modal -->
+	<div v-if="showEventPreview" class="modal-backdrop" @click.self="showEventPreview = false">
+		<div class="modal" style="max-width: 640px;">
+			<div style="display: flex; align-items: center; justify-content: space-between;">
+				<h2 class="modal-title" style="margin: 0;">Event-Vorschau</h2>
+				<a
+					v-if="eventPublication?.wp_event_id && config.WP_URL"
+					:href="`${config.WP_URL}/wp-admin/post.php?post=${eventPublication.wp_event_id}&action=edit`"
+					target="_blank"
+					rel="noopener"
+					class="wp-id-link"
+					title="In WordPress bearbeiten"
+				>WP #{{ eventPublication.wp_event_id }}</a>
+				<span
+					v-else-if="eventPublication?.wp_event_id"
+					class="wp-id-link"
+				>WP #{{ eventPublication.wp_event_id }}</span>
+			</div>
+			<div class="event-preview-form">
+				<!-- Read-only meta info -->
+				<div class="event-preview-meta">
+					<DepartmentBadge v-if="activity?.department" :department="activity.department" />
+					<span v-if="activity?.date" class="event-preview-meta-item">{{ evtFormatDateLong(activity.date) }}</span>
+					<span v-if="activity?.start_time || activity?.end_time" class="event-preview-meta-item">{{ activity.start_time }}{{ activity.end_time ? ' – ' + activity.end_time : '' }}</span>
+				</div>
+				<label class="event-preview-label">Titel</label>
+				<input
+					v-model="eventPreviewTitle"
+					class="event-preview-input"
+					placeholder="Event-Titel"
+				/>
+				<label class="event-preview-label" style="margin-top: 12px;">Beschreibung</label>
+				<div class="rich-editor-toolbar">
+					<select class="toolbar-select" :value="evtPreviewToolbar?.font ?? 'Arial'" @change="evtPreviewExecCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
+						<option value="" disabled>Schriftart</option>
+						<option value="Arial" style="font-family:Arial">Arial</option>
+						<option value="Helvetica" style="font-family:Helvetica">Helvetica</option>
+						<option value="Georgia" style="font-family:Georgia">Georgia</option>
+						<option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
+						<option value="Courier New" style="font-family:'Courier New'">Courier New</option>
+						<option value="Verdana" style="font-family:Verdana">Verdana</option>
+						<option value="Trebuchet MS" style="font-family:'Trebuchet MS'">Trebuchet MS</option>
+					</select>
+					<input type="text" class="toolbar-select toolbar-select--narrow" :value="evtPreviewToolbar?.size ?? '12'" @mousedown="evtPreviewSaveSelection" @change="evtPreviewSetFontSize(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="evtPreviewSetFontSize(($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
+					<button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="evtPreviewAdjustFontSize(-2)" title="Kleiner">A−</button>
+					<button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="evtPreviewAdjustFontSize(2)" title="Grösser">A+</button>
+					<span class="toolbar-sep"></span>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.bold}" @mousedown.prevent @click="evtPreviewExecCmd('bold')" title="Fett"><b>B</b></button>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.italic}" @mousedown.prevent @click="evtPreviewExecCmd('italic')" title="Kursiv"><i>I</i></button>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.underline}" @mousedown.prevent @click="evtPreviewExecCmd('underline')" title="Unterstrichen"><u>U</u></button>
+					<span class="toolbar-sep"></span>
+					<label class="toolbar-color" title="Schriftfarbe" @mousedown="evtPreviewSaveSelection">
+						A
+						<input type="color" :value="evtPreviewToolbar?.color ?? '#000000'" @input="evtPreviewExecCmd('foreColor', ($event.target as HTMLInputElement).value)" />
+					</label>
+					<label class="toolbar-color toolbar-color--bg" title="Hintergrundfarbe" @mousedown="evtPreviewSaveSelection">
+						<span class="toolbar-color-icon">A</span>
+						<input type="color" :value="evtPreviewToolbar?.bgColor ?? '#ffffff'" @input="evtPreviewExecCmd('hiliteColor', ($event.target as HTMLInputElement).value)" />
+					</label>
+					<span class="toolbar-sep"></span>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.ul}" @mousedown.prevent @click="evtPreviewExecCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
+					<button type="button" :class="{'toolbar-btn--active': evtPreviewToolbar?.ol}" @mousedown.prevent @click="evtPreviewExecCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
+					<span class="toolbar-sep"></span>
+					<button type="button" @mousedown.prevent @click="evtPreviewExecCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
+					<span class="toolbar-sep"></span>
+					<button type="button" @mousedown="evtPreviewSaveSelection" @click="openEvtPreviewLinkDialog" title="Link einfügen">🔗 Link</button>
+				</div>
+				<div
+					ref="eventPreviewEditorRef"
+					class="rich-editor"
+					contenteditable="true"
+					@input="onEvtPreviewInput"
+					@focus="updateEvtPreviewToolbar"
+					@mouseup="updateEvtPreviewToolbar"
+					@keyup="updateEvtPreviewToolbar"
+					data-placeholder="Beschreibung…"
+				></div>
+			</div>
+			<div class="modal-actions">
+				<button class="btn-cancel" @click="showEventPreview = false">Abbrechen</button>
+				<button
+					v-if="eventPublication"
+					class="btn-danger"
+					:disabled="eventPublishing || eventUnpublishing"
+					@click="showUnpublishConfirm = true"
+				>
+					🗑 Löschen
+				</button>
+				<button
+					class="btn-primary"
+					:disabled="eventPublishing || eventUnpublishing || !eventPreviewTitle.trim()"
+					@click="confirmPublishEvent"
+				>
+					{{ eventPublishing ? 'Wird veröffentlicht…' : (eventPublication ? 'Aktualisieren' : 'Veröffentlichen') }}
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- No-form dialog (Mail flow) -->
 	<div v-if="showNoFormDialog" class="modal-backdrop" @click.self="showNoFormDialog = false">
 		<div class="modal modal--info">
 			<h2 class="modal-title modal-title--info">Kein Formular vorhanden</h2>
@@ -3057,6 +3518,40 @@ function copyShareLink() {
 				<button class="btn-cancel" @click="showNoFormDialog = false">Abbrechen</button>
 				<button class="btn-cancel" @click="showNoFormDialog = false; router.push(`/activities/${id}/mail`)">Mail erstellen</button>
 				<button class="btn-info" @click="showNoFormDialog = false; router.push(`/activities/${id}/forms`)">Formular erstellen</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- No-form dialog (Event publish flow) -->
+	<div v-if="showNoFormForEventDialog" class="modal-backdrop" @click.self="showNoFormForEventDialog = false">
+		<div class="modal modal--info">
+			<h2 class="modal-title modal-title--info">Kein Formular vorhanden</h2>
+			<p class="modal-warning">
+				Für diese Aktivität wurde noch kein Anmeldeformular erstellt.
+				Die Variable <code>{{formular_link}}</code> wird im Event-Text nicht ersetzt.
+				Möchtest du zuerst ein Formular erstellen?
+			</p>
+			<div class="modal-actions">
+				<button class="btn-cancel" @click="showNoFormForEventDialog = false">Abbrechen</button>
+				<button class="btn-cancel" @click="showNoFormForEventDialog = false; router.push(`/activities/${id}/forms`)">Formular erstellen</button>
+				<button class="btn-primary" @click="publishWithoutForm">Trotzdem veröffentlichen</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Unpublish confirmation dialog -->
+	<div v-if="showUnpublishConfirm" class="modal-backdrop" @click.self="showUnpublishConfirm = false">
+		<div class="modal modal--danger">
+			<h2 class="modal-title modal-title--danger">Event löschen?</h2>
+			<p class="modal-warning">
+				Das Event wird aus dem DPW entfernt{{ eventPublication?.wp_event_id ? ' und aus WordPress gelöscht' : '' }}.
+				Diese Aktion kann nicht rückgängig gemacht werden.
+			</p>
+			<div class="modal-actions">
+				<button class="btn-cancel" @click="showUnpublishConfirm = false">Abbrechen</button>
+				<button class="btn-danger" :disabled="eventUnpublishing" @click="confirmUnpublishEvent">
+					{{ eventUnpublishing ? 'Wird gelöscht…' : 'Endgültig löschen' }}
+				</button>
 			</div>
 		</div>
 	</div>
@@ -3139,6 +3634,46 @@ function copyShareLink() {
 						class="preview-modal__pdf"
 					></iframe>
 				</template>
+			</div>
+		</div>
+	</div>
+
+	<div v-if="showEvtPreviewLinkDialog" class="modal-backdrop" @click.self="cancelEvtPreviewLink">
+		<div class="modal link-modal">
+			<h2 class="modal-title">Link einfügen</h2>
+			<input
+				ref="evtPreviewLinkInputRef"
+				v-model="evtPreviewLinkUrl"
+				type="url"
+				class="link-modal-input"
+				placeholder="https://"
+				@keydown.enter.prevent="confirmEvtPreviewLink"
+				@keydown.escape.prevent="cancelEvtPreviewLink"
+			/>
+			<div class="modal-actions">
+				<button class="btn-cancel" @mousedown.prevent @click="cancelEvtPreviewLink">Abbrechen</button>
+				<button v-if="evtPreviewLinkUrl" class="btn-secondary" @mousedown.prevent @click="() => { evtPreviewLinkUrl = ''; confirmEvtPreviewLink() }">Link entfernen</button>
+				<button class="btn-primary" @mousedown.prevent @click="confirmEvtPreviewLink">{{ evtPreviewLinkUrl ? 'Einfügen' : 'OK' }}</button>
+			</div>
+		</div>
+	</div>
+
+	<div v-if="showProgLinkDialog" class="modal-backdrop" @click.self="cancelProgLink">
+		<div class="modal link-modal">
+			<h2 class="modal-title">Link einfügen</h2>
+			<input
+				ref="progLinkInputRef"
+				v-model="progLinkUrl"
+				type="url"
+				class="link-modal-input"
+				placeholder="https://"
+				@keydown.enter.prevent="confirmProgLink"
+				@keydown.escape.prevent="cancelProgLink"
+			/>
+			<div class="modal-actions">
+				<button class="btn-cancel" @mousedown.prevent @click="cancelProgLink">Abbrechen</button>
+				<button v-if="progLinkUrl" class="btn-secondary" @mousedown.prevent @click="() => { progLinkUrl = ''; confirmProgLink() }">Link entfernen</button>
+				<button class="btn-primary" @mousedown.prevent @click="confirmProgLink">{{ progLinkUrl ? 'Einfügen' : 'OK' }}</button>
 			</div>
 		</div>
 	</div>

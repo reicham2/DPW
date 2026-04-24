@@ -1126,6 +1126,174 @@ std::optional<MailTemplate> Database::upsert_mail_template(const std::string &de
     return t;
 }
 
+// ---- Event templates ---------------------------------------------------------
+
+EventTemplate Database::row_to_event_template(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    EventTemplate t;
+    t.id = col("id") ? col("id") : "";
+    t.department = col("department") ? col("department") : "";
+    t.title = col("title") ? col("title") : "";
+    t.body = col("body") ? col("body") : "";
+    t.created_at = col("created_at") ? col("created_at") : "";
+    t.updated_at = col("updated_at") ? col("updated_at") : "";
+    return t;
+}
+
+std::vector<EventTemplate> Database::list_event_templates()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+                           "SELECT id, department, title, body, created_at, updated_at "
+                           "FROM event_templates ORDER BY department");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    std::vector<EventTemplate> out;
+    for (int i = 0; i < PQntuples(res); ++i)
+        out.push_back(row_to_event_template(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<EventTemplate> Database::get_event_template_by_department(const std::string &department)
+{
+    ensure_connected();
+    const char *params[1] = {department.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, department, title, body, created_at, updated_at "
+                                 "FROM event_templates WHERE department = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    EventTemplate t = row_to_event_template(res, 0);
+    PQclear(res);
+    return t;
+}
+
+std::optional<EventTemplate> Database::upsert_event_template(const std::string &department,
+                                                              const std::string &title,
+                                                              const std::string &body)
+{
+    ensure_connected();
+    const char *params[3] = {department.c_str(), title.c_str(), body.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO event_templates (department, title, body) "
+                                 "VALUES ($1, $2, $3) "
+                                 "ON CONFLICT (department) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body "
+                                 "RETURNING id, department, title, body, created_at, updated_at",
+                                 3, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    EventTemplate t = row_to_event_template(res, 0);
+    PQclear(res);
+    return t;
+}
+
+// ---- Event publications -----------------------------------------------------
+
+EventPublication Database::row_to_event_publication(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    EventPublication p;
+    p.id = col("id") ? col("id") : "";
+    p.activity_id = col("activity_id") ? col("activity_id") : "";
+    p.published_by = col("published_by") ? col("published_by") : "";
+    p.title = col("title") ? col("title") : "";
+    p.body_html = col("body_html") ? col("body_html") : "";
+    p.wp_event_id = col("wp_event_id") ? col("wp_event_id") : "";
+    p.published_at = col("published_at") ? col("published_at") : "";
+    return p;
+}
+
+std::optional<EventPublication> Database::get_event_publication(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, published_by, title, body_html, wp_event_id, published_at "
+                                 "FROM event_publications WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    EventPublication p = row_to_event_publication(res, 0);
+    PQclear(res);
+    return p;
+}
+
+std::optional<EventPublication> Database::upsert_event_publication(const std::string &activity_id,
+                                                                    const std::string &published_by,
+                                                                    const std::string &title,
+                                                                    const std::string &body_html)
+{
+    ensure_connected();
+    const char *params[4] = {activity_id.c_str(), published_by.c_str(), title.c_str(), body_html.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO event_publications (activity_id, published_by, title, body_html) "
+                                 "VALUES ($1, $2, $3, $4) "
+                                 "ON CONFLICT (activity_id) DO UPDATE SET "
+                                 "published_by = EXCLUDED.published_by, title = EXCLUDED.title, "
+                                 "body_html = EXCLUDED.body_html, published_at = NOW() "
+                                 "RETURNING id, activity_id, published_by, title, body_html, wp_event_id, published_at",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    EventPublication p = row_to_event_publication(res, 0);
+    PQclear(res);
+    return p;
+}
+
+bool Database::update_event_publication_wp_id(const std::string &activity_id, const std::string &wp_event_id)
+{
+    ensure_connected();
+    const char *params[2] = {wp_event_id.c_str(), activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE event_publications SET wp_event_id = $1 WHERE activity_id = $2",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+bool Database::delete_event_publication(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM event_publications WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
 // ---- Sent mails log ---------------------------------------------------------
 
 SentMail Database::row_to_sent_mail(PGresult *res, int row)
@@ -2379,6 +2547,8 @@ RolePermission Database::row_to_role_perm(PGresult *res, int row)
     rp.mail_templates_scope = col("mail_templates_scope") ? col("mail_templates_scope") : "none";
     rp.form_scope = col("form_scope") ? col("form_scope") : "none";
     rp.form_templates_scope = col("form_templates_scope") ? col("form_templates_scope") : "none";
+    rp.event_templates_scope = col("event_templates_scope") ? col("event_templates_scope") : "none";
+    rp.event_publish_scope = col("event_publish_scope") ? col("event_publish_scope") : "none";
     rp.user_dept_scope = col("user_dept_scope") ? col("user_dept_scope") : "none";
     rp.user_role_scope = col("user_role_scope") ? col("user_role_scope") : "none";
     rp.locations_manage_scope = col("locations_manage_scope") ? col("locations_manage_scope") : "none";
@@ -2395,6 +2565,7 @@ std::vector<RolePermission> Database::list_role_permissions()
                            "       activity_edit_scope, "
                            "       mail_send_scope, "
                            "       mail_templates_scope, form_scope, form_templates_scope, "
+                           "       event_templates_scope, event_publish_scope, "
                            "       user_dept_scope, user_role_scope, locations_manage_scope "
                            "FROM role_permissions ORDER BY role");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -2423,6 +2594,7 @@ std::optional<RolePermission> Database::get_role_permission(const std::string &r
                                  "       activity_edit_scope, "
                                  "       mail_send_scope, "
                                  "       mail_templates_scope, form_scope, form_templates_scope, "
+                                 "       event_templates_scope, event_publish_scope, "
                                  "       user_dept_scope, user_role_scope, locations_manage_scope "
                                  "FROM role_permissions WHERE role = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -2451,6 +2623,8 @@ bool Database::update_role_permission(const std::string &role,
                                       const std::string &mail_templates_scope,
                                       const std::string &form_scope,
                                       const std::string &form_templates_scope,
+                                      const std::string &event_templates_scope,
+                                      const std::string &event_publish_scope,
                                       const std::string &user_dept_scope,
                                       const std::string &user_role_scope,
                                       const std::string &locations_manage_scope)
@@ -2468,26 +2642,31 @@ bool Database::update_role_permission(const std::string &role,
     const char *p10 = mail_templates_scope.c_str();
     const char *p11 = form_scope.c_str();
     const char *p12 = form_templates_scope.c_str();
-    const char *p13 = user_dept_scope.c_str();
-    const char *p14 = user_role_scope.c_str();
-    const char *p15 = locations_manage_scope.c_str();
-    const char *params[15] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15};
+    const char *p13 = event_templates_scope.c_str();
+    const char *p14 = event_publish_scope.c_str();
+    const char *p15 = user_dept_scope.c_str();
+    const char *p16 = user_role_scope.c_str();
+    const char *p17 = locations_manage_scope.c_str();
+    const char *params[17] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, "
                                  "can_read_all_depts, can_write_all_depts, "
                                  "activity_read_scope, activity_create_scope, activity_edit_scope, "
                                  "mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, "
+                                 "event_templates_scope, event_publish_scope, "
                                  "user_dept_scope, user_role_scope, locations_manage_scope) "
-                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) "
+                                 "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, "
+                                 "$6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) "
                                  "ON CONFLICT (role) DO UPDATE SET "
                                  "can_read_own_dept = $2::boolean, can_write_own_dept = $3::boolean, "
                                  "can_read_all_depts = $4::boolean, can_write_all_depts = $5::boolean, "
                                  "activity_read_scope = $6, activity_create_scope = $7, activity_edit_scope = $8, "
                                  "mail_send_scope = $9, mail_templates_scope = $10, "
                                  "form_scope = $11, form_templates_scope = $12, "
-                                 "user_dept_scope = $13, user_role_scope = $14, "
-                                 "locations_manage_scope = $15",
-                                 15, nullptr, params, nullptr, nullptr, 0);
+                                 "event_templates_scope = $13, event_publish_scope = $14, "
+                                 "user_dept_scope = $15, user_role_scope = $16, "
+                                 "locations_manage_scope = $17",
+                                 17, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;

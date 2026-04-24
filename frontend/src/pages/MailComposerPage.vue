@@ -39,6 +39,10 @@ const curUl = ref(false)
 const curOl = ref(false)
 const curBgColor = ref('#ffffff')
 let savedSelection: Range | null = null
+let linkSavedRange: Range | null = null
+const showLinkDialog = ref(false)
+const linkUrl = ref('')
+const linkInputRef = ref<HTMLInputElement | null>(null)
 
 // Sent mail state
 const sentMails = ref<SentMail[]>([])
@@ -254,21 +258,21 @@ function replaceTemplateVars(text: string, act: Activity): string {
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
   for (const node of textNodes) {
     const original = node.nodeValue ?? ''
-    // Handle {{formular_link}} separately – replace with an <a> element
-    if (/\{\{formular_link\}\}/i.test(original)) {
-      const parts = original.split(/\{\{formular_link\}\}/i)
+    // Handle {{formular_link}} or {{formular_link|Eigener Text}} – replace with an <a> element
+    if (/\{\{formular_link(?:\|[^}]*)?\}\}/i.test(original)) {
+      const parts = original.split(/\{\{formular_link(?:\|([^}]*))?\}\}/i)
       const parent = node.parentNode!
       for (let i = 0; i < parts.length; i++) {
-        // Replace other vars in each text part
-        const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, (m, key) => {
-          const lk = key.toLowerCase()
-          return lk in vars ? vars[lk] : m
-        })
-        if (partText) parent.insertBefore(document.createTextNode(partText), node)
-        if (i < parts.length - 1) {
+        if (i % 2 === 0) {
+          const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, (m, key) => {
+            const lk = key.toLowerCase()
+            return lk in vars ? vars[lk] : m
+          })
+          if (partText) parent.insertBefore(document.createTextNode(partText), node)
+        } else {
           const a = document.createElement('a')
           a.href = formLink
-          a.textContent = 'Zum Formular'
+          a.textContent = parts[i] || 'Zum Formular'
           parent.insertBefore(a, node)
         }
       }
@@ -448,6 +452,35 @@ function saveSelection() {
   if (sel?.rangeCount && editorRef.value?.contains(sel.anchorNode)) {
     savedSelection = sel.getRangeAt(0).cloneRange()
   }
+}
+
+function openLinkDialog() {
+  linkSavedRange = savedSelection
+  savedSelection = null
+  const sel = window.getSelection()
+  const anchor = sel?.focusNode?.parentElement?.closest('a') as HTMLAnchorElement | null
+  linkUrl.value = anchor?.getAttribute('href') ?? ''
+  showLinkDialog.value = true
+  nextTick(() => linkInputRef.value?.focus())
+}
+
+function confirmLink() {
+  showLinkDialog.value = false
+  if (!linkSavedRange) return
+  const sel = window.getSelection()
+  if (sel) { sel.removeAllRanges(); sel.addRange(linkSavedRange) }
+  if (linkUrl.value.trim()) {
+    document.execCommand('createLink', false, linkUrl.value.trim())
+  } else {
+    document.execCommand('unlink')
+  }
+  editorRef.value?.focus()
+  linkSavedRange = null
+}
+
+function cancelLink() {
+  showLinkDialog.value = false
+  linkSavedRange = null
 }
 
 function setFontSize(size: string) {
@@ -904,6 +937,8 @@ async function cancelAndRevert() {
 					<button type="button" :class="{'toolbar-btn--active': curOl}" @mousedown.prevent @click="execCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
 					<span class="toolbar-sep"></span>
 					<button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
+					<span class="toolbar-sep"></span>
+					<button type="button" @mousedown="saveSelection" @click="openLinkDialog" title="Link einfügen">🔗 Link</button>
 				</div>
 				<div
 					ref="editorRef"
@@ -931,4 +966,24 @@ async function cancelAndRevert() {
 
 		<p v-else class="loading">Laden...</p>
 	</main>
+
+	<div v-if="showLinkDialog" class="modal-backdrop" @click.self="cancelLink">
+		<div class="modal link-modal">
+			<h2 class="modal-title">Link einfügen</h2>
+			<input
+				ref="linkInputRef"
+				v-model="linkUrl"
+				type="url"
+				class="link-modal-input"
+				placeholder="https://"
+				@keydown.enter.prevent="confirmLink"
+				@keydown.escape.prevent="cancelLink"
+			/>
+			<div class="modal-actions">
+				<button class="btn-cancel" @mousedown.prevent @click="cancelLink">Abbrechen</button>
+				<button v-if="linkUrl" class="btn-secondary" @mousedown.prevent @click="() => { linkUrl = ''; confirmLink() }">Link entfernen</button>
+				<button class="btn-primary" @mousedown.prevent @click="confirmLink">{{ linkUrl ? 'Einfügen' : 'OK' }}</button>
+			</div>
+		</div>
+	</div>
 </template>

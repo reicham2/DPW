@@ -23,6 +23,10 @@ RUN mkdir -p src && for f in main auth cache db handlers ws_manager graph utils;
   echo "// stub" > src/$f.cpp; \
   done && touch src/auth.hpp src/cache.hpp src/db.hpp src/handlers.hpp src/models.hpp \
   src/ws_manager.hpp src/graph.hpp src/utils.hpp
+RUN mkdir -p src && for f in main auth cache db handlers ws_manager graph utils wp_client; do \
+  echo "// stub" > src/$f.cpp; \
+  done && touch src/auth.hpp src/cache.hpp src/db.hpp src/handlers.hpp src/models.hpp \
+  src/ws_manager.hpp src/graph.hpp src/utils.hpp src/wp_client.hpp
 
 ARG BACKEND_BUILD_TYPE=Release
 ARG ENABLE_DEBUG_AUTH=0
@@ -51,7 +55,10 @@ RUN apk add --no-cache \
   curl \
   ca-certificates \
   libstdc++ \
-  libgcc
+  libgcc \
+  tzdata
+
+ENV TZ=Europe/Zurich
 
 COPY --from=build /src/build/server /usr/local/bin/server
 

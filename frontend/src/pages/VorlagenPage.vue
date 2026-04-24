@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
 import MailTemplatePage from './MailTemplatePage.vue'
 import FormTemplatePage from './FormTemplatePage.vue'
+import EventTemplatePage from './EventTemplatePage.vue'
 
 const router = useRouter()
 const { myPermissions, fetchMyPermissions } = usePermissions()
@@ -14,17 +15,21 @@ const canSeeMailTab = computed(() =>
 const canSeeFormTab = computed(() =>
   myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none'
 )
+const canSeeEventTab = computed(() =>
+  myPermissions.value?.event_templates_scope && myPermissions.value.event_templates_scope !== 'none'
+)
 
-const activeTab = ref<'mail' | 'form'>('mail')
+const activeTab = ref<'mail' | 'form' | 'event'>('mail')
 
 onMounted(async () => {
   await fetchMyPermissions()
-  if (!canSeeMailTab.value && !canSeeFormTab.value) {
+  if (!canSeeMailTab.value && !canSeeFormTab.value && !canSeeEventTab.value) {
     router.replace('/')
     return
   }
-  if (!canSeeMailTab.value && canSeeFormTab.value) {
-    activeTab.value = 'form'
+  if (!canSeeMailTab.value) {
+    if (canSeeFormTab.value) activeTab.value = 'form'
+    else if (canSeeEventTab.value) activeTab.value = 'event'
   }
 })
 </script>
@@ -59,11 +64,24 @@ onMounted(async () => {
       </svg>
       Formular-Vorlagen
     </button>
+    <button
+      v-if="canSeeEventTab"
+      class="tab-btn"
+      :class="{ 'tab-btn--active': activeTab === 'event' }"
+      @click="activeTab = 'event'"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="12" height="12" rx="1.5" />
+        <path d="M2 6h12M5 2v3M11 2v3" />
+      </svg>
+      Event-Vorlagen
+    </button>
   </nav>
 
   <div class="tab-content">
     <MailTemplatePage v-if="activeTab === 'mail' && canSeeMailTab" />
     <FormTemplatePage v-if="activeTab === 'form' && canSeeFormTab" />
+    <EventTemplatePage v-if="activeTab === 'event' && canSeeEventTab" />
   </div>
 </template>
 

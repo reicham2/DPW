@@ -139,6 +139,25 @@ export interface MailTemplate {
 	updated_at: string;
 }
 
+export interface EventTemplate {
+	id: string;
+	department: Department;
+	title: string;
+	body: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface EventPublication {
+	id: string;
+	activity_id: string;
+	published_by: string;
+	title: string;
+	body_html: string;
+	wp_event_id: string | null;
+	published_at: string;
+}
+
 export interface SentMail {
 	id: string;
 	activity_id: string;
@@ -198,6 +217,8 @@ export interface RolePermission {
 	mail_templates_scope: 'none' | 'own_dept' | 'all';
 	form_scope: 'none' | 'own' | 'same_dept' | 'all';
 	form_templates_scope: 'none' | 'own_dept' | 'all';
+	event_templates_scope: 'none' | 'own_dept' | 'all';
+	event_publish_scope: 'none' | 'own' | 'own_dept' | 'all';
 	user_dept_scope: 'none' | 'own' | 'own_dept' | 'all';
 	user_role_scope: 'none' | 'own' | 'own_dept' | 'all';
 	locations_manage_scope: 'none' | 'all';

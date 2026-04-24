@@ -43,8 +43,16 @@ async function getMsal(): Promise<PublicClientApplication> {
 	return msalInstance;
 }
 
+let cachedIdToken: string | null = null;
+let cachedIdTokenExpiry = 0;
+
 export async function getIdToken(): Promise<string> {
 	if (DEBUG_AUTH_ENABLED && debugUserId) return `debug:${debugUserId}`;
+
+	// Return cached token if still valid (with 60s buffer before expiry)
+	if (cachedIdToken && Date.now() < cachedIdTokenExpiry - 60_000) {
+		return cachedIdToken;
+	}
 
 	const msal = await getMsal();
 	const account = msal.getActiveAccount();
@@ -52,10 +60,14 @@ export async function getIdToken(): Promise<string> {
 
 	try {
 		const result = await msal.acquireTokenSilent({ ...loginRequest, account });
+		cachedIdToken = result.idToken;
+		cachedIdTokenExpiry = result.expiresOn ? result.expiresOn.getTime() : Date.now() + 3600_000;
 		return result.idToken;
 	} catch {
 		// InteractionRequiredAuthError or similar — fall back to popup
 		const result = await msal.acquireTokenPopup({ ...loginRequest, account });
+		cachedIdToken = result.idToken;
+		cachedIdTokenExpiry = result.expiresOn ? result.expiresOn.getTime() : Date.now() + 3600_000;
 		return result.idToken;
 	}
 }
@@ -111,6 +123,8 @@ export async function login(): Promise<void> {
 
 export async function logout(): Promise<void> {
 	wsDisconnect();
+	cachedIdToken = null;
+	cachedIdTokenExpiry = 0;
 	if (!debugUserId) {
 		const msal = await getMsal();
 		msal.setActiveAccount(null);
