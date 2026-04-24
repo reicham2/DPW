@@ -8,7 +8,6 @@ services:
       POSTGRES_PASSWORD: activities_pass
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U activities_user -d activities" ]
       interval: 2s
@@ -29,8 +28,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
       args:
         BACKEND_BUILD_TYPE: "${BACKEND_BUILD_TYPE:-Release}"
         ENABLE_DEBUG_AUTH: "${ENABLE_DEBUG_AUTH:-0}"

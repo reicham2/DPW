@@ -110,7 +110,7 @@ jobs:
       - name: Build backend image
         uses: docker/build-push-action@v6
         with:
-          context: ./backend
+          context: .
           file: ./backend/Dockerfile
           build-args: |
             BACKEND_BUILD_TYPE=Release
@@ -228,6 +228,50 @@ jobs:
           docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities \
             -c "\\dt" | grep -q activities
           echo "DB schema present"
+
+      - name: Verify snapshot rollback on sync failure
+        run: |
+          set -e
+          cp db/init.sql /tmp/init.sql.bak
+
+          # Marker row must survive a failed sync + snapshot restore.
+          docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities \
+            -c "INSERT INTO predefined_locations(name) VALUES ('CI_SNAPSHOT_MARKER') ON CONFLICT (name) DO NOTHING;"
+
+          # Inject a destructive statement that should fail post-sync verification.
+          cat >/tmp/rollback-test.sql <<'EOF'
+          -- TEMP CI TEST: force snapshot restore path
+          DROP TABLE IF EXISTS role_permissions;
+          EOF
+          cat /tmp/rollback-test.sql >> db/init.sql
+
+          BACKEND_BUILD_TYPE=Release ENABLE_DEBUG_AUTH=0 \
+            docker compose -f docker-compose-dev.yml up -d --no-deps --build --force-recreate backend
+
+          # Backend is expected to restart/fail with the bad init.sql, but DB must be restored.
+          docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities \
+            -c "SELECT to_regclass('public.role_permissions')" | grep -q role_permissions
+          docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities \
+            -c "SELECT COUNT(*) FROM predefined_locations WHERE name='CI_SNAPSHOT_MARKER';" | grep -q "1"
+
+          # Restore clean init.sql and ensure backend becomes healthy again.
+          mv /tmp/init.sql.bak db/init.sql
+          BACKEND_BUILD_TYPE=Release ENABLE_DEBUG_AUTH=0 \
+            docker compose -f docker-compose-dev.yml up -d --no-deps --build --force-recreate backend
+
+          echo "Waiting for backend recovery..."
+          for i in $(seq 1 30); do
+            if docker compose -f docker-compose-dev.yml exec -T backend curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
+              echo "Backend recovered after rollback test"
+              exit 0
+            fi
+            echo "Attempt $i/30"
+            sleep 2
+          done
+
+          echo "Backend did not recover"
+          docker compose -f docker-compose-dev.yml logs backend
+          exit 1
 
       - name: Print container status
         if: always()

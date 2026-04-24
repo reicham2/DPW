@@ -34,6 +34,28 @@ make up
 make db-seed
 ```
 
+## Datenbank-Schema-Sync (init.sql)
+
+Es gibt bewusst keine separaten Migrationsdateien. `db/init.sql` ist die einzige Quelle fuer das gesamte Schema.
+
+Beim Start des Backends wird `init.sql` automatisch in einer Transaktion ausgefuehrt, auch gegen bereits existierende Datenbanken.
+Dadurch kann ein neues Backend-Image mit einer alten DB gestartet werden, und die DB wird auf den aktuellen Stand gebracht.
+
+`init.sql` wird mit dem Backend-Container ausgeliefert (`/etc/dpw/init.sql`) und nicht als Volume gemountet.
+
+Eigenschaften:
+
+1. Advisory-Lock verhindert parallele Schema-Syncs durch mehrere Backend-Instanzen.
+2. Ausfuehrung ist transaktional (bei Fehlern Rollback).
+3. Vor dem Sync wird ein DB-Snapshot erzeugt; bei Fehlern waehrend oder nach dem Sync wird automatisch auf den Snapshot zurueckgespielt.
+4. Backend und Schema-Sync nutzen dieselbe Datei `db/init.sql`.
+
+Wichtig fuer zukuenftige Schema-Aenderungen:
+
+1. Alle Aenderungen ausschliesslich in `db/init.sql` pflegen.
+2. Statements idempotent halten (`IF NOT EXISTS`, `ON CONFLICT`, additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`).
+3. Keine implizit destruktiven Aenderungen ohne explizite, beabsichtigte SQL-Logik.
+
 ### Nützliche Befehle
 
 | Befehl                     | Beschreibung                               |

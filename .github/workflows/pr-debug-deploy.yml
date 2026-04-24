@@ -37,6 +37,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Reset previous deployment state
+        run: |
+          PROJECT="${{ steps.slug.outputs.project }}"
+          docker compose -f docker-compose-dev.yml \
+            -p "$PROJECT" \
+            down -v --remove-orphans || true
+          docker rm -f "${PROJECT}-tunnel" 2>/dev/null || true
+          echo "Reset complete for: $PROJECT"
+
       - name: Avoid host port conflicts
         run: |
           PR_PORT=$((8100 + ${{ github.event.pull_request.number }} % 900))
