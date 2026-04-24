@@ -1413,8 +1413,8 @@ std::optional<EventTemplate> Database::get_event_template_by_department(const st
 }
 
 std::optional<EventTemplate> Database::upsert_event_template(const std::string &department,
-                                                              const std::string &title,
-                                                              const std::string &body)
+                                                             const std::string &title,
+                                                             const std::string &body)
 {
     ensure_connected();
     const char *params[3] = {department.c_str(), title.c_str(), body.c_str()};
@@ -1475,9 +1475,9 @@ std::optional<EventPublication> Database::get_event_publication(const std::strin
 }
 
 std::optional<EventPublication> Database::upsert_event_publication(const std::string &activity_id,
-                                                                    const std::string &published_by,
-                                                                    const std::string &title,
-                                                                    const std::string &body_html)
+                                                                   const std::string &published_by,
+                                                                   const std::string &title,
+                                                                   const std::string &body_html)
 {
     ensure_connected();
     const char *params[4] = {activity_id.c_str(), published_by.c_str(), title.c_str(), body_html.c_str()};
