@@ -8,21 +8,21 @@
 
 		<!-- Not found -->
 		<div v-else-if="notFound" class="error-state">
-			<div class="error-icon">🔍</div>
+			<div class="error-icon"><Search :size="28" aria-hidden="true" /></div>
 			<h2>Formular nicht gefunden</h2>
 			<p>Das gesuchte Formular existiert nicht oder wurde gelöscht.</p>
 		</div>
 
 		<!-- Error -->
 		<div v-else-if="error" class="error-state">
-			<div class="error-icon">⚠️</div>
+			<div class="error-icon"><TriangleAlert :size="28" aria-hidden="true" /></div>
 			<h2>Fehler</h2>
 			<p>{{ error }}</p>
 		</div>
 
 		<!-- Success confirmation -->
 		<div v-else-if="submitted" class="success-state">
-			<div class="success-icon">✅</div>
+			<div class="success-icon"><CheckCircle2 :size="28" aria-hidden="true" /></div>
 			<h2 class="success-title">
 				{{ form?.form_type === 'registration' ? 'Anmeldung erfolgreich!' : 'Abmeldung erfolgreich!' }}
 			</h2>
@@ -73,6 +73,7 @@ import { useRoute } from 'vue-router';
 import type { SignupForm } from '../types';
 import { useForms } from '../composables/useForms';
 import FormQuestion from '../components/FormQuestion.vue';
+import { Search, TriangleAlert, CheckCircle2 } from 'lucide-vue-next';
 
 const route = useRoute();
 const publicSlug = route.params.slug as string;

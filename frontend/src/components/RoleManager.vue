@@ -4,6 +4,7 @@ import { usePermissions } from '../composables/usePermissions'
 import ErrorAlert from './ErrorAlert.vue'
 import RoleBadge from './RoleBadge.vue'
 import { apiFetch } from '../composables/useApi'
+import { Info, TriangleAlert } from 'lucide-vue-next'
 import type { RolePermission, RoleDeptAccess } from '../types'
 
 const SCOPE_OPTIONS_MAIL_SEND = [
@@ -636,10 +637,10 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
             </button>
             <template v-if="expandedDeptAccess === r.name">
               <div v-if="globalCreateAll" class="scope-override-hint">
-                ℹ️ Globale Erstellberechtigung <strong>Alle</strong> gilt für alle Stufen — Mindest-Zugriff ist «Lesen und erstellen».
+                <Info :size="14" aria-hidden="true" /> Globale Erstellberechtigung <strong>Alle</strong> gilt für alle Stufen — Mindest-Zugriff ist «Lesen und erstellen».
               </div>
               <div v-else-if="globalReadAll" class="scope-override-hint">
-                ℹ️ Globale Leseberechtigung <strong>Alle</strong> gilt für alle Stufen — Mindest-Zugriff ist «Nur lesen».
+                <Info :size="14" aria-hidden="true" /> Globale Leseberechtigung <strong>Alle</strong> gilt für alle Stufen — Mindest-Zugriff ist «Nur lesen».
               </div>
               <div class="dept-access-grid">
                 <div class="perm-grid-header">
@@ -718,7 +719,7 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
     <!-- Delete modal: step 2 – final confirmation -->
     <div v-if="deleteTarget && deleteStep === 2" class="modal-backdrop" @click.self="cancelDelete">
       <div class="modal modal--danger">
-        <h2 class="modal-title modal-title--danger">⚠️ Rolle endgültig löschen?</h2>
+        <h2 class="modal-title modal-title--danger"><TriangleAlert :size="16" aria-hidden="true" /> Rolle endgültig löschen?</h2>
         <p class="modal-desc">Folgende Aktionen werden ausgeführt:</p>
 
         <ul class="confirm-list">

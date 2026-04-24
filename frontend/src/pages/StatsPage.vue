@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useActivities } from '../composables/useActivities'
 import { usePermissions } from '../composables/usePermissions'
-import { apiFetch } from '../composables/useApi'
-import type { Activity, ActivityExpectedWeather } from '../types'
+import type { Activity } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
@@ -28,9 +27,6 @@ const defaultFromIso = formatIsoDate(addMonths(today, -1))
 const rangeFrom = ref(defaultFromIso)
 const rangeTo = ref(todayIso)
 const selectedStage = ref<string | null>(null)
-const weatherByActivityId = ref<Record<string, ActivityExpectedWeather | null>>({})
-const weatherLoading = ref(false)
-const weatherPendingIds = new Set<string>()
 
 onMounted(() => {
   document.title = 'Statistik – DPWeb'
@@ -158,22 +154,78 @@ const weekdayRows = computed(() => {
   return weekdayOrder
     .map((label) => rows.find((row) => row.label === label) ?? { label, value: 0 })
 })
-const timeRows = computed(() => {
+type TimeWindow = { key: string; label: string; shortLabel: string; fromHour: number; toHour: number }
+
+const timeWindows: TimeWindow[] = Array.from({ length: 24 }, (_, h) => ({
+  key: String(h),
+  label: `${String(h).padStart(2, '0')}:00–${String(h).padStart(2, '0')}:59`,
+  shortLabel: h % 3 === 0 ? `${h}h` : '',
+  fromHour: h,
+  toHour: h,
+}))
+
+const timeChartSvg = computed(() => {
+  const W = 600, H = 230
+  const padL = 44, padR = 16, padT = 20, padB = 42
+  const chartW = W - padL - padR
+  const chartH = H - padT - padB
+
   const counts = new Map<string, number>()
+  for (const w of timeWindows) counts.set(w.key, 0)
   for (const activity of filteredActivities.value) {
     const start = parseMinutes(activity.start_time)
+    const end = parseMinutes(activity.end_time)
     if (start === null) continue
-    const label = hourLabel(Math.floor(start / 60))
-    counts.set(label, (counts.get(label) ?? 0) + 1)
+    const startHour = Math.floor(start / 60)
+    const endHour = end !== null ? Math.floor(end / 60) : startHour
+    // increment every hour the activity spans
+    for (let h = startHour; h <= Math.min(endHour, 23); h++) {
+      counts.set(String(h), (counts.get(String(h)) ?? 0) + 1)
+    }
   }
 
-  return Array.from({ length: 24 }, (_, hour) => {
-    const label = hourLabel(hour)
+  const values = timeWindows.map((w) => counts.get(w.key) ?? 0)
+  const maxValue = Math.max(...values, 1)
+  const slotW = chartW / timeWindows.length
+  const barW = slotW * 0.55
+
+  const bars = timeWindows.map((w, i) => {
+    const val = counts.get(w.key) ?? 0
+    const cx = padL + i * slotW + slotW / 2
+    const barH = (val / maxValue) * chartH
     return {
-      label,
-      value: counts.get(label) ?? 0,
+      label: w.label,
+      shortLabel: w.shortLabel,
+      value: val,
+      cx,
+      barX: cx - barW / 2,
+      barY: padT + chartH - barH,
+      barW,
+      barH,
+      isPeak: val > 0 && val === maxValue,
     }
   })
+
+  // smooth cubic bezier curve through bar tops
+  const pts = bars.map((b) => ({ x: b.cx, y: b.barY }))
+  let curvePath = ''
+  if (pts.length > 1) {
+    curvePath = `M ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i - 1], n = pts[i]
+      const cpx = ((p.x + n.x) / 2).toFixed(1)
+      curvePath += ` C ${cpx},${p.y.toFixed(1)} ${cpx},${n.y.toFixed(1)} ${n.x.toFixed(1)},${n.y.toFixed(1)}`
+    }
+  }
+
+  // y-axis ticks
+  const tickStep = Math.ceil(maxValue / 4) || 1
+  const tickVals = new Set<number>()
+  for (let v = 0; v <= maxValue; v += tickStep) tickVals.add(v)
+  tickVals.add(maxValue)
+  const ticks = [...tickVals].map((v) => ({ val: v, y: padT + chartH - (v / maxValue) * chartH }))
+
+  return { W, H, padL, padR, padT, padB, chartH, chartW, bars, curvePath, ticks, baselineY: padT + chartH }
 })
 const monthRows = computed(() => {
   const sorted = [...filteredActivities.value].sort((a, b) => a.date.localeCompare(b.date))
@@ -217,231 +269,6 @@ function stageBarStyle(stage: string) {
     background: `linear-gradient(90deg, ${color}, ${color}cc)`,
   }
 }
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value)
-}
-
-async function fetchWeatherForActivity(activity: Activity) {
-  if (weatherPendingIds.has(activity.id) || weatherByActivityId.value[activity.id] !== undefined) return
-
-  weatherPendingIds.add(activity.id)
-  weatherLoading.value = true
-
-  try {
-    const res = await apiFetch(`/api/activities/${activity.id}/weather-expected`)
-    if (!res.ok) throw new Error(`weather-${res.status}`)
-    const payload = (await res.json()) as ActivityExpectedWeather
-    weatherByActivityId.value = {
-      ...weatherByActivityId.value,
-      [activity.id]: payload,
-    }
-  } catch {
-    weatherByActivityId.value = {
-      ...weatherByActivityId.value,
-      [activity.id]: null,
-    }
-  } finally {
-    weatherPendingIds.delete(activity.id)
-    weatherLoading.value = weatherPendingIds.size > 0
-  }
-}
-
-async function ensureFilteredWeather() {
-  const pendingActivities = filteredActivities.value.filter(
-    (activity) => weatherByActivityId.value[activity.id] === undefined && !weatherPendingIds.has(activity.id),
-  )
-
-  const batchSize = 4
-  for (let i = 0; i < pendingActivities.length; i += batchSize) {
-    await Promise.all(pendingActivities.slice(i, i + batchSize).map(fetchWeatherForActivity))
-  }
-}
-
-watch(
-  () => filteredActivities.value.map((activity) => activity.id).join('|'),
-  () => {
-    void ensureFilteredWeather()
-  },
-  { immediate: true },
-)
-
-type WeatherHourRow = {
-  label: string;
-  tempAvg: number | null;
-  rainAvg: number | null;
-  tempSamples: number;
-  rainSamples: number;
-}
-
-const weatherHourRows = computed<WeatherHourRow[]>(() => {
-  const tempSums = new Map<number, number>()
-  const tempCounts = new Map<number, number>()
-  const rainSums = new Map<number, number>()
-  const rainCounts = new Map<number, number>()
-
-  for (const activity of filteredActivities.value) {
-    const weather = weatherByActivityId.value[activity.id]
-    if (!weather?.available) continue
-
-    const rainSamples = Array.isArray(weather.hourly_rain_probability)
-      ? weather.hourly_rain_probability.filter(
-          (sample) => Number.isFinite(sample.ts_unix) && isFiniteNumber(sample.probability_percent),
-        )
-      : []
-
-    const rainByTimestamp = new Map<number, number>()
-    for (const sample of rainSamples) {
-      rainByTimestamp.set(sample.ts_unix, sample.probability_percent)
-    }
-
-    const tempSamples = Array.isArray(weather.hourly_temps)
-      ? weather.hourly_temps.filter(
-          (sample) => Number.isFinite(sample.ts_unix) && isFiniteNumber(sample.temperature_c),
-        )
-      : []
-
-    if (tempSamples.length) {
-      for (const sample of tempSamples) {
-        const hour = new Date(sample.ts_unix * 1000).getHours()
-        tempSums.set(hour, (tempSums.get(hour) ?? 0) + sample.temperature_c)
-        tempCounts.set(hour, (tempCounts.get(hour) ?? 0) + 1)
-
-        const rainValue = rainByTimestamp.get(sample.ts_unix)
-          ?? (isFiniteNumber(weather.rain_probability_percent) ? weather.rain_probability_percent : null)
-        if (rainValue !== null) {
-          rainSums.set(hour, (rainSums.get(hour) ?? 0) + rainValue)
-          rainCounts.set(hour, (rainCounts.get(hour) ?? 0) + 1)
-        }
-      }
-      continue
-    }
-
-    const start = parseMinutes(activity.start_time)
-    if (start === null) continue
-    const hour = Math.floor(start / 60)
-
-    if (isFiniteNumber(weather.temperature_c)) {
-      tempSums.set(hour, (tempSums.get(hour) ?? 0) + weather.temperature_c)
-      tempCounts.set(hour, (tempCounts.get(hour) ?? 0) + 1)
-    }
-
-    if (isFiniteNumber(weather.rain_probability_percent)) {
-      rainSums.set(hour, (rainSums.get(hour) ?? 0) + weather.rain_probability_percent)
-      rainCounts.set(hour, (rainCounts.get(hour) ?? 0) + 1)
-    }
-  }
-
-  return Array.from({ length: 24 }, (_, hour) => ({
-    label: hourLabel(hour),
-    tempAvg: tempCounts.get(hour) ? (tempSums.get(hour) ?? 0) / (tempCounts.get(hour) ?? 1) : null,
-    rainAvg: rainCounts.get(hour) ? (rainSums.get(hour) ?? 0) / (rainCounts.get(hour) ?? 1) : null,
-    tempSamples: tempCounts.get(hour) ?? 0,
-    rainSamples: rainCounts.get(hour) ?? 0,
-  }))
-})
-
-const weatherActivitiesWithData = computed(() => {
-  return filteredActivities.value.filter((activity) => weatherByActivityId.value[activity.id]?.available).length
-})
-
-const weatherHasData = computed(() => {
-  return weatherHourRows.value.some((row) => row.tempAvg !== null || row.rainAvg !== null)
-})
-
-function buildLinearTicks(min: number, max: number, steps: number) {
-  if (steps <= 0) return [min, max]
-  const ticks: number[] = []
-  for (let i = 0; i <= steps; i += 1) {
-    ticks.push(min + ((max - min) * i) / steps)
-  }
-  return ticks
-}
-
-const weatherChartWidth = 960
-const weatherChartHeight = 340
-const weatherChartPlotLeft = 64
-const weatherChartPlotRight = 904
-const weatherChartPlotTop = 18
-const weatherChartPlotBottom = 288
-
-const weatherTempDomain = computed(() => {
-  const values = weatherHourRows.value
-    .map((row) => row.tempAvg)
-    .filter((value): value is number => value !== null)
-
-  if (!values.length) {
-    return { min: 0, max: 20, span: 20 }
-  }
-
-  const rawMin = Math.min(...values, 0)
-  const rawMax = Math.max(...values, 0)
-  const padding = rawMin === rawMax ? 2 : Math.max(1, (rawMax - rawMin) * 0.12)
-  const min = rawMin - padding
-  const max = rawMax + padding
-  return {
-    min,
-    max,
-    span: Math.max(1, max - min),
-  }
-})
-
-function weatherTempY(value: number): number {
-  const { min, span } = weatherTempDomain.value
-  const ratio = (value - min) / span
-  return weatherChartPlotBottom - ratio * (weatherChartPlotBottom - weatherChartPlotTop)
-}
-
-function weatherRainY(value: number): number {
-  const safe = Math.min(100, Math.max(0, value))
-  return weatherChartPlotBottom - (safe / 100) * (weatherChartPlotBottom - weatherChartPlotTop)
-}
-
-const weatherTempZeroY = computed(() => weatherTempY(0))
-
-const weatherChartBars = computed(() => {
-  const plotWidth = weatherChartPlotRight - weatherChartPlotLeft
-  const groupWidth = plotWidth / weatherHourRows.value.length
-  const barWidth = Math.min(14, Math.max(8, groupWidth * 0.28))
-
-  return weatherHourRows.value.map((row, index) => {
-    const groupX = weatherChartPlotLeft + index * groupWidth
-    const centerX = groupX + groupWidth / 2
-    const tempY = row.tempAvg === null ? null : weatherTempY(row.tempAvg)
-    const rainY = row.rainAvg === null ? null : weatherRainY(row.rainAvg)
-    return {
-      ...row,
-      index,
-      centerX,
-      labelX: centerX,
-      showLabel: index % 2 === 0,
-      tempX: centerX - barWidth - 2,
-      tempY,
-      tempHeight: tempY === null ? 0 : Math.abs(weatherTempZeroY.value - tempY),
-      tempBarY: tempY === null ? 0 : Math.min(tempY, weatherTempZeroY.value),
-      rainX: centerX + 2,
-      rainY,
-      rainHeight: rainY === null ? 0 : weatherChartPlotBottom - rainY,
-      barWidth,
-    }
-  })
-})
-
-const weatherTempTicks = computed(() => {
-  return buildLinearTicks(weatherTempDomain.value.min, weatherTempDomain.value.max, 4).map((value) => ({
-    value,
-    y: weatherTempY(value),
-    label: `${Math.round(value)}°`,
-  }))
-})
-
-const weatherRainTicks = computed(() => {
-  return [0, 25, 50, 75, 100].map((value) => ({
-    value,
-    y: weatherRainY(value),
-    label: `${value}%`,
-  }))
-})
 
 function applyPreset(days: number) {
   rangeTo.value = todayIso
@@ -574,122 +401,58 @@ function applyPreset(days: number) {
           </div>
         </article>
 
-        <article class="stats-panel">
-          <div class="stats-panel__header">
-            <h2>Zeitübersicht</h2>
-            <span>Startzeiten pro Stunde</span>
-          </div>
-          <div class="stats-bars">
-            <div v-for="row in timeRows" :key="row.label" class="stats-bar-row">
-              <div class="stats-bar-row__top"><span>{{ row.label }}</span><strong>{{ row.value }}</strong></div>
-              <div class="stats-bar">
-                <div
-                  v-if="row.value > 0"
-                  class="stats-bar__fill stats-bar__fill--amber"
-                  :style="{ width: barWidth(row.value, sectionMax(timeRows)) }"
-                />
-              </div>
-            </div>
-          </div>
-        </article>
-
         <article class="stats-panel stats-panel--wide">
-          <div class="stats-panel__header stats-panel__header--weather">
-            <div>
-              <h2>Wetter pro Stunde</h2>
-              <span>Temperatur und Regenwahrscheinlichkeit als Mittelwerte je Stunde</span>
-            </div>
-            <span>{{ weatherActivitiesWithData }} von {{ filteredActivities.length }} Aktivitäten mit Wetterdaten</span>
+          <div class="stats-panel__header">
+            <h2>Zeitverteilung</h2>
+            <span>Aktivitäten nach Tageszeit</span>
           </div>
-
-          <div v-if="!weatherHasData && weatherLoading" class="stats-empty stats-empty--inner">
-            Wetterdaten werden geladen…
-          </div>
-          <div v-else-if="!weatherHasData" class="stats-empty stats-empty--inner">
-            Für die gewählten Aktivitäten sind keine Wetterdaten verfügbar.
-          </div>
-          <div v-else class="weather-chart-wrap">
-            <div class="weather-chart-legend">
-              <span class="weather-chart-legend__item">
-                <span class="weather-chart-legend__swatch weather-chart-legend__swatch--temp" /> Temperatur
-              </span>
-              <span class="weather-chart-legend__item">
-                <span class="weather-chart-legend__swatch weather-chart-legend__swatch--rain" /> Regenwahrscheinlichkeit
-              </span>
-            </div>
-            <div class="weather-chart-scroll">
-              <svg
-                class="weather-chart"
-                :viewBox="`0 0 ${weatherChartWidth} ${weatherChartHeight}`"
-                role="img"
-                aria-label="Temperatur und Regenwahrscheinlichkeit pro Stunde"
-              >
-                <line
-                  v-for="tick in weatherTempTicks"
-                  :key="`grid-${tick.label}`"
-                  :x1="weatherChartPlotLeft"
-                  :x2="weatherChartPlotRight"
-                  :y1="tick.y"
-                  :y2="tick.y"
-                  class="weather-chart__grid"
-                />
-
-                <line
-                  :x1="weatherChartPlotLeft"
-                  :x2="weatherChartPlotRight"
-                  :y1="weatherTempZeroY"
-                  :y2="weatherTempZeroY"
-                  class="weather-chart__axis weather-chart__axis--zero"
-                />
-
-                <template v-for="bar in weatherChartBars" :key="bar.label">
-                  <rect
-                    v-if="bar.tempAvg !== null"
-                    :x="bar.tempX"
-                    :y="bar.tempBarY"
-                    :width="bar.barWidth"
-                    :height="bar.tempHeight"
-                    rx="4"
-                    class="weather-chart__bar weather-chart__bar--temp"
-                  />
-                  <rect
-                    v-if="bar.rainAvg !== null"
-                    :x="bar.rainX"
-                    :y="bar.rainY"
-                    :width="bar.barWidth"
-                    :height="bar.rainHeight"
-                    rx="4"
-                    class="weather-chart__bar weather-chart__bar--rain"
-                  />
-                  <text
-                    v-if="bar.showLabel"
-                    :x="bar.labelX"
-                    :y="weatherChartPlotBottom + 24"
-                    text-anchor="middle"
-                    class="weather-chart__x-label"
-                  >{{ bar.label }}</text>
-                </template>
-
-                <text
-                  v-for="tick in weatherTempTicks"
-                  :key="`temp-${tick.label}`"
-                  :x="weatherChartPlotLeft - 10"
-                  :y="tick.y + 4"
-                  text-anchor="end"
-                  class="weather-chart__y-label"
-                >{{ tick.label }}</text>
-
-                <text
-                  v-for="tick in weatherRainTicks"
-                  :key="`rain-${tick.label}`"
-                  :x="weatherChartPlotRight + 10"
-                  :y="tick.y + 4"
-                  text-anchor="start"
-                  class="weather-chart__y-label weather-chart__y-label--rain"
-                >{{ tick.label }}</text>
-              </svg>
-            </div>
-          </div>
+          <svg
+            :viewBox="`0 0 ${timeChartSvg.W} ${timeChartSvg.H}`"
+            class="time-dist-svg"
+            aria-hidden="true"
+          >
+            <!-- grid + y-axis -->
+            <g v-for="tick in timeChartSvg.ticks" :key="tick.val">
+              <line
+                :x1="timeChartSvg.padL" :y1="tick.y"
+                :x2="timeChartSvg.W - timeChartSvg.padR" :y2="tick.y"
+                class="time-dist-grid"
+              />
+              <text :x="timeChartSvg.padL - 6" :y="tick.y + 4" class="time-dist-axis" text-anchor="end">{{ tick.val }}</text>
+            </g>
+            <!-- baseline -->
+            <line
+              :x1="timeChartSvg.padL" :y1="timeChartSvg.baselineY"
+              :x2="timeChartSvg.W - timeChartSvg.padR" :y2="timeChartSvg.baselineY"
+              class="time-dist-baseline"
+            />
+            <!-- bars -->
+            <g v-for="bar in timeChartSvg.bars" :key="bar.label">
+              <title>{{ bar.label }}: {{ bar.value }}</title>
+              <rect
+                :x="bar.barX" :y="bar.barY"
+                :width="bar.barW" :height="bar.barH"
+                rx="4"
+                :class="['time-dist-bar', bar.isPeak ? 'time-dist-bar--peak' : '']"
+              />
+            </g>
+            <!-- distribution curve -->
+            <path v-if="timeChartSvg.curvePath" :d="timeChartSvg.curvePath" class="time-dist-curve" />
+            <!-- dots on curve -->
+            <circle
+              v-for="bar in timeChartSvg.bars" :key="`dot${bar.label}`"
+              :cx="bar.cx" :cy="bar.barY"
+              :r="bar.isPeak ? 5 : 3.5"
+              :class="['time-dist-dot', bar.isPeak ? 'time-dist-dot--peak' : '']"
+            />
+            <!-- x-axis labels -->
+            <text
+              v-for="bar in timeChartSvg.bars" :key="`x${bar.label}`"
+              :x="bar.cx" :y="timeChartSvg.baselineY + 16"
+              class="time-dist-axis time-dist-axis--x"
+              text-anchor="middle"
+            >{{ bar.shortLabel }}</text>
+          </svg>
         </article>
 
         <article class="stats-panel">
@@ -899,16 +662,6 @@ function applyPreset(days: number) {
   margin-bottom: 16px;
 }
 
-.stats-panel__header--weather {
-  align-items: flex-start;
-}
-
-.stats-panel__header--weather > div {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .stats-panel__header h2 {
   margin: 0;
   font-size: 1.05rem;
@@ -983,6 +736,64 @@ function applyPreset(days: number) {
   background: linear-gradient(90deg, #334155, #94a3b8);
 }
 
+.time-dist-svg {
+  width: 100%;
+  display: block;
+  overflow: visible;
+  margin-top: 8px;
+}
+
+.time-dist-grid {
+  stroke: #e5e7eb;
+  stroke-width: 1;
+}
+
+.time-dist-baseline {
+  stroke: #9ca3af;
+  stroke-width: 1.5;
+}
+
+.time-dist-bar {
+  fill: #fbbf24;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.time-dist-bar--peak {
+  fill: #f59e0b;
+  opacity: 1;
+}
+
+.time-dist-curve {
+  fill: none;
+  stroke: #b45309;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.time-dist-dot {
+  fill: #b45309;
+  stroke: white;
+  stroke-width: 1.5;
+}
+
+.time-dist-dot--peak {
+  fill: #92400e;
+}
+
+.time-dist-axis {
+  font-size: 11px;
+  fill: #6b7280;
+  font-family: inherit;
+}
+
+.time-dist-axis--x {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+
 .stats-empty,
 .stats-loading {
   padding: 20px;
@@ -996,86 +807,6 @@ function applyPreset(days: number) {
   margin-top: 4px;
 }
 
-.weather-chart-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.weather-chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  color: #475569;
-  font-size: 0.92rem;
-}
-
-.weather-chart-legend__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.weather-chart-legend__swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 4px;
-}
-
-.weather-chart-legend__swatch--temp {
-  background: #f97316;
-}
-
-.weather-chart-legend__swatch--rain {
-  background: #0ea5e9;
-}
-
-.weather-chart-scroll {
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-
-.weather-chart {
-  display: block;
-  min-width: 820px;
-  width: 100%;
-  height: auto;
-}
-
-.weather-chart__grid {
-  stroke: #e2e8f0;
-  stroke-width: 1;
-}
-
-.weather-chart__axis {
-  stroke: #94a3b8;
-  stroke-width: 1.2;
-}
-
-.weather-chart__axis--zero {
-  stroke: #cbd5e1;
-  stroke-dasharray: 4 4;
-}
-
-.weather-chart__bar--temp {
-  fill: #f97316;
-}
-
-.weather-chart__bar--rain {
-  fill: #0ea5e9;
-}
-
-.weather-chart__x-label,
-.weather-chart__y-label {
-  fill: #64748b;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.weather-chart__y-label--rain {
-  fill: #0369a1;
-}
-
 @media (max-width: 900px) {
   .stats-grid {
     grid-template-columns: 1fr;
@@ -1083,10 +814,6 @@ function applyPreset(days: number) {
 
   .stats-panel--wide {
     grid-column: auto;
-  }
-
-  .stats-panel__header--weather {
-    flex-direction: column;
   }
 }
 </style>

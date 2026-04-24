@@ -34,11 +34,7 @@
             {{ isOnline ? 'Online' : 'Offline' }}
           </span>
           <a href="https://github.com/reicham2/DPW/wiki" target="_blank" rel="noopener noreferrer" class="global-nav-help" title="Hilfe">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="10" cy="10" r="8.5" />
-              <path d="M7.5 7.5a2.5 2.5 0 0 1 4.85.83c0 1.67-2.5 2.5-2.5 2.5" />
-              <circle cx="10" cy="14" r="0.5" fill="currentColor" stroke="none" />
-            </svg>
+            <CircleHelp :size="20" aria-hidden="true" />
           </a>
           <UserAvatar />
         </div>
@@ -118,6 +114,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { CircleHelp } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import UserAvatar from './components/UserAvatar.vue'
 import BugReportButton from './components/BugReportButton.vue'

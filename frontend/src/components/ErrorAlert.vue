@@ -1,16 +1,11 @@
 <template>
 	<div v-if="error" class="error-alert">
 		<div class="error-alert-icon">
-			<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
-				<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9 7a1 1 0 112 0v4a1 1 0 11-2 0V7zm1 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
-			</svg>
+			<CircleAlert :size="18" aria-hidden="true" />
 		</div>
 		<span class="error-alert-text" v-html="renderedMessage"></span>
 		<button class="error-alert-report" @click="reportBug" title="Fehler melden">
-			<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M3 7V5a2 2 0 012-2h2M17 7V5a2 2 0 00-2-2h-2M3 13v2a2 2 0 002 2h2M17 13v2a2 2 0 01-2 2h-2"/>
-				<circle cx="10" cy="10" r="3"/>
-			</svg>
+			<Bug :size="15" aria-hidden="true" />
 			Melden
 		</button>
 	</div>
@@ -18,6 +13,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Bug, CircleAlert } from 'lucide-vue-next'
 import { openBugReport } from '../composables/useBugReport'
 
 const props = defineProps<{ error: string | null }>()

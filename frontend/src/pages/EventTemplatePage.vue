@@ -5,6 +5,7 @@ import { useEventTemplates } from '../composables/useEventTemplates'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
 import { wsSend, wsJoin, wsLeave, useWebSocket } from '../composables/useWebSocket'
+import { CheckCircle2, Lock, Save, Users } from 'lucide-vue-next'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -494,26 +495,26 @@ onUnmounted(() => {
     <div v-else class="detail-form">
       <!-- Local-draft recovery banner -->
       <div v-if="pendingLocalDraft" class="editors-banner" style="gap: 10px; flex-wrap: wrap;">
-        <span class="editors-banner-icon">💾</span>
+        <span class="editors-banner-icon"><Save :size="14" aria-hidden="true" /></span>
         <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
         <button type="button" class="btn-secondary" @click="restoreLocalDraft">Wiederherstellen</button>
         <button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
       </div>
       <div v-else-if="localDraftRestoredAt" class="editors-banner">
-        <span class="editors-banner-icon">✅</span>
+        <span class="editors-banner-icon"><CheckCircle2 :size="14" aria-hidden="true" /></span>
         <span>Lokaler Entwurf wurde wiederhergestellt.</span>
       </div>
 
       <!-- Active editors indicator -->
       <div v-if="activeEditors.length" class="editors-banner">
-        <span class="editors-banner-icon">👥</span>
+        <span class="editors-banner-icon"><Users :size="14" aria-hidden="true" /></span>
         <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
       </div>
 
       <!-- Title -->
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_title' as EditSection) }"
         @focusin="lockSection('evt_tpl_title' as EditSection)" @focusout="unlockSection('evt_tpl_title' as EditSection, $event)">
-        <div v-if="lockedBy('evt_tpl_title' as EditSection)" class="lock-badge">🔒 {{ lockedBy('evt_tpl_title' as EditSection) }}</div>
+        <div v-if="lockedBy('evt_tpl_title' as EditSection)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('evt_tpl_title' as EditSection) }}</div>
         <label>Titel-Vorlage</label>
         <div class="input-save-wrap">
           <input
@@ -522,19 +523,19 @@ onUnmounted(() => {
             placeholder="z.B. {{abteilung}}: {{titel}}"
             :disabled="isLockedByOther('evt_tpl_title' as EditSection)"
           />
-          <span v-if="savedFields['title']" class="field-saved-icon" :key="'wrap-' + savedFields['title']">💾</span>
+          <span v-if="savedFields['title']" class="field-saved-icon" :key="'wrap-' + savedFields['title']"><Save :size="12" aria-hidden="true" /></span>
         </div>
       </div>
 
       <!-- Body (rich text editor) -->
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_body' as EditSection) }"
         @focusin="lockSection('evt_tpl_body' as EditSection)" @focusout="unlockSection('evt_tpl_body' as EditSection, $event)">
-        <div v-if="lockedBy('evt_tpl_body' as EditSection)" class="lock-badge">🔒 {{ lockedBy('evt_tpl_body' as EditSection) }}</div>
+        <div v-if="lockedBy('evt_tpl_body' as EditSection)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('evt_tpl_body' as EditSection) }}</div>
         <label>Inhalt-Vorlage
-          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['body']">💾</span>
+          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['body']"><Save :size="12" aria-hidden="true" /></span>
         </label>
         <div class="input-save-wrap">
-          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--textarea" :key="'wrap-' + savedFields['body']">💾</span>
+          <span v-if="savedFields['body']" class="field-saved-icon field-saved-icon--textarea" :key="'wrap-' + savedFields['body']"><Save :size="12" aria-hidden="true" /></span>
         </div>
         <div class="rich-editor-toolbar" v-if="!isLockedByOther('evt_tpl_body' as EditSection)">
           <select class="toolbar-select" :value="curFont" @change="execCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">

@@ -10,15 +10,7 @@
 			<RoleBadge v-if="kind === 'role' && modelValue" :role="modelValue" />
 			<DepartmentBadge v-else-if="kind === 'department' && modelValue" :department="modelValue" />
 			<span v-else class="badge-select-placeholder">{{ placeholderText }}</span>
-			<svg
-				class="badge-select-caret"
-				width="10"
-				height="10"
-				viewBox="0 0 10 10"
-				aria-hidden="true"
-			>
-				<path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-			</svg>
+			<ChevronDown class="badge-select-caret" :size="12" aria-hidden="true" />
 		</button>
 
 		<ul v-if="open" class="badge-select-menu" role="listbox">
@@ -52,6 +44,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ChevronDown } from 'lucide-vue-next';
 import RoleBadge from './RoleBadge.vue';
 import DepartmentBadge from './DepartmentBadge.vue';
 

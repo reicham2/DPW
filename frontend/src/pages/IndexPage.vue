@@ -7,11 +7,34 @@ import ActivityList from '../components/ActivityList.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { Activity, Department, MaterialItem } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
+import { Search, X, UserRound } from 'lucide-vue-next'
 
 const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadActivity, readableDepts, writableDepts } = usePermissions()
 const DEPARTMENTS = computed<Department[]>(() => readableDepts(user.value?.department))
 
 const { activities, loading, error, fetchActivities } = useActivities()
+
+const ACTIVITY_DEPT_FILTER_KEY_PREFIX = 'dpw_activities_dept_filter'
+
+function activityDeptFilterKey(userId: string): string {
+  return `${ACTIVITY_DEPT_FILTER_KEY_PREFIX}:${userId}`
+}
+
+function readSavedActivityDept(userId: string): string | null {
+  try {
+    return localStorage.getItem(activityDeptFilterKey(userId))
+  } catch {
+    return null
+  }
+}
+
+function saveActivityDept(userId: string, value: Department | 'Alle') {
+  try {
+    localStorage.setItem(activityDeptFilterKey(userId), value)
+  } catch {
+    // localStorage can be unavailable (private mode / browser policy)
+  }
+}
 
 // Permission-based: can user see multiple departments?
 const canReadMultipleDepts = computed(() => {
@@ -24,7 +47,7 @@ const canCreateActivity = computed(() => {
 })
 
 const search = ref('')
-const activedept = ref<Department | 'Alle'>(user.value?.department ?? 'Alle')
+const activedept = ref<Department | 'Alle'>('Alle')
 
 // Date range filter inputs (manual)
 const dateFrom = ref('')
@@ -59,6 +82,41 @@ function clearDateFilter() {
 watch(activedept, () => {
   extraEarlier.value = 0
   extraLater.value = 0
+})
+
+watch(
+  [() => user.value?.id, () => user.value?.department, DEPARTMENTS],
+  ([userId, ownDept, readable]) => {
+    if (!userId) {
+      activedept.value = 'Alle'
+      return
+    }
+
+    const saved = readSavedActivityDept(userId)
+    if (saved === 'Alle') {
+      activedept.value = 'Alle'
+      return
+    }
+
+    if (saved && readable.includes(saved)) {
+      activedept.value = saved
+      return
+    }
+
+    if (ownDept && readable.includes(ownDept)) {
+      activedept.value = ownDept
+      return
+    }
+
+    activedept.value = 'Alle'
+  },
+  { immediate: true }
+)
+
+watch(activedept, (value) => {
+  const userId = user.value?.id
+  if (!userId) return
+  saveActivityDept(userId, value)
 })
 
 function loadLater() {
@@ -201,7 +259,7 @@ const earlierCount = computed(() => {
     <!-- Filter bar -->
     <div class="filter-bar">
       <div class="filter-search">
-        <span class="filter-search-icon">🔍</span>
+        <span class="filter-search-icon"><Search :size="16" aria-hidden="true" /></span>
         <input
           v-model="search"
           type="search"
@@ -221,13 +279,13 @@ const earlierCount = computed(() => {
             Bis
             <input v-model="dateTo" type="date" class="filter-date-input" />
           </label>
-          <button v-if="hasDateFilter" class="filter-date-clear" @click="clearDateFilter" title="Datumsfilter zurücksetzen">✕</button>
+          <button v-if="hasDateFilter" class="filter-date-clear" @click="clearDateFilter" title="Datumsfilter zurücksetzen"><X :size="14" aria-hidden="true" /></button>
         </div>
         <button
           class="filter-tab"
           :class="{ 'filter-tab--active': onlyMine }"
           @click="onlyMine = !onlyMine"
-        >👤 Meine Verantwortung</button>
+        ><UserRound :size="16" aria-hidden="true" /> Meine Verantwortung</button>
       </div>
 
       <!-- Show department filter tabs if user can read multiple departments -->

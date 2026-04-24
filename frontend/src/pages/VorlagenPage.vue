@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { CalendarDays, ClipboardList, Mail } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
 import MailTemplatePage from './MailTemplatePage.vue'
@@ -46,10 +47,7 @@ onMounted(async () => {
       :class="{ 'tab-btn--active': activeTab === 'mail' }"
       @click="activeTab = 'mail'"
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" />
-        <path d="M1.5 5.5l6.5 4 6.5-4" />
-      </svg>
+      <Mail :size="16" aria-hidden="true" />
       Mail-Vorlagen
     </button>
     <button
@@ -58,10 +56,7 @@ onMounted(async () => {
       :class="{ 'tab-btn--active': activeTab === 'form' }"
       @click="activeTab = 'form'"
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2" y="1.5" width="12" height="13" rx="1.5" />
-        <path d="M5 5.5h6M5 8h6M5 10.5h4" />
-      </svg>
+      <ClipboardList :size="16" aria-hidden="true" />
       Formular-Vorlagen
     </button>
     <button
@@ -70,10 +65,7 @@ onMounted(async () => {
       :class="{ 'tab-btn--active': activeTab === 'event' }"
       @click="activeTab = 'event'"
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2" y="2" width="12" height="12" rx="1.5" />
-        <path d="M2 6h12M5 2v3M11 2v3" />
-      </svg>
+      <CalendarDays :size="16" aria-hidden="true" />
       Event-Vorlagen
     </button>
   </nav>

@@ -9,6 +9,7 @@ import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -930,25 +931,21 @@ function startWeatherLocationEdit() {
 	weatherLocationEditing.value = true;
 }
 
-const weatherSymbolEmoji = computed(() => {
+const weatherSymbolIcon = computed(() => {
 	switch (expectedWeather.value?.weather_symbol) {
 		case 'sun':
-			return '☀️';
+			return Sun;
 		case 'partly-cloudy':
-			return '⛅';
+			return CloudSun;
 		case 'cloud':
-			return '☁️';
+			return Cloud;
 		case 'rain':
-			return '🌧️';
+			return CloudRain;
 		case 'snow':
-			return '❄️';
+			return Snowflake;
 		default:
-			return '🌤️';
+			return CloudSun;
 	}
-});
-
-const weatherForecastDisplay = computed(() => {
-	return expectedWeather.value?.available ? weatherSymbolEmoji.value : '—';
 });
 
 const weatherTemperatureDisplay = computed(() => {
@@ -2298,14 +2295,17 @@ function copyShareLink() {
 
 <template>
 	<header class="header">
-		<button class="btn-back" @click="flushAutoSave(); router.push('/')">← Zurück</button>
+		<button class="btn-back" @click="flushAutoSave(); router.push('/')">
+			<ArrowLeft class="btn-icon" :size="16" aria-hidden="true" />
+			Zurück
+		</button>
 		<div class="header-right">
 			<router-link
 				v-if="activity && mode === 'view' && canForms"
 				:to="`/activities/${id}/forms`"
 				class="btn-mail"
 				title="Formular verwalten"
-				>📋 Formular</router-link
+				><ClipboardList class="btn-icon" :size="16" aria-hidden="true" />Formular</router-link
 			>
 			<button
 				v-else-if="activity && mode === 'view'"
@@ -2313,7 +2313,8 @@ function copyShareLink() {
 				disabled
 				title="Kein Zugriff auf Formulare"
 			>
-				📋 Formular
+				<ClipboardList class="btn-icon" :size="16" aria-hidden="true" />
+				Formular
 			</button>
 			<button
 				v-if="activity && mode === 'view' && canMail"
@@ -2321,7 +2322,8 @@ function copyShareLink() {
 				title="Mail senden"
 				@click="handleMailClick"
 			>
-				📧 Mail
+				<Mail class="btn-icon" :size="16" aria-hidden="true" />
+				Mail
 			</button>
 			<button
 				v-else-if="activity && mode === 'view'"
@@ -2329,7 +2331,8 @@ function copyShareLink() {
 				disabled
 				title="Kein Zugriff auf Mailversand"
 			>
-				📧 Mail
+				<Mail class="btn-icon" :size="16" aria-hidden="true" />
+				Mail
 			</button>
 			<!-- Event publish -->
 			<button
@@ -2339,7 +2342,8 @@ function copyShareLink() {
 				:title="canPublishEvent ? 'Als Event veröffentlichen' : 'Keine Berechtigung zum Veröffentlichen'"
 				@click="handlePublishEventClick"
 			>
-				🌐 Veröffentlichen
+				<Globe class="btn-icon" :size="16" aria-hidden="true" />
+				Veröffentlichen
 			</button>
 			<button
 				v-else-if="activity && mode === 'view' && eventPublication"
@@ -2348,7 +2352,8 @@ function copyShareLink() {
 				:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : eventPublication.wp_event_id ? 'Veröffentlicht + WordPress synchronisiert' : 'Event veröffentlicht (WordPress nicht konfiguriert)'"
 				@click="handlePublishEventClick"
 			>
-				{{ eventPublication.wp_event_id ? '✅ Veröffentlicht (WP)' : '✅ Veröffentlicht' }}
+				<CheckCircle2 class="btn-icon" :size="16" aria-hidden="true" />
+				{{ eventPublication.wp_event_id ? 'Veröffentlicht (WP)' : 'Veröffentlicht' }}
 			</button>
 			<!-- Share link -->
 			<div v-if="activity && mode === 'view'" class="share-link-wrap">
@@ -2359,7 +2364,9 @@ function copyShareLink() {
 					:disabled="shareLoading || !shareToken"
 					@click="copyShareLink"
 				>
-					{{ shareCopied ? '✅ Kopiert' : (shareLoading ? '🔗 Teilen…' : '🔗 Teilen') }}
+					<Check v-if="shareCopied" class="btn-icon" :size="16" aria-hidden="true" />
+					<Share2 v-else class="btn-icon" :size="16" aria-hidden="true" />
+					{{ shareCopied ? 'Kopiert' : (shareLoading ? 'Teilen…' : 'Teilen') }}
 				</button>
 			</div>
 			<button
@@ -2370,14 +2377,16 @@ function copyShareLink() {
 				:title="canEdit ? 'Aktivität bearbeiten' : 'Keine Berechtigung zum Bearbeiten'"
 				@click="mode === 'view' ? enterEdit() : (mode = 'view')"
 			>
-				✏️ Bearbeiten
+				<Pencil class="btn-icon" :size="16" aria-hidden="true" />
+				Bearbeiten
 			</button>
 			<button
 				v-else-if="activity && mode === 'edit'"
 				class="btn-toggle btn-mail"
 				@click="mode = 'view'"
 			>
-				👁️ Ansicht
+				<Eye class="btn-icon" :size="16" aria-hidden="true" />
+				Ansicht
 			</button>
 		</div>
 	</header>
@@ -2426,12 +2435,12 @@ function copyShareLink() {
 									@click="(exactOverlaps.length || fuzzyOverlaps.length) && (locationWarningOpen = !locationWarningOpen)"
 								>
 									{{ activity.location || '—' }}
-									<span v-if="exactOverlaps.length" class="location-warn-icon" title="Überschneidung">⚠️</span>
-									<span v-else-if="fuzzyOverlaps.length" class="location-warn-icon" title="Möglicherweise ähnlicher Ort">ℹ️</span>
+									<span v-if="exactOverlaps.length" class="location-warn-icon" title="Überschneidung"><TriangleAlert :size="12" aria-hidden="true" /></span>
+									<span v-else-if="fuzzyOverlaps.length" class="location-warn-icon" title="Möglicherweise ähnlicher Ort"><Info :size="12" aria-hidden="true" /></span>
 								</span>
 								<template v-if="locationWarningOpen">
 									<div v-if="exactOverlaps.length" class="field-warning" style="margin-top: 6px">
-										⚠️ Überschneidung:
+										<TriangleAlert :size="12" aria-hidden="true" /> Überschneidung:
 										<ul class="overlap-list">
 											<li v-for="o in exactOverlaps" :key="o.id">
 												<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
@@ -2440,7 +2449,7 @@ function copyShareLink() {
 										</ul>
 									</div>
 									<div v-if="fuzzyOverlaps.length" class="field-hint" style="margin-top: 6px">
-										ℹ️ Möglicherweise ähnlicher Ort:
+										<Info :size="12" aria-hidden="true" /> Möglicherweise ähnlicher Ort:
 										<ul class="overlap-list">
 											<li v-for="o in fuzzyOverlaps" :key="o.id">
 												<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
@@ -2550,7 +2559,7 @@ function copyShareLink() {
 						<span class="attachment-chip__icon">{{ attachmentIcon(att.content_type) }}</span>
 						<span class="attachment-chip__name">{{ att.filename }}</span>
 						<button type="button" class="attachment-chip__download" @click.stop="downloadAttachment(att)" title="Herunterladen">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+							<FileDown :size="14" aria-hidden="true" />
 						</button>
 					</span>
 				</div>
@@ -2572,7 +2581,7 @@ function copyShareLink() {
 
 				<div class="detail-stats-popout" :class="{ 'is-open': isStatsDrawerOpen }" @click.self="closeStatsDrawer">
 					<div class="detail-stats-popout__panel">
-						<button type="button" class="detail-stats-popout__close" @click="closeStatsDrawer">✕</button>
+						<button type="button" class="detail-stats-popout__close" @click="closeStatsDrawer" aria-label="Schliessen"><X :size="16" aria-hidden="true" /></button>
 				<aside class="detail-stats-sidebar">
 					<div class="detail-stats-card">
 						<p class="detail-stats-card-title">Aktuelle Informationen</p>
@@ -2642,7 +2651,10 @@ function copyShareLink() {
 							<div class="detail-stats-row">
 								<span class="detail-label">Vorhersage</span>
 								<div class="detail-weather-value">
-									<span class="detail-value" :class="{ 'detail-weather-symbol': expectedWeather?.available }">{{ weatherForecastDisplay }}</span>
+									<span v-if="expectedWeather?.available" class="detail-value detail-weather-symbol" aria-hidden="true">
+										<component :is="weatherSymbolIcon" :size="18" />
+									</span>
+									<span v-else class="detail-value">—</span>
 									<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
 								</div>
 							</div>
@@ -2733,26 +2745,26 @@ function copyShareLink() {
 		<!-- =============================================================== EDIT -->
 		<div v-else class="detail-form">
 			<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
-				<span class="editors-banner-icon">💾</span>
+				<span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
 				<span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
 				<button type="button" class="btn-secondary" @click="applyLocalDraft">Wiederherstellen</button>
 				<button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
 			</div>
 			<div v-else-if="localDraftRestoredAt" class="editors-banner" style="margin-bottom: 12px;">
-				<span class="editors-banner-icon">✅</span>
+				<span class="editors-banner-icon"><Check :size="16" aria-hidden="true" /></span>
 				<span>Lokaler Entwurf wurde wiederhergestellt.</span>
 			</div>
 
 			<!-- Active editors indicator -->
 			<div v-if="activeEditors.length" class="editors-banner">
-				<span class="editors-banner-icon">👥</span>
+				<span class="editors-banner-icon"><Users :size="16" aria-hidden="true" /></span>
 				<span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
 			</div>
 
 			<!-- Titel -->
 			<div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('title') }"
 				@focusin="lockSection('title')" @focusout="unlockSection('title', $event)">
-				<div v-if="lockedBy('title')" class="lock-badge">🔒 {{ lockedBy('title') }}</div>
+				<div v-if="lockedBy('title')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('title') }}</div>
 				<label for="edit-title">Titel</label>
 				<div class="input-save-wrap">
 					<input
@@ -2763,33 +2775,33 @@ function copyShareLink() {
 						autofocus
 						:disabled="isLockedByOther('title')"
 					/>
-					<span v-if="savedFields['title']" class="field-saved-icon" :key="savedFields['title']">💾</span>
+					<span v-if="savedFields['title']" class="field-saved-icon" :key="savedFields['title']"><Save :size="12" aria-hidden="true" /></span>
 				</div>
 			</div>
 
 			<!-- Datum + Zeiten -->
 			<div class="form-row form-row--3 lock-wrapper" :class="{ 'is-locked': isLockedByOther('datetime') }"
 				@focusin="lockSection('datetime')" @focusout="unlockSection('datetime', $event)">
-				<div v-if="lockedBy('datetime')" class="lock-badge">🔒 {{ lockedBy('datetime') }}</div>
+				<div v-if="lockedBy('datetime')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('datetime') }}</div>
 				<div class="form-group">
 					<label for="edit-date">Datum</label>
 					<div class="input-save-wrap">
 						<input id="edit-date" v-model="editDate" type="date" :disabled="isLockedByOther('datetime')" />
-						<span v-if="savedFields['date']" class="field-saved-icon" :key="savedFields['date']">💾</span>
+						<span v-if="savedFields['date']" class="field-saved-icon" :key="savedFields['date']"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 				</div>
 				<div class="form-group">
 					<label for="edit-start">Startzeit</label>
 					<div class="input-save-wrap">
 						<input id="edit-start" v-model="editStartTime" type="time" :disabled="isLockedByOther('datetime')" />
-						<span v-if="savedFields['start_time']" class="field-saved-icon" :key="savedFields['start_time']">💾</span>
+						<span v-if="savedFields['start_time']" class="field-saved-icon" :key="savedFields['start_time']"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 				</div>
 				<div class="form-group">
 					<label for="edit-end">Endzeit</label>
 					<div class="input-save-wrap">
 						<input id="edit-end" v-model="editEndTime" type="time" :disabled="isLockedByOther('datetime')" />
-						<span v-if="savedFields['end_time']" class="field-saved-icon" :key="savedFields['end_time']">💾</span>
+						<span v-if="savedFields['end_time']" class="field-saved-icon" :key="savedFields['end_time']"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 				</div>
 			</div>
@@ -2797,7 +2809,7 @@ function copyShareLink() {
 			<!-- Ort + Verantwortlich + Stufe -->
 			<div class="form-row form-row--3 lock-wrapper" :class="{ 'is-locked': isLockedByOther('location') }"
 				@focusin="lockSection('location')" @focusout="unlockSection('location', $event)">
-				<div v-if="lockedBy('location')" class="lock-badge">🔒 {{ lockedBy('location') }}</div>
+				<div v-if="lockedBy('location')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('location') }}</div>
 				<div class="form-group">
 					<label for="edit-location">Ort</label>
 					<div class="input-save-wrap">
@@ -2822,15 +2834,15 @@ function copyShareLink() {
 								>
 									{{ loc }}
 									<span v-if="locationOverlapsFor(loc).length" class="dropdown-warn-hint">
-										⚠️ {{ locationOverlapsFor(loc).length }} Überschneidung{{ locationOverlapsFor(loc).length > 1 ? 'en' : '' }}
+										<TriangleAlert :size="12" aria-hidden="true" /> {{ locationOverlapsFor(loc).length }} Überschneidung{{ locationOverlapsFor(loc).length > 1 ? 'en' : '' }}
 									</span>
 								</div>
 							</div>
 						</div>
-						<span v-if="savedFields['location']" class="field-saved-icon" :key="savedFields['location']">💾</span>
+						<span v-if="savedFields['location']" class="field-saved-icon" :key="savedFields['location']"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 					<div v-if="exactOverlaps.length" class="field-warning">
-						⚠️ Überschneidung am selben Ort:
+						<TriangleAlert :size="12" aria-hidden="true" /> Überschneidung am selben Ort:
 						<ul class="overlap-list">
 							<li v-for="o in exactOverlaps" :key="o.id">
 								<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
@@ -2839,7 +2851,7 @@ function copyShareLink() {
 						</ul>
 					</div>
 					<div v-if="fuzzyOverlaps.length" class="field-hint">
-						ℹ️ Möglicherweise ähnlicher Ort:
+						<Info :size="12" aria-hidden="true" /> Möglicherweise ähnlicher Ort:
 						<ul class="overlap-list">
 							<li v-for="o in fuzzyOverlaps" :key="o.id">
 								<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
@@ -2873,7 +2885,7 @@ function copyShareLink() {
 					<div class="user-chips" v-if="editResponsible.length">
 						<span v-for="(name, i) in editResponsible" :key="name" class="user-chip">
 							{{ name }}
-							<button type="button" class="user-chip-remove" @click="removeResponsible(i)" :disabled="isLockedByOther('location')">✕</button>
+							<button type="button" class="user-chip-remove" @click="removeResponsible(i)" :disabled="isLockedByOther('location')" aria-label="Verantwortliche Person entfernen"><X :size="12" aria-hidden="true" /></button>
 						</span>
 					</div>
 				</div>
@@ -2887,7 +2899,7 @@ function copyShareLink() {
 						:model-value="editDepartment || null"
 						@update:model-value="(v) => { editDepartment = (v ?? '') as Department | ''; markDirty('department'); }"
 					/>
-					<span v-if="savedFields['department']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['department']">💾</span>
+					<span v-if="savedFields['department']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['department']"><Save :size="12" aria-hidden="true" /></span>
 				</div>
 			</div>
 
@@ -2898,14 +2910,14 @@ function copyShareLink() {
 					<div v-for="(prog, i) in editPrograms" :key="i" class="program-card lock-wrapper"
 						:class="{ 'is-locked': isLockedByOther(`program_${i}`) }"
 						@focusin="lockSection(`program_${i}`)" @focusout="unlockSection(`program_${i}`, $event)">
-						<div v-if="lockedBy(`program_${i}`)" class="lock-badge">🔒 {{ lockedBy(`program_${i}`) }}</div>
+						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
 						<button
 							type="button"
 							class="program-card__remove"
 							@click="removeProgram(i)"
 							:disabled="isLockedByOther(`program_${i}`)"
 						>
-							✕
+							<X :size="14" aria-hidden="true" />
 						</button>
 						<div class="program-card__fields">
 							<div class="form-group">
@@ -2920,7 +2932,7 @@ function copyShareLink() {
 										@input="prog.duration_minutes = Math.max(0, parseInt(($event.target as HTMLInputElement).value, 10) || 0); markDirty(`prog_${i}_time`)"
 										:disabled="isLockedByOther(`program_${i}`)"
 									/>
-									<span v-if="savedFields[`prog_${i}_time`]" class="field-saved-icon" :key="savedFields[`prog_${i}_time`]">💾</span>
+									<span v-if="savedFields[`prog_${i}_time`]" class="field-saved-icon" :key="savedFields[`prog_${i}_time`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 								<p v-if="editProgramLabel(i)" style="margin: 4px 0 0; font-size: 0.78rem; color: #6b7280">{{ editProgramLabel(i) }}</p>
 							</div>
@@ -2928,7 +2940,7 @@ function copyShareLink() {
 								<label>Titel</label>
 								<div class="input-save-wrap">
 									<input v-model="prog.title" type="text" placeholder="Titel" :disabled="isLockedByOther(`program_${i}`)" @input="markDirty(`prog_${i}_title`)" />
-									<span v-if="savedFields[`prog_${i}_title`]" class="field-saved-icon" :key="savedFields[`prog_${i}_title`]">💾</span>
+									<span v-if="savedFields[`prog_${i}_title`]" class="field-saved-icon" :key="savedFields[`prog_${i}_title`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 							</div>
 							<div class="form-group user-search-group">
@@ -2958,10 +2970,10 @@ function copyShareLink() {
 								<div class="user-chips" v-if="prog.responsible.length">
 									<span v-for="(name, ri) in prog.responsible" :key="name" class="user-chip">
 										{{ name }}
-										<button type="button" class="user-chip-remove" @click="removeProgResponsible(i, ri)" :disabled="isLockedByOther(`program_${i}`)">✕</button>
+										<button type="button" class="user-chip-remove" @click="removeProgResponsible(i, ri)" :disabled="isLockedByOther(`program_${i}`)" aria-label="Programm-Verantwortliche Person entfernen"><X :size="12" aria-hidden="true" /></button>
 									</span>
 								</div>
-								<span v-if="savedFields[`prog_${i}_resp`]" class="field-saved-icon field-saved-icon--inline" :key="savedFields[`prog_${i}_resp`]">💾</span>
+								<span v-if="savedFields[`prog_${i}_resp`]" class="field-saved-icon field-saved-icon--inline" :key="savedFields[`prog_${i}_resp`]"><Save :size="12" aria-hidden="true" /></span>
 							</div>
 							<div class="form-group program-card__full">
 								<label>Beschreibung</label>
@@ -2995,7 +3007,7 @@ function copyShareLink() {
 										<button type="button" :class="{'toolbar-btn--active': progToolbar.ul}" @mousedown.prevent @click="progExecCmd(i, 'insertUnorderedList')" title="Aufzählung">• Liste</button>
 										<button type="button" :class="{'toolbar-btn--active': progToolbar.ol}" @mousedown.prevent @click="progExecCmd(i, 'insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
 										<span class="toolbar-sep"></span>
-										<button type="button" @mousedown.prevent @click="progExecCmd(i, 'removeFormat')" title="Formatierung entfernen">✕ Format</button>
+										<button type="button" @mousedown.prevent @click="progExecCmd(i, 'removeFormat')" title="Formatierung entfernen"><X :size="12" aria-hidden="true" /> Format</button>
 										<span class="toolbar-sep"></span>
 										<button type="button" @mousedown="progSaveSelection" @click="openProgLinkDialog" title="Link einfügen">🔗 Link</button>
 									</div>
@@ -3009,7 +3021,7 @@ function copyShareLink() {
 										@keyup="updateProgToolbar(i)"
 										data-placeholder="Beschreibung…"
 									></div>
-									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]">💾</span>
+									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 							</div>
 						</div>
@@ -3027,7 +3039,7 @@ function copyShareLink() {
 					<div v-for="(_, i) in editMaterial" :key="i" class="material-card lock-wrapper"
 						:class="{ 'is-locked': isLockedByOther(`material_${i}`) }"
 						@focusin="lockSection(`material_${i}`)" @focusout="unlockSection(`material_${i}`, $event)">
-						<div v-if="lockedBy(`material_${i}`)" class="lock-badge">🔒 {{ lockedBy(`material_${i}`) }}</div>
+						<div v-if="lockedBy(`material_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`material_${i}`) }}</div>
 						<button
 							v-if="i < editMaterial.length - 1"
 							type="button"
@@ -3035,7 +3047,7 @@ function copyShareLink() {
 							@click="removeMaterial(i)"
 							:disabled="isLockedByOther(`material_${i}`)"
 						>
-							✕
+							<X :size="14" aria-hidden="true" />
 						</button>
 						<div class="material-card__fields">
 							<div class="form-group material-card__name">
@@ -3049,7 +3061,7 @@ function copyShareLink() {
 										@blur="onMaterialBlur(i)"
 										:disabled="isLockedByOther(`material_${i}`)"
 									/>
-									<span v-if="savedFields[`mat_${i}`] && editMaterial[i].name.trim()" class="field-saved-icon" :key="savedFields[`mat_${i}`]">💾</span>
+									<span v-if="savedFields[`mat_${i}`] && editMaterial[i].name.trim()" class="field-saved-icon" :key="savedFields[`mat_${i}`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 							</div>
 							<div class="form-group material-card__resp user-search-group">
@@ -3079,7 +3091,7 @@ function copyShareLink() {
 								<div class="user-chips" v-if="editMaterial[i].responsible?.length">
 									<span v-for="(name, ri) in editMaterial[i].responsible" :key="name" class="user-chip">
 										{{ name }}
-										<button type="button" class="user-chip-remove" @click="clearMaterialResp(i, ri)" :disabled="isLockedByOther(`material_${i}`)">✕</button>
+										<button type="button" class="user-chip-remove" @click="clearMaterialResp(i, ri)" :disabled="isLockedByOther(`material_${i}`)" aria-label="Material-Verantwortliche Person entfernen"><X :size="12" aria-hidden="true" /></button>
 									</span>
 								</div>
 							</div>
@@ -3091,7 +3103,7 @@ function copyShareLink() {
 			<!-- SiKo -->
 			<div class="form-section lock-wrapper" :class="{ 'is-locked': isLockedByOther('siko') }"
 				@focusin="lockSection('siko')" @focusout="unlockSection('siko', $event)">
-				<div v-if="lockedBy('siko')" class="lock-badge">🔒 {{ lockedBy('siko') }}</div>
+				<div v-if="lockedBy('siko')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('siko') }}</div>
 				<p class="form-section-title">Sicherheitskonzept</p>
 				<div class="form-group">
 					<div class="input-save-wrap">
@@ -3101,7 +3113,7 @@ function copyShareLink() {
 							placeholder="Sicherheitskonzept (optional)"
 							:disabled="isLockedByOther('siko')"
 						/>
-						<span v-if="savedFields['siko_text']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['siko_text']">💾</span>
+						<span v-if="savedFields['siko_text']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['siko_text']"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 				</div>
 			</div>
@@ -3109,7 +3121,7 @@ function copyShareLink() {
 			<!-- Ziel + Schlechtwetter -->
 			<div class="form-row lock-wrapper" :class="{ 'is-locked': isLockedByOther('goal_weather') }"
 				@focusin="lockSection('goal_weather')" @focusout="unlockSection('goal_weather', $event)">
-				<div v-if="lockedBy('goal_weather')" class="lock-badge">🔒 {{ lockedBy('goal_weather') }}</div>
+				<div v-if="lockedBy('goal_weather')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('goal_weather') }}</div>
 				<div class="form-group">
 					<label for="edit-goal">Ziel</label>
 					<div class="input-save-wrap">
@@ -3120,7 +3132,7 @@ function copyShareLink() {
 							placeholder="Was soll erreicht werden?"
 							:disabled="isLockedByOther('goal_weather')"
 						/>
-						<span v-if="savedFields['goal']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['goal']">💾</span>
+						<span v-if="savedFields['goal']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['goal']"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 				</div>
 				<div class="form-group">
@@ -3133,7 +3145,7 @@ function copyShareLink() {
 							placeholder="Was passiert bei schlechtem Wetter?"
 							:disabled="isLockedByOther('goal_weather')"
 						/>
-						<span v-if="savedFields['bad_weather']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['bad_weather']">💾</span>
+						<span v-if="savedFields['bad_weather']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['bad_weather']"><Save :size="12" aria-hidden="true" /></span>
 					</div>
 				</div>
 			</div>
@@ -3148,7 +3160,7 @@ function copyShareLink() {
 					@dragleave="onDragLeave"
 					@drop="onDrop"
 				>
-					<svg class="drop-zone__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+					<Upload class="drop-zone__icon" :size="20" aria-hidden="true" />
 					<span class="drop-zone__text">Dateien hierher ziehen oder
 						<label class="drop-zone__browse">
 							auswählen
@@ -3176,9 +3188,9 @@ function copyShareLink() {
 						<span class="attachment-chip__icon">{{ attachmentIcon(att.content_type) }}</span>
 						<span class="attachment-chip__name">{{ att.filename }}</span>
 						<button type="button" class="attachment-chip__download" @click.stop="downloadAttachment(att)" title="Herunterladen">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+							<FileDown :size="14" aria-hidden="true" />
 						</button>
-						<button type="button" class="user-chip-remove" @click.stop="removeAttachment(att.id)" title="Löschen">✕</button>
+						<button type="button" class="user-chip-remove" @click.stop="removeAttachment(att.id)" title="Löschen" aria-label="Anhang löschen"><X :size="12" aria-hidden="true" /></button>
 					</span>
 				</div>
 			</div>
@@ -3206,7 +3218,7 @@ function copyShareLink() {
 
 			<div class="detail-stats-popout" :class="{ 'is-open': isStatsDrawerOpen }" @click.self="closeStatsDrawer">
 				<div class="detail-stats-popout__panel">
-					<button type="button" class="detail-stats-popout__close" @click="closeStatsDrawer">✕</button>
+					<button type="button" class="detail-stats-popout__close" @click="closeStatsDrawer" aria-label="Schliessen"><X :size="16" aria-hidden="true" /></button>
 			<aside class="detail-stats-sidebar detail-stats-sidebar--edit">
 				<div class="detail-stats-card">
 					<p class="detail-stats-card-title">Aktuelle Informationen</p>
@@ -3287,7 +3299,10 @@ function copyShareLink() {
 						<div class="detail-stats-row">
 							<span class="detail-label">Vorhersage</span>
 							<div class="detail-weather-value">
-								<span class="detail-value" :class="{ 'detail-weather-symbol': expectedWeather?.available }">{{ weatherForecastDisplay }}</span>
+								<span v-if="expectedWeather?.available" class="detail-value detail-weather-symbol" aria-hidden="true">
+									<component :is="weatherSymbolIcon" :size="18" />
+								</span>
+								<span v-else class="detail-value">—</span>
 								<span v-if="expectedWeatherLoading" class="detail-inline-spinner" aria-label="Wetterdaten werden aktualisiert" role="status" />
 							</div>
 						</div>
@@ -3378,7 +3393,7 @@ function copyShareLink() {
 	<!-- Fuzzy Location Overlap Confirmation Dialog -->
 	<div v-if="showFuzzyDialog" class="preview-overlay" @click.self="cancelFuzzyDialog">
 		<div class="duplicate-dialog">
-			<p class="duplicate-dialog__title">⚠️ Mögliche Ortsüberschneidung</p>
+			<p class="duplicate-dialog__title"><TriangleAlert :size="16" aria-hidden="true" /> Mögliche Ortsüberschneidung</p>
 			<p class="duplicate-dialog__text">
 				Der eingetragene Ort <strong>«{{ editLocation }}»</strong> ähnelt dem Ort einer anderen Aktivität zur gleichen Zeit.
 				Ist dies derselbe Ort? Die Aktivitäten könnten sich überschneiden.
@@ -3493,7 +3508,8 @@ function copyShareLink() {
 					:disabled="eventPublishing || eventUnpublishing"
 					@click="showUnpublishConfirm = true"
 				>
-					🗑 Löschen
+					<Trash2 class="btn-icon" :size="16" aria-hidden="true" />
+					Löschen
 				</button>
 				<button
 					class="btn-primary"
@@ -3514,7 +3530,7 @@ function copyShareLink() {
 				Für diese Aktivität wurde noch kein Anmeldeformular erstellt.
 				Möchtest du zuerst ein Formular erstellen?
 			</p>
-			<div class="modal-actions">
+			<div class="modal-actions modal-actions--equal">
 				<button class="btn-cancel" @click="showNoFormDialog = false">Abbrechen</button>
 				<button class="btn-cancel" @click="showNoFormDialog = false; router.push(`/activities/${id}/mail`)">Mail erstellen</button>
 				<button class="btn-info" @click="showNoFormDialog = false; router.push(`/activities/${id}/forms`)">Formular erstellen</button>
@@ -3564,9 +3580,9 @@ function copyShareLink() {
 				<span v-else>Laden…</span>
 				<div class="preview-modal__actions">
 					<a v-if="previewActivity" :href="`/activities/${previewActivity.id}`" target="_blank" title="In neuem Tab öffnen" class="preview-modal__open-link">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+						<ExternalLink :size="16" aria-hidden="true" />
 					</a>
-					<button type="button" @click="closeActivityPreview" title="Schliessen">✕</button>
+					<button type="button" @click="closeActivityPreview" title="Schliessen" aria-label="Schliessen"><X :size="14" aria-hidden="true" /></button>
 				</div>
 			</div>
 			<div v-if="previewActivityLoading" class="activity-preview-popup__loading">Laden…</div>
@@ -3614,9 +3630,9 @@ function copyShareLink() {
 				<span>{{ attachmentIcon(previewAttachment.content_type) }} {{ previewAttachment.filename }}</span>
 				<div class="preview-modal__actions">
 					<button type="button" @click="downloadAttachment(previewAttachment!)" title="Herunterladen">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+						<FileDown :size="16" aria-hidden="true" />
 					</button>
-					<button type="button" @click="closePreview" title="Schliessen">✕</button>
+					<button type="button" @click="closePreview" title="Schliessen" aria-label="Schliessen"><X :size="14" aria-hidden="true" /></button>
 				</div>
 			</div>
 			<div class="preview-modal__body">

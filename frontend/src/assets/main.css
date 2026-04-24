@@ -6,7 +6,8 @@
 	padding: 0;
 }
 
-html, body {
+html,
+body {
 	max-width: 100%;
 	overflow-x: hidden;
 }
@@ -21,7 +22,8 @@ body {
 	min-height: 100vh;
 }
 
-img, video {
+img,
+video {
 	max-width: 100%;
 	height: auto;
 }
@@ -146,6 +148,10 @@ img, video {
 	pointer-events: none;
 	animation: fadeInOut 2s ease forwards;
 	line-height: 1;
+}
+.field-saved-icon svg {
+	width: 20px;
+	height: 20px;
 }
 .field-saved-icon--textarea {
 	top: 10px;
@@ -691,7 +697,6 @@ img, video {
 	z-index: 8;
 }
 
-
 .detail-stats-drawer-handle {
 	display: none;
 }
@@ -1047,7 +1052,9 @@ img, video {
 	justify-content: flex-end;
 }
 
-.app--force-drawer-stats .detail-stats-popout.is-open .detail-stats-popout__panel {
+.app--force-drawer-stats
+	.detail-stats-popout.is-open
+	.detail-stats-popout__panel {
 	display: flex;
 	flex-direction: column;
 	width: min(92vw, 360px);
@@ -2150,6 +2157,14 @@ img, video {
 	transition: background 0.15s;
 	white-space: nowrap;
 }
+
+.btn-icon {
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+	stroke-width: 2;
+}
+
 .btn-mail:hover:not(:disabled) {
 	background: #cce5ff;
 }
@@ -2706,6 +2721,12 @@ img, video {
 	outline: none;
 	border-color: #3b82f6;
 	box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.modal-actions--equal > button {
+	flex: 1 1 0;
+	min-width: 0;
+	text-align: center;
 }
 .btn-cancel {
 	padding: 9px 20px;

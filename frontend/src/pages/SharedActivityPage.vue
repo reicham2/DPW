@@ -8,7 +8,7 @@
 
 		<!-- Not found -->
 		<div v-else-if="notFound" class="error-state">
-			<div class="error-icon">🔍</div>
+			<div class="error-icon"><Search :size="28" aria-hidden="true" /></div>
 			<h2>Nicht gefunden</h2>
 			<p>Diese Aktivität existiert nicht oder der Link ist nicht mehr gültig.</p>
 		</div>
@@ -16,7 +16,7 @@
 		<!-- Activity view -->
 		<template v-else-if="activity">
 			<header class="shared-header">
-				<span class="shared-badge">📎 Geteilte Aktivität</span>
+				<span class="shared-badge"><Paperclip class="btn-icon" :size="16" aria-hidden="true" /> Geteilte Aktivität</span>
 			</header>
 
 			<main class="shared-main">
@@ -126,6 +126,7 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Activity } from '../types';
+import { Search, Paperclip } from 'lucide-vue-next';
 
 const route = useRoute();
 const token = route.params.token as string;
