@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { Lock, MapPin, Users } from 'lucide-vue-next'
 import { user as currentUser } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -210,10 +211,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
       :class="{ 'tab-btn--active': activeTab === 'users' }"
       @click="activeTab = 'users'"
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="5" r="3" />
-        <path d="M2 14c0-2.8 2.7-5 6-5s6 2.2 6 5" />
-      </svg>
+      <Users :size="16" aria-hidden="true" />
       Benutzerverwaltung
     </button>
     <button
@@ -222,10 +220,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
       :class="{ 'tab-btn--active': activeTab === 'permissions' }"
       @click="activeTab = 'permissions'"
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2" y="7" width="12" height="7" rx="1.5" />
-        <path d="M5 7V5a3 3 0 0 1 6 0v2" />
-      </svg>
+      <Lock :size="16" aria-hidden="true" />
       Stufen &amp; Rollen
     </button>
     <button
@@ -234,11 +229,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
       :class="{ 'tab-btn--active': activeTab === 'locations' }"
       @click="activeTab = 'locations'"
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="6" r="3" />
-        <path d="M8 9c-3 0-5 1.3-5 3" />
-        <path d="M13 12c0 1.7-2.2 3-5 3s-5-1.3-5-3" />
-      </svg>
+      <MapPin :size="16" aria-hidden="true" />
       Orte
     </button>
   </nav>

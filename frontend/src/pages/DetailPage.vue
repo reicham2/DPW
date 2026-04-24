@@ -9,7 +9,7 @@ import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info } from 'lucide-vue-next';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2 } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -2346,7 +2346,8 @@ function copyShareLink() {
 				:title="canPublishEvent ? 'Als Event veröffentlichen' : 'Keine Berechtigung zum Veröffentlichen'"
 				@click="handlePublishEventClick"
 			>
-				🌐 Veröffentlichen
+				<Globe class="btn-icon" :size="16" aria-hidden="true" />
+				Veröffentlichen
 			</button>
 			<button
 				v-else-if="activity && mode === 'view' && eventPublication"
@@ -2355,26 +2356,8 @@ function copyShareLink() {
 				:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : eventPublication.wp_event_id ? 'Veröffentlicht + WordPress synchronisiert' : 'Event veröffentlicht (WordPress nicht konfiguriert)'"
 				@click="handlePublishEventClick"
 			>
-				{{ eventPublication.wp_event_id ? '✅ Veröffentlicht (WP)' : '✅ Veröffentlicht' }}
-			</button>
-			<!-- Event publish -->
-			<button
-				v-if="activity && mode === 'view' && !eventPublication"
-				class="btn-mail"
-				:disabled="!canPublishEvent"
-				:title="canPublishEvent ? 'Als Event veröffentlichen' : 'Keine Berechtigung zum Veröffentlichen'"
-				@click="handlePublishEventClick"
-			>
-				🌐 Veröffentlichen
-			</button>
-			<button
-				v-else-if="activity && mode === 'view' && eventPublication"
-				class="btn-mail btn-mail--active"
-				:disabled="!canPublishEvent"
-				:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : eventPublication.wp_event_id ? 'Veröffentlicht + WordPress synchronisiert' : 'Event veröffentlicht (WordPress nicht konfiguriert)'"
-				@click="handlePublishEventClick"
-			>
-				{{ eventPublication.wp_event_id ? '✅ Veröffentlicht (WP)' : '✅ Veröffentlicht' }}
+				<CheckCircle2 class="btn-icon" :size="16" aria-hidden="true" />
+				{{ eventPublication.wp_event_id ? 'Veröffentlicht (WP)' : 'Veröffentlicht' }}
 			</button>
 			<!-- Share link -->
 			<div v-if="activity && mode === 'view'" class="share-link-wrap">
@@ -2580,7 +2563,7 @@ function copyShareLink() {
 						<span class="attachment-chip__icon">{{ attachmentIcon(att.content_type) }}</span>
 						<span class="attachment-chip__name">{{ att.filename }}</span>
 						<button type="button" class="attachment-chip__download" @click.stop="downloadAttachment(att)" title="Herunterladen">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+							<FileDown :size="14" aria-hidden="true" />
 						</button>
 					</span>
 				</div>
@@ -3178,7 +3161,7 @@ function copyShareLink() {
 					@dragleave="onDragLeave"
 					@drop="onDrop"
 				>
-					<svg class="drop-zone__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+					<Upload class="drop-zone__icon" :size="20" aria-hidden="true" />
 					<span class="drop-zone__text">Dateien hierher ziehen oder
 						<label class="drop-zone__browse">
 							auswählen
@@ -3206,7 +3189,7 @@ function copyShareLink() {
 						<span class="attachment-chip__icon">{{ attachmentIcon(att.content_type) }}</span>
 						<span class="attachment-chip__name">{{ att.filename }}</span>
 						<button type="button" class="attachment-chip__download" @click.stop="downloadAttachment(att)" title="Herunterladen">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+							<FileDown :size="14" aria-hidden="true" />
 						</button>
 						<button type="button" class="user-chip-remove" @click.stop="removeAttachment(att.id)" title="Löschen" aria-label="Anhang löschen"><X :size="12" aria-hidden="true" /></button>
 					</span>
@@ -3523,7 +3506,8 @@ function copyShareLink() {
 					:disabled="eventPublishing || eventUnpublishing"
 					@click="showUnpublishConfirm = true"
 				>
-					🗑 Löschen
+					<Trash2 class="btn-icon" :size="16" aria-hidden="true" />
+					Löschen
 				</button>
 				<button
 					class="btn-primary"
@@ -3594,7 +3578,7 @@ function copyShareLink() {
 				<span v-else>Laden…</span>
 				<div class="preview-modal__actions">
 					<a v-if="previewActivity" :href="`/activities/${previewActivity.id}`" target="_blank" title="In neuem Tab öffnen" class="preview-modal__open-link">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+						<ExternalLink :size="16" aria-hidden="true" />
 					</a>
 					<button type="button" @click="closeActivityPreview" title="Schliessen" aria-label="Schliessen"><X :size="14" aria-hidden="true" /></button>
 				</div>
@@ -3644,7 +3628,7 @@ function copyShareLink() {
 				<span>{{ attachmentIcon(previewAttachment.content_type) }} {{ previewAttachment.filename }}</span>
 				<div class="preview-modal__actions">
 					<button type="button" @click="downloadAttachment(previewAttachment!)" title="Herunterladen">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+						<FileDown :size="16" aria-hidden="true" />
 					</button>
 					<button type="button" @click="closePreview" title="Schliessen" aria-label="Schliessen"><X :size="14" aria-hidden="true" /></button>
 				</div>

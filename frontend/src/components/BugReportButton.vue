@@ -2,9 +2,7 @@
   <Teleport to="body">
     <!-- Floating Action Button -->
     <button class="bug-fab" @click="openModal" title="Problem melden">
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm.75 11.5h-1.5v-1.5h1.5v1.5zm0-3h-1.5V6h1.5v4.5z" fill="currentColor"/>
-      </svg>
+      <Bug :size="20" aria-hidden="true" />
     </button>
 
     <!-- Modal Overlay -->
@@ -64,7 +62,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
-import { Check } from 'lucide-vue-next'
+import { Bug, Check } from 'lucide-vue-next'
 import { apiFetch } from '../composables/useApi'
 import { collectDebugInfo } from '../composables/useDebugInfo'
 import { bugReportOpen, bugReportPrefill } from '../composables/useBugReport'
