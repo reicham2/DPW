@@ -958,6 +958,7 @@ namespace
     std::mutex meteo_cache_mutex;
     std::vector<MeteoPointMeta> meteo_point_cache;
     std::chrono::steady_clock::time_point meteo_point_cache_expires;
+    constexpr long kMeteoHttpTimeoutMs = 3000;
     std::mutex midata_cache_mutex;
     std::unordered_map<std::string, MidataCountCacheEntry> midata_count_cache;
     constexpr auto kMidataCountCacheTtl = std::chrono::minutes(5);
@@ -1219,7 +1220,7 @@ namespace
                 return meteo_point_cache;
         }
 
-        auto collection_body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting", 12000, error);
+        auto collection_body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting", kMeteoHttpTimeoutMs, error);
         if (!collection_body)
             return std::nullopt;
         auto collection = nlohmann::json::parse(*collection_body, nullptr, false);
@@ -1241,7 +1242,7 @@ namespace
             return std::nullopt;
         }
 
-        auto csv_body = http_get_text(point_meta_url, 12000, error);
+        auto csv_body = http_get_text(point_meta_url, kMeteoHttpTimeoutMs, error);
         if (!csv_body)
             return std::nullopt;
 
@@ -1410,7 +1411,7 @@ namespace
 
     std::optional<std::string> get_latest_asset_url(const std::string &asset_suffix, std::string &error)
     {
-        auto body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting/items?limit=1", 12000, error);
+        auto body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting/items?limit=1", kMeteoHttpTimeoutMs, error);
         if (!body)
             return std::nullopt;
         auto payload = nlohmann::json::parse(*body, nullptr, false);
@@ -1452,7 +1453,7 @@ namespace
                                                          time_t target_ts,
                                                          std::string &error)
     {
-        auto csv_body = http_get_text(csv_url, 15000, error);
+        auto csv_body = http_get_text(csv_url, kMeteoHttpTimeoutMs, error);
         if (!csv_body)
             return std::nullopt;
 
@@ -1549,7 +1550,7 @@ namespace
                                                                                            time_t end_ts,
                                                                                            std::string &error)
     {
-        auto csv_body = http_get_text(csv_url, 15000, error);
+        auto csv_body = http_get_text(csv_url, kMeteoHttpTimeoutMs, error);
         if (!csv_body)
             return std::nullopt;
 
@@ -6044,6 +6045,14 @@ void handle_put_admin_app_setting(HttpRes *res, HttpReq *req, Database &db)
                 }
                 if (err == "invalid-email") {
                     send_json(res, 400, R"({"error":"Ungueltige E-Mail-Adresse"})");
+                    return;
+                }
+                if (err == "required") {
+                    send_json(res, 400, R"({"error":"Wert darf nicht leer sein"})");
+                    return;
+                }
+                if (err == "readonly-generated") {
+                    send_json(res, 409, R"({"error":"Dieser Wert wird automatisch erzeugt und kann hier nicht bearbeitet werden"})");
                     return;
                 }
                 send_json(res, 500, R"({"error":"Einstellung konnte nicht gespeichert werden"})");

@@ -1423,20 +1423,18 @@ onMounted(async () => {
 		if (config.WP_PUBLISHING_ENABLED) {
 			void fetchPublication(id).then(pub => { eventPublication.value = pub; });
 		}
-		void Promise.allSettled([
-			fetchDepartments(),
-			fetchLocations(),
-			fetchActivities(),
-		]);
+		const preloadTasks: Promise<unknown>[] = [];
+		if (departments.value.length === 0) preloadTasks.push(fetchDepartments());
+		if (predefinedLocations.value.length === 0) preloadTasks.push(fetchLocations());
+		if (activities.value.length === 0) preloadTasks.push(fetchActivities());
+		if (preloadTasks.length > 0) {
+			void Promise.allSettled(preloadTasks);
+		}
 
 		detailDeferredLoadTimer = setTimeout(() => {
 			void refreshLiveParticipants();
 			void refreshActivityMidataChildren();
-			void fetchWeatherLocation().then(() => {
-				if (!weatherLocationSaved.value) {
-					void refreshExpectedWeather();
-				}
-			});
+			void fetchWeatherLocation();
 
 			liveParticipantsRefreshTimer = setInterval(() => {
 				void refreshLiveParticipants();
