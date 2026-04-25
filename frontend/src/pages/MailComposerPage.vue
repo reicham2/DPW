@@ -12,6 +12,7 @@ import DepartmentBadge from '../components/DepartmentBadge.vue';
 import { ArrowLeft, Save, Check, X, Clipboard, Send } from 'lucide-vue-next';
 import type { Activity, Department, SentMail } from '../types';
 import { useAutosave } from '../composables/useAutosave';
+import { config } from '../config';
 
 const route = useRoute()
 const router = useRouter()
@@ -55,6 +56,11 @@ const viewingMail = ref<SentMail | null>(null)
 const hasForm = ref(false)
 const formUrl = ref('')
 const linkCopied = ref(false)
+
+function configuredPublicBaseUrl(): string | null {
+	const normalized = (config.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '')
+	return normalized || null
+}
 
 // Autosave / per-field saved indicators
 const savedFields = ref<Record<string, number>>({})
@@ -307,7 +313,12 @@ onMounted(async () => {
   const existingForm = await fetchActivityForm(activityId)
   if (existingForm) {
     hasForm.value = true
-    formUrl.value = `${window.location.origin}/forms/${existingForm.public_slug}`
+		const baseUrl = configuredPublicBaseUrl()
+		if (!baseUrl) {
+			loadError.value = 'Öffentliche Basis-URL ist nicht konfiguriert.'
+		} else {
+			formUrl.value = `${baseUrl}/forms/${existingForm.public_slug}`
+		}
   }
 
   // Load sent mails for this activity
@@ -680,6 +691,10 @@ function closeMailViewer() {
 }
 
 async function copyFormLink() {
+	if (!formUrl.value) {
+		loadError.value = 'Öffentliche Basis-URL ist nicht konfiguriert.'
+		return
+	}
 	try {
 		await navigator.clipboard.writeText(formUrl.value)
 		linkCopied.value = true

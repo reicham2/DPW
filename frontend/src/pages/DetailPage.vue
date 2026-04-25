@@ -45,6 +45,7 @@ const { fetchForm } = useForms();
 const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
 
 const activity = ref<Activity | null>(null);
+const activityMissingConfirmed = ref(false);
 const loading = ref(true);
 const showNoFormDialog = ref(false);
 const showNoFormForEventDialog = ref(false);
@@ -67,9 +68,14 @@ const weatherLocationInput = ref('');
 const weatherLocationSaved = ref<string | null>(null);
 const weatherLocationEditing = ref(true);
 const weatherLocationSaving = ref(false);
+let expectedWeatherRequestController: AbortController | null = null;
+let expectedWeatherRequestSeq = 0;
+const WEATHER_EXPECTED_TIMEOUT_MS = 2500;
+const WEATHER_EXPECTED_CACHE_TTL_MS = 10 * 60 * 1000;
 const mode = ref<'view' | 'edit'>('view');
 const isStatsDrawerOpen = ref(false);
 const shareToken = ref<string | null>(null);
+const shareUrl = ref<string | null>(null);
 const shareLoading = ref(false);
 const shareCopied = ref(false);
 const eventPublication = ref<EventPublication | null>(null);
@@ -84,6 +90,20 @@ let evtPreviewLinkSavedRange: Range | null = null;
 const showEvtPreviewLinkDialog = ref(false);
 const evtPreviewLinkUrl = ref('');
 const evtPreviewLinkInputRef = ref<HTMLInputElement | null>(null);
+
+function configuredPublicBaseUrl(): string | null {
+	const normalized = (config.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+	return normalized || null;
+}
+
+const canShareActivity = computed(() => !!configuredPublicBaseUrl())
+
+const shareButtonTitle = computed(() => {
+	if (!canShareActivity.value) return 'Öffentliche Basis-URL ist nicht konfiguriert'
+	if (shareLoading.value) return 'Share-Link wird erstellt'
+	if (!shareToken.value) return 'Share-Link nicht verfügbar'
+	return 'Share-Link kopieren'
+})
 
 function onEvtPreviewInput() {
 	updateEvtPreviewToolbar();
@@ -576,6 +596,7 @@ const canForms = computed(() => {
 
 const canPublishEvent = computed(() => {
 	if (!user.value || !activity.value) return false;
+	if (!config.WP_PUBLISHING_ENABLED) return false;
 	const p = myPermissions.value;
 	if (!p) return false;
 	if (p.event_publish_scope === 'all') return true;
@@ -716,7 +737,12 @@ async function handlePublishEventClick() {
 		showNoFormForEventDialog.value = true;
 		return;
 	}
-	eventFormUrl.value = `${window.location.origin}/forms/${existingForm.public_slug}`;
+	const baseUrl = configuredPublicBaseUrl();
+	if (!baseUrl) {
+		error.value = 'Öffentliche Basis-URL ist nicht konfiguriert.';
+		return;
+	}
+	eventFormUrl.value = `${baseUrl}/forms/${existingForm.public_slug}`;
 	await openEventPreviewModal();
 }
 
@@ -772,17 +798,64 @@ async function refreshLiveParticipants() {
 			liveDeregistrationCount.value = null;
 			return;
 		}
+		type LiveFormPayload = { exists?: boolean; form?: { id?: string; form_type?: FormType } | null };
+		type LiveFormData = { id?: string; form_type?: FormType };
+		const formPayload = (await formRes.json()) as LiveFormPayload | LiveFormData | null;
+		const formData: LiveFormData | null = (
+			formPayload &&
+			typeof formPayload === 'object' &&
+			'exists' in formPayload
+		)
+			? (formPayload.exists && formPayload.form ? formPayload.form : null)
+			: (formPayload as LiveFormData | null);
+
+		if (!formData?.id) {
+			liveHasForm.value = false;
+			liveFormType.value = null;
+			liveExpectedParticipants.value = null;
+			liveRegistrationCount.value = null;
+			liveDeregistrationCount.value = null;
+			return;
+		}
+
 		liveHasForm.value = true;
-		const formData = (await formRes.json()) as { id: string; form_type?: FormType };
 		const statsRes = await apiFetch(`/api/activities/${id}/form/stats`);
-		if (!statsRes.ok || !formData?.id) {
+		if (!statsRes.ok) {
 			liveFormType.value = formData?.form_type ?? null;
 			liveExpectedParticipants.value = null;
 			liveRegistrationCount.value = null;
 			liveDeregistrationCount.value = null;
 			return;
 		}
-		const statsData = (await statsRes.json()) as FormStats;
+		type LiveStatsPayload = { exists?: boolean; stats?: FormStats | null };
+		const statsPayload = (await statsRes.json()) as LiveStatsPayload | FormStats | null;
+		const statsData: FormStats | null = (
+			statsPayload &&
+			typeof statsPayload === 'object' &&
+			'exists' in statsPayload
+		)
+			? (statsPayload.exists && statsPayload.stats ? statsPayload.stats : null)
+			: (statsPayload as FormStats | null);
+
+		if (!statsData) {
+			const fallbackType = formData.form_type ?? null;
+			liveFormType.value = fallbackType;
+			if (fallbackType === 'registration') {
+				liveRegistrationCount.value = 0;
+				liveDeregistrationCount.value = null;
+				liveExpectedParticipants.value = 0;
+			} else if (fallbackType === 'deregistration') {
+				liveRegistrationCount.value = null;
+				liveDeregistrationCount.value = 0;
+				liveExpectedParticipants.value = null;
+			} else {
+				liveRegistrationCount.value = 0;
+				liveDeregistrationCount.value = 0;
+				liveExpectedParticipants.value = 0;
+			}
+			return;
+		}
+
 		const formType: FormType | null = statsData.form_type ?? formData.form_type ?? null;
 		liveFormType.value = formType;
 		const registration = statsData.registration_count ?? statsData.by_mode?.registration ?? 0;
@@ -816,6 +889,7 @@ async function refreshLiveParticipants() {
 }
 
 const registrationsExceedMidata = computed(() => {
+	if (!config.MIDATA_ENABLED) return false;
 	if (liveFormType.value !== 'registration') return false;
 	if (typeof liveRegistrationCount.value !== 'number') return false;
 	if (typeof midataChildrenCount.value !== 'number') return false;
@@ -829,7 +903,9 @@ const liveActivitySumDisplay = computed(() => {
 		return String(liveRegistrationCount.value ?? 0);
 	}
 	if (liveFormType.value === 'deregistration') {
-		if (typeof midataChildrenCount.value !== 'number') return '—';
+		if (typeof midataChildrenCount.value !== 'number') {
+			return String(liveDeregistrationCount.value ?? 0);
+		}
 		return String(midataChildrenCount.value - (liveDeregistrationCount.value ?? 0));
 	}
 	if (typeof liveExpectedParticipants.value === 'number') {
@@ -839,6 +915,13 @@ const liveActivitySumDisplay = computed(() => {
 });
 
 async function refreshActivityMidataChildren() {
+	if (!config.MIDATA_ENABLED) {
+		midataConfigured.value = false;
+		midataChildrenCount.value = null;
+		midataError.value = null;
+		midataLoading.value = false;
+		return;
+	}
 	midataLoading.value = true;
 	try {
 		const res = await apiFetch(`/api/activities/${id}/midata/children-count`);
@@ -872,14 +955,65 @@ async function refreshExpectedWeather() {
 		expectedWeatherLoading.value = false;
 		return;
 	}
+
+	const locationKey = location.toLowerCase();
+	const cacheKey = `dpw.weatherExpected:${id}:${pastActivity ? 'past' : 'future'}:${locationKey}`;
+	try {
+		const raw = sessionStorage.getItem(cacheKey);
+		if (raw) {
+			const parsed = JSON.parse(raw) as { ts?: number; data?: ActivityExpectedWeather };
+			if (
+				typeof parsed?.ts === 'number' &&
+				parsed.data &&
+				Date.now() - parsed.ts < WEATHER_EXPECTED_CACHE_TTL_MS
+			) {
+				expectedWeather.value = parsed.data;
+				expectedWeatherLoading.value = false;
+				return;
+			}
+		}
+	} catch {
+		/* ignore cache issues */
+	}
+
+	expectedWeatherRequestSeq += 1;
+	const requestSeq = expectedWeatherRequestSeq;
+	if (expectedWeatherRequestController) {
+		expectedWeatherRequestController.abort();
+	}
+	const controller = new AbortController();
+	expectedWeatherRequestController = controller;
+	const timeout = setTimeout(() => controller.abort(), WEATHER_EXPECTED_TIMEOUT_MS);
 	expectedWeatherLoading.value = true;
 	try {
 		const query = location ? `?location=${encodeURIComponent(location)}` : '';
-		const res = await apiFetch(`/api/activities/${id}/weather-expected${query}`);
+		const res = await apiFetch(`/api/activities/${id}/weather-expected${query}`, {
+			signal: controller.signal,
+		});
+		if (requestSeq !== expectedWeatherRequestSeq) return;
 		if (!res.ok) return;
-		expectedWeather.value = (await res.json()) as ActivityExpectedWeather;
+		const data = (await res.json()) as ActivityExpectedWeather;
+		expectedWeather.value = data;
+		try {
+			sessionStorage.setItem(
+				cacheKey,
+				JSON.stringify({ ts: Date.now(), data }),
+			);
+		} catch {
+			/* ignore cache issues */
+		}
+	} catch (e) {
+		if (!(e instanceof Error) || e.name !== 'AbortError') {
+			throw e;
+		}
 	} finally {
-		expectedWeatherLoading.value = false;
+		clearTimeout(timeout);
+		if (expectedWeatherRequestController === controller) {
+			expectedWeatherRequestController = null;
+		}
+		if (requestSeq === expectedWeatherRequestSeq) {
+			expectedWeatherLoading.value = false;
+		}
 	}
 }
 
@@ -1182,10 +1316,17 @@ async function refreshEstimatedParticipantsFromSimilar() {
 	const nextStats: Record<string, number> = {};
 
 	for (const candidate of candidates) {
+		if (requestId !== similarActivityEstimateRequestId) return;
 		try {
 			const res = await apiFetch(`/api/activities/${candidate.id}/form/stats`);
 			if (!res.ok) continue;
-			const stats = (await res.json()) as FormStats;
+			const payload = await res.json();
+			if (payload && typeof payload === 'object' && 'exists' in payload) {
+				if (!payload.exists || !payload.stats) continue;
+			}
+			const stats = (payload && typeof payload === 'object' && 'stats' in payload
+				? payload.stats
+				: payload) as FormStats;
 			const expected = expectedParticipantsFromStats(stats);
 			if (typeof expected !== 'number' || !Number.isFinite(expected) || expected < 0) continue;
 			nextStats[candidate.id] = Math.round(expected);
@@ -1235,12 +1376,24 @@ const estimateSourceActivities = computed(() => {
 });
 
 onMounted(async () => {
+	const permissionTask = fetchMyPermissions().catch(() => null);
 	try {
-		const [, fetchedActivity] = await Promise.all([
-			fetchMyPermissions(),
-			fetchActivity(id),
+		await Promise.race([
+			permissionTask,
+			new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
 		]);
+
+		const fetchedActivity = await fetchActivity(id);
 		activity.value = fetchedActivity;
+
+		if (!activity.value && error.value) {
+			const retryActivity = await fetchActivity(id);
+			if (retryActivity) {
+				activity.value = retryActivity;
+			}
+		}
+
+		activityMissingConfirmed.value = !activity.value && !error.value;
 
 		if (activity.value) {
 			if (myPermissions.value && !canView.value) {
@@ -1254,12 +1407,22 @@ onMounted(async () => {
 		loading.value = false;
 	}
 
+	void permissionTask.then(() => {
+		if (activity.value && myPermissions.value && !canView.value) {
+			router.replace('/');
+		}
+	});
+
 	if (activity.value) {
 		void fetchAttachments(id).then((items) => {
 			attachments.value = items;
 		});
-		void fetchShareLink();
-		void fetchPublication(id).then(pub => { eventPublication.value = pub; });
+		if (canShareActivity.value) {
+			void fetchShareLink();
+		}
+		if (config.WP_PUBLISHING_ENABLED) {
+			void fetchPublication(id).then(pub => { eventPublication.value = pub; });
+		}
 		void Promise.allSettled([
 			fetchDepartments(),
 			fetchLocations(),
@@ -1309,6 +1472,12 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+	expectedWeatherRequestSeq += 1;
+	if (expectedWeatherRequestController) {
+		expectedWeatherRequestController.abort();
+		expectedWeatherRequestController = null;
+	}
+	similarActivityEstimateRequestId += 1;
 	if (mode.value === 'edit') writeLocalDraftNow();
 	if (localDraftWriteTimer) {
 		clearTimeout(localDraftWriteTimer);
@@ -2109,8 +2278,8 @@ function closeActivityPreview() {
 
 // ---- Auto-save --------------------------------------------------------------
 import { config } from '../config';
-const AUTOSAVE_INTERVAL = config.AUTOSAVE_INTERVAL;
-const AUTOSAVE_DEBOUNCE = config.AUTOSAVE_DEBOUNCE;
+const autosaveInterval = () => config.AUTOSAVE_INTERVAL;
+const autosaveDebounce = () => config.AUTOSAVE_DEBOUNCE;
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let autoSaveInterval: ReturnType<typeof setInterval> | null = null;
@@ -2122,10 +2291,10 @@ function scheduleAutoSave() {
 	if (applyingRemote) return; // ignore watcher firings caused by remote WS updates
 	scheduleLocalDraftWrite();
 
-	if (AUTOSAVE_DEBOUNCE) {
+	if (autosaveDebounce()) {
 		// Debounce: restart timer on every change, save after idle
 		if (autoSaveTimer) clearTimeout(autoSaveTimer);
-		autoSaveTimer = setTimeout(() => doSave({ skipFuzzyCheck: true }), AUTOSAVE_INTERVAL);
+		autoSaveTimer = setTimeout(() => doSave({ skipFuzzyCheck: true }), autosaveInterval());
 	} else {
 		// Interval: just mark dirty, the interval will pick it up
 		hasPendingChanges = true;
@@ -2133,13 +2302,13 @@ function scheduleAutoSave() {
 }
 
 function startAutoSaveInterval() {
-	if (!AUTOSAVE_DEBOUNCE && !autoSaveInterval) {
+	if (!autosaveDebounce() && !autoSaveInterval) {
 		autoSaveInterval = setInterval(() => {
 			if (hasPendingChanges && mode.value === 'edit') {
 				hasPendingChanges = false;
 				doSave({ skipFuzzyCheck: true });
 			}
-		}, AUTOSAVE_INTERVAL);
+		}, autosaveInterval());
 	}
 }
 
@@ -2261,6 +2430,12 @@ async function doDelete() {
 
 // ---- Share link ------------------------------------------------------------
 async function fetchShareLink() {
+	if (!canShareActivity.value) {
+		shareToken.value = null;
+		shareUrl.value = null;
+		shareLoading.value = false;
+		return;
+	}
 	shareLoading.value = true;
 	try {
 		const res = await apiFetch(`/api/activities/${id}/share`);
@@ -2268,6 +2443,7 @@ async function fetchShareLink() {
 			const data = await res.json();
 			if (data.share_token) {
 				shareToken.value = data.share_token;
+				shareUrl.value = data.share_url || null;
 				return;
 			}
 		}
@@ -2277,16 +2453,21 @@ async function fetchShareLink() {
 		if (createRes.ok) {
 			const created = await createRes.json();
 			shareToken.value = created.share_token || null;
+			shareUrl.value = created.share_url || null;
 		}
-	} catch { /* ignore */ }
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : 'Share-Link konnte nicht geladen werden.';
+	}
 	finally {
 		shareLoading.value = false;
 	}
 }
 
 function copyShareLink() {
-	if (!shareToken.value) return;
-	const url = `${window.location.origin}/shared/${shareToken.value}`;
+	if (!canShareActivity.value || !shareToken.value) return;
+	const baseUrl = configuredPublicBaseUrl();
+	const url = shareUrl.value || (baseUrl ? `${baseUrl}/shared/${shareToken.value}` : '');
+	if (!url) return;
 	navigator.clipboard.writeText(url);
 	shareCopied.value = true;
 	setTimeout(() => { shareCopied.value = false; }, 2000);
@@ -2336,7 +2517,7 @@ function copyShareLink() {
 			</button>
 			<!-- Event publish -->
 			<button
-				v-if="activity && mode === 'view' && !eventPublication"
+				v-if="activity && mode === 'view' && config.WP_PUBLISHING_ENABLED && !eventPublication"
 				class="btn-mail"
 				:disabled="!canPublishEvent"
 				:title="canPublishEvent ? 'Als Event veröffentlichen' : 'Keine Berechtigung zum Veröffentlichen'"
@@ -2346,22 +2527,22 @@ function copyShareLink() {
 				Veröffentlichen
 			</button>
 			<button
-				v-else-if="activity && mode === 'view' && eventPublication"
+				v-else-if="activity && mode === 'view' && config.WP_PUBLISHING_ENABLED && eventPublication"
 				class="btn-mail btn-mail--active"
 				:disabled="!canPublishEvent"
-				:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : eventPublication.wp_event_id ? 'Veröffentlicht + WordPress synchronisiert' : 'Event veröffentlicht (WordPress nicht konfiguriert)'"
+				:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : 'Veröffentlicht + WordPress synchronisiert'"
 				@click="handlePublishEventClick"
 			>
 				<CheckCircle2 class="btn-icon" :size="16" aria-hidden="true" />
-				{{ eventPublication.wp_event_id ? 'Veröffentlicht (WP)' : 'Veröffentlicht' }}
+				Veröffentlicht (WP)
 			</button>
 			<!-- Share link -->
 			<div v-if="activity && mode === 'view'" class="share-link-wrap">
 				<button
 					class="btn-mail"
 					:class="{ 'btn-mail--active': shareCopied }"
-					title="Share-Link kopieren"
-					:disabled="shareLoading || !shareToken"
+					:title="shareButtonTitle"
+					:disabled="!canShareActivity || shareLoading || !shareToken"
 					@click="copyShareLink"
 				>
 					<Check v-if="shareCopied" class="btn-icon" :size="16" aria-hidden="true" />
@@ -2405,7 +2586,9 @@ function copyShareLink() {
 
 	<main class="main">
 		<p v-if="loading" class="loading">Laden…</p>
-		<p v-else-if="!activity" class="error">Aktivität nicht gefunden.</p>
+		<ErrorAlert v-else-if="!activity && !!error" :error="error" />
+		<p v-else-if="activityMissingConfirmed" class="error">Aktivität nicht gefunden.</p>
+		<p v-else-if="!activity" class="loading">Aktivität wird geladen…</p>
 
 		<!-- ================================================================ VIEW -->
 		<div v-else-if="mode === 'view'" class="detail-view">
@@ -2586,7 +2769,7 @@ function copyShareLink() {
 					<div class="detail-stats-card">
 						<p class="detail-stats-card-title">Aktuelle Informationen</p>
 						<div class="detail-stats-list">
-							<div class="detail-stats-row">
+							<div v-if="config.MIDATA_ENABLED" class="detail-stats-row">
 								<span class="detail-label">MiData Teilnehmende</span>
 								<span class="detail-value">
 									{{ midataLoading ? 'Lädt…' : (!midataConfigured ? 'Nicht konfiguriert' : (midataChildrenCount ?? '—')) }}
@@ -2604,11 +2787,11 @@ function copyShareLink() {
 								<span class="detail-label">Total Teilnehmende</span>
 								<span class="detail-value" :class="{ 'detail-value--warn': registrationsExceedMidata }">{{ liveActivitySumDisplay }}</span>
 							</div>
-							<div class="detail-stats-row" v-if="registrationsExceedMidata">
+							<div class="detail-stats-row" v-if="config.MIDATA_ENABLED && registrationsExceedMidata">
 								<span class="detail-label">Hinweis</span>
 								<span class="detail-value detail-value--warn">Mehr Anmeldungen als MiData Kinder</span>
 							</div>
-							<div class="detail-stats-row" v-if="midataError">
+							<div class="detail-stats-row" v-if="config.MIDATA_ENABLED && midataError">
 								<span class="detail-label">MiData Fehler</span>
 								<span class="detail-value">{{ midataError }}</span>
 							</div>
@@ -3223,7 +3406,7 @@ function copyShareLink() {
 				<div class="detail-stats-card">
 					<p class="detail-stats-card-title">Aktuelle Informationen</p>
 					<div class="detail-stats-list">
-						<div class="detail-stats-row">
+						<div v-if="config.MIDATA_ENABLED" class="detail-stats-row">
 							<span class="detail-label">MiData Teilnehmende</span>
 							<span class="detail-value">{{ midataLoading ? 'Lädt…' : (!midataConfigured ? 'Nicht konfiguriert' : (midataChildrenCount ?? '—')) }}</span>
 						</div>
@@ -3239,11 +3422,11 @@ function copyShareLink() {
 							<span class="detail-label">Total Teilnehmende</span>
 							<span class="detail-value" :class="{ 'detail-value--warn': registrationsExceedMidata }">{{ liveActivitySumDisplay }}</span>
 						</div>
-						<div class="detail-stats-row" v-if="registrationsExceedMidata">
+						<div class="detail-stats-row" v-if="config.MIDATA_ENABLED && registrationsExceedMidata">
 							<span class="detail-label">Hinweis</span>
 							<span class="detail-value detail-value--warn">Mehr Anmeldungen als MiData Kinder</span>
 						</div>
-						<div class="detail-stats-row" v-if="midataError">
+						<div class="detail-stats-row" v-if="config.MIDATA_ENABLED && midataError">
 							<span class="detail-label">MiData Fehler</span>
 							<span class="detail-value">{{ midataError }}</span>
 						</div>
@@ -3428,7 +3611,7 @@ function copyShareLink() {
 			<div style="display: flex; align-items: center; justify-content: space-between;">
 				<h2 class="modal-title" style="margin: 0;">Event-Vorschau</h2>
 				<a
-					v-if="eventPublication?.wp_event_id && config.WP_URL"
+					v-if="config.WP_PUBLISHING_ENABLED && eventPublication?.wp_event_id && config.WP_URL"
 					:href="`${config.WP_URL}/wp-admin/post.php?post=${eventPublication.wp_event_id}&action=edit`"
 					target="_blank"
 					rel="noopener"
@@ -3436,7 +3619,7 @@ function copyShareLink() {
 					title="In WordPress bearbeiten"
 				>WP #{{ eventPublication.wp_event_id }}</a>
 				<span
-					v-else-if="eventPublication?.wp_event_id"
+					v-else-if="config.WP_PUBLISHING_ENABLED && eventPublication?.wp_event_id"
 					class="wp-id-link"
 				>WP #{{ eventPublication.wp_event_id }}</span>
 			</div>
@@ -3560,7 +3743,7 @@ function copyShareLink() {
 		<div class="modal modal--danger">
 			<h2 class="modal-title modal-title--danger">Event löschen?</h2>
 			<p class="modal-warning">
-				Das Event wird aus dem DPW entfernt{{ eventPublication?.wp_event_id ? ' und aus WordPress gelöscht' : '' }}.
+				Das Event wird aus dem DPW entfernt{{ config.WP_PUBLISHING_ENABLED && eventPublication?.wp_event_id ? ' und aus WordPress gelöscht' : '' }}.
 				Diese Aktion kann nicht rückgängig gemacht werden.
 			</p>
 			<div class="modal-actions">

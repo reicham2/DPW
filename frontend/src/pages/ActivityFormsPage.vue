@@ -52,12 +52,21 @@
 					</div>
 					<div class="header-actions">
 						<a
-							:href="form?.public_slug ? `/forms/${form.public_slug}` : '#'"
+							v-if="canOpenPublicFormLink(form?.public_slug)"
+							:href="publicFormUrl(form?.public_slug)"
 							target="_blank"
 							class="btn-outline"
 						>
 							Öffentlicher Link ↗
 						</a>
+						<button
+							v-else
+							class="btn-outline"
+							disabled
+							title="Öffentliche Basis-URL ist nicht konfiguriert"
+						>
+							Öffentlicher Link ↗
+						</button>
 						<button class="btn-secondary" @click="openEdit">Bearbeiten</button>
 						<button class="btn-danger" @click="confirmDelete">Löschen</button>
 					</div>
@@ -171,20 +180,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { Activity, SignupForm, SignupFormInput, FormResponse, FormQuestionInput, FormType } from '../types';
 import { useForms, useFormTemplates } from '../composables/useForms';
 import { useActivities } from '../composables/useActivities';
 import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
+import { config } from '../config';
 import { ArrowLeft, ClipboardList, X } from 'lucide-vue-next';
 import FormBuilder from '../components/FormBuilder.vue';
 import FormStats from '../components/FormStats.vue';
 
 const route = useRoute();
 const router = useRouter();
-const activityId = route.params.id as string;
+const activityId = computed(() => String(route.params.id ?? ''));
 
 const {
 	form,
@@ -206,7 +216,7 @@ const {
 } = useForms();
 
 const { fetchActivity } = useActivities();
-const { canForms, fetchMyPermissions } = usePermissions();
+const { canForms, fetchMyPermissions, myPermissions } = usePermissions();
 const { templates: deptTemplates, fetchTemplates: fetchDeptTemplates } = useFormTemplates();
 
 const activity = ref<Activity | null>(null);
@@ -234,25 +244,58 @@ const tabs = [
 	{ id: 'stats' as const, label: 'Statistik' },
 ];
 
-onMounted(async () => {
-	await fetchMyPermissions();
-	const act = await fetchActivity(activityId);
+function publicFormUrl(slug: string | undefined): string {
+	if (!slug) return '#'
+	const baseUrl = (config.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '')
+	return `${baseUrl}/forms/${slug}`
+}
+
+function canOpenPublicFormLink(slug: string | undefined): boolean {
+	if (!slug) return false
+	return !!(config.PUBLIC_BASE_URL || '').trim()
+}
+
+async function loadActivityFormsPage(id: string) {
+	if (!id) return;
+	form.value = null;
+	responses.value = [];
+	stats.value = null;
+	error.value = null;
+	showBuilder.value = false;
+	editingForm.value = null;
+	templateInitial.value = null;
+	hadDraftOnEntry.value = false;
+	currentDraft.value = null;
+	activeTab.value = 'questions';
+	selectedResponse.value = null;
+
+	const permissionTask = fetchMyPermissions().catch(() => null)
+	await Promise.race([
+		permissionTask,
+		new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+	])
+	const act = await fetchActivity(id);
 	activity.value = act;
 	activityDepartment.value = act?.department ?? undefined;
 
 	// Permission gate: redirect if no form access
-	if (act && user.value && !canForms(act, user.value.display_name, user.value.department)) {
-		router.replace(`/activities/${activityId}`);
+	if (
+		act &&
+		user.value &&
+		myPermissions.value &&
+		!canForms(act, user.value.display_name, user.value.department)
+	) {
+		router.replace(`/activities/${id}`);
 		return;
 	}
 
-	const existingForm = await fetchForm(activityId);
+	const existingForm = await fetchForm(id);
 
 	// If no form exists, auto-open builder
 	if (!existingForm && activityDepartment.value) {
 		await fetchDeptTemplates(activityDepartment.value);
 
-		const draft = await getFormDraft(activityId);
+		const draft = await getFormDraft(id);
 		if (draft) {
 			hadDraftOnEntry.value = true;
 			currentDraft.value = draft;
@@ -262,7 +305,7 @@ onMounted(async () => {
 			if (tpl) {
 				templateInitial.value = {
 					id: '',
-					activity_id: activityId,
+					activity_id: id,
 					public_slug: '',
 					form_type: tpl.form_type,
 					title: tpl.name,
@@ -285,17 +328,30 @@ onMounted(async () => {
 
 		showBuilder.value = true;
 	}
+}
+
+onMounted(async () => {
+	await loadActivityFormsPage(activityId.value);
 });
+
+watch(
+	() => route.params.id,
+	async (nextId, prevId) => {
+		if (nextId && nextId !== prevId) {
+			await loadActivityFormsPage(String(nextId));
+		}
+	}
+);
 
 watch(activeTab, async (tab) => {
 	if (tab === 'responses' && responses.value.length === 0) {
 		loadingResponses.value = true;
-		await fetchResponses(activityId);
+		await fetchResponses(activityId.value);
 		loadingResponses.value = false;
 	}
 	if (tab === 'stats') {
 		loadingStats.value = true;
-		await fetchStats(activityId);
+		await fetchStats(activityId.value);
 		loadingStats.value = false;
 	}
 });
@@ -319,41 +375,47 @@ function goBack() {
 			return;
 		}
 	}
-	router.push(`/activities/${activityId}`);
+	router.push(`/activities/${activityId.value}`);
 }
 
 async function cancelBuilder() {
 	// If we had a draft on entry, don't delete it; let user come back to it later
 	if (!hadDraftOnEntry.value) {
-		await deleteFormDraft(activityId);
+		await deleteFormDraft(activityId.value);
 	}
 	showBuilder.value = false;
 	editingForm.value = null;
 	// If there's no form (auto-opened builder), go back to the activity
 	if (!form.value) {
-		router.push(`/activities/${activityId}`);
+		router.push(`/activities/${activityId.value}`);
 	}
 }
 
 async function onSave(payload: SignupFormInput) {
+	let saved: SignupForm | null = null;
 	if (editingForm.value) {
-		await updateForm(activityId, payload);
+		saved = await updateForm(activityId.value, payload);
 	} else {
-		await createForm(activityId, payload);
+		saved = await createForm(activityId.value, payload);
 	}
+
+	if (!saved) {
+		return;
+	}
+
 	// Delete draft after successful save
-	await deleteFormDraft(activityId);
+	await deleteFormDraft(activityId.value);
 	showBuilder.value = false;
 	editingForm.value = null;
 }
 
 async function onAutoSave(payload: SignupFormInput) {
 	if (editingForm.value) {
-		await updateForm(activityId, payload);
+		await updateForm(activityId.value, payload);
 	} else {
 		// Save to draft instead of main form
 		await saveFormDraft(
-			activityId,
+			activityId.value,
 			payload.form_type,
 			payload.title,
 			payload.questions,
@@ -366,21 +428,21 @@ function confirmDelete() {
 }
 
 async function doDelete() {
-	await deleteForm(activityId);
+	await deleteForm(activityId.value);
 	showDeleteModal.value = false;
 }
 
 async function openResponse(id: string) {
-	const r = await fetchResponse(activityId, id);
+	const r = await fetchResponse(activityId.value, id);
 	selectedResponse.value = r;
 }
 
 async function removeResponse(id: string) {
-	await deleteResponse(activityId, id);
+	await deleteResponse(activityId.value, id);
 	if (selectedResponse.value?.id === id) selectedResponse.value = null;
 	if (activeTab.value === 'stats') {
 		loadingStats.value = true;
-		await fetchStats(activityId);
+		await fetchStats(activityId.value);
 		loadingStats.value = false;
 	}
 }
@@ -632,7 +694,11 @@ function formatDate(iso: string): string {
 	display: inline-flex;
 	align-items: center;
 }
-.btn-outline:hover { background: #eef2ff; }
+.btn-outline:hover:not(:disabled) { background: #eef2ff; }
+.btn-outline:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
 
 .btn-danger {
 	padding: 0.45rem 1rem;
