@@ -60,12 +60,37 @@ export function useActivities() {
 
 	async function fetchActivity(id: string): Promise<Activity | null> {
 		error.value = null;
+		const url = `${BASE}/activities/${id}`;
+
+		async function requestOnce(timeoutMs: number): Promise<Activity | null> {
+			const controller = new AbortController();
+			const timeout = setTimeout(() => controller.abort(), timeoutMs);
+			try {
+				const res = await apiFetch(url, { signal: controller.signal });
+				if (res.status === 404) return null;
+				if (!res.ok) throw new Error(await res.text());
+				return (await res.json()) as Activity;
+			} finally {
+				clearTimeout(timeout);
+			}
+		}
+
 		try {
-			const res = await apiFetch(`${BASE}/activities/${id}`);
-			if (res.status === 404) return null;
-			if (!res.ok) throw new Error(await res.text());
-			return (await res.json()) as Activity;
+			return await requestOnce(2500);
 		} catch (e) {
+			const isAbort =
+				e instanceof Error &&
+				(e.name === 'AbortError' || e.message.toLowerCase().includes('abort'));
+
+			if (isAbort) {
+				try {
+					return await requestOnce(2500);
+				} catch (retryError) {
+					error.value = formatApiError(retryError);
+					return null;
+				}
+			}
+
 			error.value = formatApiError(e);
 			return null;
 		}

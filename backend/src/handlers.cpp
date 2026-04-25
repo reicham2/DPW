@@ -1,4 +1,5 @@
 #include "handlers.hpp"
+#include "app_config.hpp"
 #include "models.hpp"
 #include "json.hpp"
 #include "graph.hpp"
@@ -16,6 +17,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <cctype>
+#include <cstdlib>
 #include <regex>
 #include <sstream>
 #include <limits>
@@ -36,6 +38,7 @@
 #endif
 
 static nlohmann::json notification_to_json(const NotificationRecord &n);
+static void send_internal_error(HttpRes *res, const char *context, const std::exception &e);
 
 namespace
 {
@@ -65,37 +68,28 @@ namespace
         return s;
     }
 
-    std::string public_base_url()
+    std::optional<std::string> configured_public_base_url(Database &db)
     {
-        static const char *keys[] = {"DPW_PUBLIC_URL", "PUBLIC_BASE_URL", "APP_BASE_URL"};
-        for (const char *k : keys)
-        {
-            const char *v = std::getenv(k);
-            if (v && *v)
-            {
-                std::string out = trim_ascii(v);
-                while (!out.empty() && out.back() == '/')
-                    out.pop_back();
-                if (!out.empty())
-                    return out;
-            }
-        }
-        // Last-resort local fallback when no public URL env is configured.
-        return "http://localhost:8000";
+        std::string out = app_config::get_or(db, app_config::kPublicBaseUrl, "");
+        out = trim_ascii(out);
+        while (!out.empty() && out.back() == '/')
+            out.pop_back();
+        if (out.empty())
+            return std::nullopt;
+        return out;
     }
 
-    std::string activity_absolute_link(const std::string &activity_id)
+    std::string public_base_url(Database &db)
     {
-        return public_base_url() + "/activities/" + activity_id;
+        auto out = configured_public_base_url(db);
+        if (!out)
+            throw std::runtime_error("Öffentliche Basis-URL ist nicht konfiguriert");
+        return *out;
     }
 
-    std::string env_or(const char *key, const std::string &fallback = "")
+    std::string activity_absolute_link(Database &db, const std::string &activity_id)
     {
-        const char *v = std::getenv(key);
-        if (!v)
-            return fallback;
-        std::string out = trim_ascii(v);
-        return out.empty() ? fallback : out;
+        return public_base_url(db) + "/activities/" + activity_id;
     }
 
     std::string base64url_encode(const std::string &raw)
@@ -160,11 +154,11 @@ namespace
         return endpoint.substr(0, slash);
     }
 
-    std::optional<std::string> build_vapid_jwt_for_audience(const std::string &audience)
+    std::optional<std::string> build_vapid_jwt_for_audience(Database &db, const std::string &audience)
     {
-        const std::string vapid_pub = env_or("DPW_VAPID_PUBLIC_KEY");
-        const std::string vapid_priv_b64u = env_or("DPW_VAPID_PRIVATE_KEY");
-        const std::string vapid_sub = env_or("DPW_VAPID_SUBJECT", "mailto:admin@localhost");
+        const std::string vapid_pub = app_config::get_or(db, app_config::kVapidPublicKey, "");
+        const std::string vapid_priv_b64u = app_config::get_or(db, app_config::kVapidPrivateKey, "");
+        const std::string vapid_sub = app_config::get_or(db, app_config::kVapidSubject, "mailto:admin@localhost");
         if (vapid_pub.empty() || vapid_priv_b64u.empty() || audience.empty())
             return std::nullopt;
 
@@ -595,7 +589,7 @@ namespace
 
     void deliver_web_push_for_user(Database &db, const UserRecord &user, const NotificationRecord &notification)
     {
-        const std::string vapid_pub = env_or("DPW_VAPID_PUBLIC_KEY");
+        const std::string vapid_pub = app_config::get_or(db, app_config::kVapidPublicKey, "");
         if (vapid_pub.empty())
             return;
 
@@ -606,7 +600,7 @@ namespace
             if (aud.empty())
                 continue;
 
-            auto jwt = build_vapid_jwt_for_audience(aud);
+            auto jwt = build_vapid_jwt_for_audience(db, aud);
             if (!jwt)
                 continue;
 
@@ -817,19 +811,20 @@ namespace
         return nullptr;
     }
 
-    std::optional<int> fetch_midata_children_count(const std::string &group_id,
+    std::optional<int> fetch_midata_children_count(Database &db,
+                                                   const std::string &group_id,
                                                    std::string &error)
     {
-        const char *api_key_env = std::getenv("MIDATA_API_KEY");
-        if (!api_key_env || std::string(api_key_env).empty())
+        std::string api_key = app_config::get_or(db, app_config::kMidataApiKey, "");
+        if (api_key.empty())
         {
             error = "not-configured";
             return std::nullopt;
         }
 
-        std::string url_tmpl = std::getenv("MIDATA_API_URL_TEMPLATE")
-                                   ? std::getenv("MIDATA_API_URL_TEMPLATE")
-                                   : "https://db.scout.ch/de/groups/{group_id}/people.json";
+        std::string url_tmpl = app_config::get_or(db,
+                                                  app_config::kMidataApiUrlTemplate,
+                                                  "https://db.scout.ch/de/groups/{group_id}/people.json");
 
         CURL *escape_curl = curl_easy_init();
         if (!escape_curl)
@@ -865,21 +860,11 @@ namespace
         std::string body;
         struct curl_slist *headers = nullptr;
         std::string header_name = "X-Token";
-        std::string auth_header = header_name + ": " + std::string(api_key_env);
+        std::string auth_header = header_name + ": " + api_key;
         headers = curl_slist_append(headers, auth_header.c_str());
         headers = curl_slist_append(headers, "Accept: application/json");
 
-        long timeout_ms = 8000;
-        if (const char *timeout_env = std::getenv("MIDATA_API_TIMEOUT_MS"))
-        {
-            try
-            {
-                timeout_ms = std::stol(timeout_env);
-            }
-            catch (...)
-            {
-            }
-        }
+        long timeout_ms = app_config::get_int_or(db, app_config::kMidataApiTimeoutMs, 8000, 1000, 60000);
 
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
@@ -973,6 +958,7 @@ namespace
     std::mutex meteo_cache_mutex;
     std::vector<MeteoPointMeta> meteo_point_cache;
     std::chrono::steady_clock::time_point meteo_point_cache_expires;
+    constexpr long kMeteoHttpTimeoutMs = 3000;
     std::mutex midata_cache_mutex;
     std::unordered_map<std::string, MidataCountCacheEntry> midata_count_cache;
     constexpr auto kMidataCountCacheTtl = std::chrono::minutes(5);
@@ -1010,7 +996,14 @@ namespace
         };
     }
 
-    std::optional<int> fetch_midata_children_count_cached(const std::string &group_id,
+    void clear_cached_midata_children_counts()
+    {
+        std::lock_guard<std::mutex> lock(midata_cache_mutex);
+        midata_count_cache.clear();
+    }
+
+    std::optional<int> fetch_midata_children_count_cached(Database &db,
+                                                          const std::string &group_id,
                                                           std::string &error)
     {
         bool configured = false;
@@ -1018,7 +1011,7 @@ namespace
         if (cached || configured || !error.empty())
             return cached;
 
-        auto count = fetch_midata_children_count(group_id, error);
+        auto count = fetch_midata_children_count(db, group_id, error);
         configured = count.has_value() || error != "not-configured";
         store_cached_midata_children_count(group_id, count, configured, error);
         return count;
@@ -1227,7 +1220,7 @@ namespace
                 return meteo_point_cache;
         }
 
-        auto collection_body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting", 12000, error);
+        auto collection_body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting", kMeteoHttpTimeoutMs, error);
         if (!collection_body)
             return std::nullopt;
         auto collection = nlohmann::json::parse(*collection_body, nullptr, false);
@@ -1249,7 +1242,7 @@ namespace
             return std::nullopt;
         }
 
-        auto csv_body = http_get_text(point_meta_url, 12000, error);
+        auto csv_body = http_get_text(point_meta_url, kMeteoHttpTimeoutMs, error);
         if (!csv_body)
             return std::nullopt;
 
@@ -1418,7 +1411,7 @@ namespace
 
     std::optional<std::string> get_latest_asset_url(const std::string &asset_suffix, std::string &error)
     {
-        auto body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting/items?limit=1", 12000, error);
+        auto body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting/items?limit=1", kMeteoHttpTimeoutMs, error);
         if (!body)
             return std::nullopt;
         auto payload = nlohmann::json::parse(*body, nullptr, false);
@@ -1460,7 +1453,7 @@ namespace
                                                          time_t target_ts,
                                                          std::string &error)
     {
-        auto csv_body = http_get_text(csv_url, 15000, error);
+        auto csv_body = http_get_text(csv_url, kMeteoHttpTimeoutMs, error);
         if (!csv_body)
             return std::nullopt;
 
@@ -1557,7 +1550,7 @@ namespace
                                                                                            time_t end_ts,
                                                                                            std::string &error)
     {
-        auto csv_body = http_get_text(csv_url, 15000, error);
+        auto csv_body = http_get_text(csv_url, kMeteoHttpTimeoutMs, error);
         if (!csv_body)
             return std::nullopt;
 
@@ -1824,7 +1817,210 @@ static TokenClaims validate_token(const std::string &token)
         return c;
     }
 #endif
+
     return validate_microsoft_token(token);
+}
+
+static bool azure_auth_config_ready(Database &db)
+{
+    auto tenant = app_config::get(db, app_config::kAzureTenantId);
+    auto client = app_config::get(db, app_config::kAzureClientId);
+    auto secret = app_config::get(db, app_config::kAzureClientSecret);
+    return tenant.has_value() && !tenant->empty() && client.has_value() && !client->empty() && secret;
+}
+
+static bool setup_contact_email_configured(Database &db, std::string *out_email = nullptr)
+{
+    auto vapid_subject = app_config::get(db, app_config::kVapidSubject);
+    if (!vapid_subject || vapid_subject->empty() || vapid_subject->rfind("mailto:", 0) != 0)
+        return false;
+
+    std::string email = vapid_subject->substr(7);
+    if (email.empty() || email == "admin@example.com")
+        return false;
+
+    if (out_email)
+        *out_email = email;
+    return true;
+}
+
+static bool setup_config_ready(Database &db)
+{
+    return azure_auth_config_ready(db) && setup_contact_email_configured(db);
+}
+
+static void apply_azure_runtime_env(const std::string &tenant,
+                                    const std::string &client,
+                                    const std::string &secret)
+{
+    setenv("AZURE_TENANT_ID", tenant.c_str(), 1);
+    setenv("AZURE_CLIENT_ID", client.c_str(), 1);
+    setenv("AZURE_CLIENT_SECRET", secret.c_str(), 1);
+}
+
+static void sync_azure_runtime_env_from_db(Database &db)
+{
+    auto tenant = app_config::get(db, app_config::kAzureTenantId);
+    auto client = app_config::get(db, app_config::kAzureClientId);
+    auto secret = app_config::get(db, app_config::kAzureClientSecret);
+
+    if (tenant && !tenant->empty())
+        setenv("AZURE_TENANT_ID", tenant->c_str(), 1);
+    else
+        unsetenv("AZURE_TENANT_ID");
+
+    if (client && !client->empty())
+        setenv("AZURE_CLIENT_ID", client->c_str(), 1);
+    else
+        unsetenv("AZURE_CLIENT_ID");
+
+    if (secret && !secret->empty())
+        setenv("AZURE_CLIENT_SECRET", secret->c_str(), 1);
+    else
+        unsetenv("AZURE_CLIENT_SECRET");
+}
+
+void handle_get_setup_auth_config(HttpRes *res, HttpReq *req, Database &db)
+{
+    (void)req;
+    try
+    {
+        auto tenant = app_config::get(db, app_config::kAzureTenantId);
+        auto client = app_config::get(db, app_config::kAzureClientId);
+        auto secret = app_config::get(db, app_config::kAzureClientSecret);
+        const int autosave_interval_ms = app_config::get_int_or(db, app_config::kAutosaveIntervalMs, 1500, 250, 600000);
+        const bool autosave_debounce = app_config::get_or(db, app_config::kAutosaveDebounce, "true") != "false";
+        const int midata_weather_refresh_interval_ms = app_config::get_int_or(db, app_config::kMidataWeatherRefreshIntervalMs, 900000, 10000, 86400000);
+        const std::string wp_url = app_config::get_or(db, app_config::kWpUrl, "");
+        const std::string public_base_url_value = app_config::get_or(db, app_config::kPublicBaseUrl, "");
+        const bool midata_configured = !app_config::get_or(db, app_config::kMidataApiKey, "").empty();
+        const bool wp_configured_flag = wp_configured(db);
+        const bool github_bug_report_configured = !app_config::get_or(db, app_config::kGitHubToken, "").empty();
+        const bool tenant_configured = tenant.has_value() && !tenant->empty();
+        const bool client_configured = client.has_value() && !client->empty();
+        const bool client_secret_configured = secret.has_value() && !secret->empty();
+        std::string contact_email;
+        const bool contact_email_configured = setup_contact_email_configured(db, &contact_email);
+        const bool configured = setup_config_ready(db);
+
+        nlohmann::json j = {
+            {"configured", configured},
+            {"tenant_id", (tenant && !tenant->empty()) ? nlohmann::json(*tenant) : nlohmann::json("")},
+            {"tenant_id_configured", tenant_configured},
+            {"client_id", (client && !client->empty()) ? nlohmann::json(*client) : nlohmann::json("")},
+            {"client_id_configured", client_configured},
+            {"client_secret_configured", client_secret_configured},
+            {"contact_email", contact_email},
+            {"contact_email_configured", contact_email_configured},
+            {"autosave_interval_ms", autosave_interval_ms},
+            {"autosave_debounce", autosave_debounce},
+            {"midata_weather_refresh_interval_ms", midata_weather_refresh_interval_ms},
+            {"wp_url", wp_url},
+            {"public_base_url", public_base_url_value},
+            {"midata_configured", midata_configured},
+            {"wp_configured", wp_configured_flag},
+            {"github_bug_report_configured", github_bug_report_configured},
+        };
+        send_json(res, 200, j.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+void handle_post_setup_auth_config(HttpRes *res, HttpReq *req, Database &db)
+{
+    (void)req;
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (!j.is_object()) {
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})");
+            return;
+        }
+
+        if (setup_config_ready(db)) {
+            send_json(res, 409, R"({"error":"Auth-Konfiguration ist bereits gesetzt"})");
+            return;
+        }
+
+        auto existing_tenant = app_config::get(db, app_config::kAzureTenantId);
+        auto existing_client = app_config::get(db, app_config::kAzureClientId);
+        auto existing_secret = app_config::get(db, app_config::kAzureClientSecret);
+        std::string existing_contact_email;
+        bool existing_contact_email_configured = setup_contact_email_configured(db, &existing_contact_email);
+
+        std::string tenant = j.value("tenant_id", "");
+        std::string client = j.value("client_id", "");
+        std::string secret = j.value("client_secret", "");
+        std::string contact_email = j.value("contact_email", "");
+
+        if (tenant.empty() && existing_tenant && !existing_tenant->empty())
+            tenant = *existing_tenant;
+        if (client.empty() && existing_client && !existing_client->empty())
+            client = *existing_client;
+        if (secret.empty() && existing_secret && !existing_secret->empty())
+            secret = *existing_secret;
+        if (contact_email.empty() && existing_contact_email_configured)
+            contact_email = existing_contact_email;
+
+        if (tenant.empty() || client.empty() || secret.empty() || contact_email.empty()) {
+            send_json(res, 400, R"({"error":"Bitte alle fehlenden Setup-Felder ausfuellen"})");
+            return;
+        }
+
+        try {
+            std::string err;
+            auto set_if_missing = [&](const char *key,
+                                      const std::string &value,
+                                      bool already_configured,
+                                      bool is_secret_value) -> bool {
+                if (already_configured) return true;
+                if (is_secret_value) {
+                    if (value.empty()) return false;
+                } else {
+                    if (value.empty()) return false;
+                }
+                return app_config::set_from_admin(db, key, value, err);
+            };
+
+            const bool tenant_configured = existing_tenant && !existing_tenant->empty();
+            const bool client_configured = existing_client && !existing_client->empty();
+            const bool secret_configured = existing_secret && !existing_secret->empty();
+
+            if (!set_if_missing(app_config::kAzureTenantId, tenant, tenant_configured, false) ||
+                !set_if_missing(app_config::kAzureClientId, client, client_configured, false) ||
+                !set_if_missing(app_config::kAzureClientSecret, secret, secret_configured, true) ||
+                !set_if_missing(app_config::kVapidSubject, contact_email, existing_contact_email_configured, false)) {
+                if (err == "invalid-email") {
+                    send_json(res, 400, R"({"error":"Ungueltige E-Mail-Adresse"})");
+                    return;
+                }
+                if (err == "locked-by-env") {
+                    send_json(res, 409, R"({"error":"Mindestens ein Setup-Wert wird durch ENV vorgegeben"})");
+                    return;
+                }
+                send_json(res, 500, R"({"error":"Konfiguration konnte nicht gespeichert werden"})");
+                return;
+            }
+
+            bool generated_vapid = false;
+            if (!app_config::ensure_generated_vapid(db, err, generated_vapid)) {
+                send_json(res, 500, R"({"error":"VAPID-Konfiguration konnte nicht erzeugt werden"})");
+                return;
+            }
+
+            apply_azure_runtime_env(tenant, client, secret);
+            send_json(res, 200, R"({"ok":true})");
+        } catch (std::exception &e) {
+            send_internal_error(res, "handler", e);
+        } });
 }
 
 bool require_auth(HttpRes *res, HttpReq *req, TokenClaims &out_claims)
@@ -1876,6 +2072,11 @@ void send_json(HttpRes *res, int status, const std::string &body)
 static void send_internal_error(HttpRes *res, const char *context, const std::exception &e)
 {
     fprintf(stderr, "[error] %s: %s\n", context, e.what());
+    if (std::string(e.what()) == "Öffentliche Basis-URL ist nicht konfiguriert")
+    {
+        send_json(res, 409, R"({"error":"Öffentliche Basis-URL ist nicht konfiguriert"})");
+        return;
+    }
     send_json(res, 500, R"({"error":"Interner Serverfehler"})");
 }
 
@@ -2068,7 +2269,7 @@ void handle_get_activity_midata_children_count(HttpRes *res, HttpReq *req, Datab
         }
 
         std::string midata_error;
-        auto count = fetch_midata_children_count_cached(*group_id, midata_error);
+        auto count = fetch_midata_children_count_cached(db, *group_id, midata_error);
         if (!count)
         {
             bool configured = midata_error != "not-configured";
@@ -2123,7 +2324,7 @@ void handle_get_midata_children_counts(HttpRes *res, HttpReq *req, Database &db)
             }
 
             std::string midata_error;
-            auto count = fetch_midata_children_count_cached(*dept.midata_group_id, midata_error);
+            auto count = fetch_midata_children_count_cached(db, *dept.midata_group_id, midata_error);
             if (!count)
             {
                 bool configured = midata_error != "not-configured";
@@ -2762,7 +2963,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
 
                     std::string time_range = activity->start_time + "-" + activity->end_time;
                     std::string date_short = format_date_ddmmyyyy(activity->date);
-                    std::string full_link = activity_absolute_link(activity->id);
+                    std::string full_link = activity_absolute_link(db, activity->id);
                     std::string recipients_text = join_display(all_assigned);
                     nlohmann::json payload = {
                         {"activity_id", activity->id},
@@ -2816,7 +3017,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
 
                         std::string time_range = activity->start_time + "-" + activity->end_time;
                         std::string date_short = format_date_ddmmyyyy(activity->date);
-                        std::string full_link = activity_absolute_link(activity->id);
+                        std::string full_link = activity_absolute_link(db, activity->id);
                         std::string recipients_text = join_display(activity->responsible);
                         nlohmann::json payload = {
                             {"activity_id", activity->id},
@@ -2872,7 +3073,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
 
                         std::string time_range = activity->start_time + "-" + activity->end_time;
                         std::string date_short = format_date_ddmmyyyy(activity->date);
-                        std::string full_link = activity_absolute_link(activity->id);
+                        std::string full_link = activity_absolute_link(db, activity->id);
                         nlohmann::json payload = {
                             {"activity_id", activity->id},
                             {"activity_title", activity->title},
@@ -3037,7 +3238,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
                         std::string time_range = activity->start_time + "-" + activity->end_time;
                         std::string date_short = format_date_ddmmyyyy(activity->date);
-                        std::string full_link = activity_absolute_link(activity->id);
+                        std::string full_link = activity_absolute_link(db, activity->id);
                         std::string recipients_text = join_display(new_assigned);
                         nlohmann::json payload = {
                             {"activity_id", activity->id},
@@ -3101,7 +3302,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
                             std::string time_range = activity->start_time + "-" + activity->end_time;
                             std::string date_short = format_date_ddmmyyyy(activity->date);
-                            std::string full_link = activity_absolute_link(activity->id);
+                            std::string full_link = activity_absolute_link(db, activity->id);
                             std::string recipients_text = join_display(activity->responsible);
                             nlohmann::json payload = {
                                 {"activity_id", activity->id},
@@ -3177,7 +3378,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
                                 std::string time_range = activity->start_time + "-" + activity->end_time;
                                 std::string date_short = format_date_ddmmyyyy(activity->date);
-                                std::string full_link = activity_absolute_link(activity->id);
+                                std::string full_link = activity_absolute_link(db, activity->id);
                                 nlohmann::json payload = {
                                     {"activity_id", activity->id},
                                     {"activity_title", activity->title},
@@ -3955,9 +4156,9 @@ void handle_post_notifications_read_all(HttpRes *res, HttpReq *req, Database &db
 
 // ---- GET /push/vapid-public-key -------------------------------------------
 
-void handle_get_push_vapid_public_key(HttpRes *res, HttpReq * /*req*/)
+void handle_get_push_vapid_public_key(HttpRes *res, HttpReq * /*req*/, Database &db)
 {
-    std::string pub = env_or("DPW_VAPID_PUBLIC_KEY");
+    std::string pub = app_config::get_or(db, app_config::kVapidPublicKey, "");
     if (pub.empty())
     {
         send_json(res, 503, R"({"error":"Web-Push nicht konfiguriert"})");
@@ -4619,7 +4820,7 @@ void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
             }
 
             // ── WordPress / EventON sync ──────────────────────────────
-            if (wp_configured()) {
+            if (wp_configured(db)) {
                 auto activity = db.get_activity_by_id(activity_id);
                 long start_ts = 0, end_ts = 0;
                 std::string location, department;
@@ -4631,11 +4832,11 @@ void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
                 }
 
                 if (!pub->wp_event_id.empty()) {
-                    auto wp = wp_update_event(pub->wp_event_id, title, body_html, start_ts, end_ts, location, department);
+                    auto wp = wp_update_event(pub->wp_event_id, title, body_html, start_ts, end_ts, location, department, db);
                     if (!wp)
                         fprintf(stderr, "[wp_client] update failed for wp_event_id=%s\n", pub->wp_event_id.c_str());
                 } else {
-                    auto wp = wp_create_event(title, body_html, start_ts, end_ts, location, department);
+                    auto wp = wp_create_event(title, body_html, start_ts, end_ts, location, department, db);
                     if (wp) {
                         db.update_event_publication_wp_id(activity_id, wp->wp_event_id);
                         pub->wp_event_id = wp->wp_event_id;
@@ -4692,12 +4893,12 @@ void handle_delete_event_publication(HttpRes *res, HttpReq *req, Database &db)
     }
 
     // Delete WordPress event if it exists
-    if (wp_configured())
+    if (wp_configured(db))
     {
         auto pub = db.get_event_publication(activity_id);
         if (pub && !pub->wp_event_id.empty())
         {
-            if (!wp_delete_event(pub->wp_event_id))
+            if (!wp_delete_event(pub->wp_event_id, db))
                 fprintf(stderr, "[wp_client] delete failed for wp_event_id=%s\n", pub->wp_event_id.c_str());
         }
     }
@@ -4804,7 +5005,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                             if (u.id == current_user->id)
                                 continue;
 
-                            std::string link = activity_absolute_link(activity->id);
+                            std::string link = activity_absolute_link(db, activity->id);
                             std::string date_short = format_date_ddmmyyyy(activity->date);
                             std::string recipients_text = join_display(to_emails);
                             std::string cc_text = join_display(cc_emails);
@@ -5278,10 +5479,10 @@ static size_t github_write_cb(char *ptr, size_t size, size_t nmemb, void *userda
 }
 
 static std::pair<long, std::string> github_post_issue(
-    const std::string &token, const std::string &body_json)
+    const std::string &token,
+    const std::string &repo,
+    const std::string &body_json)
 {
-    const char *repo_env = std::getenv("GITHUB_REPO");
-    std::string repo = (repo_env && repo_env[0]) ? repo_env : "reicham2/DPW";
     const std::string url = "https://api.github.com/repos/" + repo + "/issues";
     std::string response;
 
@@ -5320,13 +5521,13 @@ static std::pair<long, std::string> github_post_issue(
 
 void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
 {
-    const char *github_token_env = std::getenv("GITHUB_TOKEN");
-    if (!github_token_env || std::string(github_token_env).empty())
+    std::string github_token = app_config::get_or(db, app_config::kGitHubToken, "");
+    if (github_token.empty())
     {
         send_json(res, 503, R"({"error":"Bug report service not configured"})");
         return;
     }
-    std::string github_token = github_token_env;
+    std::string github_repo = app_config::get_or(db, app_config::kGitHubRepo, "reicham2/DPW");
 
     std::string auth_header{req->getHeader("authorization")};
     std::string token = extract_bearer_token(auth_header);
@@ -5350,7 +5551,7 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, github_token, current_user](std::string_view chunk, bool last)
+    res->onData([res, buf, github_token, github_repo, current_user](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -5609,7 +5810,7 @@ void handle_post_bug_report(HttpRes *res, HttpReq *req, Database &db)
 
         try
         {
-            auto [create_status, create_resp] = github_post_issue(github_token, issue_payload.dump());
+            auto [create_status, create_resp] = github_post_issue(github_token, github_repo, issue_payload.dump());
 
             if (create_status != 201)
             {
@@ -5741,16 +5942,172 @@ void handle_get_admin_midata_status(HttpRes *res, HttpReq *req, Database &db)
     if (!require_admin(res, req, db))
         return;
 
-    bool api_key_configured = false;
-    if (const char *api_key = std::getenv("MIDATA_API_KEY"))
-        api_key_configured = std::string(api_key).size() > 0;
-
-    std::string api_url_template = std::getenv("MIDATA_API_URL_TEMPLATE")
-                                       ? std::getenv("MIDATA_API_URL_TEMPLATE")
-                                       : "https://db.scout.ch/de/groups/{group_id}/people.json";
+    bool api_key_configured = db.has_app_setting(app_config::kMidataApiKey, true);
+    std::string api_url_template = app_config::get_or(
+        db,
+        app_config::kMidataApiUrlTemplate,
+        "https://db.scout.ch/de/groups/{group_id}/people.json");
     std::string api_key_header = "X-Token";
 
     send_json(res, 200, nlohmann::json{{"api_key_configured", api_key_configured}, {"api_key_header", api_key_header}, {"api_url_template", api_url_template}}.dump());
+}
+
+void handle_get_admin_app_settings(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_admin(res, req, db))
+        return;
+
+    try
+    {
+        send_json(res, 200, app_config::list_for_admin(db).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+void handle_put_admin_app_setting(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_admin(res, req, db))
+        return;
+
+    std::string key = url_decode(std::string{req->getParameter("key")});
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, key, &db](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (!j.is_object()) {
+            send_json(res, 400, R"({"error":"Ung\u00fcltiges JSON"})");
+            return;
+        }
+
+        std::optional<std::string> value = std::nullopt;
+        if (j.contains("value") && !j["value"].is_null()) {
+            if (!j["value"].is_string()) {
+                send_json(res, 400, R"({"error":"value muss ein String oder null sein"})");
+                return;
+            }
+            value = j["value"].get<std::string>();
+        }
+
+        try {
+            const bool is_azure_key =
+                key == app_config::kAzureTenantId ||
+                key == app_config::kAzureClientId ||
+                key == app_config::kAzureClientSecret;
+            const bool is_clear_operation =
+                !value.has_value() || trim_ascii(*value).empty();
+
+            if (is_azure_key && !is_clear_operation) {
+                send_json(res, 409, R"({"error":"Azure-Login kann hier nicht bearbeitet werden. Bitte Setup-Reset verwenden."})");
+                return;
+            }
+
+            std::string err;
+            if (!app_config::set_from_admin(db, key, value, err)) {
+                if (err == "locked-by-env") {
+                    send_json(res, 409, R"({"error":"Wert wird durch ENV vorgegeben und kann hier nicht geändert werden"})");
+                    return;
+                }
+                if (err == "missing-encryption-key") {
+                    send_json(res, 400, R"({"error":"DPW_CONFIG_ENCRYPTION_KEY fehlt"})");
+                    return;
+                }
+                if (err == "unknown-setting") {
+                    send_json(res, 404, R"({"error":"Unbekannter Setting-Key"})");
+                    return;
+                }
+                if (err == "invalid-url") {
+                    send_json(res, 400, "{\"error\":\"Ungueltige URL (erwartet http:// oder https://)\"}");
+                    return;
+                }
+                if (err == "invalid-integer") {
+                    send_json(res, 400, R"({"error":"Ungueltiger Zahlenwert"})");
+                    return;
+                }
+                if (err == "out-of-range") {
+                    send_json(res, 400, R"({"error":"Zahlenwert liegt ausserhalb des erlaubten Bereichs"})");
+                    return;
+                }
+                if (err == "invalid-boolean") {
+                    send_json(res, 400, "{\"error\":\"Ungueltiger Bool-Wert (true/false)\"}");
+                    return;
+                }
+                if (err == "invalid-slug") {
+                    send_json(res, 400, "{\"error\":\"Ungueltiges Repository-Format (owner/repo)\"}");
+                    return;
+                }
+                if (err == "invalid-email") {
+                    send_json(res, 400, R"({"error":"Ungueltige E-Mail-Adresse"})");
+                    return;
+                }
+                if (err == "required") {
+                    send_json(res, 400, R"({"error":"Wert darf nicht leer sein"})");
+                    return;
+                }
+                if (err == "readonly-generated") {
+                    send_json(res, 409, R"({"error":"Dieser Wert wird automatisch erzeugt und kann hier nicht bearbeitet werden"})");
+                    return;
+                }
+                send_json(res, 500, R"({"error":"Einstellung konnte nicht gespeichert werden"})");
+                return;
+            }
+
+            if (key == app_config::kMidataApiKey ||
+                key == app_config::kMidataApiUrlTemplate ||
+                key == app_config::kMidataApiTimeoutMs) {
+                clear_cached_midata_children_counts();
+            }
+
+            if (key == app_config::kAzureTenantId ||
+                key == app_config::kAzureClientId ||
+                key == app_config::kAzureClientSecret) {
+                sync_azure_runtime_env_from_db(db);
+            }
+
+            send_json(res, 200, nlohmann::json{{"ok", true}}.dump());
+        } catch (std::exception &e) {
+            send_internal_error(res, "handler", e);
+        } });
+}
+
+void handle_post_admin_reset_azure_auth(HttpRes *res, HttpReq *req, Database &db)
+{
+    (void)req;
+    if (!require_admin(res, req, db))
+        return;
+
+    try
+    {
+        std::string err;
+        const bool cleared_tenant = app_config::set_from_admin(db, app_config::kAzureTenantId, std::nullopt, err);
+        const bool cleared_client = cleared_tenant && app_config::set_from_admin(db, app_config::kAzureClientId, std::nullopt, err);
+        const bool cleared_secret = cleared_client && app_config::set_from_admin(db, app_config::kAzureClientSecret, std::nullopt, err);
+
+        if (!cleared_secret)
+        {
+            if (err == "locked-by-env")
+            {
+                send_json(res, 409, R"({"error":"Azure-Login wird durch ENV vorgegeben und kann nicht zurückgesetzt werden"})");
+                return;
+            }
+            send_json(res, 500, R"({"error":"Azure-Login konnte nicht zurückgesetzt werden"})");
+            return;
+        }
+
+        sync_azure_runtime_env_from_db(db);
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
 }
 
 // POST /admin/departments
@@ -6327,10 +6684,10 @@ void handle_get_activity_form(HttpRes *res, HttpReq *req, Database &db)
         auto form = db.get_form_for_activity(activity_id);
         if (!form)
         {
-            send_json(res, 404, R"({"error":"Kein Formular gefunden"})");
+            send_json(res, 200, R"({"exists":false,"form":null})");
             return;
         }
-        send_json(res, 200, signup_form_to_json(*form).dump());
+        send_json(res, 200, nlohmann::json{{"exists", true}, {"form", signup_form_to_json(*form)}}.dump());
     }
     catch (std::exception &e)
     {
@@ -6656,13 +7013,13 @@ void handle_get_form_stats(HttpRes *res, HttpReq *req, Database &db)
         auto form = db.get_form_for_activity(activity_id);
         if (!form)
         {
-            send_json(res, 404, R"({"error":"Kein Formular gefunden"})");
+            send_json(res, 200, R"({"exists":false,"stats":null})");
             return;
         }
 
         auto stats = db.get_form_stats(form->id);
         stats["form_type"] = form->form_type;
-        send_json(res, 200, stats.dump());
+        send_json(res, 200, nlohmann::json{{"exists", true}, {"stats", stats}}.dump());
     }
     catch (std::exception &e)
     {
@@ -7001,6 +7358,13 @@ void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db)
     std::string activity_id{req->getParameter(0)};
     try
     {
+        auto base_url = configured_public_base_url(db);
+        if (!base_url)
+        {
+            send_json(res, 409, R"({"error":"Öffentliche Basis-URL ist nicht konfiguriert"})");
+            return;
+        }
+
         auto current_user = resolve_user(db, claims);
         if (!current_user)
         {
@@ -7030,6 +7394,7 @@ void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db)
             {"id", link->id},
             {"activity_id", link->activity_id},
             {"share_token", link->share_token},
+            {"share_url", *base_url + "/shared/" + link->share_token},
             {"created_at", link->created_at}};
         send_json(res, 201, j.dump());
     }
@@ -7047,6 +7412,13 @@ void handle_get_share_link(HttpRes *res, HttpReq *req, Database &db)
     std::string activity_id{req->getParameter(0)};
     try
     {
+        auto base_url = configured_public_base_url(db);
+        if (!base_url)
+        {
+            send_json(res, 409, R"({"error":"Öffentliche Basis-URL ist nicht konfiguriert"})");
+            return;
+        }
+
         auto link = db.get_share_link(activity_id);
         if (!link)
         {
@@ -7057,6 +7429,7 @@ void handle_get_share_link(HttpRes *res, HttpReq *req, Database &db)
             {"id", link->id},
             {"activity_id", link->activity_id},
             {"share_token", link->share_token},
+            {"share_url", *base_url + "/shared/" + link->share_token},
             {"created_at", link->created_at}};
         send_json(res, 200, j.dump());
     }

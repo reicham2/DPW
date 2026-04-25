@@ -7,6 +7,7 @@ import ErrorAlert from '../components/ErrorAlert.vue'
 import DepartmentManager from '../components/DepartmentManager.vue'
 import RoleManager from '../components/RoleManager.vue'
 import LocationManager from '../components/LocationManager.vue'
+import SystemConfigManager from '../components/SystemConfigManager.vue'
 import RoleBadge from '../components/RoleBadge.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
@@ -34,7 +35,7 @@ const canSeePermissionsTab = computed(() => canManageSystem())
 const canSeeLocationsTab = computed(() => canManageLocations())
 
 // ── Tab management ──────────────────────────────────────────────────────────
-const activeTab = ref<'users' | 'permissions' | 'locations'>('users')
+const activeTab = ref<'users' | 'permissions' | 'locations' | 'system'>('users')
 
 // ── User management state ───────────────────────────────────────────────────
 const users = ref<User[]>([])
@@ -232,6 +233,15 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
       <MapPin :size="16" aria-hidden="true" />
       Orte
     </button>
+    <button
+      v-if="canSeePermissionsTab"
+      class="tab-btn"
+      :class="{ 'tab-btn--active': activeTab === 'system' }"
+      @click="activeTab = 'system'"
+    >
+      <Lock :size="16" aria-hidden="true" />
+      System
+    </button>
   </nav>
 
   <!-- Tab: Benutzerverwaltung -->
@@ -321,6 +331,10 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   <!-- Tab: Orte (locations_manage_scope = all) -->
   <main v-else-if="activeTab === 'locations' && canSeeLocationsTab" class="main">
     <LocationManager />
+  </main>
+
+  <main v-else-if="activeTab === 'system' && canSeePermissionsTab" class="main">
+    <SystemConfigManager />
   </main>
 
   <!-- Edit modal -->

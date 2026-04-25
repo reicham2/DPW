@@ -9,20 +9,20 @@ import { config } from '../config';
  * Call `cancelAutoSave()` on "Abbrechen" to discard pending saves.
  */
 export function useAutosave(saveFn: () => void | Promise<void>) {
-	const INTERVAL = config.AUTOSAVE_INTERVAL;
-	const DEBOUNCE = config.AUTOSAVE_DEBOUNCE;
-
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let interval: ReturnType<typeof setInterval> | null = null;
 	let hasPendingChanges = false;
 	let enabled = true;
 
+	const intervalMs = () => config.AUTOSAVE_INTERVAL;
+	const debounceEnabled = () => config.AUTOSAVE_DEBOUNCE;
+
 	function scheduleAutoSave() {
 		if (!enabled) return;
 
-		if (DEBOUNCE) {
+		if (debounceEnabled()) {
 			if (timer) clearTimeout(timer);
-			timer = setTimeout(saveFn, INTERVAL);
+			timer = setTimeout(saveFn, intervalMs());
 		} else {
 			hasPendingChanges = true;
 			if (!interval) {
@@ -31,7 +31,7 @@ export function useAutosave(saveFn: () => void | Promise<void>) {
 						hasPendingChanges = false;
 						saveFn();
 					}
-				}, INTERVAL);
+				}, intervalMs());
 			}
 		}
 	}

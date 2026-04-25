@@ -169,6 +169,15 @@ jobs:
       - name: Create .env from example
         run: cp .env.example .env
 
+      - name: Set required CI config
+        run: |
+          CI_EK="$(openssl rand -hex 32)"
+          if grep -q '^DPW_CONFIG_ENCRYPTION_KEY=' .env; then
+            sed -i "s|^DPW_CONFIG_ENCRYPTION_KEY=.*|DPW_CONFIG_ENCRYPTION_KEY=${CI_EK}|" .env
+          else
+            echo "DPW_CONFIG_ENCRYPTION_KEY=${CI_EK}" >> .env
+          fi
+
       - name: Inject test VAPID values
         run: |
           cat >> .env <<'EOF'
@@ -201,18 +210,11 @@ jobs:
           docker compose -f docker-compose-dev.yml logs backend
           exit 1
 
-      - name: Verify push VAPID endpoint
-        env:
-          DPW_PUBLIC_URL: http://127.0.0.1:8000
-        run: |
-          curl -sf "$DPW_PUBLIC_URL/api/push/vapid-public-key" > /dev/null
-          echo "Push VAPID endpoint reachable"
-
       - name: Wait for frontend health
         run: |
           echo "Waiting for frontend health..."
           for i in $(seq 1 15); do
-            if docker compose -f docker-compose-dev.yml exec -T frontend curl -sf http://127.0.0.1:80 > /dev/null 2>&1; then
+            if curl -sf http://127.0.0.1:8000/ > /dev/null 2>&1; then
               echo "Frontend healthy"
               exit 0
             fi
@@ -222,6 +224,13 @@ jobs:
           echo "Frontend did not become healthy"
           docker compose -f docker-compose-dev.yml logs frontend
           exit 1
+
+      - name: Verify push VAPID endpoint
+        env:
+          DPW_PUBLIC_URL: http://127.0.0.1:8000
+        run: |
+          curl -sf "$DPW_PUBLIC_URL/api/push/vapid-public-key" > /dev/null
+          echo "Push VAPID endpoint reachable"
 
       - name: Verify DB schema loaded
         run: |

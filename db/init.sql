@@ -1,5 +1,37 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Runtime app configuration values (stored from admin UI)
+CREATE TABLE IF NOT EXISTS app_settings (
+    key         TEXT PRIMARY KEY,
+    is_secret   BOOLEAN NOT NULL DEFAULT true,
+    value_text  TEXT,
+    value_secret BYTEA,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (value_text IS NULL OR value_secret IS NULL)
+);
+
+INSERT INTO app_settings (key, is_secret, value_text, value_secret) VALUES
+    ('midata.api_key', true, NULL, NULL),
+    ('midata.api_url_template', false, 'https://db.scout.ch/de/groups/{group_id}/people.json', NULL),
+    ('midata.api_timeout_ms', false, '8000', NULL),
+    ('azure.tenant_id', false, NULL, NULL),
+    ('azure.client_id', false, NULL, NULL),
+    ('azure.client_secret', true, NULL, NULL),
+    ('push.vapid_public_key', true, NULL, NULL),
+    ('push.vapid_private_key', true, NULL, NULL),
+    ('push.vapid_subject', false, 'mailto:admin@example.com', NULL),
+    ('frontend.public_base_url', false, NULL, NULL),
+    ('frontend.autosave_interval_ms', false, '1500', NULL),
+    ('frontend.autosave_debounce', false, 'true', NULL),
+    ('midata.weather_refresh_interval_ms', false, '900000', NULL),
+    ('github.token', true, NULL, NULL),
+    ('github.repo', false, 'reicham2/DPW', NULL),
+    ('wp.url', true, NULL, NULL),
+    ('wp.user', true, NULL, NULL),
+    ('wp.app_password', true, NULL, NULL)
+ON CONFLICT (key) DO NOTHING;
+
 -- ── Dynamic departments & roles ─────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS departments (

@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- Public routes (e.g. /forms/:id) render without nav and without auth -->
-    <template v-if="isPublicRoute">
+    <template v-if="isPublicRoute || isSetupRoute">
       <router-view />
     </template>
     <template v-else>
@@ -68,7 +68,7 @@
       <div class="auth-box">
         <h1 class="auth-title">DPWeb</h1>
         <p class="auth-subtitle">Melde dich mit deinem Microsoft-Konto an.</p>
-        <button class="auth-btn" @click="handleLogin" :disabled="loggingIn">
+        <button class="auth-btn" @click="handleLogin" :disabled="loggingIn || setupLoading">
           <svg class="auth-ms-icon" viewBox="0 0 21 21" width="21" height="21">
             <rect x="0" y="0" width="10" height="10" fill="#f25022"/>
             <rect x="11" y="0" width="10" height="10" fill="#7fba00"/>
@@ -106,7 +106,7 @@
     <!-- App content -->
     <div v-else class="app" :class="{ 'app--force-drawer-stats': statsDisplayMode === 'always-drawer' }">
       <router-view />
-      <BugReportButton />
+      <BugReportButton v-if="config.GITHUB_BUG_REPORT_ENABLED" />
     </div>
     </template>
   </div>
@@ -125,6 +125,7 @@ import { useMidataCounts } from './composables/useMidataCounts'
 import { useWebSocket } from './composables/useWebSocket'
 import { useApiConnectionStatus } from './composables/useApi'
 import { config } from './config'
+import { ensureSetupStatus, setupLoading } from './composables/useSetupAuthConfig'
 
 const route = useRoute()
 const { myPermissions, fetchMyPermissions, resetMyPermissions } = usePermissions()
@@ -138,6 +139,7 @@ const showVorlagen = computed(() =>
   (myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none')
 )
 const isPublicRoute = computed(() => !!route.meta?.public)
+const isSetupRoute = computed(() => route.path === '/setup')
 const showAdmin = computed(() => {
   const p = myPermissions.value
   if (!p) return false
@@ -171,7 +173,9 @@ async function handleDebugLogin() {
 }
 
 onMounted(() => {
-  initAuth()
+  ensureSetupStatus().finally(() => {
+    initAuth()
+  })
   if (isDebug) fetchDebugUsers()
 })
 
@@ -179,12 +183,33 @@ watch(user, (u) => {
   resetMyPermissions()
   if (u) {
     fetchMyPermissions().catch(() => {})
-    startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
+    if (config.MIDATA_ENABLED) {
+      startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
+    } else {
+      stopMidataAutoRefresh()
+      resetMidataCounts()
+    }
   } else {
     stopMidataAutoRefresh()
     resetMidataCounts()
   }
 }, { immediate: true })
+
+watch(() => config.MIDATA_ENABLED, (enabled) => {
+  if (!user.value) return
+  if (!enabled) {
+    stopMidataAutoRefresh()
+    resetMidataCounts()
+    return
+  }
+  startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
+})
+
+watch(() => config.MIDATA_WEATHER_REFRESH_INTERVAL, (interval) => {
+  if (!user.value || !config.MIDATA_ENABLED) return
+  stopMidataAutoRefresh()
+  startMidataAutoRefresh(interval, 5000)
+})
 
 onUnmounted(() => {
   stopMidataAutoRefresh()

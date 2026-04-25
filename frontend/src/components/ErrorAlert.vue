@@ -4,7 +4,7 @@
 			<CircleAlert :size="18" aria-hidden="true" />
 		</div>
 		<span class="error-alert-text" v-html="renderedMessage"></span>
-		<button class="error-alert-report" @click="reportBug" title="Fehler melden">
+		<button v-if="config.GITHUB_BUG_REPORT_ENABLED" class="error-alert-report" @click="reportBug" title="Fehler melden">
 			<Bug :size="15" aria-hidden="true" />
 			Melden
 		</button>
@@ -14,6 +14,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Bug, CircleAlert } from 'lucide-vue-next'
+import { config } from '../config'
 import { openBugReport } from '../composables/useBugReport'
 
 const props = defineProps<{ error: string | null }>()

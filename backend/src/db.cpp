@@ -3567,3 +3567,126 @@ std::optional<Activity> Database::get_activity_by_share_token(const std::string 
     attach_programs_single(a);
     return a;
 }
+
+bool Database::set_app_setting(const std::string &key,
+                               bool is_secret,
+                               const std::string &value,
+                               const std::string &encryption_key)
+{
+    ensure_connected();
+    if (key.empty() || value.empty())
+        return false;
+    if (is_secret && encryption_key.empty())
+        return false;
+
+    const char *params[4] = {
+        key.c_str(),
+        is_secret ? "true" : "false",
+        value.c_str(),
+        encryption_key.c_str(),
+    };
+
+    PGresult *res = PQexecParams(
+        conn_,
+        "INSERT INTO app_settings (key, is_secret, value_text, value_secret) "
+        "VALUES ("
+        "  $1, "
+        "  $2::boolean, "
+        "  CASE WHEN $2::boolean THEN NULL ELSE $3 END, "
+        "  CASE WHEN $2::boolean THEN pgp_sym_encrypt($3, $4, 'cipher-algo=aes256, compress-algo=0') ELSE NULL END"
+        ") "
+        "ON CONFLICT (key) DO UPDATE SET "
+        "  is_secret = EXCLUDED.is_secret, "
+        "  value_text = EXCLUDED.value_text, "
+        "  value_secret = EXCLUDED.value_secret, "
+        "  updated_at = NOW()",
+        4, nullptr, params, nullptr, nullptr, 0);
+
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+bool Database::clear_app_setting(const std::string &key, bool is_secret)
+{
+    ensure_connected();
+    if (key.empty())
+        return false;
+
+    const char *params[2] = {
+        key.c_str(),
+        is_secret ? "true" : "false",
+    };
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO app_settings (key, is_secret, value_text, value_secret) "
+                                 "VALUES ($1, $2::boolean, NULL, NULL) "
+                                 "ON CONFLICT (key) DO UPDATE SET "
+                                 "  is_secret = EXCLUDED.is_secret, "
+                                 "  value_text = NULL, "
+                                 "  value_secret = NULL, "
+                                 "  updated_at = NOW()",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
+}
+
+bool Database::has_app_setting(const std::string &key, bool is_secret)
+{
+    ensure_connected();
+    if (key.empty())
+        return false;
+
+    const char *params[1] = {key.c_str()};
+    const char *sql = is_secret
+                          ? "SELECT 1 FROM app_settings WHERE key = $1 AND is_secret = true AND value_secret IS NOT NULL LIMIT 1"
+                          : "SELECT 1 FROM app_settings WHERE key = $1 AND is_secret = false AND value_text IS NOT NULL LIMIT 1";
+
+    PGresult *res = PQexecParams(conn_,
+                                 sql,
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0;
+    PQclear(res);
+    return ok;
+}
+
+std::optional<std::string> Database::get_app_setting(const std::string &key,
+                                                     bool is_secret,
+                                                     const std::string &encryption_key)
+{
+    ensure_connected();
+    if (key.empty())
+        return std::nullopt;
+    if (is_secret && encryption_key.empty())
+        return std::nullopt;
+
+    const char *params[2] = {key.c_str(), encryption_key.c_str()};
+    PGresult *res = nullptr;
+    if (is_secret)
+    {
+        res = PQexecParams(
+            conn_,
+            "SELECT pgp_sym_decrypt(value_secret, $2) "
+            "FROM app_settings "
+            "WHERE key = $1 AND is_secret = true AND value_secret IS NOT NULL",
+            2, nullptr, params, nullptr, nullptr, 0);
+    }
+    else
+    {
+        res = PQexecParams(
+            conn_,
+            "SELECT value_text "
+            "FROM app_settings "
+            "WHERE key = $1 AND is_secret = false AND value_text IS NOT NULL",
+            1, nullptr, params, nullptr, nullptr, 0);
+    }
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    std::string out = PQgetvalue(res, 0, 0);
+    PQclear(res);
+    return out;
+}

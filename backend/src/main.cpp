@@ -1,10 +1,13 @@
 #include "App.h"
+#include "app_config.hpp"
 #include "db.hpp"
 #include "ws_manager.hpp"
 #include "handlers.hpp"
 #include <cstdlib>
+#include <cctype>
 #include <string>
 #include <cstdio>
+#include <vector>
 #include <curl/curl.h>
 
 static std::string url_decode_component(std::string_view src)
@@ -34,12 +37,38 @@ static std::string env(const char *key, const char *def = "")
      return v ? v : def;
 }
 
+static bool has_valid_encryption_key_env(const char *key)
+{
+     const char *raw = std::getenv(key);
+     if (!raw)
+          return false;
+
+     std::string value(raw);
+     const auto first = value.find_first_not_of(" \t\r\n");
+     if (first == std::string::npos)
+          return false;
+     const auto last = value.find_last_not_of(" \t\r\n");
+     value = value.substr(first, last - first + 1);
+
+     // Guard common placeholder/comment mistakes from .env files.
+     if (!value.empty() && value.front() == '#')
+          return false;
+
+     return true;
+}
+
 int main()
 {
      // Disable stdout buffering so logs appear immediately in Docker
      setvbuf(stdout, nullptr, _IONBF, 0);
 
      curl_global_init(CURL_GLOBAL_DEFAULT);
+
+     if (!has_valid_encryption_key_env("DPW_CONFIG_ENCRYPTION_KEY"))
+     {
+          std::fprintf(stderr, "[config] DPW_CONFIG_ENCRYPTION_KEY is required and must not be empty/placeholder. Refusing to start.\n");
+          return 1;
+     }
 
      std::string conn_str =
          "host=" + env("POSTGRES_HOST", "db") +
@@ -49,6 +78,33 @@ int main()
          " password=" + env("POSTGRES_PASSWORD", "");
 
      Database db(conn_str);
+     std::vector<std::string> config_import_warnings;
+     int imported_env_settings = app_config::import_env_overrides_to_db(db, config_import_warnings);
+     if (imported_env_settings > 0)
+          printf("[config] imported %d ENV setting(s) into DB\n", imported_env_settings);
+     for (const auto &warn : config_import_warnings)
+          fprintf(stderr, "[config] %s\n", warn.c_str());
+
+     std::string vapid_error;
+     bool vapid_generated = false;
+     if (!app_config::ensure_generated_vapid(db, vapid_error, vapid_generated))
+     {
+          std::fprintf(stderr, "[config] VAPID setup failed: %s\n", vapid_error.c_str());
+          return 1;
+     }
+     if (vapid_generated)
+          std::printf("[config] generated VAPID key pair and stored it encrypted in DB\n");
+
+     auto azure_tenant = db.get_app_setting(app_config::kAzureTenantId, false);
+     auto azure_client = db.get_app_setting(app_config::kAzureClientId, false);
+     auto azure_secret = app_config::get(db, app_config::kAzureClientSecret);
+     if (azure_tenant && !azure_tenant->empty())
+          setenv("AZURE_TENANT_ID", azure_tenant->c_str(), 1);
+     if (azure_client && !azure_client->empty())
+          setenv("AZURE_CLIENT_ID", azure_client->c_str(), 1);
+     if (azure_secret && !azure_secret->empty())
+          setenv("AZURE_CLIENT_SECRET", azure_secret->c_str(), 1);
+
      WebSocketManager wm(db);
 
      uWS::App()
@@ -65,6 +121,12 @@ int main()
               { res->writeHeader("Access-Control-Allow-Origin", "*")
                     ->writeStatus("200 OK")
                     ->end("ok"); })
+
+         // Initial auth setup (no auth required, only effective while auth config is incomplete)
+         .get("/setup/auth-config", [&](auto *res, auto *req)
+              { handle_get_setup_auth_config(res, req, db); })
+         .post("/setup/auth-config", [&](auto *res, auto *req)
+               { handle_post_setup_auth_config(res, req, db); })
 
          // Debug-only endpoints (compiled out in Release)
          .get("/debug/users", [&](auto *res, auto *req)
@@ -88,7 +150,7 @@ int main()
          .post("/notifications/read-all", [&](auto *res, auto *req)
                { handle_post_notifications_read_all(res, req, db); })
          .get("/push/vapid-public-key", [&](auto *res, auto *req)
-              { handle_get_push_vapid_public_key(res, req); })
+              { handle_get_push_vapid_public_key(res, req, db); })
          .post("/push/subscriptions", [&](auto *res, auto *req)
                { handle_post_push_subscription(res, req, db); })
          .del("/push/subscriptions", [&](auto *res, auto *req)
@@ -119,6 +181,12 @@ int main()
               { handle_get_departments(res, req, db); })
          .get("/admin/midata-status", [&](auto *res, auto *req)
               { handle_get_admin_midata_status(res, req, db); })
+         .get("/admin/app-settings", [&](auto *res, auto *req)
+              { handle_get_admin_app_settings(res, req, db); })
+         .put("/admin/app-settings/:key", [&](auto *res, auto *req)
+              { handle_put_admin_app_setting(res, req, db); })
+         .post("/admin/reset-azure-auth", [&](auto *res, auto *req)
+               { handle_post_admin_reset_azure_auth(res, req, db); })
          .post("/admin/departments", [&](auto *res, auto *req)
                { handle_post_department(res, req, db); })
          .patch("/admin/departments/:name", [&](auto *res, auto *req)

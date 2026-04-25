@@ -4,8 +4,8 @@
 # are available at window.__APP_CONFIG__ without being baked into the image.
 cat > /usr/share/nginx/html/config.js <<EOF
 window.__APP_CONFIG__ = {
-  MSAL_CLIENT_ID: "${MSAL_CLIENT_ID:-}",
-  MSAL_TENANT_ID: "${MSAL_TENANT_ID:-}",
+  AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-}",
+  AZURE_TENANT_ID: "${AZURE_TENANT_ID:-}",
   AUTOSAVE_INTERVAL: "${AUTOSAVE_INTERVAL:-1500}",
   AUTOSAVE_DEBOUNCE: "${AUTOSAVE_DEBOUNCE:-true}",
   MIDATA_WEATHER_REFRESH_INTERVAL: "${MIDATA_WEATHER_REFRESH_INTERVAL:-900000}",

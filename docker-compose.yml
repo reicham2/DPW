@@ -15,7 +15,7 @@ services:
     environment:
       POSTGRES_DB: activities
       POSTGRES_USER: activities_user
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Setze POSTGRES_PASSWORD in .env}"
+      POSTGRES_PASSWORD: activities_pass
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -39,32 +39,18 @@ services:
   backend:
     image: ghcr.io/reicham2/dpw-backend:latest
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
       POSTGRES_DB: activities
       POSTGRES_USER: activities_user
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Setze POSTGRES_PASSWORD in .env}"
-      AZURE_TENANT_ID: "${AZURE_TENANT_ID:?Setze AZURE_TENANT_ID in .env}"
-      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:?Setze AZURE_CLIENT_ID in .env}"
-      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:?Setze AZURE_CLIENT_SECRET in .env}"
-      GITHUB_TOKEN: "${GITHUB_TOKEN}"
-      GITHUB_REPO: "${GITHUB_REPO:-reicham2/DPW}"
-      MIDATA_API_KEY: "${MIDATA_API_KEY}"
-      MIDATA_API_URL_TEMPLATE: "${MIDATA_API_URL_TEMPLATE:-https://db.scout.ch/de/gro\
-        ups/{group_id}/people.json}"
-      MIDATA_API_TIMEOUT_MS: "${MIDATA_API_TIMEOUT_MS:-8000}"
-      DPW_VAPID_PUBLIC_KEY: "${DPW_VAPID_PUBLIC_KEY:?Setze DPW_VAPID_PUBLIC_KEY in .env}"
-      DPW_VAPID_PRIVATE_KEY: "${DPW_VAPID_PRIVATE_KEY:?Setze DPW_VAPID_PRIVATE_KEY in .env}"
-      DPW_VAPID_SUBJECT: "${DPW_VAPID_SUBJECT:-mailto:admin@example.com}"
-      DPW_PUBLIC_URL: "${DPW_PUBLIC_URL:-http://localhost:8000}"
-      REDIS_HOST: "${REDIS_HOST:-redis}"
-      REDIS_PORT: "${REDIS_PORT:-6379}"
-      DPW_CACHE_TTL_SECONDS: "${DPW_CACHE_TTL_SECONDS:-30}"
-      REDIS_TIMEOUT_MS: "${REDIS_TIMEOUT_MS:-250}"
-      DPW_WP_URL: "${DPW_WP_URL:-}"
-      DPW_WP_USER: "${DPW_WP_USER:-}"
-      DPW_WP_APP_PASSWORD: "${DPW_WP_APP_PASSWORD:-}"
+      POSTGRES_PASSWORD: activities_pass
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DPW_CACHE_TTL_SECONDS: "30"
+      REDIS_TIMEOUT_MS: "250"
     depends_on:
       db:
         condition: service_healthy
@@ -80,12 +66,8 @@ services:
   frontend:
     image: ghcr.io/reicham2/dpw-frontend:latest
     restart: unless-stopped
-    environment:
-      MSAL_CLIENT_ID: "${VITE_MSAL_CLIENT_ID:?Setze VITE_MSAL_CLIENT_ID in .env}"
-      MSAL_TENANT_ID: "${VITE_MSAL_TENANT_ID:?Setze VITE_MSAL_TENANT_ID in .env}"
-      AUTOSAVE_INTERVAL: "${VITE_AUTOSAVE_INTERVAL:-1500}"
-      AUTOSAVE_DEBOUNCE: "${VITE_AUTOSAVE_DEBOUNCE:-true}"
-      MIDATA_WEATHER_REFRESH_INTERVAL: "${VITE_MIDATA_WEATHER_REFRESH_INTERVAL:-900000}"
+    env_file:
+      - .env
     ports:
       - "8000:80"
     depends_on:

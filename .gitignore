@@ -1,5 +1,6 @@
 #Bhalt dini Gheimniss für dich XD
 .env
+.env.local
 
 #Scheiss Mac
 .DS_Store

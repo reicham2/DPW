@@ -79,7 +79,11 @@ Wichtig fuer zukuenftige Schema-Aenderungen:
 make generate-vapid-keys
 ```
 
-Die Ausgabe kann direkt in `.env` übernommen werden:
+Der Befehl ist weiterhin nutzbar, aber nicht mehr zwingend noetig. Wenn keine VAPID-Werte
+per ENV gesetzt sind, erzeugt der Backend-Start ein Schluesselpaar automatisch und speichert
+es verschluesselt in der DB.
+
+Optional per `.env` setzbar:
 
 - `DPW_VAPID_PUBLIC_KEY`
 - `DPW_VAPID_PRIVATE_KEY`
@@ -112,8 +116,11 @@ Für die aktuelle Kinderanzahl pro Aktivität kann DPW MiData abfragen.
 
 Voraussetzungen:
 
-1. `MIDATA_API_KEY` in `.env` setzen.
-2. Falls nötig das URL-Template via `MIDATA_API_URL_TEMPLATE` anpassen (Header ist fix `X-Token`).
+1. Im Backend muss `DPW_CONFIG_ENCRYPTION_KEY` gesetzt sein (für verschlüsselte Secret-Speicherung).
+2. In der Admin-Ansicht unter `Administration -> System` die Settings setzen:
+   - `midata.api_key` (Secret)
+   - `midata.api_url_template` (optional)
+   - `midata.api_timeout_ms` (optional)
 3. Pro Stufe in der Admin-Ansicht eine MiData-Gruppen-ID hinterlegen.
 
 Hinweise:
@@ -122,6 +129,30 @@ Hinweise:
 2. Als Kinder werden Personen gezählt, die in MiData keine Einträge in `links.roles` haben.
 3. Personen mit mindestens einer Rolle (`links.roles`) werden nicht mitgezählt.
 
+### Runtime-Konfiguration (Admin)
+
+Ein Grossteil der Integrations-Settings kann direkt in der Web-App gepflegt werden.
+
+- Secrets werden verschlüsselt in der DB gespeichert (pgcrypto) und nie im Klartext zurückgegeben.
+- Nicht-sensitive Werte (z. B. Timeouts) dürfen lesbar sein.
+- Laufzeit liest aus der DB; gesetzte ENV-Werte haben Prioritaet und sperren das entsprechende Feld.
+- Falls ENV gesetzt ist, werden diese Werte beim Backend-Start in die DB importiert und dort synchron gehalten.
+- Standardwerte werden bereits über `db/init.sql` in `app_settings` gesetzt und können danach über Admin oder ENV-Import überschrieben werden.
+
+Wichtige ENV-Variablen:
+
+- Pflicht via `.env`: `DPW_CONFIG_ENCRYPTION_KEY`.
+- Optional via `.env` oder Admin/Setup: `DPW_VAPID_PUBLIC_KEY`, `DPW_VAPID_PRIVATE_KEY`, `DPW_VAPID_SUBJECT`.
+- Optional via `.env` (nur Initial-Import beim Start):
+  `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`,
+  `MIDATA_API_KEY`, `MIDATA_API_URL_TEMPLATE`, `MIDATA_API_TIMEOUT_MS`,
+  `DPW_WP_URL`, `DPW_WP_USER`, `DPW_WP_APP_PASSWORD`.
+
+Falls Azure-Werte nicht in `.env` gesetzt sind, steht ein Initial-Setup ohne Login bereit:
+
+- `GET /api/setup/auth-config` (Status)
+- `POST /api/setup/auth-config` (tenant_id, client_id, client_secret, contact_email)
+
 ## Redis Cache (optional)
 
 Das Backend kann API-Responses in Redis cachen, um wiederholte Lese-Anfragen zu beschleunigen.
@@ -129,15 +160,10 @@ Das Backend kann API-Responses in Redis cachen, um wiederholte Lese-Anfragen zu 
 Aktivierung:
 
 1. In Docker Compose ist ein `redis` Service bereits hinterlegt.
-2. Optional in `.env` konfigurieren:
-
-- `REDIS_HOST` (Standard: `redis`)
-- `REDIS_PORT` (Standard: `6379`)
-- `REDIS_TIMEOUT_MS` (Standard: `250`)
-- `DPW_CACHE_TTL_SECONDS` (Standard: `30`)
+2. Redis- und SQL-Verbindungswerte sind fest in den Docker-Compose-Dateien definiert (keine `.env`-Anpassung nötig).
 
 Verhalten:
 
-1. Ohne `REDIS_HOST` bleibt das Caching automatisch deaktiviert.
+1. Ohne laufenden Redis-Service bleibt das Caching automatisch deaktiviert.
 2. Schreiboperationen heben betroffene Cache-Bereiche per Versions-Invalidierung auf.
 3. Die TTL begrenzt zusätzliche Stale-Zeit auf wenige Sekunden.

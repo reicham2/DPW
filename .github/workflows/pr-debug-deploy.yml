@@ -58,17 +58,15 @@ jobs:
           AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }}
-          VITE_MSAL_TENANT_ID=${{ secrets.VITE_MSAL_TENANT_ID }}
-          VITE_MSAL_CLIENT_ID=${{ secrets.VITE_MSAL_CLIENT_ID }}
           GITHUB_TOKEN=${{ secrets.GH_ISSUES_TOKEN }}
           GITHUB_REPO=${{ github.repository }}
           MIDATA_API_KEY=${{ secrets.MIDATA_API_KEY }}
-          DPW_VAPID_PUBLIC_KEY=${{ secrets.DPW_VAPID_PUBLIC_KEY }}
-          DPW_VAPID_PRIVATE_KEY=${{ secrets.DPW_VAPID_PRIVATE_KEY }}
           DPW_VAPID_SUBJECT=${{ secrets.DPW_VAPID_SUBJECT }}
           DEBUG_ADMIN_EMAIL=${{ secrets.DEBUG_ADMIN_EMAIL }}
-          ENABLE_DEBUG_AUTH=1
-          FRONTEND_ENABLE_DEBUG_AUTH=1
+          DPW_CONFIG_ENCRYPTION_KEY=${{ secrets.DPW_CONFIG_ENCRYPTION_KEY }}
+          DPW_WP_URL=${{ secrets.DPW_WP_URL }}
+          DPW_WP_USER=${{ secrets.DPW_WP_USER }}
+          DPW_WP_APP_PASSWORD=${{ secrets.DPW_WP_APP_PASSWORD }}
           EOF
           printf 'DPW_PUBLIC_URL=%s\n' "$HOSTNAME" >> .env
 

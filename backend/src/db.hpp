@@ -254,15 +254,15 @@ public:
     std::vector<EventTemplate> list_event_templates();
     std::optional<EventTemplate> get_event_template_by_department(const std::string &department);
     std::optional<EventTemplate> upsert_event_template(const std::string &department,
-                                                        const std::string &title,
-                                                        const std::string &body);
+                                                       const std::string &title,
+                                                       const std::string &body);
 
     // Event publications
     std::optional<EventPublication> get_event_publication(const std::string &activity_id);
     std::optional<EventPublication> upsert_event_publication(const std::string &activity_id,
-                                                              const std::string &published_by,
-                                                              const std::string &title,
-                                                              const std::string &body_html);
+                                                             const std::string &published_by,
+                                                             const std::string &title,
+                                                             const std::string &body_html);
     bool update_event_publication_wp_id(const std::string &activity_id, const std::string &wp_event_id);
     bool delete_event_publication(const std::string &activity_id);
 
@@ -431,6 +431,17 @@ public:
     std::optional<ActivityShareLink> get_share_link(const std::string &activity_id);
     bool delete_share_link(const std::string &activity_id);
     std::optional<Activity> get_activity_by_share_token(const std::string &token);
+
+    // App settings (supports encrypted secret values)
+    bool set_app_setting(const std::string &key,
+                         bool is_secret,
+                         const std::string &value,
+                         const std::string &encryption_key = "");
+    bool clear_app_setting(const std::string &key, bool is_secret);
+    bool has_app_setting(const std::string &key, bool is_secret);
+    std::optional<std::string> get_app_setting(const std::string &key,
+                                               bool is_secret,
+                                               const std::string &encryption_key = "");
 
 private:
     PGconn *conn_{nullptr};

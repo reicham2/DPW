@@ -29,12 +29,24 @@ export function useForms() {
 			const res = await apiFetch(
 				`${BASE}/activities/${encodeURIComponent(activityId)}/form`,
 			);
-			if (res.status === 404) {
+			if (!res.ok) throw new Error(await res.text());
+
+			const data = await res.json();
+			if (data && typeof data === 'object' && 'exists' in data) {
+				if (!data.exists || !data.form) {
+					form.value = null;
+					return null;
+				}
+				form.value = data.form as SignupForm;
+				return form.value;
+			}
+
+			if (!data) {
 				form.value = null;
 				return null;
 			}
-			if (!res.ok) throw new Error(await res.text());
-			form.value = (await res.json()) as SignupForm;
+
+			form.value = data as SignupForm;
 			return form.value;
 		} catch (e) {
 			error.value = formatApiError(e);
@@ -57,6 +69,15 @@ export function useForms() {
 					body: JSON.stringify(payload),
 				},
 			);
+			if (res.status === 409) {
+				// Another request/user may have created a form in the meantime.
+				// Resolve by loading and returning the existing form.
+				const existing = await fetchForm(activityId);
+				if (existing) {
+					error.value = null;
+					return existing;
+				}
+			}
 			if (!res.ok) throw new Error(await res.text());
 			form.value = (await res.json()) as SignupForm;
 			return form.value;
@@ -173,7 +194,17 @@ export function useForms() {
 				`${BASE}/activities/${encodeURIComponent(activityId)}/form/stats`,
 			);
 			if (!res.ok) throw new Error(await res.text());
-			stats.value = (await res.json()) as FormStats;
+			const data = await res.json();
+			if (data && typeof data === 'object' && 'exists' in data) {
+				if (!data.exists || !data.stats) {
+					stats.value = null;
+					return null;
+				}
+				stats.value = data.stats as FormStats;
+				return stats.value;
+			}
+
+			stats.value = data as FormStats;
 			return stats.value;
 		} catch (e) {
 			error.value = formatApiError(e);
