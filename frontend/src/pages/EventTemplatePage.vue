@@ -120,8 +120,8 @@ function unlockSection(section: EditSection, event?: FocusEvent) {
 }
 
 // ---- Auto-save --------------------------------------------------------------
-const AUTOSAVE_INTERVAL = config.AUTOSAVE_INTERVAL
-const AUTOSAVE_DEBOUNCE = config.AUTOSAVE_DEBOUNCE
+const autosaveInterval = () => config.AUTOSAVE_INTERVAL
+const autosaveDebounce = () => config.AUTOSAVE_DEBOUNCE
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 let autoSaveInterval: ReturnType<typeof setInterval> | null = null
@@ -221,22 +221,22 @@ async function doSave() {
 function scheduleAutoSave() {
   if (suppressDirtyTracking || applyingRemote) return
   scheduleLocalDraftWrite()
-  if (AUTOSAVE_DEBOUNCE) {
+  if (autosaveDebounce()) {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
-    autoSaveTimer = setTimeout(doSave, AUTOSAVE_INTERVAL)
+    autoSaveTimer = setTimeout(doSave, autosaveInterval())
   } else {
     hasPendingChanges = true
   }
 }
 
 function startAutoSaveInterval() {
-  if (!AUTOSAVE_DEBOUNCE && !autoSaveInterval) {
+  if (!autosaveDebounce() && !autoSaveInterval) {
     autoSaveInterval = setInterval(() => {
       if (hasPendingChanges) {
         hasPendingChanges = false
         doSave()
       }
-    }, AUTOSAVE_INTERVAL)
+    }, autosaveInterval())
   }
 }
 

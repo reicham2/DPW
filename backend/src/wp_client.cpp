@@ -1,4 +1,6 @@
 #include "wp_client.hpp"
+#include "app_config.hpp"
+#include "db.hpp"
 #include "json.hpp"
 #include <curl/curl.h>
 #include <cstdlib>
@@ -6,12 +8,6 @@
 #include <stdexcept>
 
 // ── helpers ─────────────────────────────────────────────────────────────────
-
-static std::string g_env(const char *key)
-{
-    const char *v = std::getenv(key);
-    return v ? v : "";
-}
 
 static size_t wp_write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
@@ -50,11 +46,11 @@ struct WpConfig
     std::string auth; // "Basic <base64>"
 };
 
-static std::optional<WpConfig> get_wp_config()
+static std::optional<WpConfig> get_wp_config(Database &db)
 {
-    std::string url = g_env("DPW_WP_URL");
-    std::string user = g_env("DPW_WP_USER");
-    std::string pass = g_env("DPW_WP_APP_PASSWORD");
+    std::string url = app_config::get_or(db, app_config::kWpUrl, "");
+    std::string user = app_config::get_or(db, app_config::kWpUser, "");
+    std::string pass = app_config::get_or(db, app_config::kWpAppPassword, "");
     if (url.empty() || user.empty() || pass.empty())
         return std::nullopt;
 
@@ -70,9 +66,9 @@ static std::optional<WpConfig> get_wp_config()
 
 // Send JSON to WordPress REST API. method = "POST" or "PUT" (mapped to POST + _method for WP).
 static std::pair<long, std::string> wp_request(const std::string &method,
-                                                const std::string &url,
-                                                const std::string &auth,
-                                                const std::string &body)
+                                               const std::string &url,
+                                               const std::string &auth,
+                                               const std::string &body)
 {
     std::string response;
     CURL *curl = curl_easy_init();
@@ -151,7 +147,9 @@ static int find_or_create_event_type(const WpConfig &cfg, const std::string &nam
             }
         }
     }
-    catch (...) {}
+    catch (...)
+    {
+    }
 
     // Not found — create it
     try
@@ -178,19 +176,20 @@ static int find_or_create_event_type(const WpConfig &cfg, const std::string &nam
 
 // ── public API ──────────────────────────────────────────────────────────────
 
-bool wp_configured()
+bool wp_configured(Database &db)
 {
-    return get_wp_config().has_value();
+    return get_wp_config(db).has_value();
 }
 
 std::optional<WpEventResult> wp_create_event(const std::string &title,
-                                              const std::string &body_html,
-                                              long start_unix,
-                                              long end_unix,
-                                              const std::string &location,
-                                              const std::string &department)
+                                             const std::string &body_html,
+                                             long start_unix,
+                                             long end_unix,
+                                             const std::string &location,
+                                             const std::string &department,
+                                             Database &db)
 {
-    auto cfg = get_wp_config();
+    auto cfg = get_wp_config(db);
     if (!cfg)
         return std::nullopt;
 
@@ -201,11 +200,11 @@ std::optional<WpEventResult> wp_create_event(const std::string &title,
         {"content", body_html},
         {"status", "publish"},
         {"meta", {
-            {"evcal_srow", start_unix},
-            {"evcal_erow", end_unix},
-            {"evcal_allday", "no"},
-            {"_evcal_exlink_option", "1"},
-        }},
+                     {"evcal_srow", start_unix},
+                     {"evcal_erow", end_unix},
+                     {"evcal_allday", "no"},
+                     {"_evcal_exlink_option", "1"},
+                 }},
     };
     if (!location.empty())
         body["meta"]["evcal_location_name"] = location;
@@ -235,14 +234,15 @@ std::optional<WpEventResult> wp_create_event(const std::string &title,
 }
 
 std::optional<WpEventResult> wp_update_event(const std::string &wp_id,
-                                              const std::string &title,
-                                              const std::string &body_html,
-                                              long start_unix,
-                                              long end_unix,
-                                              const std::string &location,
-                                              const std::string &department)
+                                             const std::string &title,
+                                             const std::string &body_html,
+                                             long start_unix,
+                                             long end_unix,
+                                             const std::string &location,
+                                             const std::string &department,
+                                             Database &db)
 {
-    auto cfg = get_wp_config();
+    auto cfg = get_wp_config(db);
     if (!cfg)
         return std::nullopt;
 
@@ -253,10 +253,10 @@ std::optional<WpEventResult> wp_update_event(const std::string &wp_id,
         {"content", body_html},
         {"status", "publish"},
         {"meta", {
-            {"evcal_srow", start_unix},
-            {"evcal_erow", end_unix},
-            {"evcal_allday", "no"},
-        }},
+                     {"evcal_srow", start_unix},
+                     {"evcal_erow", end_unix},
+                     {"evcal_allday", "no"},
+                 }},
     };
     if (!location.empty())
         body["meta"]["evcal_location_name"] = location;
@@ -286,9 +286,9 @@ std::optional<WpEventResult> wp_update_event(const std::string &wp_id,
     }
 }
 
-bool wp_delete_event(const std::string &wp_id)
+bool wp_delete_event(const std::string &wp_id, Database &db)
 {
-    auto cfg = get_wp_config();
+    auto cfg = get_wp_config(db);
     if (!cfg)
         return false;
 

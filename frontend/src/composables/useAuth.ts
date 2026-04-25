@@ -6,8 +6,8 @@ import { wsDisconnect } from './useWebSocket';
 
 const msalConfig = {
 	auth: {
-		clientId: config.MSAL_CLIENT_ID,
-		authority: `https://login.microsoftonline.com/${config.MSAL_TENANT_ID}`,
+		clientId: config.AZURE_CLIENT_ID,
+		authority: `https://login.microsoftonline.com/${config.AZURE_TENANT_ID}`,
 		redirectUri: window.location.origin,
 	},
 	cache: {
@@ -25,6 +25,9 @@ const graphMailScopes = {
 };
 
 let msalInstance: PublicClientApplication | null = null;
+let runtimeClientId: string | null = null;
+let runtimeTenantId: string | null = null;
+let pendingIdTokenPromise: Promise<string> | null = null;
 let debugUserId: string | null = null;
 const DEBUG_USER_STORAGE_KEY = 'dpw.debugUserId';
 const DEBUG_AUTH_ENABLED = import.meta.env.VITE_ENABLE_DEBUG_AUTH === '1';
@@ -33,10 +36,38 @@ export const user = ref<User | null>(null);
 export const authLoading = ref(true);
 export const loginError = ref<string | null>(null);
 
+function effectiveClientId(): string {
+	return runtimeClientId || config.AZURE_CLIENT_ID || '';
+}
+
+function effectiveTenantId(): string {
+	return runtimeTenantId || config.AZURE_TENANT_ID || '';
+}
+
+export function setRuntimeAuthConfig(tenantId: string, clientId: string): void {
+	runtimeTenantId = tenantId;
+	runtimeClientId = clientId;
+	msalInstance = null;
+	cachedIdToken = null;
+	cachedIdTokenExpiry = 0;
+	pendingIdTokenPromise = null;
+}
+
 async function getMsal(): Promise<PublicClientApplication> {
+	const clientId = effectiveClientId();
+	const tenantId = effectiveTenantId();
+	if (!clientId || !tenantId) throw new Error('Microsoft-Konfiguration fehlt');
+
 	if (!msalInstance) {
 		const { PublicClientApplication } = await import('@azure/msal-browser');
-		msalInstance = new PublicClientApplication(msalConfig);
+		msalInstance = new PublicClientApplication({
+			auth: {
+				clientId,
+				authority: `https://login.microsoftonline.com/${tenantId}`,
+				redirectUri: window.location.origin,
+			},
+			cache: msalConfig.cache,
+		});
 		await msalInstance.initialize();
 		await msalInstance.handleRedirectPromise();
 	}
@@ -47,28 +78,55 @@ let cachedIdToken: string | null = null;
 let cachedIdTokenExpiry = 0;
 
 export async function getIdToken(): Promise<string> {
-	if (DEBUG_AUTH_ENABLED && debugUserId) return `debug:${debugUserId}`;
+	if (DEBUG_AUTH_ENABLED) {
+		if (!debugUserId) {
+			const storedDebugUserId = localStorage.getItem(DEBUG_USER_STORAGE_KEY);
+			if (storedDebugUserId) {
+				debugUserId = storedDebugUserId;
+			}
+		}
+		if (debugUserId) return `debug:${debugUserId}`;
+	}
 
 	// Return cached token if still valid (with 60s buffer before expiry)
 	if (cachedIdToken && Date.now() < cachedIdTokenExpiry - 60_000) {
 		return cachedIdToken;
 	}
 
-	const msal = await getMsal();
-	const account = msal.getActiveAccount();
-	if (!account) throw new Error('Nicht angemeldet');
+	if (pendingIdTokenPromise) {
+		return pendingIdTokenPromise;
+	}
+
+	pendingIdTokenPromise = (async () => {
+		const msal = await getMsal();
+		const account = msal.getActiveAccount();
+		if (!account) throw new Error('Nicht angemeldet');
+
+		try {
+			const result = await msal.acquireTokenSilent({
+				...loginRequest,
+				account,
+			});
+			cachedIdToken = result.idToken;
+			cachedIdTokenExpiry = result.expiresOn
+				? result.expiresOn.getTime()
+				: Date.now() + 3600_000;
+			return result.idToken;
+		} catch {
+			// InteractionRequiredAuthError or similar — fall back to popup
+			const result = await msal.acquireTokenPopup({ ...loginRequest, account });
+			cachedIdToken = result.idToken;
+			cachedIdTokenExpiry = result.expiresOn
+				? result.expiresOn.getTime()
+				: Date.now() + 3600_000;
+			return result.idToken;
+		}
+	})();
 
 	try {
-		const result = await msal.acquireTokenSilent({ ...loginRequest, account });
-		cachedIdToken = result.idToken;
-		cachedIdTokenExpiry = result.expiresOn ? result.expiresOn.getTime() : Date.now() + 3600_000;
-		return result.idToken;
-	} catch {
-		// InteractionRequiredAuthError or similar — fall back to popup
-		const result = await msal.acquireTokenPopup({ ...loginRequest, account });
-		cachedIdToken = result.idToken;
-		cachedIdTokenExpiry = result.expiresOn ? result.expiresOn.getTime() : Date.now() + 3600_000;
-		return result.idToken;
+		return await pendingIdTokenPromise;
+	} finally {
+		pendingIdTokenPromise = null;
 	}
 }
 

@@ -235,6 +235,16 @@ export interface RoleDeptAccess {
 	can_write: boolean;
 }
 
+export interface AppSettingItem {
+	key: string;
+	env_name: string;
+	is_secret: boolean;
+	configured: boolean;
+	locked_by_env: boolean;
+	source: 'env' | 'db' | 'default';
+	value?: string;
+}
+
 // ── Forms ─────────────────────────────────────────────────────────────────────
 
 export type FormType = 'registration' | 'deregistration';

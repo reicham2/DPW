@@ -10,11 +10,14 @@ import FormPublicPage from '../pages/FormPublicPage.vue';
 import SharedActivityPage from '../pages/SharedActivityPage.vue';
 import ActivityFormsPage from '../pages/ActivityFormsPage.vue';
 import VorlagenPage from '../pages/VorlagenPage.vue';
+import SetupPage from '../pages/SetupPage.vue';
 import { user, authLoading } from '../composables/useAuth';
+import { ensureSetupStatus } from '../composables/useSetupAuthConfig';
 
 export const router = createRouter({
 	history: createWebHistory(),
 	routes: [
+		{ path: '/setup', component: SetupPage, meta: { setup: true } },
 		{ path: '/', component: IndexPage },
 		{ path: '/activities/new', component: CreatePage },
 		{ path: '/activities/:id', component: DetailPage },
@@ -38,6 +41,21 @@ export const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+	if (to.meta.public) {
+		return true;
+	}
+
+	const needsSetup = await ensureSetupStatus();
+
+	// While setup is required, only /setup is allowed.
+	if (needsSetup) {
+		if (to.path !== '/setup') return '/setup';
+		return true;
+	}
+
+	// If setup is complete and we're on setup page, redirect away.
+	if (to.path === '/setup') return '/';
+
 	// Wait for auth to initialise before any navigation decision
 	if (authLoading.value) {
 		await new Promise<void>((resolve) => {
@@ -49,10 +67,12 @@ router.beforeEach(async (to) => {
 			}, 50);
 		});
 	}
+
 	// Redirect to home if not logged in and trying to access a protected route
 	// Allow public routes (marked with meta.public) and home page
 	if (!user.value && !to.meta.public && to.path !== '/') {
 		return '/';
 	}
+
 	return true;
 });

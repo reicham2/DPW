@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { CalendarDays, ClipboardList, Mail } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
+import { config } from '../config'
 import MailTemplatePage from './MailTemplatePage.vue'
 import FormTemplatePage from './FormTemplatePage.vue'
 import EventTemplatePage from './EventTemplatePage.vue'
@@ -17,7 +18,9 @@ const canSeeFormTab = computed(() =>
   myPermissions.value?.form_templates_scope && myPermissions.value.form_templates_scope !== 'none'
 )
 const canSeeEventTab = computed(() =>
-  myPermissions.value?.event_templates_scope && myPermissions.value.event_templates_scope !== 'none'
+  config.WP_PUBLISHING_ENABLED &&
+  myPermissions.value?.event_templates_scope &&
+  myPermissions.value.event_templates_scope !== 'none'
 )
 
 const activeTab = ref<'mail' | 'form' | 'event'>('mail')
@@ -31,6 +34,24 @@ onMounted(async () => {
   if (!canSeeMailTab.value) {
     if (canSeeFormTab.value) activeTab.value = 'form'
     else if (canSeeEventTab.value) activeTab.value = 'event'
+  }
+})
+
+watch([canSeeMailTab, canSeeFormTab, canSeeEventTab], ([mailVisible, formVisible, eventVisible]) => {
+  if (activeTab.value === 'event' && !eventVisible) {
+    if (mailVisible) activeTab.value = 'mail'
+    else if (formVisible) activeTab.value = 'form'
+  }
+  if (activeTab.value === 'mail' && !mailVisible) {
+    if (formVisible) activeTab.value = 'form'
+    else if (eventVisible) activeTab.value = 'event'
+  }
+  if (activeTab.value === 'form' && !formVisible) {
+    if (mailVisible) activeTab.value = 'mail'
+    else if (eventVisible) activeTab.value = 'event'
+  }
+  if (!mailVisible && !formVisible && !eventVisible) {
+    router.replace('/')
   }
 })
 </script>
