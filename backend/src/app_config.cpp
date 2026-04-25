@@ -273,8 +273,8 @@ namespace app_config
             {kMidataApiKey, "MIDATA_API_KEY", "", true, false, ValueType::Text, 0, 0},
             {kMidataApiUrlTemplate, "MIDATA_API_URL_TEMPLATE", "https://db.scout.ch/de/groups/{group_id}/people.json", false, true, ValueType::Url, 0, 0},
             {kMidataApiTimeoutMs, "MIDATA_API_TIMEOUT_MS", "8000", false, true, ValueType::Integer, 500, 120000},
-            {kWpUrl, "DPW_WP_URL", "", true, false, ValueType::Url, 0, 0},
-            {kWpUser, "DPW_WP_USER", "", true, false, ValueType::Text, 0, 0},
+            {kWpUrl, "DPW_WP_URL", "", false, true, ValueType::Url, 0, 0},
+            {kWpUser, "DPW_WP_USER", "", false, true, ValueType::Text, 0, 0},
             {kWpAppPassword, "DPW_WP_APP_PASSWORD", "", true, false, ValueType::Text, 0, 0},
         };
         return defs;
@@ -408,6 +408,21 @@ namespace app_config
         {
             error = "locked-by-env";
             return false;
+        }
+
+        if (key == kVapidPublicKey || key == kVapidPrivateKey)
+        {
+            error = "readonly-generated";
+            return false;
+        }
+
+        if (key == kVapidSubject)
+        {
+            if (!value || trim_ascii(*value).empty())
+            {
+                error = "required";
+                return false;
+            }
         }
 
         if (!value)

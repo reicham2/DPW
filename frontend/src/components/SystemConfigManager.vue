@@ -28,6 +28,10 @@ const saveError = ref<string | null>(null)
 const savingKey = ref<string | null>(null)
 const editValues = ref<Record<string, string>>({})
 const resettingAzure = ref(false)
+const hiddenWebConfigKeys = new Set([
+  'push.vapid_public_key',
+  'push.vapid_private_key',
+])
 
 const settingMeta: Record<string, SettingMeta> = {
   'azure.tenant_id': {
@@ -199,7 +203,9 @@ function metaFor(item: AppSettingItem): SettingMeta {
 }
 
 const sortedSettings = computed(() => {
-  return [...settings.value].sort((a, b) => {
+  return [...settings.value]
+    .filter((item) => !hiddenWebConfigKeys.has(item.key))
+    .sort((a, b) => {
     const ma = metaFor(a)
     const mb = metaFor(b)
     if (ma.categoryOrder !== mb.categoryOrder) return ma.categoryOrder - mb.categoryOrder
@@ -263,6 +269,9 @@ function booleanValue(item: AppSettingItem): boolean {
 function validateValue(item: AppSettingItem, raw: string): string | null {
   if (item.locked_by_env || isAzureSetting(item)) return null
   const value = raw.trim()
+  if (item.key === 'push.vapid_subject' && !value) {
+    return 'Kontakt darf nicht leer sein.'
+  }
   if (!value) return null
 
   const meta = metaFor(item)
@@ -295,6 +304,7 @@ function validateValue(item: AppSettingItem, raw: string): string | null {
 }
 
 function isClearEnabled(item: AppSettingItem) {
+  if (item.key === 'push.vapid_subject') return false
   return !item.locked_by_env && !isAzureSetting(item)
 }
 
