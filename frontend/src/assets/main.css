@@ -93,6 +93,8 @@ video {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 }
 
 .btn-back {
@@ -585,6 +587,7 @@ video {
 	align-items: center;
 	justify-content: center;
 	transition: background 0.15s;
+	z-index: 1;
 }
 .program-card__remove:hover {
 	background: #fecaca;
