@@ -51,21 +51,24 @@
 						</span>
 					</div>
 					<div class="header-actions">
-						<a
+						<button
 							v-if="canOpenPublicFormLink(form?.public_slug)"
-							:href="publicFormUrl(form?.public_slug)"
-							target="_blank"
-							class="btn-outline"
+							class="btn-mail"
+							:class="{ 'btn-mail--active': linkCopied }"
+							@click="copyPublicFormLink(form?.public_slug)"
 						>
-							Öffentlicher Link ↗
-						</a>
+							<Check v-if="linkCopied" class="btn-icon" :size="16" aria-hidden="true" />
+							<Share2 v-else class="btn-icon" :size="16" aria-hidden="true" />
+							{{ linkCopied ? 'Kopiert' : 'Link kopieren' }}
+						</button>
 						<button
 							v-else
-							class="btn-outline"
+							class="btn-mail"
 							disabled
 							title="Öffentliche Basis-URL ist nicht konfiguriert"
 						>
-							Öffentlicher Link ↗
+							<Share2 class="btn-icon" :size="16" aria-hidden="true" />
+							Link kopieren
 						</button>
 						<button class="btn-secondary" @click="openEdit">Bearbeiten</button>
 						<button class="btn-danger" @click="confirmDelete">Löschen</button>
@@ -188,7 +191,7 @@ import { useActivities } from '../composables/useActivities';
 import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
 import { config } from '../config';
-import { ArrowLeft, ClipboardList, X } from 'lucide-vue-next';
+import { ArrowLeft, ClipboardList, X, Check, Share2 } from 'lucide-vue-next';
 import FormBuilder from '../components/FormBuilder.vue';
 import FormStats from '../components/FormStats.vue';
 
@@ -236,6 +239,7 @@ const templateInitial = ref<SignupForm | null>(null);
 
 // Draft persistence state
 const hadDraftOnEntry = ref(false);
+const linkCopied = ref(false);
 const currentDraft = ref<SignupForm | null>(null);
 
 const tabs = [
@@ -253,6 +257,13 @@ function publicFormUrl(slug: string | undefined): string {
 function canOpenPublicFormLink(slug: string | undefined): boolean {
 	if (!slug) return false
 	return !!(config.PUBLIC_BASE_URL || '').trim()
+}
+
+function copyPublicFormLink(slug: string | undefined) {
+	if (!canOpenPublicFormLink(slug)) return;
+	navigator.clipboard.writeText(publicFormUrl(slug));
+	linkCopied.value = true;
+	setTimeout(() => { linkCopied.value = false; }, 2000);
 }
 
 async function loadActivityFormsPage(id: string) {
