@@ -585,6 +585,7 @@ video {
 	align-items: center;
 	justify-content: center;
 	transition: background 0.15s;
+	z-index: 1;
 }
 .program-card__remove:hover {
 	background: #fecaca;
