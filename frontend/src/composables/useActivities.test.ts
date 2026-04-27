@@ -43,6 +43,7 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
 		material: [],
 		siko_text: null,
 		bad_weather_info: null,
+		planned_participants_estimate: null,
 		created_at: '2025-01-01T00:00:00Z',
 		updated_at: '2025-01-01T00:00:00Z',
 		programs: [],
