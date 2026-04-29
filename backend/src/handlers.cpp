@@ -958,7 +958,8 @@ namespace
     std::mutex meteo_cache_mutex;
     std::vector<MeteoPointMeta> meteo_point_cache;
     std::chrono::steady_clock::time_point meteo_point_cache_expires;
-    constexpr long kMeteoHttpTimeoutMs = 3000;
+    // Keep Meteo upstream calls short to avoid blocking the single API event loop.
+    constexpr long kMeteoHttpTimeoutMs = 500;
     std::mutex midata_cache_mutex;
     std::unordered_map<std::string, MidataCountCacheEntry> midata_count_cache;
     constexpr auto kMidataCountCacheTtl = std::chrono::minutes(5);
@@ -1651,7 +1652,7 @@ namespace
 
         auto points = load_meteoswiss_points(error);
         if (!points)
-            return std::nullopt;
+            return seasonal_average_weather(activity_ts, "MeteoSwiss-Datenquelle derzeit nicht erreichbar; saisonaler Durchschnitt verwendet.");
         auto point = find_point_for_location(location_input, *points);
         if (!point)
         {
@@ -1660,7 +1661,7 @@ namespace
 
         auto tre_url = get_latest_tre200h0_url(error);
         if (!tre_url)
-            return std::nullopt;
+            return seasonal_average_weather(activity_ts, "MeteoSwiss-Vorhersagedaten momentan nicht verfuegbar; saisonaler Durchschnitt verwendet.");
         auto temp = lookup_forecast_temp_for_point(*tre_url, point->point_id, activity_ts, error);
         if (!temp)
         {
@@ -2463,6 +2464,7 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
             }
         }
 
+        bool frozen_snapshot_missing = false;
         if (should_use_frozen_values(*activity))
         {
             auto frozen = db.get_activity_weather_snapshot(id);
@@ -2474,8 +2476,8 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
                 return;
             }
 
-            send_json(res, 200, nlohmann::json{{"available", false}, {"error", "frozen-weather-missing"}, {"mode", "frozen"}}.dump());
-            return;
+            // Legacy activities can miss frozen snapshots. Continue with fallback computation.
+            frozen_snapshot_missing = true;
         }
 
         std::string location_input = trim_ascii(url_decode(std::string{req->getQuery("location")}));
@@ -2484,6 +2486,10 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
             auto saved_location = db.get_activity_weather_location(id);
             if (saved_location)
                 location_input = trim_ascii(*saved_location);
+        }
+        if (location_input.empty())
+        {
+            location_input = trim_ascii(activity->location);
         }
         if (location_input.empty())
         {
@@ -2497,6 +2503,14 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
         {
             send_json(res, 200, nlohmann::json{{"available", false}, {"error", weather_error}}.dump());
             return;
+        }
+
+        if (frozen_snapshot_missing)
+        {
+            if (weather->note.empty())
+                weather->note = "Kein gespeicherter Ist-Wert vorhanden; Ersatzwert berechnet.";
+            else
+                weather->note += " Kein gespeicherter Ist-Wert vorhanden; Ersatzwert berechnet.";
         }
 
         nlohmann::json payload = {

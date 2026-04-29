@@ -43,7 +43,7 @@ describe('Router guard logic', () => {
 		const to = { meta: {}, path: '/activities/123' };
 
 		const result =
-			!user.value && !to.meta.public && to.path !== '/' ? '/' : true;
+			!user.value && !(to.meta as any).public && to.path !== '/' ? '/' : true;
 		expect(result).toBe('/');
 	});
 

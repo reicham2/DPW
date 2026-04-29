@@ -74,6 +74,10 @@ const WEATHER_EXPECTED_TIMEOUT_MS = 2500;
 const WEATHER_EXPECTED_CACHE_TTL_MS = 10 * 60 * 1000;
 const mode = ref<'view' | 'edit'>('view');
 const isStatsDrawerOpen = ref(false);
+const activityActionsMenuOpen = ref(false);
+const activityActionsMenuRef = ref<HTMLElement | null>(null);
+const activityActionsMenuPanelRef = ref<HTMLElement | null>(null);
+const activityActionsMenuPanelStyle = ref<Record<string, string>>({});
 const shareToken = ref<string | null>(null);
 const shareUrl = ref<string | null>(null);
 const shareLoading = ref(false);
@@ -250,8 +254,48 @@ function toggleStatsDrawer() {
 	isStatsDrawerOpen.value = !isStatsDrawerOpen.value;
 }
 
+function closeActivityActionsMenu() {
+	activityActionsMenuOpen.value = false;
+	activityActionsMenuPanelStyle.value = {};
+}
+
+function toggleActivityActionsMenu() {
+	activityActionsMenuOpen.value = !activityActionsMenuOpen.value;
+}
+
+function updateActivityActionsMenuPosition() {
+	if (!activityActionsMenuOpen.value || !activityActionsMenuPanelRef.value) return;
+	const rect = activityActionsMenuPanelRef.value.getBoundingClientRect();
+	const viewportPadding = 8;
+	let shiftX = 0;
+	if (rect.right > window.innerWidth - viewportPadding) {
+		shiftX -= rect.right - (window.innerWidth - viewportPadding);
+	}
+	if (rect.left + shiftX < viewportPadding) {
+		shiftX += viewportPadding - (rect.left + shiftX);
+	}
+	activityActionsMenuPanelStyle.value = shiftX
+		? { transform: `translateX(${Math.round(shiftX)}px)` }
+		: {};
+}
+
+function onWindowResize() {
+	if (!activityActionsMenuOpen.value) return;
+	updateActivityActionsMenuPosition();
+}
+
+function onDocumentPointerDown(event: PointerEvent) {
+	if (!activityActionsMenuOpen.value) return;
+	const target = event.target as Node | null;
+	if (!target || !activityActionsMenuRef.value?.contains(target)) {
+		closeActivityActionsMenu();
+	}
+}
+
 function onStatsDrawerKeydown(event: KeyboardEvent) {
-	if (event.key === 'Escape') closeStatsDrawer();
+	if (event.key !== 'Escape') return;
+	closeStatsDrawer();
+	closeActivityActionsMenu();
 }
 
 // ---- Edit state ------------------------------------------------------------
@@ -1467,6 +1511,17 @@ onMounted(async () => {
 
 onMounted(() => {
 	window.addEventListener('keydown', onStatsDrawerKeydown);
+	document.addEventListener('pointerdown', onDocumentPointerDown);
+	window.addEventListener('resize', onWindowResize);
+});
+
+watch(activityActionsMenuOpen, async (open) => {
+	if (!open) {
+		activityActionsMenuPanelStyle.value = {};
+		return;
+	}
+	await nextTick();
+	updateActivityActionsMenuPosition();
 });
 
 onUnmounted(() => {
@@ -1493,6 +1548,8 @@ onUnmounted(() => {
 		liveParticipantsRefreshTimer = null;
 	}
 	window.removeEventListener('keydown', onStatsDrawerKeydown);
+	document.removeEventListener('pointerdown', onDocumentPointerDown);
+	window.removeEventListener('resize', onWindowResize);
 	// Leave the activity and unlock any held section
 	wsLeave();
 	document.title = 'DPWeb Aktivitäten';
@@ -2479,74 +2536,154 @@ function copyShareLink() {
 			Zurück
 		</button>
 		<div class="header-right">
-			<router-link
-				v-if="activity && mode === 'view' && canForms"
-				:to="`/activities/${id}/forms`"
-				class="btn-mail"
-				title="Formular verwalten"
-				><ClipboardList class="btn-icon" :size="16" aria-hidden="true" />Formular</router-link
-			>
-			<button
-				v-else-if="activity && mode === 'view'"
-				class="btn-mail"
-				disabled
-				title="Kein Zugriff auf Formulare"
-			>
-				<ClipboardList class="btn-icon" :size="16" aria-hidden="true" />
-				Formular
-			</button>
-			<button
-				v-if="activity && mode === 'view' && canMail"
-				class="btn-mail"
-				title="Mail senden"
-				@click="handleMailClick"
-			>
-				<Mail class="btn-icon" :size="16" aria-hidden="true" />
-				Mail
-			</button>
-			<button
-				v-else-if="activity && mode === 'view'"
-				class="btn-mail"
-				disabled
-				title="Kein Zugriff auf Mailversand"
-			>
-				<Mail class="btn-icon" :size="16" aria-hidden="true" />
-				Mail
-			</button>
-			<!-- Event publish -->
-			<button
-				v-if="activity && mode === 'view' && config.WP_PUBLISHING_ENABLED && !eventPublication"
-				class="btn-mail"
-				:disabled="!canPublishEvent"
-				:title="canPublishEvent ? 'Als Event veröffentlichen' : 'Keine Berechtigung zum Veröffentlichen'"
-				@click="handlePublishEventClick"
-			>
-				<Globe class="btn-icon" :size="16" aria-hidden="true" />
-				Veröffentlichen
-			</button>
-			<button
-				v-else-if="activity && mode === 'view' && config.WP_PUBLISHING_ENABLED && eventPublication"
-				class="btn-mail btn-mail--active"
-				:disabled="!canPublishEvent"
-				:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : 'Veröffentlicht + WordPress synchronisiert'"
-				@click="handlePublishEventClick"
-			>
-				<CheckCircle2 class="btn-icon" :size="16" aria-hidden="true" />
-				Veröffentlicht (WP)
-			</button>
-			<!-- Share link -->
-			<div v-if="activity && mode === 'view'" class="share-link-wrap">
+			<div v-if="activity && mode === 'view'" ref="activityActionsMenuRef" class="activity-actions-mobile">
 				<button
-					class="btn-mail"
-					:class="{ 'btn-mail--active': shareCopied }"
-					:title="shareButtonTitle"
-					:disabled="!canShareActivity || shareLoading || !shareToken"
-					@click="copyShareLink"
+					type="button"
+					class="activity-actions-mobile-toggle"
+					:aria-expanded="activityActionsMenuOpen"
+					aria-label="Aktionen öffnen"
+					@click="toggleActivityActionsMenu"
 				>
-					<Check v-if="shareCopied" class="btn-icon" :size="16" aria-hidden="true" />
-					<Share2 v-else class="btn-icon" :size="16" aria-hidden="true" />
-					{{ shareCopied ? 'Kopiert' : (shareLoading ? 'Teilen…' : 'Teilen') }}
+					<span class="activity-actions-mobile-icon" aria-hidden="true">
+						<span />
+						<span />
+						<span />
+					</span>
+					<span>Aktionen</span>
 				</button>
+				<div
+					v-if="activityActionsMenuOpen"
+					ref="activityActionsMenuPanelRef"
+					class="activity-actions-mobile-menu"
+					:style="activityActionsMenuPanelStyle"
+				>
+					<router-link
+						v-if="canForms"
+						:to="`/activities/${id}/forms`"
+						class="activity-actions-mobile-item"
+						@click="closeActivityActionsMenu"
+					>
+						<ClipboardList class="btn-icon" :size="16" aria-hidden="true" />
+						<span>Formular</span>
+					</router-link>
+					<button v-else type="button" class="activity-actions-mobile-item" disabled>
+						<ClipboardList class="btn-icon" :size="16" aria-hidden="true" />
+						<span>Formular</span>
+					</button>
+					<button
+						v-if="canMail"
+						type="button"
+						class="activity-actions-mobile-item"
+						@click="closeActivityActionsMenu(); handleMailClick()"
+					>
+						<Mail class="btn-icon" :size="16" aria-hidden="true" />
+						<span>Mail</span>
+					</button>
+					<button v-else type="button" class="activity-actions-mobile-item" disabled>
+						<Mail class="btn-icon" :size="16" aria-hidden="true" />
+						<span>Mail</span>
+					</button>
+					<button
+						v-if="config.WP_PUBLISHING_ENABLED && !eventPublication"
+						type="button"
+						class="activity-actions-mobile-item"
+						:disabled="!canPublishEvent"
+						@click="closeActivityActionsMenu(); handlePublishEventClick()"
+					>
+						<Globe class="btn-icon" :size="16" aria-hidden="true" />
+						<span>Veröffentlichen</span>
+					</button>
+					<button
+						v-else-if="config.WP_PUBLISHING_ENABLED && eventPublication"
+						type="button"
+						class="activity-actions-mobile-item activity-actions-mobile-item--active"
+						:disabled="!canPublishEvent"
+						@click="closeActivityActionsMenu(); handlePublishEventClick()"
+					>
+						<CheckCircle2 class="btn-icon" :size="16" aria-hidden="true" />
+						<span>Veröffentlicht (WP)</span>
+					</button>
+					<button
+						type="button"
+						class="activity-actions-mobile-item"
+						:class="{ 'activity-actions-mobile-item--active': shareCopied }"
+						:disabled="!canShareActivity || shareLoading || !shareToken"
+						@click="closeActivityActionsMenu(); copyShareLink()"
+					>
+						<Check v-if="shareCopied" class="btn-icon" :size="16" aria-hidden="true" />
+						<Share2 v-else class="btn-icon" :size="16" aria-hidden="true" />
+						<span>{{ shareCopied ? 'Kopiert' : (shareLoading ? 'Teilen…' : 'Teilen') }}</span>
+					</button>
+				</div>
+			</div>
+			<div class="activity-actions-desktop">
+				<router-link
+					v-if="activity && mode === 'view' && canForms"
+					:to="`/activities/${id}/forms`"
+					class="btn-mail"
+					title="Formular verwalten"
+					><ClipboardList class="btn-icon" :size="16" aria-hidden="true" />Formular</router-link
+				>
+				<button
+					v-else-if="activity && mode === 'view'"
+					class="btn-mail"
+					disabled
+					title="Kein Zugriff auf Formulare"
+				>
+					<ClipboardList class="btn-icon" :size="16" aria-hidden="true" />
+					Formular
+				</button>
+				<button
+					v-if="activity && mode === 'view' && canMail"
+					class="btn-mail"
+					title="Mail senden"
+					@click="handleMailClick"
+				>
+					<Mail class="btn-icon" :size="16" aria-hidden="true" />
+					Mail
+				</button>
+				<button
+					v-else-if="activity && mode === 'view'"
+					class="btn-mail"
+					disabled
+					title="Kein Zugriff auf Mailversand"
+				>
+					<Mail class="btn-icon" :size="16" aria-hidden="true" />
+					Mail
+				</button>
+				<button
+					v-if="activity && mode === 'view' && config.WP_PUBLISHING_ENABLED && !eventPublication"
+					class="btn-mail"
+					:disabled="!canPublishEvent"
+					:title="canPublishEvent ? 'Als Event veröffentlichen' : 'Keine Berechtigung zum Veröffentlichen'"
+					@click="handlePublishEventClick"
+				>
+					<Globe class="btn-icon" :size="16" aria-hidden="true" />
+					Veröffentlichen
+				</button>
+				<button
+					v-else-if="activity && mode === 'view' && config.WP_PUBLISHING_ENABLED && eventPublication"
+					class="btn-mail btn-mail--active"
+					:disabled="!canPublishEvent"
+					:title="!canPublishEvent ? 'Keine Berechtigung zum Bearbeiten' : 'Veröffentlicht + WordPress synchronisiert'"
+					@click="handlePublishEventClick"
+				>
+					<CheckCircle2 class="btn-icon" :size="16" aria-hidden="true" />
+					Veröffentlicht (WP)
+				</button>
+				<div v-if="activity && mode === 'view'" class="share-link-wrap">
+					<button
+						class="btn-mail"
+						:class="{ 'btn-mail--active': shareCopied }"
+						:title="shareButtonTitle"
+						:disabled="!canShareActivity || shareLoading || !shareToken"
+						@click="copyShareLink"
+					>
+						<Check v-if="shareCopied" class="btn-icon" :size="16" aria-hidden="true" />
+						<Share2 v-else class="btn-icon" :size="16" aria-hidden="true" />
+						{{ shareCopied ? 'Kopiert' : (shareLoading ? 'Teilen…' : 'Teilen') }}
+					</button>
+				</div>
 			</div>
 			<button
 				v-if="activity && mode === 'view'"
@@ -2663,19 +2800,19 @@ function copyShareLink() {
 						:key="prog.id"
 						class="program-item"
 					>
-						<div class="program-time-col">
-							<span class="program-time">{{ viewProgramLabel(pi) }}</span>
-							<span class="program-time-secondary">{{ viewProgramSecondaryLabel(pi) }}</span>
-						</div>
+								<div class="program-marker" aria-hidden="true">
+									<span class="program-marker-dot" />
+								</div>
 						<div class="program-body">
-							<div class="program-header">
-								<p class="program-title">{{ prog.title }}</p>
-								<span v-if="prog.responsible.length" class="program-resp">{{
-									prog.responsible.join(', ')
-								}}</span>
+									<div class="program-meta">
+										<span class="program-time">{{ viewProgramLabel(pi) }}</span>
+										<span v-if="viewProgramSecondaryLabel(pi)" class="program-time-secondary">{{ viewProgramSecondaryLabel(pi) }}</span>
+									</div>
+									<div class="program-header">
+										<p class="program-title">{{ prog.title }}</p>
 							</div>
-							<p v-if="prog.description" class="program-desc" v-html="prog.description">
-							</p>
+									<p v-if="prog.responsible.length" class="program-resp">Leitung: {{ prog.responsible.join(', ') }}</p>
+									<div v-if="prog.description" class="program-desc" v-html="prog.description" />
 						</div>
 					</div>
 				</div>
@@ -3725,7 +3862,7 @@ function copyShareLink() {
 			<h2 class="modal-title modal-title--info">Kein Formular vorhanden</h2>
 			<p class="modal-warning">
 				Für diese Aktivität wurde noch kein Anmeldeformular erstellt.
-				Die Variable <code>{{formular_link}}</code> wird im Event-Text nicht ersetzt.
+				Die Variable <code v-pre>{{formular_link}}</code> wird im Event-Text nicht ersetzt.
 				Möchtest du zuerst ein Formular erstellen?
 			</p>
 			<div class="modal-actions">

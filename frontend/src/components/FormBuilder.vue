@@ -240,6 +240,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import type { ComponentPublicInstance } from 'vue';
 import { Save, ChevronUp, ChevronDown, X, TriangleAlert } from 'lucide-vue-next';
 import type { SignupForm, SignupFormInput, FormQuestionInput, FormTemplate, QuestionType, FormType } from '../types';
 import { useFormTemplates } from '../composables/useForms';
@@ -279,7 +280,7 @@ const saveError = ref<string | null>(null);
 const choiceErrorIndex = ref<number | null>(null);
 const questionCardRefs = ref<Array<HTMLElement | null>>([]);
 
-function setQuestionCardRef(el: Element | null, idx: number) {
+function setQuestionCardRef(el: Element | ComponentPublicInstance | null, idx: number) {
 	questionCardRefs.value[idx] = (el as HTMLElement | null);
 }
 

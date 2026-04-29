@@ -1,4 +1,5 @@
 import { router } from '../router';
+import type { App } from 'vue';
 import { user } from './useAuth';
 import { getWsDebugState } from './useWebSocket';
 
@@ -121,8 +122,8 @@ window.addEventListener('unhandledrejection', (ev) => {
 window.addEventListener(
 	'error',
 	(ev) => {
-		const target = ev.target as HTMLElement | null;
-		if (target && target !== window && 'tagName' in target) {
+		const target = ev.target;
+		if (target instanceof HTMLElement) {
 			const tag = target.tagName;
 			const src =
 				(target as HTMLImageElement).src ||
@@ -173,7 +174,7 @@ document.addEventListener('visibilitychange', () => {
 
 // ─── Vue error handler ──────────────────────────────────────────────────────
 
-export function installVueErrorHandler(app: { config: { errorHandler: any } }) {
+export function installVueErrorHandler(app: App) {
 	const prev = app.config.errorHandler;
 	app.config.errorHandler = (err: unknown, instance: any, info: string) => {
 		const name = instance?.$options?.name || instance?.$.type?.name || '?';

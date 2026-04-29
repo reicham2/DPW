@@ -479,5 +479,71 @@ function typeLabel(t: string): string {
 	color: #9ca3af;
 }
 
+@media (max-width: 599px) {
+	.filter-tabs {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: none;
+		padding-bottom: 2px;
+	}
+	.filter-tabs::-webkit-scrollbar {
+		display: none;
+	}
+	.filter-tab {
+		flex-shrink: 0;
+	}
+	.ft-page-header {
+		align-items: stretch;
+		gap: 0.7rem;
+	}
+	.ft-title {
+		font-size: 0.98rem;
+		line-height: 1.4;
+	}
+	.btn-primary {
+		width: 100%;
+		min-height: 42px;
+	}
+	.editors-banner {
+		align-items: flex-start;
+		font-size: 0.8rem;
+	}
+	.default-toggle-section {
+		padding: 0.7rem 0.75rem;
+	}
+	.checkbox-label {
+		align-items: flex-start;
+		font-size: 0.83rem;
+	}
+	.default-hint {
+		margin-left: 1.35rem;
+		font-size: 0.72rem;
+	}
+	.ft-row {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.65rem;
+		padding: 0.7rem 0.75rem;
+	}
+	.ft-row-name {
+		font-size: 0.9rem;
+		overflow-wrap: anywhere;
+	}
+	.ft-row-meta {
+		flex-wrap: wrap;
+		row-gap: 0.35rem;
+	}
+	.ft-row-actions {
+		width: 100%;
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.4rem;
+	}
+	.btn-sm {
+		min-height: 40px;
+		font-size: 0.75rem;
+	}
+}
+
 
 </style>

@@ -326,6 +326,71 @@ INSERT INTO programs (activity_id, duration_minutes, title, description, respons
     ('b0000000-0000-0000-0000-000000000013',  45, 'Freispiel & Tore', 'Mannschaftsspiele auf Kleinfeldern',           ARRAY['Leiter Zwei']),
     ('b0000000-0000-0000-0000-000000000013',  45, 'Cool-down',        'Dehnübungen und Abklatschen',                  ARRAY['Leiter Zwei']);
 
+-- Lange Programmbeschreibungen für realistische UI-Tests (Zeilenumbruch/Lesbarkeit)
+UPDATE programs
+SET description = TRIM(
+    COALESCE(description, '') || E'\n\n'
+    || 'Ablauf im Detail: Die Leitung startet diesen Block jeweils mit einer kurzen Zielklärung und überprüft danach Material, Rollen und Sicherheitsregeln sichtbar mit der ganzen Gruppe. '
+    || 'Während der Durchführung werden Zwischenstände dokumentiert, spontane Anpassungen transparent kommuniziert und feste Übergänge mit Trinkpause eingeplant, damit das Szenario für die Programmanzeige realistisch lang und inhaltlich dicht bleibt.'
+)
+WHERE activity_id IN (
+    'b0000000-0000-0000-0000-000000000001',
+    'b0000000-0000-0000-0000-000000000002',
+    'b0000000-0000-0000-0000-000000000003',
+    'b0000000-0000-0000-0000-000000000007',
+    'b0000000-0000-0000-0000-000000000008',
+    'b0000000-0000-0000-0000-000000000009',
+    'b0000000-0000-0000-0000-000000000010',
+    'b0000000-0000-0000-0000-000000000011',
+    'b0000000-0000-0000-0000-000000000012',
+    'b0000000-0000-0000-0000-000000000013'
+);
+
+-- Fehlende Programmpunkte ergänzen, damit alle Seed-Aktivitäten realistische Timelines haben
+INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
+    ('b0000000-0000-0000-0000-000000000004',  45, 'Kickoff & Zielbild',
+     'Zum Start werden Materialstand, Tagesziele und Verantwortlichkeiten gemeinsam abgestimmt. Danach legt die Gruppe fest, welche Teile für Logistik, Menüplanung und Sicherheit priorisiert werden, damit spätere Entscheidungen nachvollziehbar bleiben.',
+     ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000004', 150, 'Materialstationen & Packlisten',
+     'In rotierenden Kleingruppen wird das Biwakmaterial an mehreren Stationen geprüft, fehlende Gegenstände werden dokumentiert und direkt mit einer Ersatzstrategie ergänzt. Parallel entsteht eine belastbare Packliste, die sowohl Gewicht, Transport als auch Wetteroptionen abdeckt.',
+     ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000004', 105, 'Menüplanung & Kochablauf',
+     'Das Team erstellt einen vollständigen Ablauf von Einkauf bis Ausgabe, inklusive Allergiehinweisen, Portionsberechnung und Notfallreserve. Abschließend werden Rollen für Vorbereitung, Hygiene-Checks und Abwasch verteilt, damit der Einsatz unter realen Bedingungen testbar ist.',
+     ARRAY['Pio Eins']),
+    ('b0000000-0000-0000-0000-000000000004',  60, 'Review & Abschlussrunde',
+     'In der Schlussrunde werden offene Punkte gesammelt, Risiken priorisiert und Verantwortliche mit konkreten Deadlines festgelegt. Das Ergebnis ist ein belastbarer Plan mit klaren Übergaben für die nächste Vorbereitungseinheit.',
+     ARRAY['Pio Eins']),
+
+    ('b0000000-0000-0000-0000-000000000005',  30, 'Ankommen & Materialbriefing',
+     'Zu Beginn richtet die Leitung die Bastelzonen ein und erklärt den Kindern den Ablauf in einfachen Schritten. Dabei werden Werkzeuge und Sicherheitsregeln gemeinsam wiederholt, damit auch jüngere Teilnehmende sicher mitarbeiten können.',
+     ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000005',  75, 'Bastelwerkstatt in Gruppen',
+     'Die Kinder arbeiten in kleinen Teams an mehreren Projekten, wechseln nach Zeitfenster die Stationen und dokumentieren ihre Ideen mit kurzen Präsentationen. Die Leitung begleitet aktiv, unterstützt feinmotorische Schritte und hält den Materialverbrauch für die Nachbereitung fest.',
+     ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000005',  15, 'Präsentation & Aufräumen',
+     'Zum Ende werden die fertigen Werke vorgestellt, positives Feedback gesammelt und gemeinsame Aufräumaufgaben verteilt. So wird der Nachmittag sauber abgeschlossen und gleichzeitig ein ruhiger Übergang für Elternabholung geschaffen.',
+     ARRAY['Leiter Drei']),
+
+    ('b0000000-0000-0000-0000-000000000006',  25, 'Begrüssung & Agenda-Check',
+     'Die Leitungsrunde priorisiert Traktanden, klärt Entscheidungswege und hält offene Punkte aus der letzten Sitzung fest. Bereits hier werden Zuständigkeiten sichtbar verteilt, damit der weitere Verlauf fokussiert bleibt.',
+     ARRAY['Admin User', 'Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000006',  70, 'Quartalsplanung mit Szenarien',
+     'Für jedes Team werden Ressourcen, Terminüberschneidungen und Alternativszenarien strukturiert durchgearbeitet. Entscheidungen werden direkt protokolliert und mit Verantwortlichen, Fristen und Kommunikationskanal hinterlegt.',
+     ARRAY['Admin User', 'Stufen Leiter']),
+    ('b0000000-0000-0000-0000-000000000006',  25, 'Rückblick & Beschlussliste',
+     'Zum Abschluss werden Risiken, Learnings und nächste Schritte zusammengeführt und als verbindliche Beschlussliste verabschiedet. Dadurch ist sichergestellt, dass Folgeaufgaben ohne Interpretationsspielraum in die Teams zurückgehen.',
+     ARRAY['Admin User', 'Stufen Leiter']),
+
+    ('b0000000-0000-0000-0000-000000000014',  20, 'Ankommen & Bilderwand',
+     'Nach der Begrüssung richten die Kinder gemeinsam eine Bilderwand ein und wählen Schlüsselmomente aus der letzten Phase. Die Leitung moderiert den Einstieg so, dass jedes Kind mit einer kurzen Erinnerung aktiv teilnehmen kann.',
+     ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000014',  45, 'Reflexion in Kleingruppen',
+     'In moderierten Gruppen werden Erlebnisse, Herausforderungen und persönliche Fortschritte besprochen, während eine Person die Kernaussagen notiert. Die Ergebnisse werden anschließend im Plenum zusammengeführt und für den nächsten Zyklus priorisiert.',
+     ARRAY['Leiter Drei']),
+    ('b0000000-0000-0000-0000-000000000014',  25, 'Abzeichen-Review & Ausblick',
+     'Zum Ende werden Abzeichenstände erklärt, offene Schritte transparent gemacht und konkrete nächste Ziele pro Kind definiert. Damit entsteht ein realistischer Abschlussblock mit klarer Kommunikation gegenüber Kindern und Eltern.',
+     ARRAY['Leiter Drei']);
+
 -- Mail-Templates mit Beispielinhalt
 UPDATE mail_templates SET
     subject = 'Einladung zur Pfadi-Aktivität: {{titel}}',

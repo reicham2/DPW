@@ -296,16 +296,16 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
           </thead>
           <tbody>
             <tr v-for="u in filtered" :key="u.id">
-              <td class="td-name">{{ u.display_name }}</td>
-              <td class="td-email">{{ u.email }}</td>
-              <td>
+              <td class="td-name" data-label="Name">{{ u.display_name }}</td>
+              <td class="td-email" data-label="E-Mail">{{ u.email }}</td>
+              <td data-label="Stufe">
                 <DepartmentBadge v-if="u.department" :department="u.department" />
                 <span v-else>—</span>
               </td>
-              <td>
+              <td data-label="Rolle">
                 <RoleBadge :role="u.role" />
               </td>
-              <td>
+              <td data-label="Aktionen">
                 <div class="item-actions">
                   <button class="btn-edit" @click="openEdit(u)">Bearbeiten</button>
                   <button class="btn-delete" :disabled="u.id === currentUser?.id" @click="openDeleteConfirm(u)">Löschen</button>
@@ -741,16 +741,66 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   }
   .users-table {
     font-size: 0.82rem;
+    border-collapse: separate;
+    border-spacing: 0 10px;
+    background: transparent;
   }
-  .users-table th,
+  .users-table thead {
+    display: none;
+  }
+  .users-table tbody,
+  .users-table tr,
   .users-table td {
-    padding: 10px 12px;
+    display: block;
+    width: 100%;
+  }
+  .users-table tr {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    padding: 8px 10px;
+  }
+  .users-table td {
+    padding: 8px 6px;
+    border-bottom: 1px dashed #eef2f7;
+  }
+  .users-table td:last-child {
+    border-bottom: none;
+    padding-bottom: 4px;
+  }
+  .users-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 4px;
   }
   .td-email {
     font-size: 0.78rem;
+    overflow-wrap: anywhere;
+  }
+  .td-empty {
+    text-align: center;
+    border: 1px dashed #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .td-empty::before {
+    display: none;
   }
   .item-actions {
-    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .btn-edit,
+  .btn-delete {
+    min-height: 38px;
+    padding: 7px 12px;
+    font-size: 0.8rem;
   }
 }
 </style>

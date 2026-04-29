@@ -55,9 +55,12 @@ export async function syncPushSubscription(enabled: boolean) {
 
 	let sub = existing;
 	if (!sub) {
+		const applicationServerKey = base64UrlToUint8Array(
+			keyPayload.publicKey,
+		) as unknown as BufferSource;
 		sub = await reg.pushManager.subscribe({
 			userVisibleOnly: true,
-			applicationServerKey: base64UrlToUint8Array(keyPayload.publicKey),
+			applicationServerKey,
 		});
 	}
 

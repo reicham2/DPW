@@ -15,11 +15,7 @@
 
 		<!-- Activity view -->
 		<template v-else-if="activity">
-			<header class="shared-header">
-				<span class="shared-badge"><Paperclip class="btn-icon" :size="16" aria-hidden="true" /> Geteilte Aktivität</span>
-			</header>
-
-			<main class="shared-main">
+			<main class="main">
 				<div class="detail-view">
 					<!-- Hero -->
 					<div class="detail-section">
@@ -47,7 +43,10 @@
 							</div>
 							<div class="detail-field">
 								<span class="detail-label">Stufe</span>
-								<span class="detail-value">{{ activity.department || '—' }}</span>
+								<span class="detail-value">
+									<DepartmentBadge v-if="activity.department" :department="activity.department" />
+									<template v-else>—</template>
+								</span>
 							</div>
 						</div>
 					</div>
@@ -61,18 +60,19 @@
 								:key="prog.id"
 								class="program-item"
 							>
-								<div class="program-time-col">
-									<span class="program-time">{{ programLabel(pi) }}</span>
-									<span class="program-time-secondary">{{ programSecondaryLabel(pi) }}</span>
+								<div class="program-marker" aria-hidden="true">
+									<span class="program-marker-dot" />
 								</div>
 								<div class="program-body">
+									<div class="program-meta">
+										<span class="program-time">{{ programLabel(pi) }}</span>
+										<span v-if="programSecondaryLabel(pi)" class="program-time-secondary">{{ programSecondaryLabel(pi) }}</span>
+									</div>
 									<div class="program-header">
 										<p class="program-title">{{ prog.title }}</p>
-										<span v-if="prog.responsible.length" class="program-resp">{{
-											prog.responsible.join(', ')
-										}}</span>
 									</div>
-									<p v-if="prog.description" class="program-desc" v-html="sanitizeHtml(prog.description)"></p>
+									<p v-if="prog.responsible.length" class="program-resp">Leitung: {{ prog.responsible.join(', ') }}</p>
+									<div v-if="prog.description" class="program-desc" v-html="sanitizeHtml(prog.description)" />
 								</div>
 							</div>
 						</div>
@@ -126,7 +126,8 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Activity } from '../types';
-import { Search, Paperclip } from 'lucide-vue-next';
+import { Search } from 'lucide-vue-next';
+import DepartmentBadge from '../components/DepartmentBadge.vue';
 
 const route = useRoute();
 const token = route.params.token as string;
