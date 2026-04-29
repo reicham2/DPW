@@ -179,6 +179,11 @@ export async function login(): Promise<void> {
 	}
 }
 
+export function clearTokenCache(): void {
+	cachedIdToken = null;
+	cachedIdTokenExpiry = 0;
+}
+
 export async function logout(): Promise<void> {
 	wsDisconnect();
 	cachedIdToken = null;
