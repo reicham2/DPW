@@ -9,7 +9,8 @@ import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake } from 'lucide-vue-next';
+import { useIdeenkiste } from '../composables/useIdeenkiste';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -1945,6 +1946,47 @@ function removeProgram(i: number) {
 	editPrograms.value.splice(i, 1);
 }
 
+// ---- Ideenkiste integration --------------------------------------------------
+const { items: ideenkisteItems, fetchItems: fetchIdeenkiste, createItem: createIdeenkisteItem } = useIdeenkiste();
+const showIdeenDropdown = ref(false);
+const ideenSearch = ref('');
+const ideenSaving = ref<number | null>(null);
+
+const ideenFiltered = computed(() => {
+	const q = ideenSearch.value.toLowerCase();
+	return q ? ideenkisteItems.value.filter(it =>
+		it.title.toLowerCase().includes(q) || it.description.toLowerCase().includes(q)
+	) : ideenkisteItems.value;
+});
+
+function addProgramFromIdee(item: typeof ideenkisteItems.value[0]) {
+	editPrograms.value.push({
+		duration_minutes: item.duration_minutes,
+		title: item.title,
+		description: item.description,
+		responsible: [],
+	});
+	showIdeenDropdown.value = false;
+	ideenSearch.value = '';
+}
+
+async function saveToIdeenkiste(i: number) {
+	const prog = editPrograms.value[i];
+	ideenSaving.value = i;
+	await createIdeenkisteItem({
+		title: prog.title,
+		duration_minutes: prog.duration_minutes,
+		description: prog.description,
+		department: activity.value?.department ?? null,
+	});
+	ideenSaving.value = null;
+}
+
+function openIdeenDropdown() {
+	showIdeenDropdown.value = true;
+	fetchIdeenkiste();
+}
+
 // ---- Program responsible search (multi-select + free text) ------------------
 const progRespSearch = ref<Record<number, string>>({});
 const progRespDropdown = ref<number | null>(null);
@@ -3229,14 +3271,25 @@ function copyShareLink() {
 						:class="{ 'is-locked': isLockedByOther(`program_${i}`) }"
 						@focusin="lockSection(`program_${i}`)" @focusout="unlockSection(`program_${i}`, $event)">
 						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
-						<button
-							type="button"
-							class="program-card__remove"
-							@click="removeProgram(i)"
-							:disabled="isLockedByOther(`program_${i}`)"
-						>
-							<X :size="14" aria-hidden="true" />
-						</button>
+						<div class="program-card__top-actions">
+							<button
+								type="button"
+								class="program-card__save-idee"
+								@click="saveToIdeenkiste(i)"
+								:disabled="isLockedByOther(`program_${i}`) || ideenSaving === i || !prog.title"
+								:title="ideenSaving === i ? 'Gespeichert!' : 'Zur Ideenkiste'"
+							>
+								<BookMarked :size="14" aria-hidden="true" />
+							</button>
+							<button
+								type="button"
+								class="program-card__remove"
+								@click="removeProgram(i)"
+								:disabled="isLockedByOther(`program_${i}`)"
+							>
+								<X :size="14" aria-hidden="true" />
+							</button>
+						</div>
 						<div class="program-card__fields">
 							<div class="form-group">
 								<label>Dauer (Minuten)</label>
@@ -3344,9 +3397,45 @@ function copyShareLink() {
 							</div>
 						</div>
 					</div>
-					<button type="button" class="btn-add" @click="addProgram">
-						+ Programmpunkt
-					</button>
+					<div class="btn-add-split">
+						<button type="button" class="btn-add btn-add-split__main" @click="addProgram">
+							+ Programmpunkt
+						</button>
+						<div class="btn-add-split__dropdown-wrap">
+							<button type="button" class="btn-add btn-add-split__caret" @click="openIdeenDropdown" title="Aus Ideenkiste">
+								<BookMarked :size="14" aria-hidden="true" />
+							</button>
+							<div v-if="showIdeenDropdown" class="ideen-dropdown-overlay" @click="showIdeenDropdown = false; ideenSearch = ''" />
+							<div v-if="showIdeenDropdown" class="ideen-dropdown">
+								<div class="ideen-dropdown__header">
+									<input
+										v-model="ideenSearch"
+										class="ideen-dropdown__search"
+										type="search"
+										placeholder="Suchen…"
+										autofocus
+										@keydown.escape="showIdeenDropdown = false; ideenSearch = ''"
+									/>
+									<button type="button" class="ideen-dropdown__close" @click="showIdeenDropdown = false; ideenSearch = ''">
+										<X :size="14" aria-hidden="true" />
+									</button>
+								</div>
+								<div class="ideen-dropdown__list">
+									<p v-if="ideenFiltered.length === 0" class="ideen-dropdown__empty">Keine Einträge gefunden.</p>
+									<button
+										v-for="item in ideenFiltered"
+										:key="item.id"
+										type="button"
+										class="ideen-dropdown__item"
+										@click="addProgramFromIdee(item)"
+									>
+										<span class="ideen-dropdown__item-title">{{ item.title }}</span>
+										<span v-if="item.duration_minutes" class="ideen-dropdown__item-meta">{{ item.duration_minutes }} min</span>
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
 				</div>
 			</div>
 

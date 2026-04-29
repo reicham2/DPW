@@ -349,6 +349,16 @@ int main()
          .del("/form-templates/:id", [&](auto *res, auto *req)
               { handle_delete_form_template(res, req, db); })
 
+         // Ideenkiste
+         .get("/ideenkiste", [&](auto *res, auto *req)
+              { handle_get_ideenkiste(res, req, db); })
+         .post("/ideenkiste", [&](auto *res, auto *req)
+               { handle_post_ideenkiste(res, req, db); })
+         .put("/ideenkiste/:id", [&](auto *res, auto *req)
+              { handle_put_ideenkiste(res, req, db); })
+         .del("/ideenkiste/:id", [&](auto *res, auto *req)
+              { handle_delete_ideenkiste(res, req, db); })
+
          // WebSocket endpoint
          .ws<WsUserData>("/ws", {.compression = uWS::SHARED_COMPRESSOR,
                                  .maxPayloadLength = 64 * 1024,

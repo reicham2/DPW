@@ -147,3 +147,9 @@ void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_share_link(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_share_link(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_shared_activity(HttpRes *res, HttpReq *req, Database &db);
+
+// Ideenkiste
+void handle_get_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_ideenkiste(HttpRes *res, HttpReq *req, Database &db);

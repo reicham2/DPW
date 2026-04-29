@@ -152,6 +152,7 @@ struct RolePermission
     std::string user_dept_scope;        // none|own|own_dept|all
     std::string user_role_scope;        // none|own|own_dept|all
     std::string locations_manage_scope; // none|all
+    std::string ideenkiste_scope;       // none|own_dept|all
 };
 
 struct RoleDeptAccess
@@ -371,7 +372,8 @@ public:
                                 const std::string &event_publish_scope,
                                 const std::string &user_dept_scope,
                                 const std::string &user_role_scope,
-                                const std::string &locations_manage_scope = "none");
+                                const std::string &locations_manage_scope = "none",
+                                const std::string &ideenkiste_scope = "none");
 
     // Role department access
     std::vector<RoleDeptAccess> list_role_dept_access(const std::string &role);
@@ -425,6 +427,12 @@ public:
                                                      bool is_default = false);
     bool delete_form_template(const std::string &id);
 
+    // Ideenkiste CRUD
+    std::vector<IdeenkisteItem> list_ideenkiste(const std::string &dept_filter = "");
+    std::optional<IdeenkisteItem> create_ideenkiste_item(const IdeenkisteInput &input);
+    std::optional<IdeenkisteItem> update_ideenkiste_item(const std::string &id, const IdeenkisteInput &input);
+    bool delete_ideenkiste_item(const std::string &id);
+
     // Activity share links
     std::optional<ActivityShareLink> create_share_link(const std::string &activity_id,
                                                        const std::string &created_by);
@@ -473,6 +481,7 @@ private:
     static std::string format_material_param(const std::vector<std::string> &material);
     static std::string format_material_items_param(const std::vector<MaterialItem> &items);
 
+    IdeenkisteItem row_to_ideenkiste(PGresult *res, int row);
     FormQuestion row_to_form_question(PGresult *res, int row);
     SignupForm row_to_signup_form(PGresult *res, int row);
     FormResponse row_to_form_response(PGresult *res, int row);

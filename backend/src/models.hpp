@@ -24,6 +24,27 @@ struct ProgramInput
     std::vector<std::string> responsible;
 };
 
+// ---- IdeenkisteItem ---------------------------------------------------------
+
+struct IdeenkisteItem
+{
+    std::string id;
+    std::string title;
+    int duration_minutes{0};
+    std::string description;
+    std::optional<std::string> department;
+    std::string created_at;
+    std::string updated_at;
+};
+
+struct IdeenkisteInput
+{
+    std::string title;
+    int duration_minutes{0};
+    std::string description;
+    std::optional<std::string> department;
+};
+
 // ---- Material ---------------------------------------------------------------
 
 struct MaterialItem
@@ -101,6 +122,19 @@ struct AttachmentData
 };
 
 // ---- Serialisers ------------------------------------------------------------
+
+inline nlohmann::json ideenkiste_to_json(const IdeenkisteItem &item)
+{
+    nlohmann::json j = {
+        {"id", item.id},
+        {"title", item.title},
+        {"duration_minutes", item.duration_minutes},
+        {"description", item.description},
+        {"created_at", item.created_at},
+        {"updated_at", item.updated_at}};
+    j["department"] = item.department ? nlohmann::json(*item.department) : nlohmann::json(nullptr);
+    return j;
+}
 
 inline nlohmann::json program_to_json(const Program &p)
 {

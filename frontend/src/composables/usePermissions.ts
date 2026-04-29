@@ -309,6 +309,12 @@ function canManageLocations(): boolean {
 	return myPermissions.value?.locations_manage_scope === 'all';
 }
 
+function canIdeenkiste(): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	return p.ideenkiste_scope !== 'none';
+}
+
 // ── Locations CRUD ──────────────────────────────────────────────────────────
 
 async function fetchLocationsAdmin(): Promise<LocationRecord[]> {
@@ -401,6 +407,7 @@ export function usePermissions() {
 		canFormTemplates,
 		canEventTemplates,
 		canPublishEvents,
+		canIdeenkiste,
 		canManageLocations,
 		readableDepts,
 		writableDepts,
