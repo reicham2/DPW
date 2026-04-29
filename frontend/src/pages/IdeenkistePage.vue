@@ -10,11 +10,13 @@ import ErrorAlert from '../components/ErrorAlert.vue'
 import type { IdeenkisteItem } from '../types'
 
 const router = useRouter()
-const { myPermissions, fetchMyPermissions, departments, fetchDepartments } = usePermissions()
+const { myPermissions, fetchMyPermissions, departments, fetchDepartments, canIdeenkiste, canIdeenkisteAdd, canIdeenkisteDelete } = usePermissions()
 const { items, loading, error, fetchItems, createItem, updateItem, deleteItem } = useIdeenkiste()
 
 const isOwnDeptOnly = computed(() => myPermissions.value?.ideenkiste_scope === 'own_dept')
 const canAll = computed(() => myPermissions.value?.ideenkiste_scope === 'all')
+const canAdd = computed(() => canIdeenkisteAdd())
+const canDelete = computed(() => canIdeenkisteDelete())
 
 const searchQuery = ref('')
 const filterDept = ref<string | null>(null)
@@ -154,7 +156,7 @@ onMounted(async () => {
         :model-value="filterDept"
         @update:model-value="(v) => filterDept = v"
       />
-      <button class="btn-primary ideenkiste-add-btn" @click="showNewForm = true">
+      <button v-if="canAdd" class="btn-primary ideenkiste-add-btn" @click="showNewForm = true">
         <Plus :size="16" aria-hidden="true" />
         Neuer Eintrag
       </button>
@@ -234,21 +236,35 @@ onMounted(async () => {
 
           <!-- View mode -->
           <template v-else>
-            <div class="ideenkiste-card-header">
-              <span class="ideenkiste-card-title">{{ item.title }}</span>
-              <div class="ideenkiste-card-meta">
-                <span class="ideenkiste-duration">{{ formatDuration(item.duration_minutes) }}</span>
-                <DepartmentBadge v-if="item.department" :department="item.department" />
-              </div>
+            <div class="ideenkiste-card__top-actions">
+              <button
+                v-if="canAdd"
+                type="button"
+                class="ideenkiste-card__edit-btn"
+                @click="openEdit(item)"
+                title="Bearbeiten"
+              >
+                <Pencil :size="14" aria-hidden="true" />
+              </button>
+              <button
+                v-if="canDelete"
+                type="button"
+                class="ideenkiste-card__delete-btn"
+                @click="deleteTarget = item"
+                title="Löschen"
+              >
+                <Trash2 :size="14" aria-hidden="true" />
+              </button>
             </div>
-            <p v-if="item.description" class="ideenkiste-card-desc">{{ item.description }}</p>
-            <div class="ideenkiste-card-actions">
-              <button class="btn-edit" @click="openEdit(item)">
-                <Pencil :size="14" /> Bearbeiten
-              </button>
-              <button class="btn-delete" @click="deleteTarget = item">
-                <Trash2 :size="14" /> Löschen
-              </button>
+            <div class="ideenkiste-card-body">
+              <div class="ideenkiste-card-header">
+                <span class="ideenkiste-card-title">{{ item.title }}</span>
+                <div class="ideenkiste-card-meta">
+                  <span class="ideenkiste-duration">{{ formatDuration(item.duration_minutes) }}</span>
+                  <DepartmentBadge v-if="item.department" :department="item.department" />
+                </div>
+              </div>
+              <p v-if="item.description" class="ideenkiste-card-desc">{{ item.description }}</p>
             </div>
           </template>
         </div>
@@ -345,6 +361,54 @@ onMounted(async () => {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 1rem 1.25rem;
+  position: relative;
+}
+
+.ideenkiste-card__top-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 1;
+}
+
+.ideenkiste-card__edit-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised, #eff6ff);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.ideenkiste-card__edit-btn:hover {
+  background: var(--color-border);
+}
+
+.ideenkiste-card__delete-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid #fca5a5;
+  background: #fee2e2;
+  color: #b91c1c;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.ideenkiste-card__delete-btn:hover {
+  background: #fecaca;
+}
+
+.ideenkiste-card-body {
+  padding-right: 68px;
 }
 
 .ideenkiste-card-header {
@@ -373,18 +437,11 @@ onMounted(async () => {
 }
 
 .ideenkiste-card-desc {
-  margin: 0.5rem 0 0.75rem;
+  margin: 0.5rem 0 0;
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   white-space: pre-wrap;
   line-height: 1.5;
-}
-
-.ideenkiste-card-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  margin-top: 0.5rem;
 }
 
 .ideenkiste-edit-form {

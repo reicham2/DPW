@@ -315,6 +315,18 @@ function canIdeenkiste(): boolean {
 	return p.ideenkiste_scope !== 'none';
 }
 
+function canIdeenkisteAdd(): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	return p.ideenkiste_add_scope !== 'none';
+}
+
+function canIdeenkisteDelete(): boolean {
+	const p = myPermissions.value;
+	if (!p) return false;
+	return p.ideenkiste_delete_scope !== 'none';
+}
+
 // ── Locations CRUD ──────────────────────────────────────────────────────────
 
 async function fetchLocationsAdmin(): Promise<LocationRecord[]> {
@@ -408,6 +420,8 @@ export function usePermissions() {
 		canEventTemplates,
 		canPublishEvents,
 		canIdeenkiste,
+		canIdeenkisteAdd,
+		canIdeenkisteDelete,
 		canManageLocations,
 		readableDepts,
 		writableDepts,

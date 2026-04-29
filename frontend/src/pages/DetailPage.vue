@@ -40,7 +40,7 @@ const {
 	predefinedLocations,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
-const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper } = usePermissions();
+const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper, canIdeenkiste, canIdeenkisteAdd } = usePermissions();
 
 const { fetchForm } = useForms();
 const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
@@ -3281,6 +3281,7 @@ function copyShareLink() {
 						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
 						<div class="program-card__top-actions">
 							<button
+								v-if="canIdeenkisteAdd()"
 								type="button"
 								class="program-card__save-idee"
 								:class="{ 'program-card__save-idee--saved': savedToIdeen.has(prog) }"
@@ -3410,7 +3411,7 @@ function copyShareLink() {
 						<button type="button" class="btn-add btn-add-split__main" @click="addProgram">
 							+ Programmpunkt
 						</button>
-						<div class="btn-add-split__dropdown-wrap">
+						<div v-if="canIdeenkiste()" class="btn-add-split__dropdown-wrap">
 							<button type="button" class="btn-add btn-add-split__caret" @click="openIdeenDropdown" title="Aus Ideenkiste">
 								<BookMarked :size="14" aria-hidden="true" />
 							</button>

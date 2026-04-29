@@ -223,6 +223,8 @@ export interface RolePermission {
 	user_role_scope: 'none' | 'own' | 'own_dept' | 'all';
 	locations_manage_scope: 'none' | 'all';
 	ideenkiste_scope: 'none' | 'own_dept' | 'all';
+	ideenkiste_add_scope: 'none' | 'own_dept' | 'all';
+	ideenkiste_delete_scope: 'none' | 'own_dept' | 'all';
 }
 
 export interface IdeenkisteItem {
