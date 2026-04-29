@@ -634,6 +634,14 @@ video {
 	opacity: 0.4;
 	cursor: default;
 }
+.program-card__save-idee--saved {
+	border-color: #6ee7b7;
+	background: #d1fae5;
+	color: #065f46;
+}
+.program-card__save-idee--saved:hover:not(:disabled) {
+	background: #a7f3d0;
+}
 
 .program-card__fields {
 	display: grid;

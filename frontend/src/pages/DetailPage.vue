@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onUnmounted, onMounted, shallowReactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useActivities } from '../composables/useActivities';
 import { useUsers } from '../composables/useUsers';
@@ -1947,10 +1947,11 @@ function removeProgram(i: number) {
 }
 
 // ---- Ideenkiste integration --------------------------------------------------
-const { items: ideenkisteItems, fetchItems: fetchIdeenkiste, createItem: createIdeenkisteItem } = useIdeenkiste();
+const { items: ideenkisteItems, fetchItems: fetchIdeenkiste, createItem: createIdeenkisteItem, deleteItem: deleteIdeenkisteItem } = useIdeenkiste();
 const showIdeenDropdown = ref(false);
 const ideenSearch = ref('');
 const ideenSaving = ref<number | null>(null);
+const savedToIdeen = shallowReactive(new Map<object, string>());
 
 const ideenFiltered = computed(() => {
 	const q = ideenSearch.value.toLowerCase();
@@ -1973,12 +1974,19 @@ function addProgramFromIdee(item: typeof ideenkisteItems.value[0]) {
 async function saveToIdeenkiste(i: number) {
 	const prog = editPrograms.value[i];
 	ideenSaving.value = i;
-	await createIdeenkisteItem({
-		title: prog.title,
-		duration_minutes: prog.duration_minutes,
-		description: prog.description,
-		department: activity.value?.department ?? null,
-	});
+	if (savedToIdeen.has(prog)) {
+		const id = savedToIdeen.get(prog)!;
+		const ok = await deleteIdeenkisteItem(id);
+		if (ok) savedToIdeen.delete(prog);
+	} else {
+		const result = await createIdeenkisteItem({
+			title: prog.title,
+			duration_minutes: prog.duration_minutes,
+			description: prog.description,
+			department: activity.value?.department ?? null,
+		});
+		if (result) savedToIdeen.set(prog, result.id);
+	}
 	ideenSaving.value = null;
 }
 
@@ -3275,9 +3283,10 @@ function copyShareLink() {
 							<button
 								type="button"
 								class="program-card__save-idee"
+								:class="{ 'program-card__save-idee--saved': savedToIdeen.has(prog) }"
 								@click="saveToIdeenkiste(i)"
 								:disabled="isLockedByOther(`program_${i}`) || ideenSaving === i || !prog.title"
-								:title="ideenSaving === i ? 'Gespeichert!' : 'Zur Ideenkiste'"
+								:title="savedToIdeen.has(prog) ? 'In Ideenkiste – erneut drücken zum Entfernen' : 'Zur Ideenkiste'"
 							>
 								<BookMarked :size="14" aria-hidden="true" />
 							</button>

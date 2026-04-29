@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
 import { useIdeenkiste } from '../composables/useIdeenkiste'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
+import BadgeSelect from '../components/BadgeSelect.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import type { IdeenkisteItem } from '../types'
 
@@ -17,6 +18,7 @@ const canAll = computed(() => myPermissions.value?.ideenkiste_scope === 'all')
 
 const searchQuery = ref('')
 const filterDept = ref<string | null>(null)
+const deptItems = computed(() => departments.value.map(d => ({ value: d.name })))
 
 const filtered = computed(() => {
   let list = items.value
@@ -143,24 +145,15 @@ onMounted(async () => {
         type="search"
         placeholder="Suchen…"
       />
-      <div v-if="canAll" class="dept-pills">
-        <button
-          type="button"
-          class="dept-pill-btn"
-          :class="{ 'dept-pill-btn--active': filterDept === null }"
-          @click="filterDept = null"
-        >Alle</button>
-        <button
-          v-for="d in departments"
-          :key="d.name"
-          type="button"
-          class="dept-pill-btn dept-pill-btn--bare"
-          :class="{ 'dept-pill-btn--active': filterDept === d.name }"
-          @click="filterDept = d.name"
-        >
-          <DepartmentBadge :department="d.name" :active="filterDept === d.name" />
-        </button>
-      </div>
+      <BadgeSelect
+        v-if="canAll"
+        kind="department"
+        :items="deptItems"
+        allow-empty
+        placeholder="Alle Stufen"
+        :model-value="filterDept"
+        @update:model-value="(v) => filterDept = v"
+      />
       <button class="btn-primary ideenkiste-add-btn" @click="showNewForm = true">
         <Plus :size="16" aria-hidden="true" />
         Neuer Eintrag
