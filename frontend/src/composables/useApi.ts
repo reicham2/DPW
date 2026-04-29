@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { getIdToken } from './useAuth';
+import { getIdToken, clearTokenCache } from './useAuth';
 
 const browserOnline = ref(
 	typeof navigator === 'undefined' ? true : navigator.onLine,
@@ -66,6 +66,7 @@ export function formatApiError(error: unknown): string {
 export async function apiFetch(
 	url: string,
 	options: RequestInit = {},
+	_retry = false,
 ): Promise<Response> {
 	const token = await getIdToken();
 	try {
@@ -80,6 +81,10 @@ export async function apiFetch(
 			},
 		});
 		apiReachable.value = true;
+		if (response.status === 401 && !_retry) {
+			clearTokenCache();
+			return apiFetch(url, options, true);
+		}
 		return response;
 	} catch (error) {
 		const raw = error instanceof Error ? error.message : String(error ?? '');
