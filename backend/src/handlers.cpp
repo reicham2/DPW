@@ -7567,11 +7567,11 @@ static bool ideenkiste_item_in_scope(Database &db,
         if (!user_dept)
             return false;
 
-        auto scoped_items = db.list_ideenkiste(*user_dept);
-        for (const auto &item : scoped_items)
+        auto all_items = db.list_ideenkiste("");
+        for (const auto &item : all_items)
         {
             if (item.id == item_id)
-                return true;
+                return item.department.has_value() && *item.department == *user_dept;
         }
     }
 

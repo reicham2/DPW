@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { Plus, Pencil, Trash2, X, Check, Search } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
+import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
 import { useIdeenkiste } from '../composables/useIdeenkiste'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
@@ -68,12 +69,24 @@ const showEditDescLinkDialog = ref(false)
 const editDescLinkUrl = ref('')
 const editDescLinkInputRef = ref<HTMLInputElement | null>(null)
 
+function setEditDescEditorRef(refEl: unknown) {
+  const el = refEl instanceof Element
+    ? refEl
+    : (refEl && typeof refEl === 'object' && '$el' in refEl && (refEl as { $el?: unknown }).$el instanceof Element
+      ? (refEl as { $el: Element }).$el
+      : null)
+  editDescEditorRef.value = el as HTMLElement | null
+  if (editDescEditorRef.value) {
+    editDescEditorRef.value.innerHTML = editDescription.value
+  }
+}
+
 // Delete confirm
 const deleteTarget = ref<IdeenkisteItem | null>(null)
 const deleteError = ref<string | null>(null)
 
 function openEdit(item: IdeenkisteItem) {
-  if (!canEdit.value) return
+  if (!canEditItem(item)) return
   editingId.value = item.id
   editTitle.value = item.title
   editDuration.value = item.duration_minutes
@@ -128,11 +141,31 @@ async function submitNew() {
 }
 
 async function confirmDelete() {
-  if (!deleteTarget.value || !canDelete.value) return
+  if (!deleteTarget.value || !canDeleteItem(deleteTarget.value)) return
   deleteError.value = null
   const ok = await deleteItem(deleteTarget.value.id)
   if (ok) deleteTarget.value = null
   else deleteError.value = 'Fehler beim Löschen.'
+}
+
+function canEditItem(item: IdeenkisteItem): boolean {
+  const scope = myPermissions.value?.ideenkiste_add_scope
+  if (!scope || scope === 'none') return false
+  if (scope === 'all') return true
+  if (scope === 'own_dept') {
+    return !!user.value?.department && item.department === user.value.department
+  }
+  return false
+}
+
+function canDeleteItem(item: IdeenkisteItem): boolean {
+  const scope = myPermissions.value?.ideenkiste_delete_scope
+  if (!scope || scope === 'none') return false
+  if (scope === 'all') return true
+  if (scope === 'own_dept') {
+    return !!user.value?.department && item.department === user.value.department
+  }
+  return false
 }
 
 function rgbToHex(rgb: string): string {
@@ -458,7 +491,7 @@ onMounted(async () => {
                       <button type="button" @mousedown="editDescSaveSelection" @click="openEditDescLinkDialog" title="Link einfügen">🔗 Link</button>
                     </div>
                     <div
-                      ref="editDescEditorRef"
+                      :ref="setEditDescEditorRef"
                       class="rich-editor rich-editor--compact"
                       contenteditable="true"
                       @input="onEditDescInput"
@@ -484,9 +517,9 @@ onMounted(async () => {
 
           <!-- View mode: program-body (same as Activity view) -->
           <div v-else class="program-body ideenkiste-program-body">
-            <div v-if="canEdit || canDelete" class="program-card__top-actions">
+            <div v-if="canEditItem(item) || canDeleteItem(item)" class="program-card__top-actions">
               <button
-                v-if="canEdit"
+                v-if="canEditItem(item)"
                 type="button"
                 class="program-card__save-idee"
                 @click="openEdit(item)"
@@ -495,7 +528,7 @@ onMounted(async () => {
                 <Pencil :size="14" aria-hidden="true" />
               </button>
               <button
-                v-if="canDelete"
+                v-if="canDeleteItem(item)"
                 type="button"
                 class="program-card__remove"
                 @click="deleteTarget = item"
