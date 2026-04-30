@@ -10,7 +10,7 @@ import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
 import { useIdeenkiste } from '../composables/useIdeenkiste';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, GripVertical } from 'lucide-vue-next';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -3340,7 +3340,14 @@ function copyShareLink() {
 							@drop="onProgramDrop(i, $event)"
 							@dragend="endProgramDrag"
 						>
-							<GripVertical :size="16" aria-hidden="true" />
+							<span class="program-card__drag-dots" aria-hidden="true">
+								<span></span>
+								<span></span>
+								<span></span>
+								<span></span>
+								<span></span>
+								<span></span>
+							</span>
 						</div>
 						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
 						<div class="program-card__top-actions">
@@ -3471,7 +3478,7 @@ function copyShareLink() {
 							</div>
 						</div>
 					</div>
-					<div class="btn-add-split">
+					<div :class="canIdeenkiste() ? 'btn-add-split' : 'btn-add-single'">
 						<button
 							type="button"
 							class="btn-add"

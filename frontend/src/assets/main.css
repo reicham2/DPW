@@ -599,14 +599,14 @@ video {
 
 .program-card__drag-handle {
 	position: absolute;
-	left: -12px;
+	left: -14px;
 	top: 12px;
 	width: 24px;
 	height: 28px;
-	border-radius: 7px;
-	border: 1px solid #bfdbfe;
-	background: #eff6ff;
-	color: #1d4ed8;
+	border-radius: 999px;
+	border: 1px solid #e5e7eb;
+	background: #ffffff;
+	color: #6b7280;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -619,17 +619,34 @@ video {
 	z-index: 2;
 }
 
+.program-card__drag-dots {
+	display: grid;
+	grid-template-columns: repeat(2, 4px);
+	grid-template-rows: repeat(3, 4px);
+	gap: 2px;
+}
+
+.program-card__drag-dots span {
+	display: block;
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: currentColor;
+	opacity: 0.85;
+}
+
 .program-card__drag-handle:hover {
-	background: #dbeafe;
-	border-color: #93c5fd;
+	background: #f9fafb;
+	border-color: #d1d5db;
+	color: #374151;
 }
 
 .program-card__drag-handle:active,
 .program-card__drag-handle--active {
 	cursor: grabbing;
-	background: #bfdbfe;
-	border-color: #60a5fa;
-	color: #1e40af;
+	background: #eff6ff;
+	border-color: #93c5fd;
+	color: #1d4ed8;
 }
 
 .program-card__top-actions {
@@ -702,6 +719,12 @@ video {
 	align-self: flex-start;
 	gap: 0;
 }
+
+.btn-add-single {
+	display: inline-flex;
+	align-self: flex-start;
+}
+
 .btn-add-split__main {
 	border-radius: 6px 0 0 6px;
 	border-right: none;
