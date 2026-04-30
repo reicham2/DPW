@@ -203,32 +203,39 @@ onMounted(async () => {
     <template v-else>
       <p v-if="filtered.length === 0" class="ideenkiste-empty">Keine Einträge gefunden.</p>
       <div v-else class="ideenkiste-list">
-        <div v-for="item in filtered" :key="item.id" class="ideenkiste-card">
+        <div v-for="item in filtered" :key="item.id" class="program-card">
+
           <!-- Edit mode -->
           <template v-if="editingId === item.id">
-            <form @submit.prevent="saveEdit" class="ideenkiste-edit-form">
-              <input v-model="editTitle" class="form-input" required />
-              <div class="ideenkiste-edit-row">
+            <form @submit.prevent="saveEdit">
+              <div class="program-card__fields">
                 <div class="form-group">
-                  <label class="form-label">Dauer (min)</label>
-                  <input v-model.number="editDuration" type="number" min="0" class="form-input" />
+                  <label>Dauer (min)</label>
+                  <input v-model.number="editDuration" type="number" min="0" />
+                </div>
+                <div class="form-group">
+                  <label>Titel *</label>
+                  <input v-model="editTitle" type="text" required />
                 </div>
                 <div v-if="canAll" class="form-group">
-                  <label class="form-label">Stufe</label>
-                  <select v-model="editDepartment" class="form-input">
+                  <label>Stufe</label>
+                  <select v-model="editDepartment">
                     <option :value="null">Keine</option>
                     <option v-for="d in departments" :key="d.name" :value="d.name">{{ d.name }}</option>
                   </select>
                 </div>
+                <div class="form-group program-card__full">
+                  <label>Beschreibung</label>
+                  <textarea v-model="editDescription" class="ideenkiste-textarea" rows="4" />
+                </div>
               </div>
-              <textarea v-model="editDescription" class="form-input ideenkiste-textarea" rows="4" />
               <div v-if="editError" class="error-msg"><ErrorAlert :error="editError" /></div>
-              <div class="ideenkiste-card-actions">
+              <div class="ideenkiste-edit-actions">
                 <button type="button" class="btn-cancel" @click="cancelEdit">
-                  <X :size="14" /> Abbrechen
+                  <X :size="14" aria-hidden="true" /> Abbrechen
                 </button>
                 <button type="submit" class="btn-primary" :disabled="editSaving">
-                  <Check :size="14" /> {{ editSaving ? 'Speichern…' : 'Speichern' }}
+                  <Check :size="14" aria-hidden="true" /> {{ editSaving ? 'Speichern…' : 'Speichern' }}
                 </button>
               </div>
             </form>
@@ -236,11 +243,11 @@ onMounted(async () => {
 
           <!-- View mode -->
           <template v-else>
-            <div class="ideenkiste-card__top-actions">
+            <div class="program-card__top-actions">
               <button
                 v-if="canAdd"
                 type="button"
-                class="ideenkiste-card__edit-btn"
+                class="program-card__save-idee"
                 @click="openEdit(item)"
                 title="Bearbeiten"
               >
@@ -249,24 +256,36 @@ onMounted(async () => {
               <button
                 v-if="canDelete"
                 type="button"
-                class="ideenkiste-card__delete-btn"
+                class="program-card__remove"
                 @click="deleteTarget = item"
                 title="Löschen"
               >
                 <Trash2 :size="14" aria-hidden="true" />
               </button>
             </div>
-            <div class="ideenkiste-card-body">
-              <div class="ideenkiste-card-header">
-                <span class="ideenkiste-card-title">{{ item.title }}</span>
-                <div class="ideenkiste-card-meta">
-                  <span class="ideenkiste-duration">{{ formatDuration(item.duration_minutes) }}</span>
+            <div class="program-card__fields">
+              <div class="form-group">
+                <label>Dauer</label>
+                <div class="ideenkiste-ro-field">{{ formatDuration(item.duration_minutes) }}</div>
+              </div>
+              <div class="form-group">
+                <label>Titel</label>
+                <div class="ideenkiste-ro-field">{{ item.title }}</div>
+              </div>
+              <div class="form-group">
+                <label>Stufe</label>
+                <div class="ideenkiste-ro-field">
                   <DepartmentBadge v-if="item.department" :department="item.department" />
+                  <span v-else class="ideenkiste-ro-empty">–</span>
                 </div>
               </div>
-              <p v-if="item.description" class="ideenkiste-card-desc">{{ item.description }}</p>
+              <div v-if="item.description" class="form-group program-card__full">
+                <label>Beschreibung</label>
+                <div class="ideenkiste-ro-field ideenkiste-ro-field--desc">{{ item.description }}</div>
+              </div>
             </div>
           </template>
+
         </div>
       </div>
     </template>
@@ -340,11 +359,6 @@ onMounted(async () => {
   margin-top: 0.25rem;
 }
 
-.ideenkiste-textarea {
-  resize: vertical;
-  font-family: inherit;
-}
-
 .ideenkiste-empty {
   color: var(--color-text-muted);
   text-align: center;
@@ -356,108 +370,35 @@ onMounted(async () => {
   gap: 0.75rem;
 }
 
-.ideenkiste-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  position: relative;
+.ideenkiste-textarea {
+  resize: vertical;
+  font-family: inherit;
+  width: 100%;
 }
 
-.ideenkiste-card__top-actions {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: flex;
-  gap: 4px;
-  z-index: 1;
-}
-
-.ideenkiste-card__edit-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 5px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-raised, #eff6ff);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s;
-}
-.ideenkiste-card__edit-btn:hover {
-  background: var(--color-border);
-}
-
-.ideenkiste-card__delete-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 5px;
-  border: 1px solid #fca5a5;
-  background: #fee2e2;
-  color: #b91c1c;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s;
-}
-.ideenkiste-card__delete-btn:hover {
-  background: #fecaca;
-}
-
-.ideenkiste-card-body {
-  padding-right: 68px;
-}
-
-.ideenkiste-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.ideenkiste-card-title {
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.ideenkiste-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.ideenkiste-duration {
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-}
-
-.ideenkiste-card-desc {
-  margin: 0.5rem 0 0;
+.ideenkiste-ro-field {
+  padding: 6px 8px;
   font-size: 0.875rem;
-  color: var(--color-text-secondary);
+  color: var(--color-text, #111827);
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.ideenkiste-ro-field--desc {
+  align-items: flex-start;
   white-space: pre-wrap;
   line-height: 1.5;
 }
 
-.ideenkiste-edit-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
+.ideenkiste-ro-empty {
+  color: var(--color-text-muted, #9ca3af);
 }
 
-.ideenkiste-edit-row {
+.ideenkiste-edit-actions {
   display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.ideenkiste-edit-row .form-group {
-  flex: 1;
-  min-width: 120px;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
 }
 </style>

@@ -749,7 +749,8 @@ video {
 }
 
 .program-card__fields .form-group input,
-.program-card__fields .form-group textarea {
+.program-card__fields .form-group textarea,
+.program-card__fields .form-group select {
 	background: #fff;
 }
 
