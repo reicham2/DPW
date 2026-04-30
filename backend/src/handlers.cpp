@@ -7554,6 +7554,30 @@ static std::optional<std::string> ideenkiste_check(HttpRes *res, HttpReq *req, D
     return scope;
 }
 
+static bool ideenkiste_item_in_scope(Database &db,
+                                     const std::string &item_id,
+                                     const std::string &scope,
+                                     const std::optional<std::string> &user_dept)
+{
+    if (scope == "all")
+        return true;
+
+    if (scope == "own_dept")
+    {
+        if (!user_dept)
+            return false;
+
+        auto scoped_items = db.list_ideenkiste(*user_dept);
+        for (const auto &item : scoped_items)
+        {
+            if (item.id == item_id)
+                return true;
+        }
+    }
+
+    return false;
+}
+
 void handle_get_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
 {
     UserRecord user;
@@ -7629,6 +7653,12 @@ void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
         if (!last) return;
         try
         {
+            if (!ideenkiste_item_in_scope(db, id, scope, user_dept))
+            {
+                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                return;
+            }
+
             auto j = nlohmann::json::parse(body);
             IdeenkisteInput input;
             input.title = j.value("title", "");
@@ -7667,6 +7697,12 @@ void handle_delete_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     try
     {
+        if (!ideenkiste_item_in_scope(db, id, *scope, user.department))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
         bool ok = db.delete_ideenkiste_item(id);
         if (!ok)
         {

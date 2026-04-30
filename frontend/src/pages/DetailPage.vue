@@ -3408,7 +3408,12 @@ function copyShareLink() {
 						</div>
 					</div>
 					<div class="btn-add-split">
-						<button type="button" class="btn-add btn-add-split__main" @click="addProgram">
+						<button
+							type="button"
+							class="btn-add"
+							:class="{ 'btn-add-split__main': canIdeenkiste() }"
+							@click="addProgram"
+						>
 							+ Programmpunkt
 						</button>
 						<div v-if="canIdeenkiste()" class="btn-add-split__dropdown-wrap">

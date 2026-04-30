@@ -3808,7 +3808,12 @@ bool Database::delete_ideenkiste_item(const std::string &id)
     PGresult *res = PQexecParams(conn_,
                                  "DELETE FROM ideenkiste WHERE id=$1",
                                  1, nullptr, params, nullptr, nullptr, 0);
-    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    bool ok = false;
+    if (PQresultStatus(res) == PGRES_COMMAND_OK)
+    {
+        const char *affected = PQcmdTuples(res);
+        ok = affected && std::string(affected) != "0";
+    }
     PQclear(res);
     return ok;
 }

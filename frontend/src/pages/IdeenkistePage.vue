@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { Plus, Pencil, Trash2, X, Check, Search } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
@@ -14,7 +14,7 @@ const { items, loading, error, fetchItems, createItem, updateItem, deleteItem } 
 
 const isOwnDeptOnly = computed(() => myPermissions.value?.ideenkiste_scope === 'own_dept')
 const canAll = computed(() => myPermissions.value?.ideenkiste_scope === 'all')
-const canAdd = computed(() => canIdeenkisteAdd())
+const canEdit = computed(() => canIdeenkisteAdd())
 const canDelete = computed(() => canIdeenkisteDelete())
 
 const searchQuery = ref('')
@@ -48,33 +48,56 @@ const editDescription = ref('')
 const editDepartment = ref<string | null>(null)
 const editSaving = ref(false)
 const editError = ref<string | null>(null)
+const editDescEditorRef = ref<HTMLElement | null>(null)
+const editDescToolbar = ref<{
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  ul: boolean
+  ol: boolean
+  font: string
+  size: string
+  color: string
+  bgColor: string
+} | null>(null)
+let editDescSavedSelection: Range | null = null
+let editDescLinkSavedRange: Range | null = null
+const showEditDescLinkDialog = ref(false)
+const editDescLinkUrl = ref('')
+const editDescLinkInputRef = ref<HTMLInputElement | null>(null)
 
 // Delete confirm
 const deleteTarget = ref<IdeenkisteItem | null>(null)
 const deleteError = ref<string | null>(null)
 
 function openEdit(item: IdeenkisteItem) {
+  if (!canEdit.value) return
   editingId.value = item.id
   editTitle.value = item.title
   editDuration.value = item.duration_minutes
   editDescription.value = item.description
   editDepartment.value = item.department
   editError.value = null
+  nextTick(() => {
+    syncEditDescEditor()
+  })
 }
 
 function cancelEdit() {
   editingId.value = null
+  showEditDescLinkDialog.value = false
 }
 
 async function saveEdit() {
-  if (!editingId.value) return
+  if (!editingId.value || !canEdit.value) return
+  onEditDescInput()
   editSaving.value = true
   editError.value = null
   const result = await updateItem(editingId.value, {
     title: editTitle.value.trim(),
     duration_minutes: editDuration.value,
     description: editDescription.value,
-    department: isOwnDeptOnly.value ? myPermissions.value?.role : editDepartment.value,
+    department: editDepartment.value,
   })
   editSaving.value = false
   if (result) editingId.value = null
@@ -103,11 +126,166 @@ async function submitNew() {
 }
 
 async function confirmDelete() {
-  if (!deleteTarget.value) return
+  if (!deleteTarget.value || !canDelete.value) return
   deleteError.value = null
   const ok = await deleteItem(deleteTarget.value.id)
   if (ok) deleteTarget.value = null
   else deleteError.value = 'Fehler beim Löschen.'
+}
+
+function rgbToHex(rgb: string): string {
+  const m = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/)
+  if (!m) return rgb
+  return '#' + [m[1], m[2], m[3]].map(x => parseInt(x, 10).toString(16).padStart(2, '0')).join('')
+}
+
+function syncEditDescEditor() {
+  const el = editDescEditorRef.value
+  if (!el) return
+  if (el.innerHTML !== editDescription.value) {
+    el.innerHTML = editDescription.value
+  }
+}
+
+function onEditDescInput() {
+  const el = editDescEditorRef.value
+  if (el) editDescription.value = el.innerHTML
+  updateEditDescToolbar()
+}
+
+function updateEditDescToolbar() {
+  const el = editDescEditorRef.value
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount || !el) return
+  const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement
+  if (!node || !el.contains(node)) return
+  const cs = window.getComputedStyle(node)
+  editDescToolbar.value = {
+    bold: document.queryCommandState('bold'),
+    italic: document.queryCommandState('italic'),
+    underline: document.queryCommandState('underline'),
+    ul: document.queryCommandState('insertUnorderedList'),
+    ol: document.queryCommandState('insertOrderedList'),
+    font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
+    size: parseInt(cs.fontSize, 10).toString() || '12',
+    color: rgbToHex(cs.color) || '#000000',
+    bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
+  }
+}
+
+function onEditDescFocus() {
+  editDescToolbar.value = {
+    bold: false,
+    italic: false,
+    underline: false,
+    ul: false,
+    ol: false,
+    font: 'Arial',
+    size: '12',
+    color: '#000000',
+    bgColor: '#ffffff',
+  }
+  updateEditDescToolbar()
+}
+
+function editDescSaveSelection() {
+  const sel = window.getSelection()
+  const el = editDescEditorRef.value
+  if (sel?.rangeCount && el?.contains(sel.anchorNode)) {
+    editDescSavedSelection = sel.getRangeAt(0).cloneRange()
+  }
+}
+
+function editDescExecCmd(cmd: string, value?: string) {
+  if (editDescSavedSelection) {
+    const sel = window.getSelection()
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(editDescSavedSelection)
+    }
+    editDescSavedSelection = null
+  }
+  document.execCommand(cmd, false, value)
+  editDescEditorRef.value?.focus()
+  onEditDescInput()
+}
+
+function editDescSetFontSize(size: string) {
+  if (editDescSavedSelection) {
+    const sel = window.getSelection()
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(editDescSavedSelection)
+    }
+    editDescSavedSelection = null
+  }
+  const sel = window.getSelection()
+  if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+    const span = document.createElement('span')
+    span.style.fontSize = size + 'px'
+    span.textContent = '\u200B'
+    const range = sel.getRangeAt(0)
+    range.insertNode(span)
+    const newRange = document.createRange()
+    newRange.setStart(span.firstChild!, 1)
+    newRange.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(newRange)
+    editDescEditorRef.value?.focus()
+    if (editDescToolbar.value) editDescToolbar.value.size = size
+    onEditDescInput()
+    return
+  }
+  document.execCommand('fontSize', false, '7')
+  const fontEls = editDescEditorRef.value?.querySelectorAll('font[size="7"]')
+  fontEls?.forEach(fe => {
+    const span = document.createElement('span')
+    span.style.fontSize = size + 'px'
+    span.innerHTML = fe.innerHTML
+    fe.replaceWith(span)
+  })
+  editDescEditorRef.value?.focus()
+  onEditDescInput()
+}
+
+function editDescAdjustFontSize(delta: number) {
+  const current = parseInt(editDescToolbar.value?.size ?? '12', 10) || 12
+  const newSize = Math.max(8, Math.min(72, current + delta))
+  editDescSetFontSize(String(newSize))
+  if (editDescToolbar.value) editDescToolbar.value.size = String(newSize)
+}
+
+function openEditDescLinkDialog() {
+  editDescLinkSavedRange = editDescSavedSelection
+  editDescSavedSelection = null
+  const sel = window.getSelection()
+  const anchor = sel?.focusNode?.parentElement?.closest('a') as HTMLAnchorElement | null
+  editDescLinkUrl.value = anchor?.getAttribute('href') ?? ''
+  showEditDescLinkDialog.value = true
+  nextTick(() => editDescLinkInputRef.value?.focus())
+}
+
+function confirmEditDescLink() {
+  showEditDescLinkDialog.value = false
+  if (!editDescLinkSavedRange) return
+  const sel = window.getSelection()
+  if (sel) {
+    sel.removeAllRanges()
+    sel.addRange(editDescLinkSavedRange)
+  }
+  if (editDescLinkUrl.value.trim()) {
+    document.execCommand('createLink', false, editDescLinkUrl.value.trim())
+  } else {
+    document.execCommand('unlink')
+  }
+  editDescEditorRef.value?.focus()
+  onEditDescInput()
+  editDescLinkSavedRange = null
+}
+
+function cancelEditDescLink() {
+  showEditDescLinkDialog.value = false
+  editDescLinkSavedRange = null
 }
 
 function formatDuration(minutes: number): string {
@@ -165,7 +343,7 @@ onMounted(async () => {
       </div>
 
       <div class="ideenkiste-filter-actions">
-        <button v-if="canAdd" class="btn-primary ideenkiste-add-btn" @click="showNewForm = true">
+        <button v-if="canEdit" class="btn-primary ideenkiste-add-btn" @click="showNewForm = true">
           <Plus :size="16" aria-hidden="true" />
           Neuer Eintrag
         </button>
@@ -235,7 +413,51 @@ onMounted(async () => {
                 </div>
                 <div class="form-group program-card__full">
                   <label>Beschreibung</label>
-                  <textarea v-model="editDescription" class="ideenkiste-textarea" rows="4" placeholder="Beschreibung…" />
+                  <div class="input-save-wrap">
+                    <div class="rich-editor-toolbar rich-editor-toolbar--compact" v-if="editDescToolbar">
+                      <select class="toolbar-select" :value="editDescToolbar.font" @change="editDescExecCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
+                        <option value="Arial" style="font-family:Arial">Arial</option>
+                        <option value="Helvetica" style="font-family:Helvetica">Helvetica</option>
+                        <option value="Georgia" style="font-family:Georgia">Georgia</option>
+                        <option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
+                        <option value="Courier New" style="font-family:'Courier New'">Courier New</option>
+                        <option value="Verdana" style="font-family:Verdana">Verdana</option>
+                      </select>
+                      <input type="text" class="toolbar-select toolbar-select--narrow" :value="editDescToolbar.size" @mousedown="editDescSaveSelection" @change="editDescSetFontSize(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="editDescSetFontSize(($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
+                      <button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="editDescAdjustFontSize(-2)" title="Kleiner">A−</button>
+                      <button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="editDescAdjustFontSize(2)" title="Grösser">A+</button>
+                      <span class="toolbar-sep"></span>
+                      <button type="button" :class="{ 'toolbar-btn--active': editDescToolbar.bold }" @mousedown.prevent @click="editDescExecCmd('bold')" title="Fett"><b>B</b></button>
+                      <button type="button" :class="{ 'toolbar-btn--active': editDescToolbar.italic }" @mousedown.prevent @click="editDescExecCmd('italic')" title="Kursiv"><i>I</i></button>
+                      <button type="button" :class="{ 'toolbar-btn--active': editDescToolbar.underline }" @mousedown.prevent @click="editDescExecCmd('underline')" title="Unterstrichen"><u>U</u></button>
+                      <span class="toolbar-sep"></span>
+                      <label class="toolbar-color" title="Schriftfarbe" @mousedown="editDescSaveSelection">
+                        A
+                        <input type="color" :value="editDescToolbar.color" @input="editDescExecCmd('foreColor', ($event.target as HTMLInputElement).value)" />
+                      </label>
+                      <label class="toolbar-color toolbar-color--bg" title="Hintergrundfarbe" @mousedown="editDescSaveSelection">
+                        <span class="toolbar-color-icon">A</span>
+                        <input type="color" :value="editDescToolbar.bgColor" @input="editDescExecCmd('hiliteColor', ($event.target as HTMLInputElement).value)" />
+                      </label>
+                      <span class="toolbar-sep"></span>
+                      <button type="button" :class="{ 'toolbar-btn--active': editDescToolbar.ul }" @mousedown.prevent @click="editDescExecCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
+                      <button type="button" :class="{ 'toolbar-btn--active': editDescToolbar.ol }" @mousedown.prevent @click="editDescExecCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
+                      <span class="toolbar-sep"></span>
+                      <button type="button" @mousedown.prevent @click="editDescExecCmd('removeFormat')" title="Formatierung entfernen"><X :size="12" aria-hidden="true" /> Format</button>
+                      <span class="toolbar-sep"></span>
+                      <button type="button" @mousedown="editDescSaveSelection" @click="openEditDescLinkDialog" title="Link einfügen">🔗 Link</button>
+                    </div>
+                    <div
+                      ref="editDescEditorRef"
+                      class="rich-editor rich-editor--compact"
+                      contenteditable="true"
+                      @input="onEditDescInput"
+                      @focus="onEditDescFocus"
+                      @mouseup="updateEditDescToolbar"
+                      @keyup="updateEditDescToolbar"
+                      data-placeholder="Beschreibung…"
+                    ></div>
+                  </div>
                 </div>
               </div>
               <div v-if="editError" class="error-msg"><ErrorAlert :error="editError" /></div>
@@ -252,9 +474,9 @@ onMounted(async () => {
 
           <!-- View mode: program-body (same as Activity view) -->
           <div v-else class="program-body ideenkiste-program-body">
-            <div v-if="canAdd || canDelete" class="program-card__top-actions">
+            <div v-if="canEdit || canDelete" class="program-card__top-actions">
               <button
-                v-if="canAdd"
+                v-if="canEdit"
                 type="button"
                 class="program-card__save-idee"
                 @click="openEdit(item)"
@@ -279,7 +501,7 @@ onMounted(async () => {
             <div class="program-header">
               <p class="program-title">{{ item.title }}</p>
             </div>
-            <div v-if="item.description" class="program-desc">{{ item.description }}</div>
+            <div v-if="item.description" class="program-desc" v-html="item.description" />
           </div>
         </div>
       </div>
@@ -295,6 +517,27 @@ onMounted(async () => {
       <div class="modal-actions">
         <button class="btn-cancel" @click="deleteTarget = null">Abbrechen</button>
         <button class="btn-danger" @click="confirmDelete">Löschen</button>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="showEditDescLinkDialog" class="modal-backdrop" @click.self="cancelEditDescLink">
+    <div class="modal">
+      <h2 class="modal-title">Link einfügen</h2>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input
+          ref="editDescLinkInputRef"
+          v-model="editDescLinkUrl"
+          class="form-input"
+          type="url"
+          placeholder="https://..."
+          @keydown.enter.prevent="confirmEditDescLink"
+        />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" @click="cancelEditDescLink">Abbrechen</button>
+        <button class="btn-primary" @click="confirmEditDescLink">Übernehmen</button>
       </div>
     </div>
   </div>
