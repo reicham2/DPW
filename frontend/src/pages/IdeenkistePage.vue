@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Plus, Pencil, Trash2, X, Check } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, X, Check, Search } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
 import { useIdeenkiste } from '../composables/useIdeenkiste'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
-import BadgeSelect from '../components/BadgeSelect.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import type { IdeenkisteItem } from '../types'
 
 const router = useRouter()
-const { myPermissions, fetchMyPermissions, departments, fetchDepartments, canIdeenkiste, canIdeenkisteAdd, canIdeenkisteDelete } = usePermissions()
+const { myPermissions, fetchMyPermissions, departments, fetchDepartments, canIdeenkisteAdd, canIdeenkisteDelete } = usePermissions()
 const { items, loading, error, fetchItems, createItem, updateItem, deleteItem } = useIdeenkiste()
 
 const isOwnDeptOnly = computed(() => myPermissions.value?.ideenkiste_scope === 'own_dept')
@@ -20,7 +19,6 @@ const canDelete = computed(() => canIdeenkisteDelete())
 
 const searchQuery = ref('')
 const filterDept = ref<string | null>(null)
-const deptItems = computed(() => departments.value.map(d => ({ value: d.name })))
 
 const filtered = computed(() => {
   let list = items.value
@@ -139,27 +137,39 @@ onMounted(async () => {
   </header>
 
   <main class="main">
-    <!-- Toolbar -->
-    <div class="ideenkiste-toolbar">
-      <input
-        v-model="searchQuery"
-        class="ideenkiste-search"
-        type="search"
-        placeholder="Suchen…"
-      />
-      <BadgeSelect
-        v-if="canAll"
-        kind="department"
-        :items="deptItems"
-        allow-empty
-        placeholder="Alle Stufen"
-        :model-value="filterDept"
-        @update:model-value="(v) => filterDept = v"
-      />
-      <button v-if="canAdd" class="btn-primary ideenkiste-add-btn" @click="showNewForm = true">
-        <Plus :size="16" aria-hidden="true" />
-        Neuer Eintrag
-      </button>
+    <div class="filter-bar">
+      <div class="filter-search">
+        <span class="filter-search-icon"><Search :size="16" aria-hidden="true" /></span>
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="filter-search-input"
+          placeholder="Suchen nach Titel, Beschreibung…"
+        />
+      </div>
+
+      <div v-if="canAll" class="filter-tabs">
+        <button
+          class="filter-tab"
+          :class="{ 'filter-tab--active': filterDept === null }"
+          @click="filterDept = null"
+        >Alle</button>
+        <button
+          v-for="dep in departments"
+          :key="dep.name"
+          class="filter-tab filter-tab--badge"
+          @click="filterDept = dep.name"
+        >
+          <DepartmentBadge :department="dep.name" :active="filterDept === dep.name" />
+        </button>
+      </div>
+
+      <div class="ideenkiste-filter-actions">
+        <button v-if="canAdd" class="btn-primary ideenkiste-add-btn" @click="showNewForm = true">
+          <Plus :size="16" aria-hidden="true" />
+          Neuer Eintrag
+        </button>
+      </div>
     </div>
 
     <!-- New item form -->
@@ -202,12 +212,8 @@ onMounted(async () => {
     <!-- Item list -->
     <template v-else>
       <p v-if="filtered.length === 0" class="ideenkiste-empty">Keine Einträge gefunden.</p>
-      <div v-else class="program-timeline">
-        <div v-for="item in filtered" :key="item.id" class="program-item">
-          <div class="program-marker" aria-hidden="true">
-            <span class="program-marker-dot" />
-          </div>
-
+      <div v-else class="ideenkiste-list">
+        <div v-for="item in filtered" :key="item.id" class="ideenkiste-list-item">
           <!-- Edit mode for this item: program-card (same as Activity edit) -->
           <div v-if="editingId === item.id" class="program-card">
             <form @submit.prevent="saveEdit">
@@ -275,7 +281,6 @@ onMounted(async () => {
             </div>
             <div v-if="item.description" class="program-desc">{{ item.description }}</div>
           </div>
-
         </div>
       </div>
     </template>
@@ -296,27 +301,12 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.ideenkiste-toolbar {
+.ideenkiste-filter-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  margin-bottom: 1.25rem;
-}
-
-.ideenkiste-search {
-  flex: 1;
-  min-width: 180px;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  background: var(--color-surface);
-  color: var(--color-text);
+  justify-content: flex-end;
 }
 
 .ideenkiste-add-btn {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -356,7 +346,8 @@ onMounted(async () => {
 }
 
 .ideenkiste-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
 }
 
