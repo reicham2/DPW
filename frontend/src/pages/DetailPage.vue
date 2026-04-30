@@ -10,7 +10,7 @@ import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
 import { useIdeenkiste } from '../composables/useIdeenkiste';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked } from 'lucide-vue-next';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, GripVertical } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -1855,6 +1855,10 @@ const editDeptItems = computed(() =>
 	editWritableDepts.value.map((d) => ({ value: d })),
 );
 
+const draggedProgramIndex = ref<number | null>(null);
+const dragOverProgramIndex = ref<number | null>(null);
+const programHandleDragActive = ref(false);
+
 // ---- Programs --------------------------------------------------------------
 function addMinutesToClock(start: string, minutes: number): string {
 	const m = /^(\d{1,2}):(\d{2})$/.exec(start.trim());
@@ -1944,6 +1948,47 @@ function addProgram() {
 }
 function removeProgram(i: number) {
 	editPrograms.value.splice(i, 1);
+}
+
+function startProgramDrag(i: number, event: DragEvent) {
+	draggedProgramIndex.value = i;
+	dragOverProgramIndex.value = i;
+	programHandleDragActive.value = true;
+	if (event.dataTransfer) {
+		event.dataTransfer.effectAllowed = 'move';
+		event.dataTransfer.setData('text/plain', String(i));
+	}
+}
+
+function onProgramDragOver(i: number, event: DragEvent) {
+	if (draggedProgramIndex.value === null) return;
+	event.preventDefault();
+	if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	dragOverProgramIndex.value = i;
+}
+
+function onProgramDrop(i: number, event: DragEvent) {
+	event.preventDefault();
+	if (draggedProgramIndex.value === null) return;
+
+	const from = draggedProgramIndex.value;
+	const to = i;
+	if (from !== to && from >= 0 && to >= 0 && from < editPrograms.value.length && to < editPrograms.value.length) {
+		const moved = editPrograms.value.splice(from, 1)[0];
+		editPrograms.value.splice(to, 0, moved);
+		markDirty('programs');
+		initProgEditors();
+	}
+
+	draggedProgramIndex.value = null;
+	dragOverProgramIndex.value = null;
+	programHandleDragActive.value = false;
+}
+
+function endProgramDrag() {
+	draggedProgramIndex.value = null;
+	dragOverProgramIndex.value = null;
+	programHandleDragActive.value = false;
 }
 
 // ---- Ideenkiste integration --------------------------------------------------
@@ -3276,8 +3321,27 @@ function copyShareLink() {
 				<p class="form-section-title">Programmpunkte</p>
 				<div style="display: flex; flex-direction: column; gap: 10px">
 					<div v-for="(prog, i) in editPrograms" :key="i" class="program-card lock-wrapper"
-						:class="{ 'is-locked': isLockedByOther(`program_${i}`) }"
+						:class="{
+							'is-locked': isLockedByOther(`program_${i}`),
+							'program-card--drag-source': draggedProgramIndex === i,
+							'program-card--drag-over': draggedProgramIndex !== null && dragOverProgramIndex === i,
+						}"
+						@dragover="onProgramDragOver(i, $event)"
+						@drop="onProgramDrop(i, $event)"
 						@focusin="lockSection(`program_${i}`)" @focusout="unlockSection(`program_${i}`, $event)">
+						<div
+							class="program-card__drag-handle"
+							:class="{ 'program-card__drag-handle--active': programHandleDragActive && draggedProgramIndex === i }"
+							draggable="true"
+							:title="`Programmpunkt verschieben (${i + 1})`"
+							aria-label="Programmpunkt verschieben"
+							@dragstart="startProgramDrag(i, $event)"
+							@dragover="onProgramDragOver(i, $event)"
+							@drop="onProgramDrop(i, $event)"
+							@dragend="endProgramDrag"
+						>
+							<GripVertical :size="16" aria-hidden="true" />
+						</div>
 						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
 						<div class="program-card__top-actions">
 							<button

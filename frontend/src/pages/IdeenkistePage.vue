@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
 import { useIdeenkiste } from '../composables/useIdeenkiste'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
+import BadgeSelect from '../components/BadgeSelect.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import type { IdeenkisteItem } from '../types'
 
@@ -19,6 +20,7 @@ const canDelete = computed(() => canIdeenkisteDelete())
 
 const searchQuery = ref('')
 const filterDept = ref<string | null>(null)
+const deptItems = computed(() => departments.value.map(d => ({ value: d.name })))
 
 const filtered = computed(() => {
   let list = items.value
@@ -364,10 +366,14 @@ onMounted(async () => {
         </div>
         <div v-if="canAll" class="form-group">
           <label class="form-label">Stufe</label>
-          <select v-model="newDepartment" class="form-input">
-            <option :value="null">Keine Angabe</option>
-            <option v-for="d in departments" :key="d.name" :value="d.name">{{ d.name }}</option>
-          </select>
+          <BadgeSelect
+            kind="department"
+            :items="deptItems"
+            allow-empty
+            placeholder="Keine Angabe"
+            :model-value="newDepartment"
+            @update:model-value="(v) => newDepartment = v"
+          />
         </div>
         <div class="form-group">
           <label class="form-label">Beschreibung</label>
@@ -406,10 +412,14 @@ onMounted(async () => {
                 </div>
                 <div v-if="canAll" class="form-group">
                   <label>Stufe</label>
-                  <select v-model="editDepartment">
-                    <option :value="null">Keine</option>
-                    <option v-for="d in departments" :key="d.name" :value="d.name">{{ d.name }}</option>
-                  </select>
+                  <BadgeSelect
+                    kind="department"
+                    :items="deptItems"
+                    allow-empty
+                    placeholder="Keine"
+                    :model-value="editDepartment"
+                    @update:model-value="(v) => editDepartment = v"
+                  />
                 </div>
                 <div class="form-group program-card__full">
                   <label>Beschreibung</label>
