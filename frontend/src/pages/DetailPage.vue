@@ -1551,6 +1551,8 @@ onUnmounted(() => {
 	window.removeEventListener('keydown', onStatsDrawerKeydown);
 	document.removeEventListener('pointerdown', onDocumentPointerDown);
 	window.removeEventListener('resize', onWindowResize);
+	window.removeEventListener('dragover', onWindowProgramDragOver);
+	stopProgramDragAutoScroll();
 	// Leave the activity and unlock any held section
 	wsLeave();
 	document.title = 'DPWeb Aktivitäten';
@@ -1858,6 +1860,10 @@ const editDeptItems = computed(() =>
 const draggedProgramIndex = ref<number | null>(null);
 const dragOverProgramIndex = ref<number | null>(null);
 const programHandleDragActive = ref(false);
+let programDragPointerY: number | null = null;
+let programDragScrollRaf: number | null = null;
+const PROGRAM_DRAG_SCROLL_EDGE_PX = 96;
+const PROGRAM_DRAG_SCROLL_MAX_STEP = 22;
 
 // ---- Programs --------------------------------------------------------------
 function addMinutesToClock(start: string, minutes: number): string {
@@ -1950,10 +1956,62 @@ function removeProgram(i: number) {
 	editPrograms.value.splice(i, 1);
 }
 
+function updateProgramDragAutoScroll() {
+	if (!programHandleDragActive.value || programDragPointerY === null) return;
+
+	const viewportHeight = window.innerHeight;
+	const topZone = PROGRAM_DRAG_SCROLL_EDGE_PX;
+	const bottomZoneStart = viewportHeight - PROGRAM_DRAG_SCROLL_EDGE_PX;
+	let deltaY = 0;
+
+	if (programDragPointerY < topZone) {
+		const ratio = (topZone - programDragPointerY) / PROGRAM_DRAG_SCROLL_EDGE_PX;
+		deltaY = -Math.max(2, Math.round(ratio * PROGRAM_DRAG_SCROLL_MAX_STEP));
+	} else if (programDragPointerY > bottomZoneStart) {
+		const ratio = (programDragPointerY - bottomZoneStart) / PROGRAM_DRAG_SCROLL_EDGE_PX;
+		deltaY = Math.max(2, Math.round(ratio * PROGRAM_DRAG_SCROLL_MAX_STEP));
+	}
+
+	if (deltaY !== 0) {
+		window.scrollBy({ top: deltaY, behavior: 'auto' });
+	}
+}
+
+function programDragAutoScrollLoop() {
+	if (!programHandleDragActive.value) {
+		programDragScrollRaf = null;
+		return;
+	}
+
+	updateProgramDragAutoScroll();
+	programDragScrollRaf = requestAnimationFrame(programDragAutoScrollLoop);
+}
+
+function startProgramDragAutoScroll() {
+	if (programDragScrollRaf !== null) return;
+	programDragScrollRaf = requestAnimationFrame(programDragAutoScrollLoop);
+}
+
+function stopProgramDragAutoScroll() {
+	if (programDragScrollRaf !== null) {
+		cancelAnimationFrame(programDragScrollRaf);
+		programDragScrollRaf = null;
+	}
+	programDragPointerY = null;
+}
+
+function onWindowProgramDragOver(event: DragEvent) {
+	if (!programHandleDragActive.value) return;
+	programDragPointerY = event.clientY;
+}
+
 function startProgramDrag(i: number, event: DragEvent) {
 	draggedProgramIndex.value = i;
 	dragOverProgramIndex.value = i;
 	programHandleDragActive.value = true;
+	programDragPointerY = event.clientY;
+	window.addEventListener('dragover', onWindowProgramDragOver);
+	startProgramDragAutoScroll();
 	if (event.dataTransfer) {
 		event.dataTransfer.effectAllowed = 'move';
 		event.dataTransfer.setData('text/plain', String(i));
@@ -1964,6 +2022,7 @@ function onProgramDragOver(i: number, event: DragEvent) {
 	if (draggedProgramIndex.value === null) return;
 	event.preventDefault();
 	if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	programDragPointerY = event.clientY;
 	dragOverProgramIndex.value = i;
 }
 
@@ -1980,12 +2039,16 @@ function onProgramDrop(i: number, event: DragEvent) {
 		initProgEditors();
 	}
 
+	window.removeEventListener('dragover', onWindowProgramDragOver);
+	stopProgramDragAutoScroll();
 	draggedProgramIndex.value = null;
 	dragOverProgramIndex.value = null;
 	programHandleDragActive.value = false;
 }
 
 function endProgramDrag() {
+	window.removeEventListener('dragover', onWindowProgramDragOver);
+	stopProgramDragAutoScroll();
 	draggedProgramIndex.value = null;
 	dragOverProgramIndex.value = null;
 	programHandleDragActive.value = false;
