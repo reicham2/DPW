@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import { Plus, Pencil, Trash2, X, Check, Search } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, X, Check, Search, ChevronDown, ChevronUp, Minus } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
@@ -22,6 +22,14 @@ const canDelete = computed(() => canIdeenkisteDelete())
 const searchQuery = ref('')
 const filterDept = ref<string | null>(null)
 const deptItems = computed(() => departments.value.map(d => ({ value: d.name })))
+const durationFilterMinutes = ref<number | null>(null)
+const durationFilterMode = ref<'under' | 'over' | 'exact'>('under')
+
+const durationFilterLabel = computed(() => {
+  if (durationFilterMode.value === 'under') return 'Unter'
+  if (durationFilterMode.value === 'over') return 'Uber'
+  return 'Exakt'
+})
 
 const filtered = computed(() => {
   let list = items.value
@@ -31,8 +39,29 @@ const filtered = computed(() => {
     const q = searchQuery.value.toLowerCase()
     list = list.filter(i => i.title.toLowerCase().includes(q) || i.description.toLowerCase().includes(q))
   }
+  if (durationFilterMinutes.value !== null && Number.isFinite(durationFilterMinutes.value) && durationFilterMinutes.value >= 0) {
+    if (durationFilterMode.value === 'under') {
+      list = list.filter(i => i.duration_minutes < durationFilterMinutes.value!)
+    } else if (durationFilterMode.value === 'over') {
+      list = list.filter(i => i.duration_minutes > durationFilterMinutes.value!)
+    } else {
+      list = list.filter(i => i.duration_minutes === durationFilterMinutes.value!)
+    }
+  }
   return list
 })
+
+function toggleDurationFilterMode() {
+  if (durationFilterMode.value === 'under') {
+    durationFilterMode.value = 'over'
+    return
+  }
+  if (durationFilterMode.value === 'over') {
+    durationFilterMode.value = 'exact'
+    return
+  }
+  durationFilterMode.value = 'under'
+}
 
 // New item form
 const showNewForm = ref(false)
@@ -42,6 +71,23 @@ const newDescription = ref('')
 const newDepartment = ref<string | null>(null)
 const saving = ref(false)
 const saveError = ref<string | null>(null)
+const newDescEditorRef = ref<HTMLElement | null>(null)
+const newDescToolbar = ref<{
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  ul: boolean
+  ol: boolean
+  font: string
+  size: string
+  color: string
+  bgColor: string
+} | null>(null)
+let newDescSavedSelection: Range | null = null
+let newDescLinkSavedRange: Range | null = null
+const showNewDescLinkDialog = ref(false)
+const newDescLinkUrl = ref('')
+const newDescLinkInputRef = ref<HTMLInputElement | null>(null)
 
 // Edit inline
 const editingId = ref<string | null>(null)
@@ -78,6 +124,18 @@ function setEditDescEditorRef(refEl: unknown) {
   editDescEditorRef.value = el as HTMLElement | null
   if (editDescEditorRef.value) {
     editDescEditorRef.value.innerHTML = editDescription.value
+  }
+}
+
+function setNewDescEditorRef(refEl: unknown) {
+  const el = refEl instanceof Element
+    ? refEl
+    : (refEl && typeof refEl === 'object' && '$el' in refEl && (refEl as { $el?: unknown }).$el instanceof Element
+      ? (refEl as { $el: Element }).$el
+      : null)
+  newDescEditorRef.value = el as HTMLElement | null
+  if (newDescEditorRef.value) {
+    newDescEditorRef.value.innerHTML = newDescription.value
   }
 }
 
@@ -120,6 +178,7 @@ async function saveEdit() {
 }
 
 async function submitNew() {
+  onNewDescInput()
   saving.value = true
   saveError.value = null
   const result = await createItem({
@@ -135,9 +194,162 @@ async function submitNew() {
     newDuration.value = 0
     newDescription.value = ''
     newDepartment.value = null
+    showNewDescLinkDialog.value = false
+    if (newDescEditorRef.value) {
+      newDescEditorRef.value.innerHTML = ''
+    }
   } else {
     saveError.value = 'Fehler beim Erstellen.'
   }
+}
+
+function syncNewDescEditor() {
+  const el = newDescEditorRef.value
+  if (!el) return
+  if (el.innerHTML !== newDescription.value) {
+    el.innerHTML = newDescription.value
+  }
+}
+
+function onNewDescInput() {
+  const el = newDescEditorRef.value
+  if (el) newDescription.value = el.innerHTML
+  updateNewDescToolbar()
+}
+
+function updateNewDescToolbar() {
+  const el = newDescEditorRef.value
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount || !el) return
+  const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement
+  if (!node || !el.contains(node)) return
+  const cs = window.getComputedStyle(node)
+  newDescToolbar.value = {
+    bold: document.queryCommandState('bold'),
+    italic: document.queryCommandState('italic'),
+    underline: document.queryCommandState('underline'),
+    ul: document.queryCommandState('insertUnorderedList'),
+    ol: document.queryCommandState('insertOrderedList'),
+    font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
+    size: parseInt(cs.fontSize, 10).toString() || '12',
+    color: rgbToHex(cs.color) || '#000000',
+    bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
+  }
+}
+
+function onNewDescFocus() {
+  newDescToolbar.value = {
+    bold: false,
+    italic: false,
+    underline: false,
+    ul: false,
+    ol: false,
+    font: 'Arial',
+    size: '12',
+    color: '#000000',
+    bgColor: '#ffffff',
+  }
+  updateNewDescToolbar()
+}
+
+function newDescSaveSelection() {
+  const sel = window.getSelection()
+  const el = newDescEditorRef.value
+  if (sel?.rangeCount && el?.contains(sel.anchorNode)) {
+    newDescSavedSelection = sel.getRangeAt(0).cloneRange()
+  }
+}
+
+function newDescExecCmd(cmd: string, value?: string) {
+  if (newDescSavedSelection) {
+    const sel = window.getSelection()
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(newDescSavedSelection)
+    }
+    newDescSavedSelection = null
+  }
+  document.execCommand(cmd, false, value)
+  newDescEditorRef.value?.focus()
+  onNewDescInput()
+}
+
+function newDescSetFontSize(size: string) {
+  if (newDescSavedSelection) {
+    const sel = window.getSelection()
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(newDescSavedSelection)
+    }
+    newDescSavedSelection = null
+  }
+  const sel = window.getSelection()
+  if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+    const span = document.createElement('span')
+    span.style.fontSize = size + 'px'
+    span.textContent = '\u200B'
+    const range = sel.getRangeAt(0)
+    range.insertNode(span)
+    const newRange = document.createRange()
+    newRange.setStart(span.firstChild!, 1)
+    newRange.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(newRange)
+    newDescEditorRef.value?.focus()
+    if (newDescToolbar.value) newDescToolbar.value.size = size
+    onNewDescInput()
+    return
+  }
+  document.execCommand('fontSize', false, '7')
+  const fontEls = newDescEditorRef.value?.querySelectorAll('font[size="7"]')
+  fontEls?.forEach(fe => {
+    const span = document.createElement('span')
+    span.style.fontSize = size + 'px'
+    span.innerHTML = fe.innerHTML
+    fe.replaceWith(span)
+  })
+  newDescEditorRef.value?.focus()
+  onNewDescInput()
+}
+
+function newDescAdjustFontSize(delta: number) {
+  const current = parseInt(newDescToolbar.value?.size ?? '12', 10) || 12
+  const newSize = Math.max(8, Math.min(72, current + delta))
+  newDescSetFontSize(String(newSize))
+  if (newDescToolbar.value) newDescToolbar.value.size = String(newSize)
+}
+
+function openNewDescLinkDialog() {
+  newDescLinkSavedRange = newDescSavedSelection
+  newDescSavedSelection = null
+  const sel = window.getSelection()
+  const anchor = sel?.focusNode?.parentElement?.closest('a') as HTMLAnchorElement | null
+  newDescLinkUrl.value = anchor?.getAttribute('href') ?? ''
+  showNewDescLinkDialog.value = true
+  nextTick(() => newDescLinkInputRef.value?.focus())
+}
+
+function confirmNewDescLink() {
+  showNewDescLinkDialog.value = false
+  if (!newDescLinkSavedRange) return
+  const sel = window.getSelection()
+  if (sel) {
+    sel.removeAllRanges()
+    sel.addRange(newDescLinkSavedRange)
+  }
+  if (newDescLinkUrl.value.trim()) {
+    document.execCommand('createLink', false, newDescLinkUrl.value.trim())
+  } else {
+    document.execCommand('unlink')
+  }
+  newDescEditorRef.value?.focus()
+  onNewDescInput()
+  newDescLinkSavedRange = null
+}
+
+function cancelNewDescLink() {
+  showNewDescLinkDialog.value = false
+  newDescLinkSavedRange = null
 }
 
 async function confirmDelete() {
@@ -342,6 +554,13 @@ onMounted(async () => {
     // pre-set filter/department to own dept
   }
 })
+
+function openNewForm() {
+  showNewForm.value = true
+  nextTick(() => {
+    syncNewDescEditor()
+  })
+}
 </script>
 
 <template>
@@ -361,6 +580,22 @@ onMounted(async () => {
         />
       </div>
 
+      <div class="ideenkiste-duration-filter">
+        <input
+          v-model.number="durationFilterMinutes"
+          type="number"
+          min="0"
+          class="filter-search-input ideenkiste-duration-input"
+          placeholder="Minuten"
+        />
+        <button type="button" class="filter-tab ideenkiste-duration-mode" @click="toggleDurationFilterMode">
+          <ChevronDown v-if="durationFilterMode === 'under'" :size="14" aria-hidden="true" />
+          <ChevronUp v-else-if="durationFilterMode === 'over'" :size="14" aria-hidden="true" />
+          <Minus v-else :size="14" aria-hidden="true" />
+          {{ durationFilterLabel }}
+        </button>
+      </div>
+
       <div v-if="canAll" class="filter-tabs">
         <button
           class="filter-tab"
@@ -378,7 +613,7 @@ onMounted(async () => {
       </div>
 
       <div class="ideenkiste-filter-actions">
-        <button v-if="canEdit" class="btn-primary ideenkiste-add-btn" @click="showNewForm = true">
+        <button v-if="canEdit" class="btn-primary ideenkiste-add-btn" @click="openNewForm">
           <Plus :size="16" aria-hidden="true" />
           Neuer Eintrag
         </button>
@@ -410,7 +645,51 @@ onMounted(async () => {
         </div>
         <div class="form-group">
           <label class="form-label">Beschreibung</label>
-          <textarea v-model="newDescription" class="form-input ideenkiste-textarea" rows="4" placeholder="Beschreibung…" />
+          <div class="input-save-wrap">
+            <div class="rich-editor-toolbar rich-editor-toolbar--compact" v-if="newDescToolbar">
+              <select class="toolbar-select" :value="newDescToolbar.font" @change="newDescExecCmd('fontName', ($event.target as HTMLSelectElement).value)" title="Schriftart">
+                <option value="Arial" style="font-family:Arial">Arial</option>
+                <option value="Helvetica" style="font-family:Helvetica">Helvetica</option>
+                <option value="Georgia" style="font-family:Georgia">Georgia</option>
+                <option value="Times New Roman" style="font-family:'Times New Roman'">Times New Roman</option>
+                <option value="Courier New" style="font-family:'Courier New'">Courier New</option>
+                <option value="Verdana" style="font-family:Verdana">Verdana</option>
+              </select>
+              <input type="text" class="toolbar-select toolbar-select--narrow" :value="newDescToolbar.size" @mousedown="newDescSaveSelection" @change="newDescSetFontSize(($event.target as HTMLInputElement).value)" @keydown.enter.prevent="newDescSetFontSize(($event.target as HTMLInputElement).value)" title="Schriftgrösse" />
+              <button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="newDescAdjustFontSize(-2)" title="Kleiner">A−</button>
+              <button type="button" class="toolbar-btn-sm" @mousedown.prevent @click="newDescAdjustFontSize(2)" title="Grösser">A+</button>
+              <span class="toolbar-sep"></span>
+              <button type="button" :class="{ 'toolbar-btn--active': newDescToolbar.bold }" @mousedown.prevent @click="newDescExecCmd('bold')" title="Fett"><b>B</b></button>
+              <button type="button" :class="{ 'toolbar-btn--active': newDescToolbar.italic }" @mousedown.prevent @click="newDescExecCmd('italic')" title="Kursiv"><i>I</i></button>
+              <button type="button" :class="{ 'toolbar-btn--active': newDescToolbar.underline }" @mousedown.prevent @click="newDescExecCmd('underline')" title="Unterstrichen"><u>U</u></button>
+              <span class="toolbar-sep"></span>
+              <label class="toolbar-color" title="Schriftfarbe" @mousedown="newDescSaveSelection">
+                A
+                <input type="color" :value="newDescToolbar.color" @input="newDescExecCmd('foreColor', ($event.target as HTMLInputElement).value)" />
+              </label>
+              <label class="toolbar-color toolbar-color--bg" title="Hintergrundfarbe" @mousedown="newDescSaveSelection">
+                <span class="toolbar-color-icon">A</span>
+                <input type="color" :value="newDescToolbar.bgColor" @input="newDescExecCmd('hiliteColor', ($event.target as HTMLInputElement).value)" />
+              </label>
+              <span class="toolbar-sep"></span>
+              <button type="button" :class="{ 'toolbar-btn--active': newDescToolbar.ul }" @mousedown.prevent @click="newDescExecCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
+              <button type="button" :class="{ 'toolbar-btn--active': newDescToolbar.ol }" @mousedown.prevent @click="newDescExecCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
+              <span class="toolbar-sep"></span>
+              <button type="button" @mousedown.prevent @click="newDescExecCmd('removeFormat')" title="Formatierung entfernen"><X :size="12" aria-hidden="true" /> Format</button>
+              <span class="toolbar-sep"></span>
+              <button type="button" @mousedown="newDescSaveSelection" @click="openNewDescLinkDialog" title="Link einfügen">🔗 Link</button>
+            </div>
+            <div
+              :ref="setNewDescEditorRef"
+              class="rich-editor rich-editor--compact"
+              contenteditable="true"
+              @input="onNewDescInput"
+              @focus="onNewDescFocus"
+              @mouseup="updateNewDescToolbar"
+              @keyup="updateNewDescToolbar"
+              data-placeholder="Beschreibung…"
+            ></div>
+          </div>
         </div>
         <div v-if="saveError" class="error-msg"><ErrorAlert :error="saveError" /></div>
         <div class="ideenkiste-form-actions">
@@ -584,12 +863,50 @@ onMounted(async () => {
       </div>
     </div>
   </div>
+
+  <div v-if="showNewDescLinkDialog" class="modal-backdrop" @click.self="cancelNewDescLink">
+    <div class="modal">
+      <h2 class="modal-title">Link einfügen</h2>
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input
+          ref="newDescLinkInputRef"
+          v-model="newDescLinkUrl"
+          class="form-input"
+          type="url"
+          placeholder="https://..."
+          @keydown.enter.prevent="confirmNewDescLink"
+        />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" @click="cancelNewDescLink">Abbrechen</button>
+        <button class="btn-primary" @click="confirmNewDescLink">Übernehmen</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
 .ideenkiste-filter-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.ideenkiste-duration-filter {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ideenkiste-duration-input {
+  max-width: 140px;
+  padding-left: 0.85rem;
+}
+
+.ideenkiste-duration-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .ideenkiste-add-btn {
