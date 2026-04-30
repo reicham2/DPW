@@ -202,20 +202,23 @@ onMounted(async () => {
     <!-- Item list -->
     <template v-else>
       <p v-if="filtered.length === 0" class="ideenkiste-empty">Keine Einträge gefunden.</p>
-      <div v-else class="ideenkiste-list">
-        <div v-for="item in filtered" :key="item.id" class="program-card">
+      <div v-else class="program-timeline">
+        <div v-for="item in filtered" :key="item.id" class="program-item">
+          <div class="program-marker" aria-hidden="true">
+            <span class="program-marker-dot" />
+          </div>
 
-          <!-- Edit mode -->
-          <template v-if="editingId === item.id">
+          <!-- Edit mode for this item: program-card (same as Activity edit) -->
+          <div v-if="editingId === item.id" class="program-card">
             <form @submit.prevent="saveEdit">
               <div class="program-card__fields">
                 <div class="form-group">
-                  <label>Dauer (min)</label>
-                  <input v-model.number="editDuration" type="number" min="0" />
+                  <label>Dauer (Minuten)</label>
+                  <input v-model.number="editDuration" type="number" min="0" step="5" placeholder="z.B. 30" />
                 </div>
                 <div class="form-group">
-                  <label>Titel *</label>
-                  <input v-model="editTitle" type="text" required />
+                  <label>Titel</label>
+                  <input v-model="editTitle" type="text" required placeholder="Titel" />
                 </div>
                 <div v-if="canAll" class="form-group">
                   <label>Stufe</label>
@@ -226,7 +229,7 @@ onMounted(async () => {
                 </div>
                 <div class="form-group program-card__full">
                   <label>Beschreibung</label>
-                  <textarea v-model="editDescription" class="ideenkiste-textarea" rows="4" />
+                  <textarea v-model="editDescription" class="ideenkiste-textarea" rows="4" placeholder="Beschreibung…" />
                 </div>
               </div>
               <div v-if="editError" class="error-msg"><ErrorAlert :error="editError" /></div>
@@ -239,11 +242,11 @@ onMounted(async () => {
                 </button>
               </div>
             </form>
-          </template>
+          </div>
 
-          <!-- View mode -->
-          <template v-else>
-            <div class="program-card__top-actions">
+          <!-- View mode: program-body (same as Activity view) -->
+          <div v-else class="program-body ideenkiste-program-body">
+            <div v-if="canAdd || canDelete" class="program-card__top-actions">
               <button
                 v-if="canAdd"
                 type="button"
@@ -263,28 +266,15 @@ onMounted(async () => {
                 <Trash2 :size="14" aria-hidden="true" />
               </button>
             </div>
-            <div class="program-card__fields">
-              <div class="form-group">
-                <label>Dauer</label>
-                <div class="ideenkiste-ro-field">{{ formatDuration(item.duration_minutes) }}</div>
-              </div>
-              <div class="form-group">
-                <label>Titel</label>
-                <div class="ideenkiste-ro-field">{{ item.title }}</div>
-              </div>
-              <div class="form-group">
-                <label>Stufe</label>
-                <div class="ideenkiste-ro-field">
-                  <DepartmentBadge v-if="item.department" :department="item.department" />
-                  <span v-else class="ideenkiste-ro-empty">–</span>
-                </div>
-              </div>
-              <div v-if="item.description" class="form-group program-card__full">
-                <label>Beschreibung</label>
-                <div class="ideenkiste-ro-field ideenkiste-ro-field--desc">{{ item.description }}</div>
-              </div>
+            <div class="program-meta">
+              <span v-if="item.duration_minutes" class="program-time">{{ formatDuration(item.duration_minutes) }}</span>
+              <DepartmentBadge v-if="item.department" :department="item.department" />
             </div>
-          </template>
+            <div class="program-header">
+              <p class="program-title">{{ item.title }}</p>
+            </div>
+            <div v-if="item.description" class="program-desc">{{ item.description }}</div>
+          </div>
 
         </div>
       </div>
@@ -376,23 +366,12 @@ onMounted(async () => {
   width: 100%;
 }
 
-.ideenkiste-ro-field {
-  padding: 6px 8px;
-  font-size: 0.875rem;
-  color: var(--color-text, #111827);
-  min-height: 32px;
-  display: flex;
-  align-items: center;
+.ideenkiste-program-body {
+  position: relative;
 }
 
-.ideenkiste-ro-field--desc {
-  align-items: flex-start;
-  white-space: pre-wrap;
-  line-height: 1.5;
-}
-
-.ideenkiste-ro-empty {
-  color: var(--color-text-muted, #9ca3af);
+.ideenkiste-program-body .program-meta {
+  padding-right: 68px;
 }
 
 .ideenkiste-edit-actions {
