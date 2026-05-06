@@ -177,32 +177,32 @@ onUnmounted(() => {
 	justify-content: space-between;
 	gap: 8px;
 	padding: 8px 12px;
-	border: 1.5px solid #d1d5db;
+	border: 1.5px solid var(--input-border);
 	border-radius: 8px;
-	background: #fff;
+	background: var(--input-bg);
 	font-size: 0.95rem;
-	color: #1a202c;
+	color: var(--input-color);
 	cursor: pointer;
 	transition: border-color 0.15s;
 }
 .badge-select-button:hover:not(:disabled) {
-	border-color: #9ca3af;
+	border-color: var(--text-subtle);
 }
 .badge-select-button:focus {
 	outline: none;
-	border-color: #1a56db;
+	border-color: var(--accent);
 }
 .badge-select-button:disabled {
 	opacity: 0.6;
 	cursor: default;
-	background: #f9fafb;
+	background: var(--input-readonly-bg);
 }
 .badge-select-placeholder {
-	color: #6b7280;
+	color: var(--text-muted);
 	font-size: 0.88rem;
 }
 .badge-select-caret {
-	color: #6b7280;
+	color: var(--text-muted);
 	flex-shrink: 0;
 }
 .badge-select-menu {
@@ -212,8 +212,8 @@ onUnmounted(() => {
 	right: 0;
 	max-height: 260px;
 	overflow-y: auto;
-	background: #fff;
-	border: 1px solid #e5e7eb;
+	background: var(--dropdown-bg);
+	border: 1px solid var(--border);
 	border-radius: 8px;
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 	z-index: 100;
@@ -229,13 +229,6 @@ onUnmounted(() => {
 	align-items: center;
 }
 .badge-select-option--focused {
-	background: #f3f4f6;
+	background: var(--dropdown-hover);
 }
-:root[data-theme="dark"] .badge-select-button { background: #312F2E; color: #E8E4E0; border-color: #4a4744; }
-:root[data-theme="dark"] .badge-select-button:hover { border-color: #5a5653; }
-:root[data-theme="dark"] .badge-select-button:focus { border-color: #7DAEE8; box-shadow: 0 0 0 2px #1F1D1C, 0 0 0 4px #7DAEE8; }
-:root[data-theme="dark"] .badge-select-placeholder { color: #847F7B; }
-:root[data-theme="dark"] .badge-select-caret { color: #9A9490; }
-:root[data-theme="dark"] .badge-select-menu { background: #312F2E; border-color: #4a4744; box-shadow: 0 4px 16px rgba(0,0,0,0.45); }
-:root[data-theme="dark"] .badge-select-option--focused { background: #3E3B39; }
 </style>

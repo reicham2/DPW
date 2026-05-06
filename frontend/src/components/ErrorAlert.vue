@@ -70,11 +70,11 @@ function reportBug() {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	background: #fef2f2;
+	background: var(--error-bg);
 	border: 1px solid #fecaca;
 	border-radius: 8px;
 	padding: 12px 16px;
-	color: #991b1b;
+	color: var(--error-color);
 	font-size: 0.9rem;
 	line-height: 1.4;
 }
@@ -107,8 +107,4 @@ function reportBug() {
 	background: #fee2e2;
 	border-color: #f87171;
 }
-:root[data-theme="dark"] .error-alert { background: #2d1b1b; border-color: #5a2d2d; color: #fca5a5; }
-:root[data-theme="dark"] .error-alert-icon { color: #f87171; }
-:root[data-theme="dark"] .error-alert-report { color: #fca5a5; border-color: #5a2d2d; }
-:root[data-theme="dark"] .error-alert-report:hover { background: #3b1c1c; border-color: #7a3a3a; }
 </style>

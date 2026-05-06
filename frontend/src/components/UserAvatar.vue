@@ -312,9 +312,9 @@ onMounted(() => {
 	width: 36px;
 	height: 36px;
 	border-radius: 50%;
-	background: #e8f0fe;
-	color: #1a56db;
-	border: 2px solid #cce0ff;
+	background: var(--bg-elevated);
+	color: var(--accent);
+	border: 2px solid var(--border-strong);
 	font-size: 0.8rem;
 	font-weight: 700;
 	cursor: pointer;
@@ -345,7 +345,7 @@ onMounted(() => {
 	line-height: 1;
 }
 .avatar-circle:hover {
-	background: #1a56db;
+	background: var(--accent);
 	color: #fff;
 }
 
@@ -354,9 +354,9 @@ onMounted(() => {
 	top: calc(100% + 10px);
 	right: 0;
 	min-width: 200px;
-	background: #fff;
+	background: var(--dropdown-bg);
 	border-radius: 10px;
-	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.13);
+	box-shadow: var(--shadow-lg);
 	z-index: 1000;
 	overflow: hidden;
 	animation: dd-in 0.12s ease;
@@ -381,7 +381,7 @@ onMounted(() => {
 .avatar-dropdown-name {
 	font-weight: 700;
 	font-size: 0.95rem;
-	color: #1a202c;
+	color: var(--text-primary);
 }
 .avatar-dropdown-badges {
 	display: flex;
@@ -392,13 +392,13 @@ onMounted(() => {
 }
 .avatar-dropdown-email {
 	font-size: 0.78rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	margin-top: 2px;
 }
 
 .avatar-dropdown-divider {
 	height: 1px;
-	background: #f0f0f0;
+	background: var(--border);
 	margin: 0;
 }
 
@@ -409,7 +409,7 @@ onMounted(() => {
 	width: 100%;
 	padding: 11px 16px;
 	font-size: 0.875rem;
-	color: #374151;
+	color: var(--text-secondary);
 	text-decoration: none;
 	background: none;
 	border: none;
@@ -433,7 +433,7 @@ onMounted(() => {
 	margin-left: 8px;
 }
 .avatar-dropdown-item:hover {
-	background: #f5f7ff;
+	background: var(--dropdown-hover);
 }
 .avatar-dropdown-logout {
 	color: #dc2626;
@@ -456,16 +456,16 @@ onMounted(() => {
 
 .avatar-notifications-block {
 	overflow: auto;
-	border: 1px solid #e5e7eb;
+	border: 1px solid var(--border);
 	border-radius: 12px;
-	background: linear-gradient(180deg, #f8fafc 0%, #fdfefe 100%);
+	background: var(--bg-elevated);
 	padding: 8px;
 }
 
 .avatar-notifications-empty {
 	padding: 14px 16px;
 	font-size: 0.85rem;
-	color: #6b7280;
+	color: var(--text-muted);
 }
 
 .avatar-notification-item {
@@ -473,12 +473,12 @@ onMounted(() => {
 	width: 100%;
 	text-align: left;
 	border: none;
-	background: rgba(255, 255, 255, 0.92);
+	background: var(--bg-surface);
 	padding: 12px 13px;
 	cursor: pointer;
 	border-radius: 12px;
 	margin-top: 8px;
-	border: 1px solid #e8edf3;
+	border: 1px solid var(--border);
 	transition:
 		background 0.14s ease,
 		box-shadow 0.14s ease,
@@ -486,7 +486,7 @@ onMounted(() => {
 }
 
 .avatar-notification-item:hover {
-	background: #ffffff;
+	background: var(--bg-elevated);
 	border-color: #dbeafe;
 	box-shadow: 0 8px 18px rgba(148, 163, 184, 0.12);
 }
@@ -533,8 +533,8 @@ onMounted(() => {
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	white-space: nowrap;
-	background: #e5e7eb;
-	color: #374151;
+	background: var(--chip-bg);
+	color: var(--chip-color);
 }
 
 .avatar-notification-category--material {
@@ -565,14 +565,14 @@ onMounted(() => {
 .avatar-notification-title {
 	font-size: 0.84rem;
 	font-weight: 700;
-	color: #1f2937;
+	color: var(--text-primary);
 	line-height: 1.25;
 }
 
 .avatar-notification-date-inline {
 	font-size: 0.69rem;
 	font-weight: 600;
-	color: #6b7280;
+	color: var(--text-muted);
 	white-space: nowrap;
 }
 
@@ -581,7 +581,7 @@ onMounted(() => {
 	font-size: 0.68rem;
 	font-weight: 600;
 	line-height: 1.2;
-	color: #334155;
+	color: var(--text-secondary);
 	text-align: right;
 }
 
@@ -589,7 +589,7 @@ onMounted(() => {
 	margin-top: 6px;
 	font-size: 0.73rem;
 	font-weight: 600;
-	color: #4b5563;
+	color: var(--text-secondary);
 	line-height: 1.35;
 }
 
@@ -606,9 +606,9 @@ onMounted(() => {
 	gap: 2px;
 	padding: 7px 9px;
 	font-size: 0.71rem;
-	color: #6b7280;
-	background: rgba(248, 250, 252, 0.9);
-	border: 1px solid #e5e7eb;
+	color: var(--text-muted);
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
 	border-radius: 9px;
 }
 
@@ -617,11 +617,11 @@ onMounted(() => {
 	font-weight: 800;
 	letter-spacing: 0.03em;
 	text-transform: uppercase;
-	color: #64748b;
+	color: var(--text-muted);
 }
 
 .avatar-notification-meta span {
-	color: #334155;
+	color: var(--text-secondary);
 	line-height: 1.35;
 	word-break: break-word;
 }
@@ -636,7 +636,7 @@ onMounted(() => {
 	align-items: center;
 	gap: 8px;
 	padding-top: 7px;
-	border-top: 1px dashed #dbe3ee;
+	border-top: 1px dashed var(--border);
 }
 
 .avatar-notification-link-label {
@@ -645,12 +645,12 @@ onMounted(() => {
 	font-weight: 800;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
-	color: #64748b;
+	color: var(--text-muted);
 }
 
 .avatar-notification-link {
 	font-size: 0.75rem;
-	color: #1a56db;
+	color: var(--accent);
 	word-break: break-all;
 }
 
@@ -677,30 +677,4 @@ onMounted(() => {
 		grid-template-columns: 1fr;
 	}
 }
-
-:root[data-theme="dark"] .avatar-circle { background: #312F2E; color: #7DAEE8; border-color: #3E3B39; }
-:root[data-theme="dark"] .avatar-circle:hover { background: #2563eb; color: #fff; }
-:root[data-theme="dark"] .avatar-dropdown { background: #312F2E; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
-:root[data-theme="dark"] .avatar-dropdown-name { color: #f0ece8; }
-:root[data-theme="dark"] .avatar-dropdown-email { color: #847F7B; }
-:root[data-theme="dark"] .avatar-dropdown-item { color: #C8C3BE; }
-:root[data-theme="dark"] .avatar-dropdown-item:hover { background: #3E3B39; }
-:root[data-theme="dark"] .avatar-dropdown-logout { color: #fca5a5; }
-:root[data-theme="dark"] .avatar-dropdown-logout:hover { background: #3b1c1c; }
-:root[data-theme="dark"] .avatar-dropdown-divider { background: #3E3B39; }
-:root[data-theme="dark"] .avatar-notifications-modal { background: #272524; }
-:root[data-theme="dark"] .avatar-notifications-subtitle { color: #9A9490; }
-:root[data-theme="dark"] .avatar-notifications-block { background: #1F1D1C; border-color: #3E3B39; }
-:root[data-theme="dark"] .avatar-notifications-empty { color: #847F7B; }
-:root[data-theme="dark"] .avatar-notification-item { background: #272524; border-color: #3E3B39; }
-:root[data-theme="dark"] .avatar-notification-item:hover { background: #312F2E; border-color: #4a4744; }
-:root[data-theme="dark"] .avatar-notification-item--unread { background: #1c2d3e; border-color: #2a4a6a; }
-:root[data-theme="dark"] .avatar-notification-title { color: #f0ece8; }
-:root[data-theme="dark"] .avatar-notification-message { color: #9A9490; }
-:root[data-theme="dark"] .avatar-notification-date-inline { color: #847F7B; }
-:root[data-theme="dark"] .avatar-notification-meta { background: #1F1D1C; border-color: #3E3B39; }
-:root[data-theme="dark"] .avatar-notification-meta strong { color: #847F7B; }
-:root[data-theme="dark"] .avatar-notification-meta span { color: #C8C3BE; }
-:root[data-theme="dark"] .avatar-notification-link { color: #7DAEE8; }
-:root[data-theme="dark"] .avatar-notification-link-row { border-top-color: #3E3B39; }
 </style>

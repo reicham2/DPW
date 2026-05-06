@@ -161,7 +161,7 @@ function onMultiChange(id: string) {
 }
 
 .section-divider {
-	border-top: 2px solid #e5e7eb;
+	border-top: 2px solid var(--border);
 	margin: 0.5rem 0 1.5rem;
 	padding-top: 1rem;
 }
@@ -169,14 +169,14 @@ function onMultiChange(id: string) {
 .section-title {
 	font-size: 1rem;
 	font-weight: 700;
-	color: #111827;
+	color: var(--text-primary);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 }
 
 .section-subtitle {
 	font-size: 0.85rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	margin-top: 0.25rem;
 	margin-bottom: 0;
 }
@@ -185,7 +185,7 @@ function onMultiChange(id: string) {
 	display: block;
 	font-size: 0.9rem;
 	font-weight: 600;
-	color: #374151;
+	color: var(--text-secondary);
 	margin-bottom: 0.4rem;
 }
 
@@ -197,10 +197,11 @@ function onMultiChange(id: string) {
 .field-input {
 	width: 100%;
 	padding: 0.5rem 0.75rem;
-	border: 1px solid #d1d5db;
+	border: 1px solid var(--input-border);
 	border-radius: 0.375rem;
 	font-size: 0.9rem;
-	background: #fff;
+	background: var(--input-bg);
+	color: var(--input-color);
 	box-sizing: border-box;
 	outline: none;
 	transition: border-color 0.15s;
@@ -220,7 +221,7 @@ textarea.field-input { resize: vertical; }
 	align-items: center;
 	gap: 0.5rem;
 	font-size: 0.9rem;
-	color: #374151;
+	color: var(--text-secondary);
 	cursor: pointer;
 }
 

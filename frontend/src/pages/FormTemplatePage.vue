@@ -352,15 +352,15 @@ function typeLabel(t: string): string {
 .ft-title {
 	font-size: 1.05rem;
 	font-weight: 700;
-	color: #111827;
+	color: var(--text-primary);
 	margin: 0;
 }
 .empty-state {
 	text-align: center;
-	color: #9ca3af;
+	color: var(--text-subtle);
 	padding: 2rem;
 	font-size: 0.875rem;
-	border: 1px dashed #e5e7eb;
+	border: 1px dashed var(--border);
 	border-radius: 0.5rem;
 }
 
@@ -368,11 +368,11 @@ function typeLabel(t: string): string {
 	display: flex;
 	align-items: center;
 	padding: 0.55rem 0.75rem;
-	border: 1px solid #d1d5db;
+	border: 1px solid var(--border-strong);
 	border-radius: 0.5rem;
-	background: #f9fafb;
+	background: var(--bg-elevated);
 	font-size: 0.86rem;
-	color: #374151;
+	color: var(--text-secondary);
 	gap: 0.5rem;
 }
 
@@ -385,15 +385,15 @@ function typeLabel(t: string): string {
 	justify-content: space-between;
 	align-items: center;
 	padding: 0.75rem 1rem;
-	border: 1px solid #e5e7eb;
+	border: 1px solid var(--border);
 	border-radius: 0.5rem;
 	margin-bottom: 0.5rem;
-	background: #fff;
+	background: var(--card-bg);
 	gap: 1rem;
 }
 .ft-row-main { flex: 1; min-width: 0; }
-.ft-row-name { font-weight: 600; color: #111827; font-size: 0.95rem; }
-.ft-row-meta { display: flex; gap: 0.5rem; margin-top: 0.25rem; font-size: 0.78rem; color: #6b7280; align-items: center; }
+.ft-row-name { font-weight: 600; color: var(--text-primary); font-size: 0.95rem; }
+.ft-row-meta { display: flex; gap: 0.5rem; margin-top: 0.25rem; font-size: 0.78rem; color: var(--text-muted); align-items: center; }
 .ft-mode {
 	font-size: 0.72rem;
 	font-weight: 600;
@@ -403,13 +403,13 @@ function typeLabel(t: string): string {
 	color: #065f46;
 }
 .ft-mode[data-type="deregistration"] { background: #fee2e2; color: #991b1b; }
-.ft-count { font-size: 0.75rem; color: #6b7280; }
+.ft-count { font-size: 0.75rem; color: var(--text-muted); }
 
 .ft-row-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
 
 .btn-primary {
 	padding: 0.5rem 1rem;
-	background: #6366f1;
+	background: var(--btn-primary-bg);
 	color: #fff;
 	border: none;
 	border-radius: 0.375rem;
@@ -417,18 +417,18 @@ function typeLabel(t: string): string {
 	font-weight: 600;
 	cursor: pointer;
 }
-.btn-primary:hover { background: #4f46e5; }
+.btn-primary:hover { background: var(--btn-primary-bg-hover); }
 
 .btn-sm {
 	padding: 0.25rem 0.65rem;
-	background: #fff;
-	color: #374151;
-	border: 1px solid #d1d5db;
+	background: var(--bg-surface);
+	color: var(--text-secondary);
+	border: 1px solid var(--border-strong);
 	border-radius: 0.25rem;
 	font-size: 0.78rem;
 	cursor: pointer;
 }
-.btn-sm:hover { background: #f9fafb; }
+.btn-sm:hover { background: var(--bg-hover); }
 .btn-sm.danger { color: #dc2626; border-color: #fca5a5; }
 .btn-sm.danger:hover { background: #fee2e2; }
 
@@ -451,8 +451,8 @@ function typeLabel(t: string): string {
 }
 
 .default-toggle-section {
-	background: #f9fafb;
-	border: 1px solid #e5e7eb;
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
 	border-radius: 0.5rem;
 	padding: 0.75rem 1rem;
 	margin-bottom: 1rem;
@@ -464,7 +464,7 @@ function typeLabel(t: string): string {
 	gap: 0.5rem;
 	font-size: 0.875rem;
 	font-weight: 500;
-	color: #374151;
+	color: var(--text-secondary);
 	cursor: pointer;
 }
 .checkbox-label input[type="checkbox"] {
@@ -476,7 +476,7 @@ function typeLabel(t: string): string {
 .default-hint {
 	margin: 0.25rem 0 0 1.5rem;
 	font-size: 0.75rem;
-	color: #9ca3af;
+	color: var(--text-subtle);
 }
 
 @media (max-width: 599px) {
@@ -544,6 +544,4 @@ function typeLabel(t: string): string {
 		font-size: 0.75rem;
 	}
 }
-
-
 </style>

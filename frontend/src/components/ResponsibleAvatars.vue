@@ -31,9 +31,9 @@ function getInitials(name: string): string {
 	width: 28px;
 	height: 28px;
 	border-radius: 50%;
-	background: #e8f0fe;
-	color: #1a56db;
-	border: 2px solid #fff;
+	background: var(--bg-elevated);
+	color: var(--accent);
+	border: 2px solid var(--bg-surface);
 	font-size: 0.68rem;
 	font-weight: 700;
 	display: inline-flex;
@@ -47,14 +47,11 @@ function getInitials(name: string): string {
 
 .responsible-avatar:hover {
 	z-index: 10;
-	background: #1a56db;
+	background: var(--accent);
 	color: #fff;
 }
 
 .responsible-avatars-empty {
-	color: #9ca3af;
+	color: var(--text-subtle);
 }
-:root[data-theme="dark"] .responsible-avatar { background: #312F2E; color: #7DAEE8; border-color: #272524; }
-:root[data-theme="dark"] .responsible-avatar:hover { background: #2563eb; color: #fff; }
-:root[data-theme="dark"] .responsible-avatars-empty { color: #847F7B; }
 </style>

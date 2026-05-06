@@ -609,13 +609,15 @@ onMounted(() => {
 .settings-header h2 {
   margin: 0;
   font-size: 0.98rem;
+  color: var(--text-primary);
 }
 .btn-refresh {
-  border: 1px solid #d1d5db;
-  background: white;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
   border-radius: 8px;
   padding: 6px 10px;
   cursor: pointer;
+  color: var(--text-secondary);
 }
 .settings-list {
   display: flex;
@@ -649,16 +651,16 @@ onMounted(() => {
   font-size: 0.77rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #64748b;
+  color: var(--text-muted);
 }
 .group-copy {
   margin: 4px 0 0;
   font-size: 0.78rem;
-  color: #475569;
+  color: var(--text-muted);
 }
 .btn-reset-azure {
   border: 1px solid #b91c1c;
-  background: white;
+  background: var(--bg-surface);
   color: #991b1b;
   border-radius: 7px;
   padding: 4px 8px;
@@ -675,9 +677,9 @@ onMounted(() => {
   grid-template-columns: minmax(160px, 1.25fr) minmax(170px, 1fr) auto;
   gap: 8px;
   align-items: center;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--card-bg);
   padding: 7px 9px;
 }
 .setting-row--boxed {
@@ -696,10 +698,11 @@ onMounted(() => {
 .setting-headline strong {
   margin: 0;
   font-size: 0.86rem;
+  color: var(--text-primary);
 }
 .setting-hint {
   margin: 0;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.72rem;
 }
 .setting-edit {
@@ -722,15 +725,17 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #64748b;
+  color: var(--text-muted);
   z-index: 1;
   pointer-events: auto;
 }
 .setting-input {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--input-border);
   border-radius: 7px;
   padding: 5px 28px 5px 8px;
   width: 100%;
+  background: var(--input-bg);
+  color: var(--input-color);
 }
 .setting-invalid {
   margin: 0;
@@ -766,8 +771,8 @@ onMounted(() => {
   color: white;
 }
 .btn-clear {
-  background: #e5e7eb;
-  color: #111827;
+  background: var(--border);
+  color: var(--text-primary);
 }
 
 @media (max-width: 980px) {
