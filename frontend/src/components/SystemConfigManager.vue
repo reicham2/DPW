@@ -625,9 +625,9 @@ onMounted(() => {
   gap: 6px;
 }
 .settings-box {
-  border: 1px solid #dbe4ef;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  background: var(--bg-elevated);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -659,9 +659,9 @@ onMounted(() => {
   color: var(--text-muted);
 }
 .btn-reset-azure {
-  border: 1px solid #b91c1c;
+  border: 1px solid var(--error-border);
   background: var(--bg-surface);
-  color: #991b1b;
+  color: var(--error-color);
   border-radius: 7px;
   padding: 4px 8px;
   font-size: 0.75rem;
@@ -683,7 +683,7 @@ onMounted(() => {
   padding: 7px 9px;
 }
 .setting-row--boxed {
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--bg-surface);
 }
 .setting-main {
   display: flex;
@@ -739,7 +739,7 @@ onMounted(() => {
 }
 .setting-invalid {
   margin: 0;
-  color: #b91c1c;
+  color: var(--error-color);
   font-size: 0.71rem;
 }
 .bool-toggle {
@@ -767,8 +767,8 @@ onMounted(() => {
   font-size: 0.8rem;
 }
 .btn-save {
-  background: #0f766e;
-  color: white;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-color);
 }
 .btn-clear {
   background: var(--border);

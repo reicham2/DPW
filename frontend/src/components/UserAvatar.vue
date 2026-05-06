@@ -346,7 +346,7 @@ onMounted(() => {
 }
 .avatar-circle:hover {
 	background: var(--accent);
-	color: #fff;
+	color: var(--btn-primary-color);
 }
 
 .avatar-dropdown {

@@ -430,18 +430,18 @@ async function save() {
   color: var(--text-primary);
 }
 .time-mode-pill--active {
-  background: #e0e7ff;
+  background: var(--accent-bg);
   color: var(--text-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 .time-mode-check {
   color: var(--accent);
   font-weight: 700;
 }
 .profile-success {
-  color: #15803d;
+  color: var(--success-color);
   font-size: 0.875rem;
-  background: #f0fdf4;
+  background: var(--success-bg);
   border-radius: 6px;
   padding: 8px 12px;
 }
@@ -484,7 +484,7 @@ async function save() {
 .info-tip:hover,
 .info-tip:focus {
   background: var(--accent);
-  color: #fff;
+  color: var(--btn-primary-color);
 }
 .info-tip__popover {
   position: absolute;

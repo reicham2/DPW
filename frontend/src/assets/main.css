@@ -617,9 +617,10 @@ video {
 	padding: 10px 12px;
 	font-size: 1rem;
 	font-family: inherit;
-	border: 1px solid #d1d5db;
+	border: 1px solid var(--input-border);
 	border-radius: 8px;
-	background: #fff;
+	background: var(--input-bg);
+	color: var(--input-color);
 	transition:
 		border-color 0.15s,
 		box-shadow 0.15s;
@@ -632,8 +633,8 @@ video {
 .form-group select:focus,
 .material-list input:focus {
 	outline: none;
-	border-color: #0080ff;
-	box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.15);
+	border-color: var(--focus-border);
+	box-shadow: var(--focus-ring);
 }
 
 .form-group select {
@@ -645,9 +646,15 @@ video {
 	cursor: pointer;
 }
 
+.form-group select option,
+.toolbar-select option {
+	background: var(--dropdown-bg);
+	color: var(--text-primary);
+}
+
 /* ---- Form section divider ---- */
 .form-section {
-	border-top: 1px solid #e5e7eb;
+	border-top: 1px solid var(--border);
 	padding-top: 4px;
 }
 
@@ -656,7 +663,7 @@ video {
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
-	color: #9ca3af;
+	color: var(--text-subtle);
 	margin-bottom: 14px;
 }
 
@@ -672,26 +679,26 @@ video {
 .form-check input[type='checkbox'] {
 	width: 17px;
 	height: 17px;
-	accent-color: #0080ff;
+	accent-color: var(--accent);
 	cursor: pointer;
 	flex-shrink: 0;
 }
 
 .form-check span {
 	font-size: 0.95rem;
-	color: #374151;
+	color: var(--text-secondary);
 }
 
 /* ---- File upload hint ---- */
 .file-hint {
 	font-size: 0.82rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	margin-top: 4px;
 }
 
 .file-name {
 	font-size: 0.82rem;
-	color: #0080ff;
+	color: var(--accent);
 	font-weight: 500;
 }
 
@@ -1018,10 +1025,10 @@ video {
 	align-items: center;
 	gap: 8px;
 	padding: 10px 14px;
-	background: #eff6ff;
-	border: 1px solid #bfdbfe;
+	background: var(--accent-bg);
+	border: 1px solid var(--accent);
 	border-radius: 8px;
-	color: #1e40af;
+	color: var(--accent);
 	font-size: 0.875rem;
 	font-weight: 500;
 	margin-bottom: 8px;
@@ -1051,14 +1058,14 @@ video {
 	align-items: center;
 	gap: 4px;
 	padding: 2px 10px;
-	background: #fef3c7;
-	border: 1px solid #f59e0b;
+	background: var(--warning-bg);
+	border: 1px solid var(--warning-border);
 	border-radius: 999px;
 	font-size: 0.75rem;
 	font-weight: 600;
-	color: #92400e;
+	color: var(--warning-color);
 	white-space: nowrap;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	box-shadow: var(--shadow-sm);
 }
 
 /* ---- Form actions ---- */
@@ -1764,12 +1771,12 @@ video {
 	border: none;
 	cursor: pointer;
 	font-size: 0.75rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	padding: 0 2px;
 	line-height: 1;
 }
 .user-chip-remove:hover {
-	color: #ef4444;
+	color: var(--error-color);
 }
 
 .field-warning {
@@ -1781,9 +1788,9 @@ video {
 }
 
 .field-hint {
-	color: #1d4ed8;
-	background: #eff6ff;
-	border: 1px solid #93c5fd;
+	color: var(--accent);
+	background: var(--accent-bg);
+	border: 1px solid var(--accent);
 	border-radius: 6px;
 	padding: 6px 10px;
 	font-size: 0.85em;
@@ -1832,13 +1839,13 @@ video {
 	padding: 8px 12px;
 	cursor: pointer;
 	font-size: 0.9rem;
-	color: #374151;
+	color: var(--text-secondary);
 }
 .user-dropdown-item:hover {
 	background: var(--dropdown-hover);
 }
 .user-dropdown-item--loading {
-	color: #9ca3af;
+	color: var(--text-subtle);
 	font-style: italic;
 	cursor: default;
 }
@@ -1849,23 +1856,23 @@ video {
 .user-dropdown-item .contact-email {
 	display: block;
 	font-size: 0.8rem;
-	color: #6b7280;
+	color: var(--text-muted);
 }
 
 .user-dropdown-item--warn {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	background: #fffbeb;
+	background: var(--warning-bg);
 }
 
 .user-dropdown-item--warn:hover {
-	background: #fef3c7;
+	background: var(--warning-bg);
 }
 
 .dropdown-warn-hint {
 	font-size: 0.75rem;
-	color: #b45309;
+	color: var(--warning-color);
 	white-space: nowrap;
 	margin-left: 8px;
 }
@@ -2454,7 +2461,7 @@ video {
 
 .filter-date-clear {
 	background: none;
-	border: 1.5px solid #e5e7eb;
+	border: 1.5px solid var(--border);
 	border-radius: 999px;
 	width: 28px;
 	height: 28px;
@@ -2463,16 +2470,16 @@ video {
 	justify-content: center;
 	cursor: pointer;
 	font-size: 0.8rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	transition:
 		background 0.13s,
 		color 0.13s;
 }
 
 .filter-date-clear:hover {
-	background: #fee2e2;
-	color: #dc2626;
-	border-color: #fca5a5;
+	background: var(--error-bg);
+	color: var(--error-color);
+	border-color: var(--error-border);
 }
 
 /* Load more activities buttons (top / bottom) */
@@ -2480,10 +2487,10 @@ video {
 	display: block;
 	width: 100%;
 	padding: 10px 16px;
-	border: 1.5px dashed #d1d5db;
+	border: 1.5px dashed var(--border);
 	border-radius: 10px;
-	background: #f9fafb;
-	color: #6b7280;
+	background: var(--bg-surface);
+	color: var(--text-muted);
 	font-size: 0.9rem;
 	font-weight: 500;
 	cursor: pointer;
@@ -2495,9 +2502,9 @@ video {
 }
 
 .btn-load-more:hover {
-	background: #eff6ff;
-	border-color: #93c5fd;
-	color: #2563eb;
+	background: var(--accent-bg);
+	border-color: var(--accent);
+	color: var(--accent);
 }
 
 .btn-load-more--top {
@@ -2572,7 +2579,7 @@ video {
 }
 
 .material-card__fields .form-group input {
-	background: #fff;
+	background: var(--input-bg);
 }
 
 @media (max-width: 599px) {
@@ -2590,9 +2597,9 @@ video {
 	align-items: center;
 	gap: 6px;
 	padding: 8px 16px;
-	background: #e6f2ff;
-	color: #0080ff;
-	border: 1px solid #80bdff;
+	background: var(--accent-bg);
+	color: var(--accent);
+	border: 1px solid var(--accent);
 	border-radius: 7px;
 	font-size: 0.9rem;
 	font-weight: 600;
@@ -2610,30 +2617,30 @@ video {
 }
 
 .btn-mail:hover:not(:disabled) {
-	background: #cce5ff;
+	background: var(--accent-bg-hover);
 }
 .btn-mail:disabled {
 	opacity: 0.5;
 	cursor: default;
-	background: #eef2f7;
-	color: #7a8a9a;
-	border-color: #c7d2de;
+	background: var(--bg-elevated);
+	color: var(--text-subtle);
+	border-color: var(--border);
 }
 
 .btn-mail--active {
-	background: #d1fae5;
-	color: #065f46;
-	border-color: #6ee7b7;
+	background: var(--success-bg);
+	color: var(--success-color);
+	border-color: var(--success-color);
 }
 .btn-mail--active:hover:not(:disabled) {
-	background: #a7f3d0;
+	background: var(--success-bg);
 }
 .btn-mail--active:disabled {
 	opacity: 0.5;
 	cursor: default;
-	background: #e8f5e9;
-	color: #5a7a62;
-	border-color: #b2d8b8;
+	background: var(--success-bg);
+	color: var(--success-color);
+	border-color: var(--success-color);
 }
 
 .share-link-wrap {
@@ -2649,15 +2656,15 @@ video {
 	gap: 10px;
 	min-height: 44px;
 	padding: 9px 14px;
-	border: 1px solid #cbd5e1;
+	border: 1px solid var(--border-strong);
 	border-radius: 7px;
-	background: #fff;
-	color: #0f172a;
+	background: var(--bg-surface);
+	color: var(--text-primary);
 	font-size: 0.85rem;
 	font-weight: 600;
 	line-height: 1.2;
 	cursor: pointer;
-	box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+	box-shadow: var(--shadow-md);
 }
 
 .activity-actions-mobile-icon {
@@ -2688,11 +2695,11 @@ video {
 	display: flex;
 	flex-direction: column;
 	padding: 8px;
-	border: 1px solid #dbeafe;
+	border: 1px solid var(--border);
 	border-radius: 14px;
-	background: rgba(255, 255, 255, 0.98);
+	background: var(--dropdown-bg);
 	backdrop-filter: blur(10px);
-	box-shadow: 0 18px 36px rgba(15, 23, 42, 0.16);
+	box-shadow: var(--dropdown-shadow);
 	z-index: 30;
 }
 
@@ -2705,7 +2712,7 @@ video {
 	border: 0;
 	border-radius: 10px;
 	background: transparent;
-	color: #0f172a;
+	color: var(--text-primary);
 	font: inherit;
 	font-weight: 600;
 	text-decoration: none;
@@ -2714,19 +2721,19 @@ video {
 }
 
 .activity-actions-mobile-item:hover:not(:disabled) {
-	background: #eff6ff;
-	color: #1d4ed8;
+	background: var(--accent-bg);
+	color: var(--accent);
 }
 
 .activity-actions-mobile-item:disabled {
-	color: #94a3b8;
+	color: var(--text-subtle);
 	cursor: default;
 	background: transparent;
 }
 
 .activity-actions-mobile-item--active {
-	background: #ecfdf5;
-	color: #047857;
+	background: var(--success-bg);
+	color: var(--success-color);
 }
 
 .btn-share-remove {
@@ -2736,16 +2743,16 @@ video {
 	width: 28px;
 	height: 28px;
 	padding: 0;
-	border: 1px solid #fca5a5;
-	background: #fef2f2;
-	color: #dc2626;
+	border: 1px solid var(--error-border);
+	background: var(--error-bg);
+	color: var(--error-color);
 	border-radius: 6px;
 	font-size: 0.8rem;
 	cursor: pointer;
 	transition: background 0.15s;
 }
 .btn-share-remove:hover {
-	background: #fee2e2;
+	background: var(--btn-danger-bg);
 }
 
 /* ---- Shared activity page ---- */
@@ -2762,17 +2769,17 @@ video {
 .shared-badge {
 	display: inline-block;
 	padding: 6px 14px;
-	background: #fffbeb;
-	color: #92400e;
-	border: 1px solid #fcd34d;
+	background: var(--warning-bg);
+	color: var(--warning-color);
+	border: 1px solid var(--warning-border);
 	border-radius: 8px;
 	font-size: 0.88rem;
 	font-weight: 600;
 }
 
 .shared-main {
-	background: #fff;
-	border: 1px solid #e5e7eb;
+	background: var(--bg-surface);
+	border: 1px solid var(--border);
 	border-radius: 12px;
 	padding: 24px;
 }
@@ -3210,7 +3217,7 @@ video {
 .modal-backdrop {
 	position: fixed;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.35);
+	background: var(--modal-backdrop);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -3225,31 +3232,31 @@ video {
 	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
 }
 .modal--danger {
-	border: 2px solid #fca5a5;
+	border: 2px solid var(--error-border);
 }
 .modal--info {
-	border: 2px solid #93c5fd;
+	border: 2px solid var(--accent);
 }
 .modal-title {
 	font-size: 1.15rem;
 	font-weight: 700;
 	margin: 0 0 4px;
-	color: #1a202c;
+	color: var(--text-primary);
 }
 .modal-title--danger {
-	color: #dc2626;
+	color: var(--error-color);
 }
 .modal-title--info {
-	color: #2563eb;
+	color: var(--accent);
 }
 .modal-email {
 	font-size: 0.85rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	margin: 0 0 20px;
 }
 .modal-warning {
 	font-size: 0.88rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	margin: 0 0 16px;
 }
 .modal-actions {
@@ -3266,16 +3273,18 @@ video {
 .link-modal-input {
 	width: 100%;
 	padding: 8px 12px;
-	border: 1px solid #d1d5db;
+	border: 1px solid var(--input-border);
 	border-radius: 8px;
 	font-size: 0.9rem;
 	margin: 8px 0 16px;
 	box-sizing: border-box;
+	background: var(--input-bg);
+	color: var(--input-color);
 }
 .link-modal-input:focus {
 	outline: none;
-	border-color: #3b82f6;
-	box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+	border-color: var(--focus-border);
+	box-shadow: var(--focus-ring);
 }
 
 .modal-actions--equal > button {
@@ -3286,29 +3295,29 @@ video {
 .btn-cancel {
 	padding: 9px 20px;
 	border-radius: 8px;
-	border: 1.5px solid #d1d5db;
-	background: #fff;
+	border: 1.5px solid var(--border-strong);
+	background: var(--bg-surface);
 	font-size: 0.9rem;
 	cursor: pointer;
-	color: #374151;
+	color: var(--text-secondary);
 	transition: background 0.12s;
 }
 .btn-cancel:hover {
-	background: #f3f4f6;
+	background: var(--bg-hover);
 }
 .btn-info {
 	padding: 9px 20px;
 	border-radius: 8px;
-	border: 1.5px solid #93c5fd;
-	background: #fff;
+	border: 1.5px solid var(--accent);
+	background: var(--bg-surface);
 	font-size: 0.9rem;
 	cursor: pointer;
-	color: #2563eb;
+	color: var(--accent);
 	font-weight: 600;
 	transition: background 0.12s;
 }
 .btn-info:hover {
-	background: #eff6ff;
+	background: var(--accent-bg);
 }
 
 /* ─── Mail Warning Dialog ─── */
