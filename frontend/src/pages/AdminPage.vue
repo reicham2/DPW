@@ -588,13 +588,13 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .btn-delete {
   padding: 5px 12px;
   border-radius: 6px;
-  border: 1.5px solid #fca5a5;
+  border: 1.5px solid var(--error-border);
   background: var(--bg-surface);
   font-size: 0.82rem;
   cursor: pointer;
-  color: #dc2626;
+  color: var(--error-color);
 }
-.btn-delete:hover:not(:disabled) { background: #fef2f2; }
+.btn-delete:hover:not(:disabled) { background: var(--error-bg); }
 .btn-delete:disabled { opacity: 0.45; cursor: default; }
 
 /* Modal */
@@ -615,14 +615,14 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   max-width: 420px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.18);
 }
-.modal--danger { border: 2px solid #fca5a5; }
+.modal--danger { border: 2px solid var(--error-border); }
 .modal-title {
   font-size: 1.15rem;
   font-weight: 700;
   margin: 0 0 4px;
   color: var(--text-primary);
 }
-.modal-title--danger { color: #dc2626; }
+.modal-title--danger { color: var(--error-color); }
 .modal-email {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -680,14 +680,14 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .btn-danger {
   padding: 9px 20px;
   border-radius: 8px;
-  border: 1.5px solid #fca5a5;
+  border: 1.5px solid var(--error-border);
   background: var(--bg-surface);
   font-size: 0.9rem;
   cursor: pointer;
-  color: #dc2626;
+  color: var(--error-color);
   transition: background 0.12s;
 }
-.btn-danger:hover:not(:disabled) { background: #fef2f2; }
+.btn-danger:hover:not(:disabled) { background: var(--btn-danger-bg-hover); }
 .btn-danger:disabled { opacity: 0.4; cursor: default; }
 .btn-cancel {
   padding: 9px 20px;
@@ -711,7 +711,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn-primary:hover:not(:disabled) { background: #1648c0; }
+.btn-primary:hover:not(:disabled) { background: var(--btn-primary-bg-hover); }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 
 @media (max-width: 599px) {

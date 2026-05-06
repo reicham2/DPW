@@ -429,8 +429,8 @@ function typeLabel(t: string): string {
 	cursor: pointer;
 }
 .btn-sm:hover { background: var(--bg-hover); }
-.btn-sm.danger { color: #dc2626; border-color: #fca5a5; }
-.btn-sm.danger:hover { background: #fee2e2; }
+.btn-sm.danger { color: var(--error-color); border-color: var(--error-border); }
+.btn-sm.danger:hover { background: var(--error-bg); }
 
 .default-badge {
 	display: inline-block;

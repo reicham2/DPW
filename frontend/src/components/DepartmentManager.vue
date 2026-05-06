@@ -345,15 +345,15 @@ async function confirmDelete() {
 }
 .btn-edit:hover, .btn-cancel:hover { background: var(--bg-hover); }
 .btn-delete {
-  padding: 5px 12px; border-radius: 6px; border: 1.5px solid #fca5a5; background: var(--bg-surface);
-  font-size: 0.82rem; cursor: pointer; color: #dc2626;
+  padding: 5px 12px; border-radius: 6px; border: 1.5px solid var(--error-border); background: var(--bg-surface);
+  font-size: 0.82rem; cursor: pointer; color: var(--error-color);
 }
-.btn-delete:hover { background: #fef2f2; }
+.btn-delete:hover { background: var(--error-bg); }
 .btn-save {
-  padding: 5px 14px; border-radius: 6px; border: none; background: var(--btn-primary-bg); color: #fff;
+  padding: 5px 14px; border-radius: 6px; border: none; background: var(--btn-primary-bg); color: var(--btn-primary-color);
   font-size: 0.82rem; font-weight: 600; cursor: pointer;
 }
-.btn-save:hover:not(:disabled) { background: #1648c0; }
+.btn-save:hover:not(:disabled) { background: var(--btn-primary-bg-hover); }
 .btn-save:disabled { opacity: 0.6; }
 
 .btn-add {
@@ -377,9 +377,9 @@ async function confirmDelete() {
   background: var(--modal-bg); border-radius: 16px; padding: 28px 32px;
   width: 100%; max-width: 500px; box-shadow: 0 8px 40px rgba(0,0,0,0.2);
 }
-.modal--danger { border: 2px solid #fca5a5; }
+.modal--danger { border: 2px solid var(--error-border); }
 .modal-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 6px; }
-.modal-title--danger { color: #dc2626; }
+.modal-title--danger { color: var(--error-color); }
 .modal-desc { font-size: 0.88rem; color: var(--text-muted); margin: 0 0 18px; }
 
 .delete-section { margin-bottom: 18px; }
@@ -401,6 +401,6 @@ async function confirmDelete() {
   padding: 8px 18px; border-radius: 8px; border: none;
   background: var(--btn-danger-bg); color: var(--btn-danger-color); font-size: 0.88rem; font-weight: 600; cursor: pointer;
 }
-.btn-danger:hover:not(:disabled) { background: #b91c1c; }
+.btn-danger:hover:not(:disabled) { background: var(--btn-danger-bg-hover); }
 .btn-danger:disabled { opacity: 0.6; }
 </style>

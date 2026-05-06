@@ -384,7 +384,7 @@ video {
 	display: inline-block;
 	padding: 8px 18px;
 	background: var(--btn-primary-bg);
-	color: #fff;
+	color: var(--btn-primary-color);
 	border: none;
 	border-radius: 7px;
 	font-size: 0.9rem;
@@ -395,7 +395,7 @@ video {
 	white-space: nowrap;
 }
 .btn-primary:hover:not(:disabled) {
-	background: #0023ff;
+	background: var(--btn-primary-bg-hover);
 }
 .btn-primary:disabled {
 	opacity: 0.45;
@@ -405,8 +405,9 @@ video {
 .btn-secondary {
 	display: inline-block;
 	padding: 8px 18px;
-	background: var(--btn-secondary-bg); color: var(--btn-secondary-color);
-	border: 1px solid #d1d5db;
+	background: var(--btn-secondary-bg);
+	color: var(--btn-secondary-color);
+	border: 1px solid var(--border-strong);
 	border-radius: 7px;
 	font-size: 0.9rem;
 	font-weight: 600;
@@ -416,14 +417,15 @@ video {
 	white-space: nowrap;
 }
 .btn-secondary:hover {
-	background: #e5e7eb;
+	background: var(--btn-secondary-bg-hover);
 }
 
 .btn-danger {
 	display: inline-block;
 	padding: 8px 18px;
-	background: var(--btn-danger-bg); color: var(--btn-danger-color);
-	border: 1px solid #fca5a5;
+	background: var(--btn-danger-bg);
+	color: var(--btn-danger-color);
+	border: 1px solid var(--error-border);
 	border-radius: 7px;
 	font-size: 0.9rem;
 	font-weight: 600;
@@ -433,7 +435,7 @@ video {
 	white-space: nowrap;
 }
 .btn-danger:hover {
-	background: #fecaca;
+	background: var(--btn-danger-bg-hover);
 }
 
 .btn-toggle {
@@ -1187,9 +1189,10 @@ video {
 	padding: 10px 12px;
 	font-size: 1rem;
 	font-family: inherit;
-	border: 1px solid #d1d5db;
+	border: 1px solid var(--input-border);
 	border-radius: 8px;
-	background: #fff;
+	background: var(--input-bg);
+	color: var(--input-color);
 	box-sizing: border-box;
 	transition:
 		border-color 0.15s,
@@ -1198,14 +1201,14 @@ video {
 
 .detail-weather-input:focus {
 	outline: none;
-	border-color: #0080ff;
-	box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.15);
+	border-color: var(--focus-border);
+	box-shadow: var(--focus-ring);
 }
 
 .detail-icon-btn {
-	border: 1px solid #d1d5db;
-	background: #fff;
-	color: #374151;
+	border: 1px solid var(--input-border);
+	background: var(--bg-surface);
+	color: var(--text-secondary);
 	width: 30px;
 	height: 30px;
 	border-radius: 8px;
@@ -1215,7 +1218,7 @@ video {
 }
 
 .detail-icon-btn:hover {
-	background: #f9fafb;
+	background: var(--bg-elevated);
 }
 
 .detail-weather-symbol {
@@ -3294,17 +3297,18 @@ video {
 	text-align: center;
 }
 .btn-cancel {
-	padding: 9px 20px;
-	border-radius: 8px;
-	border: 1.5px solid var(--border-strong);
-	background: var(--bg-surface);
+	padding: 8px 18px;
+	border-radius: 7px;
+	border: 1px solid var(--border-strong);
+	background: var(--btn-secondary-bg);
+	color: var(--btn-secondary-color);
 	font-size: 0.9rem;
+	font-weight: 600;
 	cursor: pointer;
-	color: var(--text-secondary);
-	transition: background 0.12s;
+	transition: background 0.15s;
 }
 .btn-cancel:hover {
-	background: var(--bg-hover);
+	background: var(--btn-secondary-bg-hover);
 }
 .btn-info {
 	padding: 9px 20px;

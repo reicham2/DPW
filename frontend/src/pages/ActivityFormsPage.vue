@@ -720,7 +720,7 @@ function formatDate(iso: string): string {
 	font-size: 0.875rem;
 	cursor: pointer;
 }
-.btn-danger:hover { background: #fee2e2; }
+.btn-danger:hover { background: var(--btn-danger-bg-hover); }
 
 .btn-sm {
 	padding: 0.2rem 0.6rem;
@@ -732,8 +732,8 @@ function formatDate(iso: string): string {
 	cursor: pointer;
 }
 .btn-sm:hover { background: var(--bg-hover); }
-.btn-sm.danger { color: #dc2626; border-color: #fca5a5; }
-.btn-sm.danger:hover { background: #fee2e2; }
+.btn-sm.danger { color: var(--error-color); border-color: var(--error-border); }
+.btn-sm.danger:hover { background: var(--error-bg); }
 
 .icon-btn {
 	padding: 0.2rem 0.45rem;

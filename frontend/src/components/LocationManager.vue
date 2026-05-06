@@ -263,15 +263,15 @@ async function confirmDelete() {
 .btn-delete {
   padding: 5px 12px;
   border-radius: 6px;
-  border: 1.5px solid #fca5a5;
+  border: 1.5px solid var(--error-border);
   background: var(--bg-surface);
   font-size: 0.82rem;
   cursor: pointer;
-  color: #dc2626;
+  color: var(--error-color);
 }
 
 .btn-delete:hover {
-  background: #fef2f2;
+  background: var(--error-bg);
 }
 
 .btn-save {
@@ -279,14 +279,14 @@ async function confirmDelete() {
   border-radius: 6px;
   border: none;
   background: var(--btn-primary-bg);
-  color: #fff;
+  color: var(--btn-primary-color);
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
 }
 
 .btn-save:hover:not(:disabled) {
-  background: #1648c0;
+  background: var(--btn-primary-bg-hover);
 }
 
 .btn-save:disabled {
@@ -387,7 +387,7 @@ async function confirmDelete() {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
+  background: var(--btn-danger-bg-hover);
 }
 
 .btn-danger:disabled {
