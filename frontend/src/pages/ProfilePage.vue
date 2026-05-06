@@ -9,15 +9,9 @@
 
       <form class="profile-form" @submit.prevent="save">
         <div class="form-group">
-          <label class="form-label" for="display_name">Anzeigename</label>
-          <input
-            id="display_name"
-            v-model="form.display_name"
-            class="form-input"
-            type="text"
-            required
-            placeholder="Dein Name"
-          />
+          <label class="form-label">Anzeigename</label>
+          <input class="form-input form-input--readonly" type="text" :value="user?.display_name" readonly />
+          <p class="form-hint">Wird automatisch aus deinem Microsoft-Konto übernommen.</p>
         </div>
 
         <div class="form-group">
@@ -185,7 +179,6 @@ const canChangeDepartment = computed(() => {
 const deptItems = computed(() => deptRecords.value.map(d => ({ value: d.name })))
 
 const form = ref({
-  display_name: user.value?.display_name ?? '',
   department:   user.value?.department   ?? '',
   time_display_mode: (user.value?.time_display_mode ?? 'minutes') as TimeDisplayMode,
   notify_material_assigned: user.value?.notify_material_assigned ?? true,
@@ -202,13 +195,10 @@ const error  = ref<string | null>(null)
 const statsInfoOpen = ref(false)
 
 const initials = computed(() => {
-  const name = form.value.display_name || user.value?.display_name || ''
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0].toUpperCase())
-    .join('')
+  const name = user.value?.display_name || ''
+  const words = name.split(' ').filter(Boolean)
+  if (words.length === 1) return name.slice(0, 2).toUpperCase()
+  return words.slice(0, 2).map(w => w[0].toUpperCase()).join('')
 })
 
 let initialLoaded = false
@@ -216,7 +206,6 @@ let initialLoaded = false
 onMounted(async () => {
   await Promise.all([fetchMyPermissions(), fetchDepartments()])
   if (user.value) {
-    form.value.display_name = user.value.display_name
     form.value.department   = user.value.department ?? ''
     form.value.time_display_mode = user.value.time_display_mode ?? 'minutes'
     form.value.notify_material_assigned = user.value.notify_material_assigned ?? true
@@ -238,7 +227,6 @@ async function save() {
     const res = await apiFetch('/api/me', {
       method: 'PATCH',
       body: JSON.stringify({
-        display_name: form.value.display_name,
         department:   form.value.department || null,
         time_display_mode: form.value.time_display_mode,
         notify_material_assigned: form.value.notify_material_assigned,

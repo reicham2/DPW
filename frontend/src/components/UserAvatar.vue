@@ -116,12 +116,9 @@ const visibleNotifications = computed(() =>
 
 const initials = computed(() => {
 	if (!user.value) return '';
-	return user.value.display_name
-		.split(' ')
-		.filter(Boolean)
-		.slice(0, 2)
-		.map((w) => w[0].toUpperCase())
-		.join('');
+	const words = user.value.display_name.split(' ').filter(Boolean);
+	if (words.length === 1) return user.value.display_name.trim().slice(0, 2).toUpperCase();
+	return words.slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 });
 
 async function handleLogout() {

@@ -1061,14 +1061,14 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
     {
         on_conflict =
             "ON CONFLICT (microsoft_oid) DO UPDATE "
-            "SET email = EXCLUDED.email, role = '" +
+            "SET email = EXCLUDED.email, display_name = EXCLUDED.display_name, role = '" +
             initial_role + "', updated_at = NOW() ";
     }
     else
     {
         on_conflict =
             "ON CONFLICT (microsoft_oid) DO UPDATE "
-            "SET email = EXCLUDED.email, updated_at = NOW() ";
+            "SET email = EXCLUDED.email, display_name = EXCLUDED.display_name, updated_at = NOW() ";
     }
 
     std::string sql =

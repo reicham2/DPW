@@ -2,6 +2,7 @@
 import type { Activity } from '../types'
 import { MapPin } from 'lucide-vue-next'
 import DepartmentBadge from './DepartmentBadge.vue'
+import ResponsibleAvatars from './ResponsibleAvatars.vue'
 
 const props = defineProps<{
   activity: Activity
@@ -28,9 +29,7 @@ function formatDate(d: string): string {
       <span class="card-date">
         {{ formatDate(activity.date) }} &middot; {{ activity.start_time }}–{{ activity.end_time }}
       </span>
-      <span v-if="activity.responsible.length" class="card-responsible">
-        {{ activity.responsible.join(', ') }}
-      </span>
+      <ResponsibleAvatars v-if="activity.responsible.length" :names="activity.responsible" />
     </div>
     <p v-if="activity.location" class="card-location"><MapPin :size="14" aria-hidden="true" /> {{ activity.location }}</p>
   </div>

@@ -3609,7 +3609,22 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
             }
         }
 
-        auto user = db.upsert_user(claims.oid, claims.email, claims.display_name,
+        // Extract scout name: "Marc Reichardt v/o Breeze" → "Breeze"
+        std::string effective_name = claims.display_name;
+        {
+            std::string lower = claims.display_name;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            auto pos = lower.find("v/o");
+            if (pos != std::string::npos)
+            {
+                std::string after = claims.display_name.substr(pos + 3);
+                size_t start = after.find_first_not_of(" \t");
+                if (start != std::string::npos)
+                    effective_name = after.substr(start);
+            }
+        }
+
+        auto user = db.upsert_user(claims.oid, claims.email, effective_name,
                                    initial_role, initial_dept, force_role);
         if (!user)
         {
@@ -3955,18 +3970,15 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
 
-        std::string display_name = j.value("display_name", "");
-        if (display_name.empty()) {
-            send_json(res, 400, R"({"error":"display_name is required"})");
-            return;
-        }
-
         // Fetch current user once; own profile updates require an existing user record.
         auto current_user = resolve_user(db, claims);
         if (!current_user) {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
+
+        // display_name is managed by login (Azure AD / v/o extraction), not user-editable
+        std::string display_name = current_user->display_name;
 
         // Keep the current department unless an explicit department key is provided.
         std::optional<std::string> department;
