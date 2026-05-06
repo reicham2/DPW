@@ -2781,6 +2781,9 @@ RolePermission Database::row_to_role_perm(PGresult *res, int row)
     rp.user_dept_scope = col("user_dept_scope") ? col("user_dept_scope") : "none";
     rp.user_role_scope = col("user_role_scope") ? col("user_role_scope") : "none";
     rp.locations_manage_scope = col("locations_manage_scope") ? col("locations_manage_scope") : "none";
+    rp.ideenkiste_scope = col("ideenkiste_scope") ? col("ideenkiste_scope") : "none";
+    rp.ideenkiste_add_scope = col("ideenkiste_add_scope") ? col("ideenkiste_add_scope") : "none";
+    rp.ideenkiste_delete_scope = col("ideenkiste_delete_scope") ? col("ideenkiste_delete_scope") : "none";
     return rp;
 }
 
@@ -2795,7 +2798,8 @@ std::vector<RolePermission> Database::list_role_permissions()
                            "       mail_send_scope, "
                            "       mail_templates_scope, form_scope, form_templates_scope, "
                            "       event_templates_scope, event_publish_scope, "
-                           "       user_dept_scope, user_role_scope, locations_manage_scope "
+                           "       user_dept_scope, user_role_scope, locations_manage_scope, "
+                           "       ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope "
                            "FROM role_permissions ORDER BY role");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
@@ -2824,7 +2828,8 @@ std::optional<RolePermission> Database::get_role_permission(const std::string &r
                                  "       mail_send_scope, "
                                  "       mail_templates_scope, form_scope, form_templates_scope, "
                                  "       event_templates_scope, event_publish_scope, "
-                                 "       user_dept_scope, user_role_scope, locations_manage_scope "
+                                 "       user_dept_scope, user_role_scope, locations_manage_scope, "
+                                 "       ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope "
                                  "FROM role_permissions WHERE role = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -2856,7 +2861,10 @@ bool Database::update_role_permission(const std::string &role,
                                       const std::string &event_publish_scope,
                                       const std::string &user_dept_scope,
                                       const std::string &user_role_scope,
-                                      const std::string &locations_manage_scope)
+                                      const std::string &locations_manage_scope,
+                                      const std::string &ideenkiste_scope,
+                                      const std::string &ideenkiste_add_scope,
+                                      const std::string &ideenkiste_delete_scope)
 {
     ensure_connected();
     const char *p1 = role.c_str();
@@ -2876,16 +2884,20 @@ bool Database::update_role_permission(const std::string &role,
     const char *p15 = user_dept_scope.c_str();
     const char *p16 = user_role_scope.c_str();
     const char *p17 = locations_manage_scope.c_str();
-    const char *params[17] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17};
+    const char *p18 = ideenkiste_scope.c_str();
+    const char *p19 = ideenkiste_add_scope.c_str();
+    const char *p20 = ideenkiste_delete_scope.c_str();
+    const char *params[20] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, "
                                  "can_read_all_depts, can_write_all_depts, "
                                  "activity_read_scope, activity_create_scope, activity_edit_scope, "
                                  "mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, "
                                  "event_templates_scope, event_publish_scope, "
-                                 "user_dept_scope, user_role_scope, locations_manage_scope) "
+                                 "user_dept_scope, user_role_scope, locations_manage_scope, "
+                                 "ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope) "
                                  "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, "
-                                 "$6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) "
+                                 "$6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) "
                                  "ON CONFLICT (role) DO UPDATE SET "
                                  "can_read_own_dept = $2::boolean, can_write_own_dept = $3::boolean, "
                                  "can_read_all_depts = $4::boolean, can_write_all_depts = $5::boolean, "
@@ -2894,8 +2906,9 @@ bool Database::update_role_permission(const std::string &role,
                                  "form_scope = $11, form_templates_scope = $12, "
                                  "event_templates_scope = $13, event_publish_scope = $14, "
                                  "user_dept_scope = $15, user_role_scope = $16, "
-                                 "locations_manage_scope = $17",
-                                 17, nullptr, params, nullptr, nullptr, 0);
+                                 "locations_manage_scope = $17, ideenkiste_scope = $18, "
+                                 "ideenkiste_add_scope = $19, ideenkiste_delete_scope = $20",
+                                 20, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;
@@ -3689,4 +3702,118 @@ std::optional<std::string> Database::get_app_setting(const std::string &key,
     std::string out = PQgetvalue(res, 0, 0);
     PQclear(res);
     return out;
+}
+
+// ── Ideenkiste ───────────────────────────────────────────────────────────────
+
+IdeenkisteItem Database::row_to_ideenkiste(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> const char *
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return nullptr;
+        return PQgetvalue(res, row, c);
+    };
+    IdeenkisteItem item;
+    item.id = col("id") ? col("id") : "";
+    item.title = col("title") ? col("title") : "";
+    item.duration_minutes = col("duration_minutes") ? std::stoi(col("duration_minutes")) : 0;
+    item.description = col("description") ? col("description") : "";
+    if (col("department"))
+        item.department = col("department");
+    item.created_at = col("created_at") ? col("created_at") : "";
+    item.updated_at = col("updated_at") ? col("updated_at") : "";
+    return item;
+}
+
+std::vector<IdeenkisteItem> Database::list_ideenkiste(const std::string &dept_filter)
+{
+    ensure_connected();
+    PGresult *res;
+    if (dept_filter.empty())
+    {
+        res = PQexec(conn_,
+                     "SELECT id, title, duration_minutes, description, department, created_at, updated_at "
+                     "FROM ideenkiste ORDER BY created_at DESC");
+    }
+    else
+    {
+        const char *params[] = {dept_filter.c_str()};
+        res = PQexecParams(conn_,
+                           "SELECT id, title, duration_minutes, description, department, created_at, updated_at "
+                           "FROM ideenkiste WHERE department = $1 OR department IS NULL ORDER BY created_at DESC",
+                           1, nullptr, params, nullptr, nullptr, 0);
+    }
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    std::vector<IdeenkisteItem> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_ideenkiste(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<IdeenkisteItem> Database::create_ideenkiste_item(const IdeenkisteInput &input)
+{
+    ensure_connected();
+    std::string dur = std::to_string(input.duration_minutes);
+    const char *dept = input.department && !input.department->empty() ? input.department->c_str() : nullptr;
+    const char *params[] = {input.title.c_str(), dur.c_str(), input.description.c_str(), dept};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO ideenkiste (title, duration_minutes, description, department) "
+                                 "VALUES ($1, $2::int, $3, $4) "
+                                 "RETURNING id, title, duration_minutes, description, department, created_at, updated_at",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto item = row_to_ideenkiste(res, 0);
+    PQclear(res);
+    return item;
+}
+
+std::optional<IdeenkisteItem> Database::update_ideenkiste_item(const std::string &id, const IdeenkisteInput &input)
+{
+    ensure_connected();
+    std::string dur = std::to_string(input.duration_minutes);
+    const char *dept = input.department && !input.department->empty() ? input.department->c_str() : nullptr;
+    const char *params[] = {id.c_str(), input.title.c_str(), dur.c_str(), input.description.c_str(), dept};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE ideenkiste SET title=$2, duration_minutes=$3::int, description=$4, department=$5 "
+                                 "WHERE id=$1 "
+                                 "RETURNING id, title, duration_minutes, description, department, created_at, updated_at",
+                                 5, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto item = row_to_ideenkiste(res, 0);
+    PQclear(res);
+    return item;
+}
+
+bool Database::delete_ideenkiste_item(const std::string &id)
+{
+    ensure_connected();
+    const char *params[] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM ideenkiste WHERE id=$1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = false;
+    if (PQresultStatus(res) == PGRES_COMMAND_OK)
+    {
+        const char *affected = PQcmdTuples(res);
+        ok = affected && std::string(affected) != "0";
+    }
+    PQclear(res);
+    return ok;
 }

@@ -3,7 +3,7 @@ UWEBSOCKETS_VERSION := v20.62.0
 USOCKETS_VERSION    := v0.8.8
 
 # Dev-Compose-Datei (docker-compose.yml = Produktion mit GHCR-Images)
-DC := docker compose -f docker-compose-dev.yml
+DC := podman compose -f docker-compose-dev.yml
 
 .PHONY: up down build rebuild logs logs-backend logs-frontend logs-db \
        restart restart-backend restart-frontend restart-db \

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onUnmounted, onMounted, shallowReactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useActivities } from '../composables/useActivities';
 import { useUsers } from '../composables/useUsers';
@@ -9,7 +9,8 @@ import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake } from 'lucide-vue-next';
+import { useIdeenkiste } from '../composables/useIdeenkiste';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -39,7 +40,7 @@ const {
 	predefinedLocations,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
-const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper } = usePermissions();
+const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper, canIdeenkiste, canIdeenkisteAdd } = usePermissions();
 
 const { fetchForm } = useForms();
 const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
@@ -1550,6 +1551,8 @@ onUnmounted(() => {
 	window.removeEventListener('keydown', onStatsDrawerKeydown);
 	document.removeEventListener('pointerdown', onDocumentPointerDown);
 	window.removeEventListener('resize', onWindowResize);
+	window.removeEventListener('dragover', onWindowProgramDragOver);
+	stopProgramDragAutoScroll();
 	// Leave the activity and unlock any held section
 	wsLeave();
 	document.title = 'DPWeb Aktivitäten';
@@ -1854,6 +1857,14 @@ const editDeptItems = computed(() =>
 	editWritableDepts.value.map((d) => ({ value: d })),
 );
 
+const draggedProgramIndex = ref<number | null>(null);
+const dragOverProgramIndex = ref<number | null>(null);
+const programHandleDragActive = ref(false);
+let programDragPointerY: number | null = null;
+let programDragScrollRaf: number | null = null;
+const PROGRAM_DRAG_SCROLL_EDGE_PX = 96;
+const PROGRAM_DRAG_SCROLL_MAX_STEP = 22;
+
 // ---- Programs --------------------------------------------------------------
 function addMinutesToClock(start: string, minutes: number): string {
 	const m = /^(\d{1,2}):(\d{2})$/.exec(start.trim());
@@ -1943,6 +1954,153 @@ function addProgram() {
 }
 function removeProgram(i: number) {
 	editPrograms.value.splice(i, 1);
+}
+
+function updateProgramDragAutoScroll() {
+	if (!programHandleDragActive.value || programDragPointerY === null) return;
+
+	const viewportHeight = window.innerHeight;
+	const topZone = PROGRAM_DRAG_SCROLL_EDGE_PX;
+	const bottomZoneStart = viewportHeight - PROGRAM_DRAG_SCROLL_EDGE_PX;
+	let deltaY = 0;
+
+	if (programDragPointerY < topZone) {
+		const ratio = (topZone - programDragPointerY) / PROGRAM_DRAG_SCROLL_EDGE_PX;
+		deltaY = -Math.max(2, Math.round(ratio * PROGRAM_DRAG_SCROLL_MAX_STEP));
+	} else if (programDragPointerY > bottomZoneStart) {
+		const ratio = (programDragPointerY - bottomZoneStart) / PROGRAM_DRAG_SCROLL_EDGE_PX;
+		deltaY = Math.max(2, Math.round(ratio * PROGRAM_DRAG_SCROLL_MAX_STEP));
+	}
+
+	if (deltaY !== 0) {
+		window.scrollBy({ top: deltaY, behavior: 'auto' });
+	}
+}
+
+function programDragAutoScrollLoop() {
+	if (!programHandleDragActive.value) {
+		programDragScrollRaf = null;
+		return;
+	}
+
+	updateProgramDragAutoScroll();
+	programDragScrollRaf = requestAnimationFrame(programDragAutoScrollLoop);
+}
+
+function startProgramDragAutoScroll() {
+	if (programDragScrollRaf !== null) return;
+	programDragScrollRaf = requestAnimationFrame(programDragAutoScrollLoop);
+}
+
+function stopProgramDragAutoScroll() {
+	if (programDragScrollRaf !== null) {
+		cancelAnimationFrame(programDragScrollRaf);
+		programDragScrollRaf = null;
+	}
+	programDragPointerY = null;
+}
+
+function onWindowProgramDragOver(event: DragEvent) {
+	if (!programHandleDragActive.value) return;
+	programDragPointerY = event.clientY;
+}
+
+function startProgramDrag(i: number, event: DragEvent) {
+	draggedProgramIndex.value = i;
+	dragOverProgramIndex.value = i;
+	programHandleDragActive.value = true;
+	programDragPointerY = event.clientY;
+	window.addEventListener('dragover', onWindowProgramDragOver);
+	startProgramDragAutoScroll();
+	if (event.dataTransfer) {
+		event.dataTransfer.effectAllowed = 'move';
+		event.dataTransfer.setData('text/plain', String(i));
+	}
+}
+
+function onProgramDragOver(i: number, event: DragEvent) {
+	if (draggedProgramIndex.value === null) return;
+	event.preventDefault();
+	if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	programDragPointerY = event.clientY;
+	dragOverProgramIndex.value = i;
+}
+
+function onProgramDrop(i: number, event: DragEvent) {
+	event.preventDefault();
+	if (draggedProgramIndex.value === null) return;
+
+	const from = draggedProgramIndex.value;
+	const to = i;
+	if (from !== to && from >= 0 && to >= 0 && from < editPrograms.value.length && to < editPrograms.value.length) {
+		const moved = editPrograms.value.splice(from, 1)[0];
+		editPrograms.value.splice(to, 0, moved);
+		markDirty('programs');
+		initProgEditors();
+	}
+
+	window.removeEventListener('dragover', onWindowProgramDragOver);
+	stopProgramDragAutoScroll();
+	draggedProgramIndex.value = null;
+	dragOverProgramIndex.value = null;
+	programHandleDragActive.value = false;
+}
+
+function endProgramDrag() {
+	window.removeEventListener('dragover', onWindowProgramDragOver);
+	stopProgramDragAutoScroll();
+	draggedProgramIndex.value = null;
+	dragOverProgramIndex.value = null;
+	programHandleDragActive.value = false;
+}
+
+// ---- Ideenkiste integration --------------------------------------------------
+const { items: ideenkisteItems, fetchItems: fetchIdeenkiste, createItem: createIdeenkisteItem, deleteItem: deleteIdeenkisteItem } = useIdeenkiste();
+const showIdeenDropdown = ref(false);
+const ideenSearch = ref('');
+const ideenSaving = ref<number | null>(null);
+const savedToIdeen = shallowReactive(new Map<object, string>());
+
+const ideenFiltered = computed(() => {
+	const q = ideenSearch.value.toLowerCase();
+	return q ? ideenkisteItems.value.filter(it =>
+		it.title.toLowerCase().includes(q) || it.description.toLowerCase().includes(q)
+	) : ideenkisteItems.value;
+});
+
+function addProgramFromIdee(item: typeof ideenkisteItems.value[0]) {
+	editPrograms.value.push({
+		duration_minutes: item.duration_minutes,
+		title: item.title,
+		description: item.description,
+		responsible: [],
+	});
+	showIdeenDropdown.value = false;
+	ideenSearch.value = '';
+}
+
+async function saveToIdeenkiste(i: number) {
+	const prog = editPrograms.value[i];
+	ideenSaving.value = i;
+	if (savedToIdeen.has(prog)) {
+		const id = savedToIdeen.get(prog)!;
+		const ok = await deleteIdeenkisteItem(id);
+		if (ok) savedToIdeen.delete(prog);
+	} else {
+		const result = await createIdeenkisteItem({
+			title: prog.title,
+			duration_minutes: prog.duration_minutes,
+			description: prog.description,
+			department: activity.value?.department ?? null,
+		});
+		if (result) savedToIdeen.set(prog, result.id);
+	}
+	ideenSaving.value = null;
+}
+
+function openIdeenDropdown() {
+	showIdeenDropdown.value = true;
+	fetchIdeenkiste();
 }
 
 // ---- Program responsible search (multi-select + free text) ------------------
@@ -3226,17 +3384,56 @@ function copyShareLink() {
 				<p class="form-section-title">Programmpunkte</p>
 				<div style="display: flex; flex-direction: column; gap: 10px">
 					<div v-for="(prog, i) in editPrograms" :key="i" class="program-card lock-wrapper"
-						:class="{ 'is-locked': isLockedByOther(`program_${i}`) }"
+						:class="{
+							'is-locked': isLockedByOther(`program_${i}`),
+							'program-card--drag-source': draggedProgramIndex === i,
+							'program-card--drag-over': draggedProgramIndex !== null && dragOverProgramIndex === i,
+						}"
+						@dragover="onProgramDragOver(i, $event)"
+						@drop="onProgramDrop(i, $event)"
 						@focusin="lockSection(`program_${i}`)" @focusout="unlockSection(`program_${i}`, $event)">
-						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
-						<button
-							type="button"
-							class="program-card__remove"
-							@click="removeProgram(i)"
-							:disabled="isLockedByOther(`program_${i}`)"
+						<div
+							class="program-card__drag-handle"
+							:class="{ 'program-card__drag-handle--active': programHandleDragActive && draggedProgramIndex === i }"
+							draggable="true"
+							:title="`Programmpunkt verschieben (${i + 1})`"
+							aria-label="Programmpunkt verschieben"
+							@dragstart="startProgramDrag(i, $event)"
+							@dragover="onProgramDragOver(i, $event)"
+							@drop="onProgramDrop(i, $event)"
+							@dragend="endProgramDrag"
 						>
-							<X :size="14" aria-hidden="true" />
-						</button>
+							<span class="program-card__drag-dots" aria-hidden="true">
+								<span></span>
+								<span></span>
+								<span></span>
+								<span></span>
+								<span></span>
+								<span></span>
+							</span>
+						</div>
+						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
+						<div class="program-card__top-actions">
+							<button
+								v-if="canIdeenkisteAdd()"
+								type="button"
+								class="program-card__save-idee"
+								:class="{ 'program-card__save-idee--saved': savedToIdeen.has(prog) }"
+								@click="saveToIdeenkiste(i)"
+								:disabled="isLockedByOther(`program_${i}`) || ideenSaving === i || !prog.title"
+								:title="savedToIdeen.has(prog) ? 'In Ideenkiste – erneut drücken zum Entfernen' : 'Zur Ideenkiste'"
+							>
+								<BookMarked :size="14" aria-hidden="true" />
+							</button>
+							<button
+								type="button"
+								class="program-card__remove"
+								@click="removeProgram(i)"
+								:disabled="isLockedByOther(`program_${i}`)"
+							>
+								<X :size="14" aria-hidden="true" />
+							</button>
+						</div>
 						<div class="program-card__fields">
 							<div class="form-group">
 								<label>Dauer (Minuten)</label>
@@ -3344,9 +3541,50 @@ function copyShareLink() {
 							</div>
 						</div>
 					</div>
-					<button type="button" class="btn-add" @click="addProgram">
-						+ Programmpunkt
-					</button>
+					<div :class="canIdeenkiste() ? 'btn-add-split' : 'btn-add-single'">
+						<button
+							type="button"
+							class="btn-add"
+							:class="{ 'btn-add-split__main': canIdeenkiste() }"
+							@click="addProgram"
+						>
+							+ Programmpunkt
+						</button>
+						<div v-if="canIdeenkiste()" class="btn-add-split__dropdown-wrap">
+							<button type="button" class="btn-add btn-add-split__caret" @click="openIdeenDropdown" title="Aus Ideenkiste">
+								<BookMarked :size="14" aria-hidden="true" />
+							</button>
+							<div v-if="showIdeenDropdown" class="ideen-dropdown-overlay" @click="showIdeenDropdown = false; ideenSearch = ''" />
+							<div v-if="showIdeenDropdown" class="ideen-dropdown">
+								<div class="ideen-dropdown__header">
+									<input
+										v-model="ideenSearch"
+										class="ideen-dropdown__search"
+										type="search"
+										placeholder="Suchen…"
+										autofocus
+										@keydown.escape="showIdeenDropdown = false; ideenSearch = ''"
+									/>
+									<button type="button" class="ideen-dropdown__close" @click="showIdeenDropdown = false; ideenSearch = ''">
+										<X :size="14" aria-hidden="true" />
+									</button>
+								</div>
+								<div class="ideen-dropdown__list">
+									<p v-if="ideenFiltered.length === 0" class="ideen-dropdown__empty">Keine Einträge gefunden.</p>
+									<button
+										v-for="item in ideenFiltered"
+										:key="item.id"
+										type="button"
+										class="ideen-dropdown__item"
+										@click="addProgramFromIdee(item)"
+									>
+										<span class="ideen-dropdown__item-title">{{ item.title }}</span>
+										<span v-if="item.duration_minutes" class="ideen-dropdown__item-meta">{{ item.duration_minutes }} min</span>
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
 				</div>
 			</div>
 

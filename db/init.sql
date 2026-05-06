@@ -110,6 +110,23 @@ CREATE TRIGGER trg_activities_updated_at
 CREATE INDEX IF NOT EXISTS idx_activities_date ON activities (date DESC, start_time);
 CREATE INDEX IF NOT EXISTS idx_programs_activity_id ON programs (activity_id);
 
+CREATE TABLE IF NOT EXISTS ideenkiste (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title            TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK (duration_minutes >= 0),
+    description      TEXT NOT NULL DEFAULT '',
+    department       TEXT REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_ideenkiste_updated_at ON ideenkiste;
+CREATE TRIGGER trg_ideenkiste_updated_at
+    BEFORE UPDATE ON ideenkiste
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_ideenkiste_department ON ideenkiste (department);
+
 CREATE TABLE IF NOT EXISTS users (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     microsoft_oid TEXT        NOT NULL UNIQUE,
@@ -318,7 +335,13 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     user_role_scope           TEXT    NOT NULL DEFAULT 'none'
         CHECK (user_role_scope IN ('none', 'own', 'own_dept', 'all')),
     locations_manage_scope   TEXT    NOT NULL DEFAULT 'none'
-        CHECK (locations_manage_scope IN ('none', 'all'))
+        CHECK (locations_manage_scope IN ('none', 'all')),
+    ideenkiste_scope         TEXT    NOT NULL DEFAULT 'none'
+        CHECK (ideenkiste_scope IN ('none', 'own_dept', 'all')),
+    ideenkiste_add_scope     TEXT    NOT NULL DEFAULT 'none'
+        CHECK (ideenkiste_add_scope IN ('none', 'own_dept', 'all')),
+    ideenkiste_delete_scope  TEXT    NOT NULL DEFAULT 'none'
+        CHECK (ideenkiste_delete_scope IN ('none', 'own_dept', 'all'))
 );
 
 -- Cross-department access per role (beyond own department)
@@ -331,9 +354,9 @@ CREATE TABLE IF NOT EXISTS role_dept_access (
 );
 
 -- Seed default role permissions
-INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope) VALUES
-    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all'),
-    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none', 'none')
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope, ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope) VALUES
+    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all'),
+    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none', 'none', 'none', 'none', 'none')
 ON CONFLICT (role) DO NOTHING;
 
 -- Triggers for departments & roles updated_at
@@ -530,3 +553,27 @@ EXCEPTION
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_form_drafts_activity ON form_drafts (activity_id);
+
+ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_scope TEXT NOT NULL DEFAULT 'none'
+    CHECK (ideenkiste_scope IN ('none', 'own_dept', 'all'));
+ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_add_scope TEXT NOT NULL DEFAULT 'none'
+    CHECK (ideenkiste_add_scope IN ('none', 'own_dept', 'all'));
+ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_delete_scope TEXT NOT NULL DEFAULT 'none'
+    CHECK (ideenkiste_delete_scope IN ('none', 'own_dept', 'all'));
+
+CREATE TABLE IF NOT EXISTS ideenkiste (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title            TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK (duration_minutes >= 0),
+    description      TEXT NOT NULL DEFAULT '',
+    department       TEXT REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_ideenkiste_updated_at ON ideenkiste;
+CREATE TRIGGER trg_ideenkiste_updated_at
+    BEFORE UPDATE ON ideenkiste
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_ideenkiste_department ON ideenkiste (department);

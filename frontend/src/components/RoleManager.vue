@@ -44,6 +44,11 @@ const SCOPE_OPTIONS_LOCATIONS_MANAGE = [
   { value: 'none', label: 'Kein Zugriff' },
   { value: 'all', label: 'Alle' },
 ]
+const SCOPE_OPTIONS_IDEENKISTE = [
+  { value: 'none', label: 'Kein Zugriff' },
+  { value: 'own_dept', label: 'Nur eigene Stufe' },
+  { value: 'all', label: 'Alle' },
+]
 
 const {
   roles,
@@ -625,6 +630,27 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
               <select class="scope-select" :value="getPermForRole(r.name)!.locations_manage_scope"
                 @change="updatePerm(r.name, 'locations_manage_scope', ($event.target as HTMLSelectElement).value)">
                 <option v-for="o in SCOPE_OPTIONS_LOCATIONS_MANAGE" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Ideenkiste anzeigen / importieren</span></div>
+              <select class="scope-select" :value="getPermForRole(r.name)!.ideenkiste_scope"
+                @change="updatePerm(r.name, 'ideenkiste_scope', ($event.target as HTMLSelectElement).value)">
+                <option v-for="o in SCOPE_OPTIONS_IDEENKISTE" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Ideenkiste hinzufügen / bearbeiten</span></div>
+              <select class="scope-select" :value="getPermForRole(r.name)!.ideenkiste_add_scope"
+                @change="updatePerm(r.name, 'ideenkiste_add_scope', ($event.target as HTMLSelectElement).value)">
+                <option v-for="o in SCOPE_OPTIONS_IDEENKISTE" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Ideenkiste löschen</span></div>
+              <select class="scope-select" :value="getPermForRole(r.name)!.ideenkiste_delete_scope"
+                @change="updatePerm(r.name, 'ideenkiste_delete_scope', ($event.target as HTMLSelectElement).value)">
+                <option v-for="o in SCOPE_OPTIONS_IDEENKISTE" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
             </div>
             </template>

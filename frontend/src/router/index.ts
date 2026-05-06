@@ -10,6 +10,7 @@ import FormPublicPage from '../pages/FormPublicPage.vue';
 import SharedActivityPage from '../pages/SharedActivityPage.vue';
 import ActivityFormsPage from '../pages/ActivityFormsPage.vue';
 import VorlagenPage from '../pages/VorlagenPage.vue';
+import IdeenkistePage from '../pages/IdeenkistePage.vue';
 import SetupPage from '../pages/SetupPage.vue';
 import { user, authLoading } from '../composables/useAuth';
 import { ensureSetupStatus } from '../composables/useSetupAuthConfig';
@@ -24,6 +25,7 @@ export const router = createRouter({
 		{ path: '/activities/:id/mail', component: MailComposerPage },
 		{ path: '/activities/:id/forms', component: ActivityFormsPage },
 		{ path: '/vorlagen', component: VorlagenPage },
+		{ path: '/ideenkiste', component: IdeenkistePage },
 		{ path: '/mail-templates', redirect: '/vorlagen' },
 		{ path: '/form-templates', redirect: '/vorlagen' },
 		{ path: '/stats', component: StatsPage },

@@ -5865,7 +5865,10 @@ static nlohmann::json role_perm_to_json(const RolePermission &rp)
         {"event_publish_scope", rp.event_publish_scope},
         {"user_dept_scope", rp.user_dept_scope},
         {"user_role_scope", rp.user_role_scope},
-        {"locations_manage_scope", rp.locations_manage_scope}};
+        {"locations_manage_scope", rp.locations_manage_scope},
+        {"ideenkiste_scope", rp.ideenkiste_scope},
+        {"ideenkiste_add_scope", rp.ideenkiste_add_scope},
+        {"ideenkiste_delete_scope", rp.ideenkiste_delete_scope}};
 }
 
 // ── Current user permissions ─────────────────────────────────────────────────
@@ -5903,6 +5906,9 @@ void handle_get_my_permissions(HttpRes *res, HttpReq *req, Database &db)
                 {"user_dept_scope", "all"},
                 {"user_role_scope", "all"},
                 {"locations_manage_scope", "all"},
+                {"ideenkiste_scope", "all"},
+                {"ideenkiste_add_scope", "all"},
+                {"ideenkiste_delete_scope", "all"},
                 {"dept_access", nlohmann::json::array()}};
             send_json(res, 200, j.dump());
             return;
@@ -6536,6 +6542,9 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
         std::string user_dept_scope = j.value("user_dept_scope", "none");
         std::string user_role_scope = j.value("user_role_scope", "none");
         std::string locations_manage_scope = j.value("locations_manage_scope", "none");
+        std::string ideenkiste_scope = j.value("ideenkiste_scope", "none");
+        std::string ideenkiste_add_scope = j.value("ideenkiste_add_scope", "none");
+        std::string ideenkiste_delete_scope = j.value("ideenkiste_delete_scope", "none");
 
         bool can_read_own_dept = activity_read_scope == "same_dept" || activity_read_scope == "all";
         bool can_read_all_depts = activity_read_scope == "all";
@@ -6549,7 +6558,8 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
                                                 mail_send_scope, mail_templates_scope,
                                                 form_scope, form_templates_scope,
                                                 event_templates_scope, event_publish_scope,
-                                                user_dept_scope, user_role_scope, locations_manage_scope);
+                                                user_dept_scope, user_role_scope, locations_manage_scope,
+                                                ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope);
             if (!ok) {
                 send_json(res, 404, R"({"error":"Rolle nicht gefunden"})");
                 return;
@@ -7493,6 +7503,213 @@ void handle_get_shared_activity(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
         send_json(res, 200, to_json(*activity).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+// ── Ideenkiste ───────────────────────────────────────────────────────────────
+
+enum class IdeenkisteOp { View, Add, Delete };
+
+static std::optional<std::string> ideenkiste_check(HttpRes *res, HttpReq *req, Database &db,
+                                                    UserRecord &out_user, IdeenkisteOp op)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return std::nullopt;
+    auto user = resolve_user(db, claims);
+    if (!user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return std::nullopt;
+    }
+    auto perm = is_admin(*user) ? std::optional<RolePermission>{} : db.get_role_permission(user->role);
+    std::string scope;
+    if (is_admin(*user))
+    {
+        scope = "all";
+    }
+    else if (perm)
+    {
+        switch (op)
+        {
+        case IdeenkisteOp::View:   scope = perm->ideenkiste_scope; break;
+        case IdeenkisteOp::Add:    scope = perm->ideenkiste_add_scope; break;
+        case IdeenkisteOp::Delete: scope = perm->ideenkiste_delete_scope; break;
+        }
+    }
+    else
+    {
+        scope = "none";
+    }
+    if (scope == "none")
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return std::nullopt;
+    }
+    out_user = *user;
+    return scope;
+}
+
+static bool ideenkiste_item_in_scope(Database &db,
+                                     const std::string &item_id,
+                                     const std::string &scope,
+                                     const std::optional<std::string> &user_dept)
+{
+    if (scope == "all")
+        return true;
+
+    if (scope == "own_dept")
+    {
+        if (!user_dept)
+            return false;
+
+        auto all_items = db.list_ideenkiste("");
+        for (const auto &item : all_items)
+        {
+            if (item.id == item_id)
+                return item.department.has_value() && *item.department == *user_dept;
+        }
+    }
+
+    return false;
+}
+
+void handle_get_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
+{
+    UserRecord user;
+    auto scope = ideenkiste_check(res, req, db, user, IdeenkisteOp::View);
+    if (!scope)
+        return;
+    try
+    {
+        std::string dept_filter = (*scope == "own_dept" && user.department) ? *user.department : "";
+        auto items = db.list_ideenkiste(dept_filter);
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto &item : items)
+            arr.push_back(ideenkiste_to_json(item));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
+{
+    UserRecord user;
+    auto scope = ideenkiste_check(res, req, db, user, IdeenkisteOp::Add);
+    if (!scope)
+        return;
+    res->onAborted([]() {});
+    res->onData([res, &db, user_dept = user.department, scope = *scope](std::string_view body, bool last)
+    {
+        if (!last) return;
+        try
+        {
+            auto j = nlohmann::json::parse(body);
+            IdeenkisteInput input;
+            input.title = j.value("title", "");
+            input.duration_minutes = j.value("duration_minutes", 0);
+            input.description = j.value("description", "");
+            if (j.contains("department") && !j["department"].is_null())
+                input.department = j["department"].get<std::string>();
+            if (input.title.empty())
+            {
+                send_json(res, 400, R"({"error":"Titel fehlt"})");
+                return;
+            }
+            if (scope == "own_dept")
+                input.department = user_dept;
+            auto item = db.create_ideenkiste_item(input);
+            if (!item)
+            {
+                send_json(res, 500, R"({"error":"Fehler beim Erstellen"})");
+                return;
+            }
+            send_json(res, 201, ideenkiste_to_json(*item).dump());
+        }
+        catch (std::exception &e)
+        {
+            send_internal_error(res, "handler", e);
+        }
+    });
+}
+
+void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
+{
+    UserRecord user;
+    auto scope = ideenkiste_check(res, req, db, user, IdeenkisteOp::Add);
+    if (!scope)
+        return;
+    std::string id{req->getParameter(0)};
+    res->onAborted([]() {});
+    res->onData([res, &db, id, user_dept = user.department, scope = *scope](std::string_view body, bool last)
+    {
+        if (!last) return;
+        try
+        {
+            if (!ideenkiste_item_in_scope(db, id, scope, user_dept))
+            {
+                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                return;
+            }
+
+            auto j = nlohmann::json::parse(body);
+            IdeenkisteInput input;
+            input.title = j.value("title", "");
+            input.duration_minutes = j.value("duration_minutes", 0);
+            input.description = j.value("description", "");
+            if (j.contains("department") && !j["department"].is_null())
+                input.department = j["department"].get<std::string>();
+            if (input.title.empty())
+            {
+                send_json(res, 400, R"({"error":"Titel fehlt"})");
+                return;
+            }
+            if (scope == "own_dept")
+                input.department = user_dept;
+            auto item = db.update_ideenkiste_item(id, input);
+            if (!item)
+            {
+                send_json(res, 404, R"({"error":"Nicht gefunden"})");
+                return;
+            }
+            send_json(res, 200, ideenkiste_to_json(*item).dump());
+        }
+        catch (std::exception &e)
+        {
+            send_internal_error(res, "handler", e);
+        }
+    });
+}
+
+void handle_delete_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
+{
+    UserRecord user;
+    auto scope = ideenkiste_check(res, req, db, user, IdeenkisteOp::Delete);
+    if (!scope)
+        return;
+    std::string id{req->getParameter(0)};
+    try
+    {
+        if (!ideenkiste_item_in_scope(db, id, *scope, user.department))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        bool ok = db.delete_ideenkiste_item(id);
+        if (!ok)
+        {
+            send_json(res, 404, R"({"error":"Nicht gefunden"})");
+            return;
+        }
+        send_json(res, 200, R"({"ok":true})");
     }
     catch (std::exception &e)
     {

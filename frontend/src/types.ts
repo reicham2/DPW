@@ -222,6 +222,26 @@ export interface RolePermission {
 	user_dept_scope: 'none' | 'own' | 'own_dept' | 'all';
 	user_role_scope: 'none' | 'own' | 'own_dept' | 'all';
 	locations_manage_scope: 'none' | 'all';
+	ideenkiste_scope: 'none' | 'own_dept' | 'all';
+	ideenkiste_add_scope: 'none' | 'own_dept' | 'all';
+	ideenkiste_delete_scope: 'none' | 'own_dept' | 'all';
+}
+
+export interface IdeenkisteItem {
+	id: string;
+	title: string;
+	duration_minutes: number;
+	description: string;
+	department: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface IdeenkisteInput {
+	title: string;
+	duration_minutes: number;
+	description: string;
+	department?: string | null;
 }
 
 export interface MyPermissions extends RolePermission {
