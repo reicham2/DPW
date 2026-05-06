@@ -23,7 +23,7 @@ function formatDate(d: string): string {
   <div class="activity-card" :class="{ 'activity-card--dimmed': dimmed }">
     <div class="card-header">
       <span class="card-title">{{ activity.title }}</span>
-      <DepartmentBadge :department="activity.department" />
+      <DepartmentBadge :department="activity.department" :active="false" />
     </div>
     <div class="card-meta">
       <span class="card-date">
