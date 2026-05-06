@@ -8,30 +8,32 @@
       <div class="profile-avatar-large">{{ initials }}</div>
 
       <form class="profile-form" @submit.prevent="save">
-        <div class="form-group">
-          <label class="form-label">Anzeigename</label>
-          <input class="form-input form-input--readonly" type="text" :value="user?.display_name" readonly />
-          <p class="form-hint">Wird automatisch aus deinem Microsoft-Konto übernommen.</p>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="department">Stufe</label>
-          <BadgeSelect
-            v-if="canChangeDepartment"
-            kind="department"
-            :items="deptItems"
-            allow-empty
-            placeholder="Keine Angabe"
-            :model-value="form.department || null"
-            @update:model-value="(v) => form.department = (v ?? '')"
-          />
-          <div v-else class="profile-dept-readonly">
-            <DepartmentBadge v-if="form.department" :department="form.department" />
-            <span v-else class="profile-dept-empty">Keine Angabe</span>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Anzeigename</label>
+            <input class="form-input form-input--readonly" type="text" :value="user?.display_name" readonly />
+            <p class="form-hint">Wird automatisch aus deinem Microsoft-Konto übernommen.</p>
           </div>
-          <p v-if="!canChangeDepartment" class="form-hint">
-            Stufe kann nur von einem Admin geändert werden.
-          </p>
+
+          <div class="form-group">
+            <label class="form-label" for="department">Stufe</label>
+            <BadgeSelect
+              v-if="canChangeDepartment"
+              kind="department"
+              :items="deptItems"
+              allow-empty
+              placeholder="Keine Angabe"
+              :model-value="form.department || null"
+              @update:model-value="(v) => form.department = (v ?? '')"
+            />
+            <div v-else class="profile-dept-readonly">
+              <DepartmentBadge v-if="form.department" :department="form.department" />
+              <span v-else class="profile-dept-empty">Keine Angabe</span>
+            </div>
+            <p v-if="!canChangeDepartment" class="form-hint">
+              Stufe kann nur von einem Admin geändert werden.
+            </p>
+          </div>
         </div>
 
         <div class="form-group">
@@ -39,137 +41,141 @@
           <input class="form-input form-input--readonly" type="text" :value="user?.email" readonly />
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Zeitanzeige der Programmpunkte</label>
-          <div class="time-mode-toggle" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="form.time_display_mode === 'minutes'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': form.time_display_mode === 'minutes' }"
-              @click="form.time_display_mode = 'minutes'"
-            >
-              Minuten
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="form.time_display_mode === 'clock'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': form.time_display_mode === 'clock' }"
-              @click="form.time_display_mode = 'clock'"
-            >
-              Uhrzeit
-            </button>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label class="form-label">Zeitanzeige der Programmpunkte</label>
+            <div class="time-mode-toggle" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="form.time_display_mode === 'minutes'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': form.time_display_mode === 'minutes' }"
+                @click="form.time_display_mode = 'minutes'"
+              >
+                Minuten
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="form.time_display_mode === 'clock'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': form.time_display_mode === 'clock' }"
+                @click="form.time_display_mode = 'clock'"
+              >
+                Uhrzeit
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label class="form-label form-label--with-info">
-            Statistik-Anzeige auf Aktivität
-            <span
-              class="info-tip"
-              tabindex="0"
-              role="button"
-              aria-label="Mehr Informationen"
-              @click="statsInfoOpen = !statsInfoOpen"
-              @blur="statsInfoOpen = false"
-            >
-              ?
-              <span v-if="statsInfoOpen" class="info-tip__popover">
-                <strong>Seitlich:</strong> Die Statistik erscheint rechts neben der Aktivität, wenn der Bildschirm breit genug ist. Auf schmalen Bildschirmen wird sie automatisch aufklappbar.<br /><br />
-                <strong>Klappbar:</strong> Die Statistik ist immer über einen Knopf am rechten Rand zum Öffnen verfügbar – auch auf breiten Bildschirmen.
+          <div class="form-group">
+            <label class="form-label form-label--with-info">
+              Statistik-Anzeige auf Aktivität
+              <span
+                class="info-tip"
+                tabindex="0"
+                role="button"
+                aria-label="Mehr Informationen"
+                @click="statsInfoOpen = !statsInfoOpen"
+                @blur="statsInfoOpen = false"
+              >
+                ?
+                <span v-if="statsInfoOpen" class="info-tip__popover">
+                  <strong>Seitlich:</strong> Die Statistik erscheint rechts neben der Aktivität, wenn der Bildschirm breit genug ist. Auf schmalen Bildschirmen wird sie automatisch aufklappbar.<br /><br />
+                  <strong>Klappbar:</strong> Die Statistik ist immer über einen Knopf am rechten Rand zum Öffnen verfügbar – auch auf breiten Bildschirmen.
+                </span>
               </span>
-            </span>
-          </label>
-          <div class="time-mode-toggle" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="statsDisplayMode === 'auto'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': statsDisplayMode === 'auto' }"
-              @click="statsDisplayMode = 'auto'"
-            >
-              Seitlich
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="statsDisplayMode === 'always-drawer'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': statsDisplayMode === 'always-drawer' }"
-              @click="statsDisplayMode = 'always-drawer'"
-            >
-              Klappbar
-            </button>
+            </label>
+            <div class="time-mode-toggle" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="statsDisplayMode === 'auto'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': statsDisplayMode === 'auto' }"
+                @click="statsDisplayMode = 'auto'"
+              >
+                Seitlich
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="statsDisplayMode === 'always-drawer'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': statsDisplayMode === 'always-drawer' }"
+                @click="statsDisplayMode = 'always-drawer'"
+              >
+                Klappbar
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Erscheinungsbild</label>
+            <div class="time-mode-toggle" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="themeMode === 'light'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': themeMode === 'light' }"
+                @click="themeMode = 'light'"
+              >
+                Hell
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="themeMode === 'dark'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': themeMode === 'dark' }"
+                @click="themeMode = 'dark'"
+              >
+                Dunkel
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Erscheinungsbild</label>
-          <div class="time-mode-toggle" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="themeMode === 'light'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': themeMode === 'light' }"
-              @click="themeMode = 'light'"
-            >
-              Hell
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="themeMode === 'dark'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': themeMode === 'dark' }"
-              @click="themeMode = 'dark'"
-            >
-              Dunkel
-            </button>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Benachrichtigungen abonnieren</label>
+            <label class="notify-option">
+              <input v-model="form.notify_activity_assigned" type="checkbox" />
+              <span>Aktivität dir zugewiesen</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_program_assigned" type="checkbox" />
+              <span>Programmblock dir zugewiesen</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_material_assigned" type="checkbox" />
+              <span>Material an dich zugewiesen</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_mail_own_activity" type="checkbox" />
+              <span>Mail versendet für deine Aktivität</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_mail_department" type="checkbox" />
+              <span>Mail versendet in deiner Stufe</span>
+            </label>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label class="form-label">Benachrichtigungen abonnieren</label>
-          <label class="notify-option">
-            <input v-model="form.notify_activity_assigned" type="checkbox" />
-            <span>Aktivität dir zugewiesen</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_program_assigned" type="checkbox" />
-            <span>Programmblock dir zugewiesen</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_material_assigned" type="checkbox" />
-            <span>Material an dich zugewiesen</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_mail_own_activity" type="checkbox" />
-            <span>Mail versendet für deine Aktivität</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_mail_department" type="checkbox" />
-            <span>Mail versendet in deiner Stufe</span>
-          </label>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Benachrichtigungskanal</label>
-          <label class="notify-option">
-            <input v-model="form.notify_channel_websocket" type="checkbox" />
-            <span>Browser / App</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_channel_email" type="checkbox" />
-            <span>E-Mail</span>
-          </label>
-          <p class="form-hint">
-            Browser / App zeigt Benachrichtigungen im Browser und in der installierten PWA-App.
-          </p>
+          <div class="form-group">
+            <label class="form-label">Benachrichtigungskanal</label>
+            <label class="notify-option">
+              <input v-model="form.notify_channel_websocket" type="checkbox" />
+              <span>Browser / App</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_channel_email" type="checkbox" />
+              <span>E-Mail</span>
+            </label>
+            <p class="form-hint">
+              Browser / App zeigt Benachrichtigungen im Browser und in der installierten PWA-App.
+            </p>
+          </div>
         </div>
 
         <ErrorAlert :error="error" />
@@ -286,7 +292,7 @@ async function save() {
 <style scoped>
 .page-header {
   padding: 32px 24px 0;
-  max-width: 560px;
+  max-width: 860px;
   margin: 0 auto;
 }
 .page-title {
@@ -297,7 +303,7 @@ async function save() {
 }
 .page-content {
   padding: 24px;
-  max-width: 560px;
+  max-width: 860px;
   margin: 0 auto;
 }
 .profile-card {
@@ -328,6 +334,22 @@ async function save() {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.form-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 599px) {
+  .form-row-2,
+  .form-row-3 {
+    grid-template-columns: 1fr;
+  }
 }
 .form-group {
   display: flex;
