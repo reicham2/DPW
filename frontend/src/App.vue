@@ -359,11 +359,11 @@ onUnmounted(() => {
 }
 .global-nav-link:hover {
   color: var(--accent);
-  background: #f0f7ff;
+  background: var(--nav-link-active-bg);
 }
 .global-nav-link--active {
   color: var(--accent);
-  background: #e8f0fe;
+  background: var(--nav-link-active-bg);
 }
 
 .global-nav-right {
@@ -387,15 +387,15 @@ onUnmounted(() => {
 }
 
 .nav-connection--online {
-  color: #065f46;
-  background: #ecfdf5;
-  border-color: #a7f3d0;
+  color: var(--success-color);
+  background: var(--success-bg);
+  border-color: var(--success-color);
 }
 
 .nav-connection--offline {
-  color: #991b1b;
-  background: #fef2f2;
-  border-color: #fecaca;
+  color: var(--error-color);
+  background: var(--error-bg);
+  border-color: var(--error-border);
 }
 
 .global-nav-help {
@@ -491,12 +491,12 @@ onUnmounted(() => {
   transition: background 0.15s, color 0.15s;
 }
 .mobile-nav-link:hover {
-  background: #f0f7ff;
+  background: var(--nav-link-active-bg);
   color: var(--accent);
 }
 .mobile-nav-link--active {
   color: var(--accent);
-  background: #e8f0fe;
+  background: var(--nav-link-active-bg);
 }
 
 @media (max-width: 767px) {
