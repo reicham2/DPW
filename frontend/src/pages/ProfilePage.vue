@@ -5,36 +5,16 @@
 
   <main class="page-content">
     <div class="profile-card">
-      <div class="profile-avatar-large">{{ initials }}</div>
+      <div class="profile-identity">
+        <div class="profile-avatar-large">{{ initials }}</div>
+        <div class="profile-identity-info">
+          <span class="profile-identity-name">{{ user?.display_name }}</span>
+          <DepartmentBadge v-if="form.department" :department="form.department" />
+          <span v-else class="profile-dept-empty">Keine Stufe</span>
+        </div>
+      </div>
 
       <form class="profile-form" @submit.prevent="save">
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Anzeigename</label>
-            <input class="form-input form-input--readonly" type="text" :value="user?.display_name" readonly />
-            <p class="form-hint">Wird automatisch aus deinem Microsoft-Konto übernommen.</p>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="department">Stufe</label>
-            <BadgeSelect
-              v-if="canChangeDepartment"
-              kind="department"
-              :items="deptItems"
-              allow-empty
-              placeholder="Keine Angabe"
-              :model-value="form.department || null"
-              @update:model-value="(v) => form.department = (v ?? '')"
-            />
-            <div v-else class="profile-dept-readonly">
-              <DepartmentBadge v-if="form.department" :department="form.department" />
-              <span v-else class="profile-dept-empty">Keine Angabe</span>
-            </div>
-            <p v-if="!canChangeDepartment" class="form-hint">
-              Stufe kann nur von einem Admin geändert werden.
-            </p>
-          </div>
-        </div>
 
         <div class="form-group">
           <label class="form-label">E-Mail</label>
@@ -197,18 +177,10 @@ import { usePermissions } from '../composables/usePermissions'
 import { requestBrowserNotificationPermission, syncPushSubscription } from '../composables/useNotifications'
 import { statsDisplayMode, themeMode } from '../composables/useUserPrefs'
 import ErrorAlert from '../components/ErrorAlert.vue'
-import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { User, TimeDisplayMode } from '../types'
 
 const { myPermissions, fetchMyPermissions, departments: deptRecords, fetchDepartments } = usePermissions()
-
-const canChangeDepartment = computed(() => {
-  const scope = myPermissions.value?.user_dept_scope
-  return scope === 'own' || scope === 'own_dept' || scope === 'all'
-})
-
-const deptItems = computed(() => deptRecords.value.map(d => ({ value: d.name })))
 
 const form = ref({
   department:   user.value?.department   ?? '',
@@ -310,24 +282,40 @@ async function save() {
   background: var(--card-bg);
   border-radius: 14px;
   padding: 32px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  box-shadow: var(--card-shadow);
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 28px;
 }
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.profile-identity-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.profile-identity-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
 .profile-avatar-large {
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
-  font-size: 1.6rem;
+  color: var(--btn-primary-color);
+  font-size: 1.3rem;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   letter-spacing: 1px;
+  flex-shrink: 0;
 }
 .profile-form {
   width: 100%;
