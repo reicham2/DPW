@@ -108,6 +108,32 @@
         </div>
 
         <div class="form-group">
+          <label class="form-label">Erscheinungsbild</label>
+          <div class="time-mode-toggle" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="themeMode === 'light'"
+              class="time-mode-pill"
+              :class="{ 'time-mode-pill--active': themeMode === 'light' }"
+              @click="themeMode = 'light'"
+            >
+              Hell
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="themeMode === 'dark'"
+              class="time-mode-pill"
+              :class="{ 'time-mode-pill--active': themeMode === 'dark' }"
+              @click="themeMode = 'dark'"
+            >
+              Dunkel
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Benachrichtigungen abonnieren</label>
           <label class="notify-option">
             <input v-model="form.notify_activity_assigned" type="checkbox" />
@@ -163,7 +189,7 @@ import { user } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import { usePermissions } from '../composables/usePermissions'
 import { requestBrowserNotificationPermission, syncPushSubscription } from '../composables/useNotifications'
-import { statsDisplayMode } from '../composables/useUserPrefs'
+import { statsDisplayMode, themeMode } from '../composables/useUserPrefs'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
