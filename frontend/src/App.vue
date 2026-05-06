@@ -522,4 +522,18 @@ onUnmounted(() => {
     padding: 0 12px;
   }
 }
+
+:root[data-theme="dark"] .auth-box { background: #272524; box-shadow: 0 4px 32px rgba(0,0,0,0.45); }
+:root[data-theme="dark"] .auth-title { color: #f0ece8; }
+:root[data-theme="dark"] .auth-subtitle { color: #9A9490; }
+:root[data-theme="dark"] .auth-btn { background: #2563eb; }
+:root[data-theme="dark"] .auth-btn:hover:not(:disabled) { background: #3b7bf7; }
+:root[data-theme="dark"] .auth-btn:focus-visible { box-shadow: 0 0 0 2px #1F1D1C, 0 0 0 4px #7DAEE8; }
+:root[data-theme="dark"] .auth-error { color: #fca5a5; }
+:root[data-theme="dark"] .auth-divider { color: #847F7B; }
+:root[data-theme="dark"] .auth-divider::before,
+:root[data-theme="dark"] .auth-divider::after { background: #3E3B39; }
+:root[data-theme="dark"] .auth-debug-select { background: #312F2E; color: #E8E4E0; border-color: #4a4744; }
+:root[data-theme="dark"] .auth-btn-debug { background: #312F2E; }
+:root[data-theme="dark"] .auth-btn-debug:hover:not(:disabled) { background: #3E3B39; }
 </style>

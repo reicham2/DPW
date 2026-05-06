@@ -677,4 +677,30 @@ onMounted(() => {
 		grid-template-columns: 1fr;
 	}
 }
+
+:root[data-theme="dark"] .avatar-circle { background: #312F2E; color: #7DAEE8; border-color: #3E3B39; }
+:root[data-theme="dark"] .avatar-circle:hover { background: #2563eb; color: #fff; }
+:root[data-theme="dark"] .avatar-dropdown { background: #312F2E; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+:root[data-theme="dark"] .avatar-dropdown-name { color: #f0ece8; }
+:root[data-theme="dark"] .avatar-dropdown-email { color: #847F7B; }
+:root[data-theme="dark"] .avatar-dropdown-item { color: #C8C3BE; }
+:root[data-theme="dark"] .avatar-dropdown-item:hover { background: #3E3B39; }
+:root[data-theme="dark"] .avatar-dropdown-logout { color: #fca5a5; }
+:root[data-theme="dark"] .avatar-dropdown-logout:hover { background: #3b1c1c; }
+:root[data-theme="dark"] .avatar-dropdown-divider { background: #3E3B39; }
+:root[data-theme="dark"] .avatar-notifications-modal { background: #272524; }
+:root[data-theme="dark"] .avatar-notifications-subtitle { color: #9A9490; }
+:root[data-theme="dark"] .avatar-notifications-block { background: #1F1D1C; border-color: #3E3B39; }
+:root[data-theme="dark"] .avatar-notifications-empty { color: #847F7B; }
+:root[data-theme="dark"] .avatar-notification-item { background: #272524; border-color: #3E3B39; }
+:root[data-theme="dark"] .avatar-notification-item:hover { background: #312F2E; border-color: #4a4744; }
+:root[data-theme="dark"] .avatar-notification-item--unread { background: #1c2d3e; border-color: #2a4a6a; }
+:root[data-theme="dark"] .avatar-notification-title { color: #f0ece8; }
+:root[data-theme="dark"] .avatar-notification-message { color: #9A9490; }
+:root[data-theme="dark"] .avatar-notification-date-inline { color: #847F7B; }
+:root[data-theme="dark"] .avatar-notification-meta { background: #1F1D1C; border-color: #3E3B39; }
+:root[data-theme="dark"] .avatar-notification-meta strong { color: #847F7B; }
+:root[data-theme="dark"] .avatar-notification-meta span { color: #C8C3BE; }
+:root[data-theme="dark"] .avatar-notification-link { color: #7DAEE8; }
+:root[data-theme="dark"] .avatar-notification-link-row { border-top-color: #3E3B39; }
 </style>

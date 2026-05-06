@@ -816,4 +816,23 @@ function applyPreset(days: number) {
     grid-column: auto;
   }
 }
+
+:root[data-theme="dark"] .stats-toolbar { background: #272524; border-color: #3E3B39; }
+:root[data-theme="dark"] .stats-toolbar__field { color: #C8C3BE; }
+:root[data-theme="dark"] .stats-toolbar__field input,
+:root[data-theme="dark"] .stats-toolbar__field select { background: #312F2E; border-color: #4a4744; color: #E8E4E0; }
+:root[data-theme="dark"] .stats-preset { background: #272524; color: #C8C3BE; border-color: #4a4744; }
+:root[data-theme="dark"] .stats-preset:hover { background: #312F2E; }
+:root[data-theme="dark"] .stats-card { background: #272524; border-color: #3E3B39; }
+:root[data-theme="dark"] .stats-card--soft { background: #1F1D1C; }
+:root[data-theme="dark"] .stats-card__label { color: #847F7B; }
+:root[data-theme="dark"] .stats-card__value { color: #f0ece8; }
+:root[data-theme="dark"] .stats-panel { background: #272524; border-color: #3E3B39; }
+:root[data-theme="dark"] .stats-panel__header h2 { color: #f0ece8; }
+:root[data-theme="dark"] .stats-panel__header span { color: #847F7B; }
+:root[data-theme="dark"] .stats-bar { background: #3E3B39; }
+:root[data-theme="dark"] .stats-bar-row__top { color: #C8C3BE; }
+:root[data-theme="dark"] .stats-bar-row__top strong { color: #f0ece8; }
+:root[data-theme="dark"] .stats-header__text { color: #847F7B; }
+:root[data-theme="dark"] .stats-empty { background: #272524; color: #847F7B; border-color: #4a4744; }
 </style>

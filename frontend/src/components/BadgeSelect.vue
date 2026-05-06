@@ -231,4 +231,11 @@ onUnmounted(() => {
 .badge-select-option--focused {
 	background: #f3f4f6;
 }
+:root[data-theme="dark"] .badge-select-button { background: #312F2E; color: #E8E4E0; border-color: #4a4744; }
+:root[data-theme="dark"] .badge-select-button:hover { border-color: #5a5653; }
+:root[data-theme="dark"] .badge-select-button:focus { border-color: #7DAEE8; box-shadow: 0 0 0 2px #1F1D1C, 0 0 0 4px #7DAEE8; }
+:root[data-theme="dark"] .badge-select-placeholder { color: #847F7B; }
+:root[data-theme="dark"] .badge-select-caret { color: #9A9490; }
+:root[data-theme="dark"] .badge-select-menu { background: #312F2E; border-color: #4a4744; box-shadow: 0 4px 16px rgba(0,0,0,0.45); }
+:root[data-theme="dark"] .badge-select-option--focused { background: #3E3B39; }
 </style>

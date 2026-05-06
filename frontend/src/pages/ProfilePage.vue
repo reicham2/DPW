@@ -517,4 +517,22 @@ async function save() {
   background: #1f2937;
   transform: rotate(45deg);
 }
+
+:root[data-theme="dark"] .page-title { color: #f0ece8; }
+:root[data-theme="dark"] .profile-card { background: #272524; box-shadow: 0 2px 12px rgba(0,0,0,0.35); }
+:root[data-theme="dark"] .form-input { background: #312F2E; border-color: #4a4744; color: #E8E4E0; }
+:root[data-theme="dark"] .form-input:focus { border-color: #7DAEE8; box-shadow: 0 0 0 2px #1F1D1C, 0 0 0 4px #7DAEE8; }
+:root[data-theme="dark"] .form-input--readonly { background: #272524; color: #9A9490; }
+:root[data-theme="dark"] .form-label { color: #C8C3BE; }
+:root[data-theme="dark"] .form-hint { color: #847F7B; }
+:root[data-theme="dark"] .btn-primary { background: #2563eb; }
+:root[data-theme="dark"] .btn-primary:hover:not(:disabled) { background: #3b7bf7; }
+:root[data-theme="dark"] .profile-success { color: #6ee7b7; background: #1a3328; }
+:root[data-theme="dark"] .time-mode-toggle { background: #1F1D1C; }
+:root[data-theme="dark"] .time-mode-pill { color: #9A9490; }
+:root[data-theme="dark"] .time-mode-pill--active { background: #312F2E; color: #E8E4E0; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+:root[data-theme="dark"] .notify-option span { color: #C8C3BE; }
+:root[data-theme="dark"] .info-tip { background: #312F2E; color: #C8C3BE; }
+:root[data-theme="dark"] .info-tip:hover,
+:root[data-theme="dark"] .info-tip:focus { background: #7DAEE8; color: #1F1D1C; }
 </style>

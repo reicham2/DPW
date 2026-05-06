@@ -107,4 +107,8 @@ function reportBug() {
 	background: #fee2e2;
 	border-color: #f87171;
 }
+:root[data-theme="dark"] .error-alert { background: #2d1b1b; border-color: #5a2d2d; color: #fca5a5; }
+:root[data-theme="dark"] .error-alert-icon { color: #f87171; }
+:root[data-theme="dark"] .error-alert-report { color: #fca5a5; border-color: #5a2d2d; }
+:root[data-theme="dark"] .error-alert-report:hover { background: #3b1c1c; border-color: #7a3a3a; }
 </style>

@@ -54,4 +54,7 @@ function getInitials(name: string): string {
 .responsible-avatars-empty {
 	color: #9ca3af;
 }
+:root[data-theme="dark"] .responsible-avatar { background: #312F2E; color: #7DAEE8; border-color: #272524; }
+:root[data-theme="dark"] .responsible-avatar:hover { background: #2563eb; color: #fff; }
+:root[data-theme="dark"] .responsible-avatars-empty { color: #847F7B; }
 </style>
