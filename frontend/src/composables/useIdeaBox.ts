@@ -12,7 +12,7 @@ export function useIdeaBox() {
 		loading.value = true;
 		error.value = null;
 		try {
-			const res = await apiFetch('/api/ideenkiste');
+			const res = await apiFetch('/api/ideaBox');
 			if (!res.ok) throw new Error(await res.text());
 			items.value = await res.json();
 		} catch (e) {
@@ -25,7 +25,7 @@ export function useIdeaBox() {
 	async function createItem(input: IdeenkisteInput): Promise<IdeenkisteItem | null> {
 		error.value = null;
 		try {
-			const res = await apiFetch('/api/ideenkiste', {
+			const res = await apiFetch('/api/ideaBox', {
 				method: 'POST',
 				body: JSON.stringify(input),
 			});
@@ -42,7 +42,7 @@ export function useIdeaBox() {
 	async function updateItem(id: string, input: IdeenkisteInput): Promise<IdeenkisteItem | null> {
 		error.value = null;
 		try {
-			const res = await apiFetch(`/api/ideenkiste/${id}`, {
+			const res = await apiFetch(`/api/ideaBox/${id}`, {
 				method: 'PUT',
 				body: JSON.stringify(input),
 			});
@@ -60,7 +60,7 @@ export function useIdeaBox() {
 	async function deleteItem(id: string): Promise<boolean> {
 		error.value = null;
 		try {
-			const res = await apiFetch(`/api/ideenkiste/${id}`, { method: 'DELETE' });
+			const res = await apiFetch(`/api/ideaBox/${id}`, { method: 'DELETE' });
 			if (!res.ok) throw new Error(await res.text());
 			items.value = items.value.filter((i) => i.id !== id);
 			return true;
