@@ -349,14 +349,14 @@ int main()
          .del("/form-templates/:id", [&](auto *res, auto *req)
               { handle_delete_form_template(res, req, db); })
 
-         // Ideenkiste
-         .get("/ideenkiste", [&](auto *res, auto *req)
+         // Idea box
+         .get("/ideaBox", [&](auto *res, auto *req)
               { handle_get_ideenkiste(res, req, db); })
-         .post("/ideenkiste", [&](auto *res, auto *req)
+         .post("/ideaBox", [&](auto *res, auto *req)
                { handle_post_ideenkiste(res, req, db); })
-         .put("/ideenkiste/:id", [&](auto *res, auto *req)
+         .put("/ideaBox/:id", [&](auto *res, auto *req)
               { handle_put_ideenkiste(res, req, db); })
-         .del("/ideenkiste/:id", [&](auto *res, auto *req)
+         .del("/ideaBox/:id", [&](auto *res, auto *req)
               { handle_delete_ideenkiste(res, req, db); })
 
          // WebSocket endpoint

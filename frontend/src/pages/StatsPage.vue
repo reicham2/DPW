@@ -532,7 +532,7 @@ function applyPreset(days: number) {
 .stats-header__text {
   margin: 8px 0 0;
   max-width: 760px;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .stats-page {
@@ -548,8 +548,8 @@ function applyPreset(days: number) {
   gap: 16px;
   flex-wrap: wrap;
   padding: 18px;
-  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
-  border: 1px solid #e2e8f0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 16px;
 }
 
@@ -564,7 +564,7 @@ function applyPreset(days: number) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  color: #475569;
+  color: var(--text-secondary);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -573,10 +573,10 @@ function applyPreset(days: number) {
 .stats-toolbar__field :deep(.badge-select-button),
 .stats-toolbar__field select {
   min-width: 180px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--input-border);
   border-radius: 10px;
   font: inherit;
-  background: #fff;
+  background: var(--input-bg);
 }
 
 .stats-toolbar__field input,
@@ -592,10 +592,10 @@ function applyPreset(days: number) {
 
 .stats-preset {
   padding: 10px 14px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: #fff;
-  color: #0f172a;
+  background: var(--bg-surface);
+  color: var(--text-primary);
   cursor: pointer;
   font: inherit;
   font-weight: 600;
@@ -609,14 +609,14 @@ function applyPreset(days: number) {
 
 .stats-card {
   padding: 16px 18px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 16px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
 .stats-card--soft {
-  background: #f8fafc;
+  background: var(--bg-elevated);
 }
 
 .stats-card__label {
@@ -625,14 +625,14 @@ function applyPreset(days: number) {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .stats-card__value {
   margin: 0;
   font-size: 1.65rem;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--text-primary);
   line-height: 1.15;
 }
 
@@ -644,8 +644,8 @@ function applyPreset(days: number) {
 
 .stats-panel {
   padding: 18px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 18px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
@@ -665,11 +665,11 @@ function applyPreset(days: number) {
 .stats-panel__header h2 {
   margin: 0;
   font-size: 1.05rem;
-  color: #0f172a;
+  color: var(--text-primary);
 }
 
 .stats-panel__header span {
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -690,18 +690,18 @@ function applyPreset(days: number) {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  color: #334155;
+  color: var(--text-secondary);
   font-size: 0.94rem;
 }
 
 .stats-bar-row__top strong {
-  color: #0f172a;
+  color: var(--text-primary);
 }
 
 .stats-bar {
   width: 100%;
   height: 10px;
-  background: #e2e8f0;
+  background: var(--border);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -744,12 +744,12 @@ function applyPreset(days: number) {
 }
 
 .time-dist-grid {
-  stroke: #e5e7eb;
+  stroke: var(--border);
   stroke-width: 1;
 }
 
 .time-dist-baseline {
-  stroke: #9ca3af;
+  stroke: var(--text-subtle);
   stroke-width: 1.5;
 }
 
@@ -784,7 +784,7 @@ function applyPreset(days: number) {
 
 .time-dist-axis {
   font-size: 11px;
-  fill: #6b7280;
+  fill: var(--text-muted);
   font-family: inherit;
 }
 
@@ -797,10 +797,10 @@ function applyPreset(days: number) {
 .stats-empty,
 .stats-loading {
   padding: 20px;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--border-strong);
   border-radius: 16px;
-  background: #fff;
-  color: #64748b;
+  background: var(--bg-surface);
+  color: var(--text-muted);
 }
 
 .stats-empty--inner {

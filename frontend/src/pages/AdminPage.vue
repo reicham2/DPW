@@ -416,7 +416,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .header h1 {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -425,7 +425,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   display: flex;
   gap: 4px;
   padding: 16px 24px 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
 }
 .tab-btn {
   display: flex;
@@ -434,7 +434,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   padding: 10px 18px;
   font-size: 0.88rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--text-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -443,11 +443,11 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   margin-bottom: -1px;
 }
 .tab-btn:hover {
-  color: #374151;
+  color: var(--text-secondary);
 }
 .tab-btn--active {
-  color: #1a56db;
-  border-bottom-color: #1a56db;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .tab-header {
@@ -463,11 +463,11 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 }
 .user-count {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 .form-input--readonly {
-  background: #f9fafb;
-  color: #6b7280;
+  background: var(--input-readonly-bg);
+  color: var(--input-readonly-color);
   cursor: default;
 }
 .main {
@@ -476,13 +476,13 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 }
 .loading, .error-msg {
   padding: 24px;
-  color: #6b7280;
+  color: var(--text-muted);
 }
-.error-msg { color: #dc2626; }
+.error-msg { color: var(--error-color); }
 
 .section-divider {
   height: 1px;
-  background: #e5e7eb;
+  background: var(--border);
   margin: 32px 0;
 }
 
@@ -497,7 +497,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .filter-label {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
 }
 .dept-pills {
   display: flex;
@@ -508,17 +508,17 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .dept-pill-btn {
   padding: 4px 12px;
   border-radius: 999px;
-  border: 1.5px solid #d1d5db;
-  background: #fff;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-surface);
   font-size: 0.82rem;
   cursor: pointer;
-  color: #374151;
+  color: var(--text-secondary);
   transition: background 0.12s, border-color 0.12s;
 }
-.dept-pill-btn:hover { background: #f3f4f6; }
+.dept-pill-btn:hover { background: var(--bg-hover); }
 .dept-pill-btn--active {
-  background: #1a56db;
-  border-color: #1a56db;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
 .dept-pill-btn--bare {
@@ -530,7 +530,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .dept-label {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
 }
 
 /* Table */
@@ -542,30 +542,30 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .users-table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
+  background: var(--card-bg);
   font-size: 0.9rem;
 }
 .users-table th {
-  background: #f9fafb;
+  background: var(--bg-elevated);
   padding: 12px 16px;
   text-align: left;
   font-size: 0.78rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
 }
 .users-table td {
   padding: 12px 16px;
-  border-bottom: 1px solid #f3f4f6;
-  color: #1a202c;
+  border-bottom: 1px solid var(--bg-hover);
+  color: var(--text-primary);
   vertical-align: middle;
 }
 .users-table tr:last-child td { border-bottom: none; }
 .td-name { font-weight: 500; }
-.td-email { color: #6b7280; font-size: 0.85rem; }
-.td-empty { text-align: center; color: #9ca3af; padding: 32px; }
+.td-email { color: var(--text-muted); font-size: 0.85rem; }
+.td-empty { text-align: center; color: var(--text-subtle); padding: 32px; }
 
 .item-actions {
   display: flex;
@@ -576,25 +576,25 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .btn-edit {
   padding: 5px 14px;
   border-radius: 6px;
-  border: 1.5px solid #d1d5db;
-  background: #fff;
+  border: 1.5px solid var(--border-strong);
+  background: var(--btn-secondary-bg);
   font-size: 0.82rem;
   cursor: pointer;
-  color: #374151;
+  color: var(--text-secondary);
   transition: background 0.12s;
 }
-.btn-edit:hover { background: #f3f4f6; }
+.btn-edit:hover { background: var(--bg-hover); }
 
 .btn-delete {
   padding: 5px 12px;
   border-radius: 6px;
-  border: 1.5px solid #fca5a5;
-  background: #fff;
+  border: 1.5px solid var(--error-border);
+  background: var(--bg-surface);
   font-size: 0.82rem;
   cursor: pointer;
-  color: #dc2626;
+  color: var(--error-color);
 }
-.btn-delete:hover:not(:disabled) { background: #fef2f2; }
+.btn-delete:hover:not(:disabled) { background: var(--error-bg); }
 .btn-delete:disabled { opacity: 0.45; cursor: default; }
 
 /* Modal */
@@ -608,29 +608,29 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   z-index: 100;
 }
 .modal {
-  background: #fff;
+  background: var(--modal-bg);
   border-radius: 16px;
   padding: 32px;
   width: 100%;
   max-width: 420px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.18);
 }
-.modal--danger { border: 2px solid #fca5a5; }
+.modal--danger { border: 2px solid var(--error-border); }
 .modal-title {
   font-size: 1.15rem;
   font-weight: 700;
   margin: 0 0 4px;
-  color: #1a202c;
+  color: var(--text-primary);
 }
-.modal-title--danger { color: #dc2626; }
+.modal-title--danger { color: var(--error-color); }
 .modal-email {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--text-muted);
   margin: 0 0 20px;
 }
 .modal-warning {
   font-size: 0.88rem;
-  color: #6b7280;
+  color: var(--text-muted);
   margin: 0 0 16px;
 }
 .modal-form {
@@ -646,22 +646,23 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .form-label {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
 }
 .form-input {
   padding: 9px 11px;
-  border: 1.5px solid #d1d5db;
+  border: 1.5px solid var(--input-border);
   border-radius: 8px;
   font-size: 0.93rem;
-  color: #1a202c;
+  color: var(--input-color);
+  background: var(--input-bg);
   outline: none;
   transition: border-color 0.15s;
 }
-.form-input:focus { border-color: #1a56db; }
+.form-input:focus { border-color: var(--accent); }
 .form-error {
   font-size: 0.85rem;
-  color: #dc2626;
-  background: #fff5f5;
+  color: var(--error-color);
+  background: var(--error-bg);
   padding: 8px 12px;
   border-radius: 6px;
 }
@@ -679,29 +680,29 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .btn-danger {
   padding: 9px 20px;
   border-radius: 8px;
-  border: 1.5px solid #fca5a5;
-  background: #fff;
+  border: 1.5px solid var(--error-border);
+  background: var(--bg-surface);
   font-size: 0.9rem;
   cursor: pointer;
-  color: #dc2626;
+  color: var(--error-color);
   transition: background 0.12s;
 }
-.btn-danger:hover:not(:disabled) { background: #fef2f2; }
+.btn-danger:hover:not(:disabled) { background: var(--btn-danger-bg-hover); }
 .btn-danger:disabled { opacity: 0.4; cursor: default; }
 .btn-cancel {
   padding: 9px 20px;
   border-radius: 8px;
-  border: 1.5px solid #d1d5db;
-  background: #fff;
+  border: 1.5px solid var(--border-strong);
+  background: var(--btn-secondary-bg);
   font-size: 0.9rem;
   cursor: pointer;
-  color: #374151;
+  color: var(--text-secondary);
   transition: background 0.12s;
 }
-.btn-cancel:hover { background: #f3f4f6; }
+.btn-cancel:hover { background: var(--bg-hover); }
 .btn-primary {
   padding: 9px 20px;
-  background: #1a56db;
+  background: var(--btn-primary-bg);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -710,7 +711,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn-primary:hover:not(:disabled) { background: #1648c0; }
+.btn-primary:hover:not(:disabled) { background: var(--btn-primary-bg-hover); }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
 
 @media (max-width: 599px) {
@@ -755,9 +756,9 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
     width: 100%;
   }
   .users-table tr {
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--border);
     border-radius: 12px;
-    background: #fff;
+    background: var(--card-bg);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
     padding: 8px 10px;
   }
@@ -785,9 +786,9 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   }
   .td-empty {
     text-align: center;
-    border: 1px dashed #e5e7eb;
+    border: 1px dashed var(--border);
     border-radius: 10px;
-    background: #fff;
+    background: var(--card-bg);
   }
   .td-empty::before {
     display: none;

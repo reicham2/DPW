@@ -52,6 +52,6 @@ const allVars = computed(() =>
 	margin: 0.25rem 0 0;
 	padding: 0 14px;
 	font-size: 0.75rem;
-	color: #9ca3af;
+	color: var(--text-subtle);
 }
 </style>

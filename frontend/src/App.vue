@@ -26,8 +26,8 @@
         <div v-if="user" class="global-nav-links">
           <router-link to="/" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }">Aktivitäten</router-link>
           <router-link to="/stats" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/stats' }">Statistik</router-link>
-          <router-link v-if="showIdeenkiste" to="/ideenkiste" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/ideenkiste' }">Ideenkiste</router-link>
-          <router-link v-if="showVorlagen" to="/vorlagen" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/vorlagen' }">Vorlagen</router-link>
+          <router-link v-if="showIdeenkiste" to="/ideas" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/ideas' }">Ideenkiste</router-link>
+          <router-link v-if="showVorlagen" to="/templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/templates' }">Vorlagen</router-link>
           <router-link v-if="showAdmin" to="/admin" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/admin' }">Admin</router-link>
         </div>
         <div class="global-nav-right">
@@ -55,8 +55,8 @@
     >
       <router-link to="/" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }" @click="mobileMenuOpen = false">Aktivitäten</router-link>
       <router-link to="/stats" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/stats' }" @click="mobileMenuOpen = false">Statistik</router-link>
-      <router-link v-if="showIdeenkiste" to="/ideenkiste" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/ideenkiste' }" @click="mobileMenuOpen = false">Ideenkiste</router-link>
-      <router-link v-if="showVorlagen" to="/vorlagen" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/vorlagen' }" @click="mobileMenuOpen = false">Vorlagen</router-link>
+      <router-link v-if="showIdeenkiste" to="/ideas" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/ideas' }" @click="mobileMenuOpen = false">Ideenkiste</router-link>
+      <router-link v-if="showVorlagen" to="/templates" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/templates' }" @click="mobileMenuOpen = false">Vorlagen</router-link>
       <router-link v-if="showAdmin" to="/admin" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/admin' }" @click="mobileMenuOpen = false">Admin</router-link>
     </aside>
 
@@ -231,8 +231,8 @@ onUnmounted(() => {
 .auth-loading-spinner {
   width: 36px;
   height: 36px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #1a56db;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -246,7 +246,7 @@ onUnmounted(() => {
   padding: 24px;
 }
 .auth-box {
-  background: #fff;
+  background: var(--card-bg);
   border-radius: 16px;
   box-shadow: 0 4px 32px rgba(0,0,0,0.1);
   padding: 48px 40px;
@@ -266,12 +266,12 @@ onUnmounted(() => {
 .auth-title {
   font-size: 1.6rem;
   font-weight: 800;
-  color: #1a202c;
+  color: var(--text-primary);
   margin: 0;
 }
 .auth-subtitle {
   font-size: 0.95rem;
-  color: #6b7280;
+  color: var(--text-muted);
   margin: 0 0 8px;
 }
 .auth-btn {
@@ -279,7 +279,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 12px 24px;
-  background: #1a56db;
+  background: var(--btn-primary-bg);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -291,13 +291,13 @@ onUnmounted(() => {
   transition: background 0.15s;
   margin-top: 4px;
 }
-.auth-btn:hover:not(:disabled) { background: #1648c0; }
+.auth-btn:hover:not(:disabled) { background: var(--btn-primary-bg-hover); }
 .auth-btn:disabled { opacity: 0.6; cursor: default; }
 .auth-ms-icon { flex-shrink: 0; }
 .auth-error {
   margin: 4px 0 0;
   font-size: 0.85rem;
-  color: #dc2626;
+  color: var(--error-color);
   text-align: center;
 }
 
@@ -307,7 +307,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   margin: 8px 0 0;
-  color: #9ca3af;
+  color: var(--text-subtle);
   font-size: 0.82rem;
 }
 .auth-divider::before,
@@ -315,16 +315,16 @@ onUnmounted(() => {
   content: '';
   flex: 1;
   height: 1px;
-  background: #e5e7eb;
+  background: var(--border);
 }
 .auth-debug-select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--input-border);
   border-radius: 8px;
   font-size: 0.9rem;
-  background: #fff;
-  color: #1a202c;
+  background: var(--input-bg);
+  color: var(--input-color);
   cursor: pointer;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
@@ -333,12 +333,12 @@ onUnmounted(() => {
   padding-right: 32px;
 }
 .auth-btn-debug {
-  background: #6b7280;
+  background: var(--text-muted);
 }
 .auth-btn-debug:hover:not(:disabled) { background: #4b5563; }
 .auth-debug-loading {
   font-size: 0.85rem;
-  color: #9ca3af;
+  color: var(--text-subtle);
 }
 
 .global-nav-links {
@@ -352,18 +352,18 @@ onUnmounted(() => {
   padding: 6px 14px;
   font-size: 0.88rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--text-muted);
   text-decoration: none;
   border-radius: 6px;
   transition: color 0.15s, background 0.15s;
 }
 .global-nav-link:hover {
-  color: #0080ff;
-  background: #f0f7ff;
+  color: var(--accent);
+  background: var(--nav-link-active-bg);
 }
 .global-nav-link--active {
-  color: #0080ff;
-  background: #e8f0fe;
+  color: var(--accent);
+  background: var(--nav-link-active-bg);
 }
 
 .global-nav-right {
@@ -387,27 +387,27 @@ onUnmounted(() => {
 }
 
 .nav-connection--online {
-  color: #065f46;
-  background: #ecfdf5;
-  border-color: #a7f3d0;
+  color: var(--success-color);
+  background: var(--success-bg);
+  border-color: var(--success-color);
 }
 
 .nav-connection--offline {
-  color: #991b1b;
-  background: #fef2f2;
-  border-color: #fecaca;
+  color: var(--error-color);
+  background: var(--error-bg);
+  border-color: var(--error-border);
 }
 
 .global-nav-help {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: var(--text-muted);
   transition: color 0.15s;
   text-decoration: none;
 }
 .global-nav-help:hover {
-  color: #1a56db;
+  color: var(--accent);
 }
 
 /* Burger button — hidden by default, shown on small screens */
@@ -427,13 +427,13 @@ onUnmounted(() => {
   transition: background 0.15s;
 }
 .global-nav-burger:hover {
-  background: #f3f4f6;
+  background: var(--bg-hover);
 }
 .burger-line {
   display: block;
   width: 22px;
   height: 2px;
-  background: #374151;
+  background: var(--text-secondary);
   border-radius: 2px;
   transition: transform 0.2s, opacity 0.2s;
   transform-origin: center;
@@ -464,8 +464,8 @@ onUnmounted(() => {
   left: 0;
   width: min(280px, 80vw);
   height: calc(100vh - 60px);
-  background: #fff;
-  border-right: 1px solid #e5e7eb;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
   box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
   z-index: 99;
   padding: 16px 12px;
@@ -485,18 +485,18 @@ onUnmounted(() => {
   padding: 12px 14px;
   font-size: 1rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
   text-decoration: none;
   border-radius: 8px;
   transition: background 0.15s, color 0.15s;
 }
 .mobile-nav-link:hover {
-  background: #f0f7ff;
-  color: #0080ff;
+  background: var(--nav-link-active-bg);
+  color: var(--accent);
 }
 .mobile-nav-link--active {
-  color: #0080ff;
-  background: #e8f0fe;
+  color: var(--accent);
+  background: var(--nav-link-active-bg);
 }
 
 @media (max-width: 767px) {

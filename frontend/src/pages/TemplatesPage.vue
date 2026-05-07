@@ -108,7 +108,7 @@ watch([canSeeMailTab, canSeeFormTab, canSeeEventTab], ([mailVisible, formVisible
 .header h1 {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -116,7 +116,7 @@ watch([canSeeMailTab, canSeeFormTab, canSeeEventTab], ([mailVisible, formVisible
   display: flex;
   gap: 4px;
   padding: 16px 24px 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
 }
 .tab-btn {
   display: flex;
@@ -125,7 +125,7 @@ watch([canSeeMailTab, canSeeFormTab, canSeeEventTab], ([mailVisible, formVisible
   padding: 10px 18px;
   font-size: 0.88rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--text-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -134,11 +134,11 @@ watch([canSeeMailTab, canSeeFormTab, canSeeEventTab], ([mailVisible, formVisible
   margin-bottom: -1px;
 }
 .tab-btn:hover {
-  color: #374151;
+  color: var(--text-secondary);
 }
 .tab-btn--active {
-  color: #1a56db;
-  border-bottom-color: #1a56db;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .tab-content :deep(.header) {

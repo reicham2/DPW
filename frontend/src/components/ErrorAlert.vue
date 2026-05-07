@@ -70,11 +70,11 @@ function reportBug() {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	background: #fef2f2;
+	background: var(--error-bg);
 	border: 1px solid #fecaca;
 	border-radius: 8px;
 	padding: 12px 16px;
-	color: #991b1b;
+	color: var(--error-color);
 	font-size: 0.9rem;
 	line-height: 1.4;
 }

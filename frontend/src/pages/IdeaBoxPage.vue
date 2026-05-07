@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, X, Check, Search, ChevronDown, ChevronUp, Minus }
 import { useRouter } from 'vue-router'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
-import { useIdeenkiste } from '../composables/useIdeenkiste'
+import { useIdeaBox } from '../composables/useIdeaBox'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -12,7 +12,7 @@ import type { IdeenkisteItem } from '../types'
 
 const router = useRouter()
 const { myPermissions, fetchMyPermissions, departments, fetchDepartments, canIdeenkisteAdd, canIdeenkisteDelete } = usePermissions()
-const { items, loading, error, fetchItems, createItem, updateItem, deleteItem } = useIdeenkiste()
+const { items, loading, error, fetchItems, createItem, updateItem, deleteItem } = useIdeaBox()
 
 const isOwnDeptOnly = computed(() => myPermissions.value?.ideenkiste_scope === 'own_dept')
 const canAll = computed(() => myPermissions.value?.ideenkiste_scope === 'all')
@@ -27,7 +27,7 @@ const durationFilterMode = ref<'under' | 'over' | 'exact'>('under')
 
 const durationFilterLabel = computed(() => {
   if (durationFilterMode.value === 'under') return 'Unter'
-  if (durationFilterMode.value === 'over') return 'Uber'
+  if (durationFilterMode.value === 'over') return 'Über'
   return 'Exakt'
 })
 
@@ -916,8 +916,8 @@ function openNewForm() {
 }
 
 .ideenkiste-form-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1.25rem;
   margin-bottom: 1.5rem;
@@ -943,7 +943,7 @@ function openNewForm() {
 }
 
 .ideenkiste-empty {
-  color: var(--color-text-muted);
+  color: var(--text-muted);
   text-align: center;
   padding: 2rem 0;
 }

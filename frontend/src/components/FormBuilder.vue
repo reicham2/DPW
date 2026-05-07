@@ -622,8 +622,8 @@ defineExpose({ flushAutoSave });
 }
 
 .builder-section {
-	background: var(--color-surface, #fff);
-	border: 1px solid var(--color-border, #e5e7eb);
+	background: var(--card-bg);
+	border: 1px solid var(--border);
 	border-radius: 0.5rem;
 	padding: 1rem 1.25rem;
 }
@@ -637,14 +637,14 @@ defineExpose({ flushAutoSave });
 
 .question-count {
 	font-size: 0.75rem;
-	color: #6b7280;
+	color: var(--text-muted);
 }
 
 .field-label {
 	display: block;
 	font-size: 0.8rem;
 	font-weight: 600;
-	color: #374151;
+	color: var(--text-secondary);
 	margin-bottom: 0.35rem;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
@@ -657,19 +657,20 @@ defineExpose({ flushAutoSave });
 .field-input {
 	width: 100%;
 	padding: 0.45rem 0.65rem;
-	border: 1px solid #d1d5db;
+	border: 1px solid var(--input-border);
 	border-radius: 0.375rem;
 	font-size: 0.9rem;
 	outline: none;
-	background: #fff;
+	background: var(--input-bg);
+	color: var(--input-color);
 	box-sizing: border-box;
 }
-.field-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
-.field-input--invalid { border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,0.15); }
+.field-input:focus { border-color: var(--focus-border); box-shadow: var(--focus-ring); }
+.field-input--invalid { border-color: var(--error-color); box-shadow: 0 0 0 2px rgba(220,38,38,0.15); }
 .validation-hint {
 	margin: 0.35rem 0 0;
 	font-size: 0.8rem;
-	color: #b91c1c;
+	color: var(--error-color);
 }
 .validation-hint--global {
 	margin-top: -0.35rem;
@@ -683,42 +684,43 @@ defineExpose({ flushAutoSave });
 
 .mode-btn {
 	padding: 0.4rem 1rem;
-	border: 1.5px solid #d1d5db;
+	border: 1.5px solid var(--border-strong);
 	border-radius: 0.375rem;
-	background: #fff;
+	background: var(--bg-surface);
 	font-size: 0.85rem;
 	cursor: pointer;
 	transition: all 0.15s;
+	color: var(--text-secondary);
 }
 .mode-btn.active {
-	background: #6366f1;
-	color: #fff;
-	border-color: #6366f1;
+	background: var(--accent);
+	color: var(--btn-primary-color);
+	border-color: var(--accent);
 }
 
 .empty-questions {
 	text-align: center;
-	color: #9ca3af;
+	color: var(--text-subtle);
 	font-size: 0.875rem;
 	padding: 1.5rem;
 }
 
 .question-card {
-	border: 1px solid #e5e7eb;
+	border: 1px solid var(--border);
 	border-radius: 0.375rem;
 	padding: 0.75rem 1rem;
 	margin-bottom: 0.625rem;
-	background: #fafafa;
+	background: var(--bg-elevated);
 }
 
 .question-card--invalid {
-	border-color: #dc2626;
+	border-color: var(--error-color);
 	box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
 }
 
 .question-card--template {
-	border-color: #c7d2fe;
-	background: #f5f3ff;
+	border-color: var(--accent);
+	background: var(--accent-bg);
 }
 
 .question-header {
@@ -741,11 +743,11 @@ defineExpose({ flushAutoSave });
 	letter-spacing: 0.05em;
 	padding: 0.2rem 0.5rem;
 	border-radius: 9999px;
-	background: #e0e7ff;
-	color: #4338ca;
+	background: var(--chip-bg);
+	color: var(--chip-color);
 }
-.question-type-badge[data-type="section"] { background: #fef3c7; color: #92400e; }
-.question-type-badge[data-type="text_input"] { background: #d1fae5; color: #065f46; }
+.question-type-badge[data-type="section"] { background: var(--warning-bg); color: var(--warning-color); }
+.question-type-badge[data-type="text_input"] { background: var(--success-bg); color: var(--success-color); }
 
 .template-badge {
 	font-size: 0.65rem;
@@ -754,9 +756,9 @@ defineExpose({ flushAutoSave });
 	letter-spacing: 0.04em;
 	padding: 0.15rem 0.45rem;
 	border-radius: 9999px;
-	background: #ede9fe;
-	color: #7c3aed;
-	border: 1px solid #c4b5fd;
+	background: var(--accent-bg);
+	color: var(--accent);
+	border: 1px solid var(--accent);
 }
 
 .question-actions {
@@ -766,15 +768,16 @@ defineExpose({ flushAutoSave });
 
 .icon-btn {
 	padding: 0.2rem 0.45rem;
-	border: 1px solid #d1d5db;
+	border: 1px solid var(--border-strong);
 	border-radius: 0.25rem;
-	background: #fff;
+	background: var(--bg-surface);
 	font-size: 0.75rem;
 	cursor: pointer;
+	color: var(--text-secondary);
 }
-.icon-btn:hover { background: #f3f4f6; }
-.icon-btn.danger { border-color: #fca5a5; color: #dc2626; }
-.icon-btn.danger:hover { background: #fee2e2; }
+.icon-btn:hover { background: var(--bg-hover); }
+.icon-btn.danger { border-color: var(--error-border); color: var(--error-color); }
+.icon-btn.danger:hover { background: var(--error-bg); }
 .icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
 .question-options-row {
@@ -788,7 +791,7 @@ defineExpose({ flushAutoSave });
 	align-items: center;
 	gap: 0.35rem;
 	font-size: 0.82rem;
-	color: #374151;
+	color: var(--text-secondary);
 	cursor: pointer;
 }
 
@@ -837,7 +840,7 @@ defineExpose({ flushAutoSave });
 
 .add-label {
 	font-size: 0.78rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	font-weight: 600;
 }
 
@@ -874,23 +877,23 @@ defineExpose({ flushAutoSave });
 
 .btn-secondary {
 	padding: 0.5rem 1.25rem;
-	background: #fff;
-	color: #374151;
-	border: 1px solid #d1d5db;
+	background: var(--btn-secondary-bg);
+	color: var(--text-secondary);
+	border: 1px solid var(--border-strong);
 	border-radius: 0.375rem;
 	font-size: 0.875rem;
 	cursor: pointer;
 }
-.btn-secondary:hover { background: #f9fafb; }
+.btn-secondary:hover { background: var(--bg-elevated); }
 
-.template-loader { background: #eef2ff; border-color: #c7d2fe; }
+.template-loader { background: var(--accent-bg); border-color: var(--accent); }
 .template-hint {
 	margin: 0.4rem 0 0;
 	font-size: 0.75rem;
-	color: #4338ca;
+	color: var(--accent);
 }
 
-/* Warning modal – same design as DepartmentManager delete confirmation */
+/* Warning modal */
 .modal-backdrop {
 	position: fixed;
 	inset: 0;
@@ -902,7 +905,7 @@ defineExpose({ flushAutoSave });
 }
 
 .modal {
-	background: #fff;
+	background: var(--modal-bg);
 	border-radius: 16px;
 	padding: 28px 32px;
 	width: 100%;
@@ -910,26 +913,26 @@ defineExpose({ flushAutoSave });
 	box-shadow: 0 8px 40px rgba(0,0,0,0.2);
 }
 
-.modal--danger { border: 2px solid #fca5a5; }
+.modal--danger { border: 2px solid var(--error-border); }
 
 .modal-title {
 	font-size: 1.1rem;
 	font-weight: 700;
-	color: #1a202c;
+	color: var(--text-primary);
 	margin: 0 0 6px;
 }
 
-.modal-title--danger { color: #dc2626; }
+.modal-title--danger { color: var(--error-color); }
 
 .modal-desc {
 	font-size: 0.88rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	margin: 0 0 12px;
 }
 
 .modal-detail {
 	font-size: 0.85rem;
-	color: #374151;
+	color: var(--text-secondary);
 	margin: 0 0 18px;
 	padding: 0.5rem 0.75rem;
 	background: #fef2f2;
@@ -946,23 +949,23 @@ defineExpose({ flushAutoSave });
 .btn-cancel {
 	padding: 8px 18px;
 	border-radius: 8px;
-	border: 1px solid #d1d5db;
-	background: #fff;
-	color: #374151;
+	border: 1px solid var(--border-strong);
+	background: var(--btn-secondary-bg);
+	color: var(--text-secondary);
 	font-size: 0.88rem;
 	cursor: pointer;
 }
-.btn-cancel:hover { background: #f9fafb; }
+.btn-cancel:hover { background: var(--bg-hover); }
 
 .btn-danger {
 	padding: 8px 18px;
 	border-radius: 8px;
 	border: none;
-	background: #dc2626;
-	color: #fff;
+	background: var(--btn-danger-bg);
+	color: var(--btn-danger-color);
 	font-size: 0.88rem;
 	font-weight: 600;
 	cursor: pointer;
 }
-.btn-danger:hover { background: #b91c1c; }
+.btn-danger:hover { background: var(--btn-danger-bg-hover); }
 </style>

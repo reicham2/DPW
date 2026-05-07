@@ -181,7 +181,7 @@ async function submitReport() {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: #0080ff;
+  background: var(--accent);
   color: #fff;
   border: none;
   cursor: pointer;
@@ -208,7 +208,7 @@ async function submitReport() {
 
 /* ─── Modal ─── */
 .bug-modal {
-  background: #fff;
+  background: var(--modal-bg);
   border-radius: 16px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
   width: 100%;
@@ -225,7 +225,7 @@ async function submitReport() {
 .bug-modal-title {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -234,13 +234,13 @@ async function submitReport() {
   border: none;
   font-size: 1.6rem;
   line-height: 1;
-  color: #9ca3af;
+  color: var(--text-subtle);
   cursor: pointer;
   padding: 2px 8px;
   border-radius: 6px;
   transition: background 0.15s, color 0.15s;
 }
-.bug-close-btn:hover { background: #f3f4f6; color: #374151; }
+.bug-close-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
 
 .bug-modal-body {
   padding: 16px 24px 24px;
@@ -253,20 +253,21 @@ async function submitReport() {
 .bug-label {
   font-size: 0.875rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
 }
 
 .bug-textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--input-border);
   border-radius: 8px;
   font-size: 0.9rem;
   font-family: inherit;
   min-height: 120px;
   max-height: 300px;
   overflow-y: auto;
-  color: #1a202c;
+  color: var(--input-color);
+  background: var(--input-bg);
   box-sizing: border-box;
   transition: border-color 0.15s;
   outline: none;
@@ -275,18 +276,18 @@ async function submitReport() {
 }
 .bug-textarea:empty::before {
   content: attr(data-placeholder);
-  color: #9ca3af;
+  color: var(--input-placeholder);
   pointer-events: none;
 }
 .bug-textarea:focus {
-  border-color: #0080ff;
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.12);
 }
 
 .bug-error {
   margin: 0;
   font-size: 0.85rem;
-  color: #dc2626;
+  color: var(--error-color);
 }
 
 /* ─── Checkbox ─── */
@@ -295,14 +296,14 @@ async function submitReport() {
   align-items: center;
   gap: 8px;
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--text-muted);
   cursor: pointer;
   user-select: none;
 }
 .bug-checkbox {
   width: 16px;
   height: 16px;
-  accent-color: #0080ff;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -316,7 +317,7 @@ async function submitReport() {
 
 .bug-btn-primary {
   padding: 9px 20px;
-  background: #0080ff;
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -330,8 +331,8 @@ async function submitReport() {
 
 .bug-btn-secondary {
   padding: 9px 16px;
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
   border: none;
   border-radius: 8px;
   font-size: 0.9rem;
@@ -339,7 +340,7 @@ async function submitReport() {
   cursor: pointer;
   transition: background 0.15s;
 }
-.bug-btn-secondary:hover { background: #e5e7eb; }
+.bug-btn-secondary:hover { background: var(--border); }
 
 /* ─── Success ─── */
 .bug-success-body {
@@ -355,8 +356,8 @@ async function submitReport() {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: #dcfce7;
-  color: #16a34a;
+  background: var(--success-bg);
+  color: var(--success-color);
   font-size: 1.6rem;
   display: flex;
   align-items: center;
@@ -368,11 +369,11 @@ async function submitReport() {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--text-primary);
 }
 
 .bug-issue-link {
-  color: #0080ff;
+  color: var(--accent);
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 500;

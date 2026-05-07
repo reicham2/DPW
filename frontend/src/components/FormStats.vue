@@ -149,8 +149,8 @@ function optionLabel(questionId: string, optionId: string): string {
 }
 
 .stat-card {
-	background: #f9fafb;
-	border: 1px solid #e5e7eb;
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
 	border-radius: 0.5rem;
 	padding: 0.75rem 1.25rem;
 	display: flex;
@@ -162,12 +162,12 @@ function optionLabel(questionId: string, optionId: string): string {
 .stat-value {
 	font-size: 1.5rem;
 	font-weight: 700;
-	color: #111827;
+	color: var(--text-primary);
 }
 
 .stat-label {
 	font-size: 0.72rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	margin-top: 0.2rem;
@@ -189,8 +189,8 @@ function optionLabel(questionId: string, optionId: string): string {
 .stat-card.small .stat-value { font-size: 1.1rem; }
 
 .question-stat {
-	background: #fff;
-	border: 1px solid #e5e7eb;
+	background: var(--card-bg);
+	border: 1px solid var(--border);
 	border-radius: 0.5rem;
 	padding: 1rem 1.25rem;
 }
@@ -205,13 +205,13 @@ function optionLabel(questionId: string, optionId: string): string {
 .question-stat-title {
 	font-weight: 600;
 	font-size: 0.9rem;
-	color: #111827;
+	color: var(--text-primary);
 }
 
 .question-stat-type {
 	font-size: 0.72rem;
-	color: #6b7280;
-	background: #f3f4f6;
+	color: var(--text-muted);
+	background: var(--bg-hover);
 	padding: 0.1rem 0.4rem;
 	border-radius: 9999px;
 }
@@ -231,7 +231,7 @@ function optionLabel(questionId: string, optionId: string): string {
 
 .bar-label {
 	font-size: 0.85rem;
-	color: #374151;
+	color: var(--text-secondary);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -239,7 +239,7 @@ function optionLabel(questionId: string, optionId: string): string {
 
 .bar-track {
 	height: 1.1rem;
-	background: #e5e7eb;
+	background: var(--border);
 	border-radius: 9999px;
 	overflow: hidden;
 }
@@ -253,7 +253,7 @@ function optionLabel(questionId: string, optionId: string): string {
 
 .bar-count {
 	font-size: 0.78rem;
-	color: #6b7280;
+	color: var(--text-muted);
 	text-align: right;
 }
 
@@ -268,16 +268,16 @@ function optionLabel(questionId: string, optionId: string): string {
 	justify-content: space-between;
 	font-size: 0.85rem;
 	padding: 0.25rem 0.5rem;
-	background: #f9fafb;
+	background: var(--bg-elevated);
 	border-radius: 0.25rem;
 }
 
-.text-answer-val { color: #374151; }
-.text-answer-count { color: #6b7280; }
+.text-answer-val { color: var(--text-secondary); }
+.text-answer-count { color: var(--text-muted); }
 
 .no-stats, .no-questions {
 	text-align: center;
-	color: #9ca3af;
+	color: var(--text-subtle);
 	font-size: 0.875rem;
 	padding: 2rem;
 }

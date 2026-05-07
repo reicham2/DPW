@@ -9,13 +9,14 @@ import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
-import { useIdeenkiste } from '../composables/useIdeenkiste';
+import { useIdeaBox } from '../composables/useIdeaBox';
 import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import BadgeSelect from '../components/BadgeSelect.vue';
+import ResponsibleAvatars from '../components/ResponsibleAvatars.vue';
 
 
 const route = useRoute();
@@ -2055,7 +2056,7 @@ function endProgramDrag() {
 }
 
 // ---- Ideenkiste integration --------------------------------------------------
-const { items: ideenkisteItems, fetchItems: fetchIdeenkiste, createItem: createIdeenkisteItem, deleteItem: deleteIdeenkisteItem } = useIdeenkiste();
+const { items: ideenkisteItems, fetchItems: fetchIdeenkiste, createItem: createIdeenkisteItem, deleteItem: deleteIdeenkisteItem } = useIdeaBox();
 const showIdeenDropdown = ref(false);
 const ideenSearch = ref('');
 const ideenSaving = ref<number | null>(null);
@@ -2937,7 +2938,7 @@ function copyShareLink() {
 							</div>
 							<div class="detail-field">
 								<span class="detail-label">Verantwortlich</span>
-								<span class="detail-value">{{ activity.responsible.length ? activity.responsible.join(', ') : '—' }}</span>
+								<span class="detail-value"><ResponsibleAvatars :names="activity.responsible" /></span>
 							</div>
 							<div class="detail-field">
 								<span class="detail-label">Stufe</span>
@@ -2969,7 +2970,7 @@ function copyShareLink() {
 									<div class="program-header">
 										<p class="program-title">{{ prog.title }}</p>
 							</div>
-									<p v-if="prog.responsible.length" class="program-resp">Leitung: {{ prog.responsible.join(', ') }}</p>
+									<p v-if="prog.responsible.length" class="program-resp">Leitung: <ResponsibleAvatars :names="prog.responsible" /></p>
 									<div v-if="prog.description" class="program-desc" v-html="prog.description" />
 						</div>
 					</div>
@@ -2988,7 +2989,7 @@ function copyShareLink() {
 						class="material-list-item"
 					>
 						<span class="material-list-name">{{ m.name }}</span>
-						<span v-if="m.responsible?.length" class="material-list-resp">{{ m.responsible.join(', ') }}</span>
+						<ResponsibleAvatars v-if="m.responsible?.length" :names="m.responsible" />
 					</li>
 				</ul>
 				<span v-else class="detail-value detail-value--muted">—</span>
@@ -4160,7 +4161,7 @@ function copyShareLink() {
 				</div>
 				<div class="activity-preview-popup__row">
 					<span class="detail-label">Verantwortlich</span>
-					<span>{{ previewActivity.responsible.length ? previewActivity.responsible.join(', ') : '—' }}</span>
+					<span><ResponsibleAvatars :names="previewActivity.responsible" /></span>
 				</div>
 				<div v-if="previewActivity.goal" class="activity-preview-popup__row">
 					<span class="detail-label">Ziel</span>
@@ -4171,7 +4172,7 @@ function copyShareLink() {
 					<ul class="overlap-list" style="margin-top: 4px">
 						<li v-for="(prog, pi) in previewActivity.programs" :key="prog.id">
 							<strong>{{ previewProgramLabel(pi) }}</strong> {{ prog.title }}
-							<span v-if="prog.responsible.length"> – {{ prog.responsible.join(', ') }}</span>
+							<span v-if="prog.responsible.length"> – <ResponsibleAvatars :names="prog.responsible" /></span>
 						</li>
 					</ul>
 				</div>

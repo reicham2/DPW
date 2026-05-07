@@ -9,8 +9,8 @@ import StatsPage from '../pages/StatsPage.vue';
 import FormPublicPage from '../pages/FormPublicPage.vue';
 import SharedActivityPage from '../pages/SharedActivityPage.vue';
 import ActivityFormsPage from '../pages/ActivityFormsPage.vue';
-import VorlagenPage from '../pages/VorlagenPage.vue';
-import IdeenkistePage from '../pages/IdeenkistePage.vue';
+import TemplatesPage from '../pages/TemplatesPage.vue';
+import IdeaBoxPage from '../pages/IdeaBoxPage.vue';
 import SetupPage from '../pages/SetupPage.vue';
 import { user, authLoading } from '../composables/useAuth';
 import { ensureSetupStatus } from '../composables/useSetupAuthConfig';
@@ -24,10 +24,12 @@ export const router = createRouter({
 		{ path: '/activities/:id', component: DetailPage },
 		{ path: '/activities/:id/mail', component: MailComposerPage },
 		{ path: '/activities/:id/forms', component: ActivityFormsPage },
-		{ path: '/vorlagen', component: VorlagenPage },
-		{ path: '/ideenkiste', component: IdeenkistePage },
-		{ path: '/mail-templates', redirect: '/vorlagen' },
-		{ path: '/form-templates', redirect: '/vorlagen' },
+		{ path: '/templates', component: TemplatesPage },
+		{ path: '/ideas', component: IdeaBoxPage },
+		{ path: '/vorlagen', redirect: '/templates' },
+		{ path: '/ideenkiste', redirect: '/ideas' },
+		{ path: '/mail-templates', redirect: '/templates' },
+		{ path: '/form-templates', redirect: '/templates' },
 		{ path: '/stats', component: StatsPage },
 		{ path: '/profile', component: ProfilePage },
 		{ path: '/admin', component: AdminPage },

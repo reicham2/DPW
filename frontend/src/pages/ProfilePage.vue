@@ -5,151 +5,157 @@
 
   <main class="page-content">
     <div class="profile-card">
-      <div class="profile-avatar-large">{{ initials }}</div>
+      <div class="profile-identity">
+        <div class="profile-avatar-large">{{ initials }}</div>
+        <div class="profile-identity-info">
+          <span class="profile-identity-name">{{ user?.display_name }}</span>
+          <DepartmentBadge v-if="form.department" :department="form.department" />
+          <span v-else class="profile-dept-empty">Keine Stufe</span>
+        </div>
+      </div>
 
       <form class="profile-form" @submit.prevent="save">
-        <div class="form-group">
-          <label class="form-label" for="display_name">Anzeigename</label>
-          <input
-            id="display_name"
-            v-model="form.display_name"
-            class="form-input"
-            type="text"
-            required
-            placeholder="Dein Name"
-          />
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="department">Stufe</label>
-          <BadgeSelect
-            v-if="canChangeDepartment"
-            kind="department"
-            :items="deptItems"
-            allow-empty
-            placeholder="Keine Angabe"
-            :model-value="form.department || null"
-            @update:model-value="(v) => form.department = (v ?? '')"
-          />
-          <div v-else class="profile-dept-readonly">
-            <DepartmentBadge v-if="form.department" :department="form.department" />
-            <span v-else class="profile-dept-empty">Keine Angabe</span>
-          </div>
-          <p v-if="!canChangeDepartment" class="form-hint">
-            Stufe kann nur von einem Admin geändert werden.
-          </p>
-        </div>
 
         <div class="form-group">
           <label class="form-label">E-Mail</label>
           <input class="form-input form-input--readonly" type="text" :value="user?.email" readonly />
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Zeitanzeige der Programmpunkte</label>
-          <div class="time-mode-toggle" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="form.time_display_mode === 'minutes'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': form.time_display_mode === 'minutes' }"
-              @click="form.time_display_mode = 'minutes'"
-            >
-              Minuten
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="form.time_display_mode === 'clock'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': form.time_display_mode === 'clock' }"
-              @click="form.time_display_mode = 'clock'"
-            >
-              Uhrzeit
-            </button>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label class="form-label">Zeitanzeige der Programmpunkte</label>
+            <div class="time-mode-toggle" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="form.time_display_mode === 'minutes'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': form.time_display_mode === 'minutes' }"
+                @click="form.time_display_mode = 'minutes'"
+              >
+                Minuten
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="form.time_display_mode === 'clock'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': form.time_display_mode === 'clock' }"
+                @click="form.time_display_mode = 'clock'"
+              >
+                Uhrzeit
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label class="form-label form-label--with-info">
-            Statistik-Anzeige auf Aktivität
-            <span
-              class="info-tip"
-              tabindex="0"
-              role="button"
-              aria-label="Mehr Informationen"
-              @click="statsInfoOpen = !statsInfoOpen"
-              @blur="statsInfoOpen = false"
-            >
-              ?
-              <span v-if="statsInfoOpen" class="info-tip__popover">
-                <strong>Seitlich:</strong> Die Statistik erscheint rechts neben der Aktivität, wenn der Bildschirm breit genug ist. Auf schmalen Bildschirmen wird sie automatisch aufklappbar.<br /><br />
-                <strong>Klappbar:</strong> Die Statistik ist immer über einen Knopf am rechten Rand zum Öffnen verfügbar – auch auf breiten Bildschirmen.
+          <div class="form-group">
+            <label class="form-label form-label--with-info">
+              Statistik-Anzeige auf Aktivität
+              <span
+                class="info-tip"
+                tabindex="0"
+                role="button"
+                aria-label="Mehr Informationen"
+                @click="statsInfoOpen = !statsInfoOpen"
+                @blur="statsInfoOpen = false"
+              >
+                ?
+                <span v-if="statsInfoOpen" class="info-tip__popover">
+                  <strong>Seitlich:</strong> Die Statistik erscheint rechts neben der Aktivität, wenn der Bildschirm breit genug ist. Auf schmalen Bildschirmen wird sie automatisch aufklappbar.<br /><br />
+                  <strong>Klappbar:</strong> Die Statistik ist immer über einen Knopf am rechten Rand zum Öffnen verfügbar – auch auf breiten Bildschirmen.
+                </span>
               </span>
-            </span>
-          </label>
-          <div class="time-mode-toggle" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="statsDisplayMode === 'auto'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': statsDisplayMode === 'auto' }"
-              @click="statsDisplayMode = 'auto'"
-            >
-              Seitlich
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="statsDisplayMode === 'always-drawer'"
-              class="time-mode-pill"
-              :class="{ 'time-mode-pill--active': statsDisplayMode === 'always-drawer' }"
-              @click="statsDisplayMode = 'always-drawer'"
-            >
-              Klappbar
-            </button>
+            </label>
+            <div class="time-mode-toggle" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="statsDisplayMode === 'auto'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': statsDisplayMode === 'auto' }"
+                @click="statsDisplayMode = 'auto'"
+              >
+                Seitlich
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="statsDisplayMode === 'always-drawer'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': statsDisplayMode === 'always-drawer' }"
+                @click="statsDisplayMode = 'always-drawer'"
+              >
+                Klappbar
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Erscheinungsbild</label>
+            <div class="time-mode-toggle" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="themeMode === 'light'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': themeMode === 'light' }"
+                @click="themeMode = 'light'"
+              >
+                Hell
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="themeMode === 'dark'"
+                class="time-mode-pill"
+                :class="{ 'time-mode-pill--active': themeMode === 'dark' }"
+                @click="themeMode = 'dark'"
+              >
+                Dunkel
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Benachrichtigungen abonnieren</label>
-          <label class="notify-option">
-            <input v-model="form.notify_activity_assigned" type="checkbox" />
-            <span>Aktivität dir zugewiesen</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_program_assigned" type="checkbox" />
-            <span>Programmblock dir zugewiesen</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_material_assigned" type="checkbox" />
-            <span>Material an dich zugewiesen</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_mail_own_activity" type="checkbox" />
-            <span>Mail versendet für deine Aktivität</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_mail_department" type="checkbox" />
-            <span>Mail versendet in deiner Stufe</span>
-          </label>
-        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Benachrichtigungen abonnieren</label>
+            <label class="notify-option">
+              <input v-model="form.notify_activity_assigned" type="checkbox" />
+              <span>Aktivität dir zugewiesen</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_program_assigned" type="checkbox" />
+              <span>Programmblock dir zugewiesen</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_material_assigned" type="checkbox" />
+              <span>Material an dich zugewiesen</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_mail_own_activity" type="checkbox" />
+              <span>Mail versendet für deine Aktivität</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_mail_department" type="checkbox" />
+              <span>Mail versendet in deiner Stufe</span>
+            </label>
+          </div>
 
-        <div class="form-group">
-          <label class="form-label">Benachrichtigungskanal</label>
-          <label class="notify-option">
-            <input v-model="form.notify_channel_websocket" type="checkbox" />
-            <span>Browser / App</span>
-          </label>
-          <label class="notify-option">
-            <input v-model="form.notify_channel_email" type="checkbox" />
-            <span>E-Mail</span>
-          </label>
-          <p class="form-hint">
-            Browser / App zeigt Benachrichtigungen im Browser und in der installierten PWA-App.
-          </p>
+          <div class="form-group">
+            <label class="form-label">Benachrichtigungskanal</label>
+            <label class="notify-option">
+              <input v-model="form.notify_channel_websocket" type="checkbox" />
+              <span>Browser / App</span>
+            </label>
+            <label class="notify-option">
+              <input v-model="form.notify_channel_email" type="checkbox" />
+              <span>E-Mail</span>
+            </label>
+            <p class="form-hint">
+              Browser / App zeigt Benachrichtigungen im Browser und in der installierten PWA-App.
+            </p>
+          </div>
         </div>
 
         <ErrorAlert :error="error" />
@@ -169,23 +175,14 @@ import { user } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import { usePermissions } from '../composables/usePermissions'
 import { requestBrowserNotificationPermission, syncPushSubscription } from '../composables/useNotifications'
-import { statsDisplayMode } from '../composables/useUserPrefs'
+import { statsDisplayMode, themeMode } from '../composables/useUserPrefs'
 import ErrorAlert from '../components/ErrorAlert.vue'
-import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { User, TimeDisplayMode } from '../types'
 
 const { myPermissions, fetchMyPermissions, departments: deptRecords, fetchDepartments } = usePermissions()
 
-const canChangeDepartment = computed(() => {
-  const scope = myPermissions.value?.user_dept_scope
-  return scope === 'own' || scope === 'own_dept' || scope === 'all'
-})
-
-const deptItems = computed(() => deptRecords.value.map(d => ({ value: d.name })))
-
 const form = ref({
-  display_name: user.value?.display_name ?? '',
   department:   user.value?.department   ?? '',
   time_display_mode: (user.value?.time_display_mode ?? 'minutes') as TimeDisplayMode,
   notify_material_assigned: user.value?.notify_material_assigned ?? true,
@@ -202,13 +199,10 @@ const error  = ref<string | null>(null)
 const statsInfoOpen = ref(false)
 
 const initials = computed(() => {
-  const name = form.value.display_name || user.value?.display_name || ''
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0].toUpperCase())
-    .join('')
+  const name = user.value?.display_name || ''
+  const words = name.split(' ').filter(Boolean)
+  if (words.length === 1) return name.slice(0, 2).toUpperCase()
+  return words.slice(0, 2).map(w => w[0].toUpperCase()).join('')
 })
 
 let initialLoaded = false
@@ -216,7 +210,6 @@ let initialLoaded = false
 onMounted(async () => {
   await Promise.all([fetchMyPermissions(), fetchDepartments()])
   if (user.value) {
-    form.value.display_name = user.value.display_name
     form.value.department   = user.value.department ?? ''
     form.value.time_display_mode = user.value.time_display_mode ?? 'minutes'
     form.value.notify_material_assigned = user.value.notify_material_assigned ?? true
@@ -238,7 +231,6 @@ async function save() {
     const res = await apiFetch('/api/me', {
       method: 'PATCH',
       body: JSON.stringify({
-        display_name: form.value.display_name,
         department:   form.value.department || null,
         time_display_mode: form.value.time_display_mode,
         notify_material_assigned: form.value.notify_material_assigned,
@@ -272,48 +264,80 @@ async function save() {
 <style scoped>
 .page-header {
   padding: 32px 24px 0;
-  max-width: 560px;
+  max-width: 860px;
   margin: 0 auto;
 }
 .page-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--text-primary);
   margin: 0;
 }
 .page-content {
   padding: 24px;
-  max-width: 560px;
+  max-width: 860px;
   margin: 0 auto;
 }
 .profile-card {
-  background: #fff;
+  background: var(--card-bg);
   border-radius: 14px;
   padding: 32px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  box-shadow: var(--card-shadow);
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 28px;
 }
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.profile-identity-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.profile-identity-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
 .profile-avatar-large {
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: #1a56db;
-  color: #fff;
-  font-size: 1.6rem;
+  background: var(--accent);
+  color: var(--btn-primary-color);
+  font-size: 1.3rem;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   letter-spacing: 1px;
+  flex-shrink: 0;
 }
 .profile-form {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.form-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 599px) {
+  .form-row-2,
+  .form-row-3 {
+    grid-template-columns: 1fr;
+  }
 }
 .form-group {
   display: flex;
@@ -323,31 +347,31 @@ async function save() {
 .form-label {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
 }
 .form-input {
   padding: 10px 12px;
-  border: 1.5px solid #d1d5db;
+  border: 1.5px solid var(--input-border);
   border-radius: 8px;
   font-size: 0.95rem;
-  color: #1a202c;
-  background: #fff;
+  color: var(--input-color);
+  background: var(--input-bg);
   outline: none;
   transition: border-color 0.15s;
   width: 100%;
   box-sizing: border-box;
 }
 .form-input:focus {
-  border-color: #1a56db;
+  border-color: var(--accent);
 }
 .form-input--readonly {
-  background: #f9fafb;
-  color: #6b7280;
+  background: var(--input-readonly-bg);
+  color: var(--input-readonly-color);
   cursor: default;
 }
 .btn-primary {
   padding: 11px 24px;
-  background: #1a56db;
+  background: var(--btn-primary-bg);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -358,7 +382,7 @@ async function save() {
   align-self: flex-start;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #1648c0;
+  background: var(--btn-primary-bg-hover);
 }
 .btn-primary:disabled {
   opacity: 0.6;
@@ -366,7 +390,7 @@ async function save() {
 }
 .form-hint {
   font-size: 0.78rem;
-  color: #9ca3af;
+  color: var(--text-subtle);
   margin: 2px 0 0;
 }
 .profile-dept-readonly {
@@ -374,18 +398,18 @@ async function save() {
   align-items: center;
   min-height: 40px;
   padding: 8px 12px;
-  border: 1.5px solid #d1d5db;
+  border: 1.5px solid var(--input-border);
   border-radius: 8px;
-  background: #f9fafb;
+  background: var(--input-readonly-bg);
 }
 .profile-dept-empty {
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.88rem;
 }
 .profile-error {
-  color: #dc2626;
+  color: var(--error-color);
   font-size: 0.875rem;
-  background: #fff5f5;
+  background: var(--error-bg);
   border-radius: 6px;
   padding: 8px 12px;
 }
@@ -394,7 +418,7 @@ async function save() {
   align-items: center;
   gap: 0;
   padding: 4px;
-  background: #f3f4f6;
+  background: var(--bg-hover);
   border-radius: 999px;
   align-self: flex-start;
 }
@@ -405,7 +429,7 @@ async function save() {
   padding: 8px 18px;
   border: none;
   background: transparent;
-  color: #4b5563;
+  color: var(--text-secondary);
   font-size: 0.9rem;
   font-weight: 500;
   border-radius: 999px;
@@ -413,21 +437,21 @@ async function save() {
   transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 .time-mode-pill:hover:not(.time-mode-pill--active) {
-  color: #1a202c;
+  color: var(--text-primary);
 }
 .time-mode-pill--active {
-  background: #e0e7ff;
-  color: #1a202c;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  background: var(--accent-bg);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
 }
 .time-mode-check {
-  color: #1a56db;
+  color: var(--accent);
   font-weight: 700;
 }
 .profile-success {
-  color: #15803d;
+  color: var(--success-color);
   font-size: 0.875rem;
-  background: #f0fdf4;
+  background: var(--success-bg);
   border-radius: 6px;
   padding: 8px 12px;
 }
@@ -436,7 +460,7 @@ async function save() {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #374151;
+  color: var(--text-secondary);
   font-size: 0.9rem;
 }
 
@@ -459,8 +483,8 @@ async function save() {
   height: 18px;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #4b5563;
-  background: #e5e7eb;
+  color: var(--text-secondary);
+  background: var(--border);
   border-radius: 50%;
   cursor: pointer;
   user-select: none;
@@ -469,8 +493,8 @@ async function save() {
 }
 .info-tip:hover,
 .info-tip:focus {
-  background: #1a56db;
-  color: #fff;
+  background: var(--accent);
+  color: var(--btn-primary-color);
 }
 .info-tip__popover {
   position: absolute;
