@@ -27,7 +27,7 @@ const durationFilterMode = ref<'under' | 'over' | 'exact'>('under')
 
 const durationFilterLabel = computed(() => {
   if (durationFilterMode.value === 'under') return 'Unter'
-  if (durationFilterMode.value === 'over') return 'Uber'
+  if (durationFilterMode.value === 'over') return 'Über'
   return 'Exakt'
 })
 
@@ -916,8 +916,8 @@ function openNewForm() {
 }
 
 .ideenkiste-form-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1.25rem;
   margin-bottom: 1.5rem;
@@ -943,7 +943,7 @@ function openNewForm() {
 }
 
 .ideenkiste-empty {
-  color: var(--color-text-muted);
+  color: var(--text-muted);
   text-align: center;
   padding: 2rem 0;
 }

@@ -1896,7 +1896,7 @@ video {
 	top: 10px;
 	bottom: 10px;
 	width: 2px;
-	background: linear-gradient(180deg, #bfdbfe 0%, #dbeafe 100%);
+	background: var(--border-strong);
 }
 
 .program-item {
@@ -1921,16 +1921,16 @@ video {
 	border-radius: 50%;
 	background: var(--program-dot);
 	z-index: 1;
-	border: 2px solid #eff6ff;
-	box-shadow: 0 0 0 4px rgba(191, 219, 254, 0.8);
+	border: 2px solid var(--bg-base);
+	box-shadow: 0 0 0 4px var(--accent-bg);
 }
 
 .program-body {
 	padding: 14px 16px;
-	border: 1px solid #e5e7eb;
+	border: 1px solid var(--card-border);
 	border-radius: 12px;
 	background: var(--card-bg);
-	box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
+	box-shadow: var(--card-shadow);
 	min-width: 0;
 }
 
@@ -1956,7 +1956,7 @@ video {
 .program-time-secondary {
 	font-size: 0.76rem;
 	font-weight: 600;
-	color: #64748b;
+	color: var(--text-muted);
 	line-height: 1.3;
 }
 
@@ -1983,7 +1983,7 @@ video {
 
 .program-resp {
 	font-size: 0.82rem;
-	color: #475569;
+	color: var(--text-muted);
 	margin-top: 6px;
 	line-height: 1.45;
 	overflow-wrap: anywhere;
@@ -2369,8 +2369,9 @@ video {
 .filter-tab {
 	padding: 6px 14px;
 	border-radius: 999px;
-	border: 1.5px solid #e5e7eb;
-	background: var(--bg-surface); color: var(--text-secondary);
+	border: 1.5px solid var(--border);
+	background: var(--bg-surface);
+	color: var(--text-secondary);
 	font-size: 0.85rem;
 	font-weight: 500;
 	cursor: pointer;
@@ -2382,21 +2383,21 @@ video {
 }
 
 .filter-tab:hover {
-	border-color: #0080ff;
-	color: #0023ff;
-	background: #e6f2ff;
+	border-color: var(--accent);
+	color: var(--accent);
+	background: var(--accent-bg);
 }
 
 .filter-tab--active {
 	background: var(--btn-primary-bg);
-	border-color: #0080ff;
-	color: #fff;
+	border-color: var(--btn-primary-bg);
+	color: var(--btn-primary-color);
 }
 
 .filter-tab--active:hover {
-	background: #0023ff;
-	border-color: #0023ff;
-	color: #fff;
+	background: var(--btn-primary-bg-hover);
+	border-color: var(--btn-primary-bg-hover);
+	color: var(--btn-primary-color);
 }
 
 /* Filter tab used as a container for a DepartmentBadge — badge itself carries the styling */

@@ -421,8 +421,8 @@ onMounted(() => {
 	min-width: 18px;
 	height: 18px;
 	border-radius: 999px;
-	background: #dc2626;
-	color: #fff;
+	background: var(--error-color);
+	color: var(--btn-primary-color);
 	font-size: 0.68rem;
 	font-weight: 700;
 	display: inline-flex;
@@ -436,10 +436,10 @@ onMounted(() => {
 	background: var(--dropdown-hover);
 }
 .avatar-dropdown-logout {
-	color: #dc2626;
+	color: var(--error-color);
 }
 .avatar-dropdown-logout:hover {
-	background: #fff5f5;
+	background: var(--error-bg);
 }
 
 .avatar-notifications-modal {
@@ -487,8 +487,8 @@ onMounted(() => {
 
 .avatar-notification-item:hover {
 	background: var(--bg-elevated);
-	border-color: #dbeafe;
-	box-shadow: 0 8px 18px rgba(148, 163, 184, 0.12);
+	border-color: var(--accent);
+	box-shadow: var(--shadow-md);
 }
 
 .avatar-notification-item:first-child {
@@ -496,8 +496,8 @@ onMounted(() => {
 }
 
 .avatar-notification-item--unread {
-	background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
-	border-color: #bfdbfe;
+	background: var(--accent-bg);
+	border-color: var(--accent);
 }
 
 .avatar-notification-headline {
@@ -538,28 +538,28 @@ onMounted(() => {
 }
 
 .avatar-notification-category--material {
-	background: #dcfce7;
-	color: #166534;
+	background: var(--success-bg);
+	color: var(--success-color);
 }
 
 .avatar-notification-category--activity {
-	background: #ede9fe;
-	color: #6d28d9;
+	background: var(--chip-bg);
+	color: var(--chip-color);
 }
 
 .avatar-notification-category--program {
-	background: #ccfbf1;
-	color: #0f766e;
+	background: var(--success-bg);
+	color: var(--success-color);
 }
 
 .avatar-notification-category--activity-mail {
-	background: #dbeafe;
-	color: #1d4ed8;
+	background: var(--accent-bg);
+	color: var(--accent);
 }
 
 .avatar-notification-category--department-mail {
-	background: #ffedd5;
-	color: #c2410c;
+	background: var(--warning-bg);
+	color: var(--warning-color);
 }
 
 .avatar-notification-title {
