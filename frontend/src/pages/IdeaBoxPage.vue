@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, X, Check, Search, ChevronDown, ChevronUp, Minus }
 import { useRouter } from 'vue-router'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
-import { useIdeenkiste } from '../composables/useIdeenkiste'
+import { useIdeaBox } from '../composables/useIdeaBox'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -12,7 +12,7 @@ import type { IdeenkisteItem } from '../types'
 
 const router = useRouter()
 const { myPermissions, fetchMyPermissions, departments, fetchDepartments, canIdeenkisteAdd, canIdeenkisteDelete } = usePermissions()
-const { items, loading, error, fetchItems, createItem, updateItem, deleteItem } = useIdeenkiste()
+const { items, loading, error, fetchItems, createItem, updateItem, deleteItem } = useIdeaBox()
 
 const isOwnDeptOnly = computed(() => myPermissions.value?.ideenkiste_scope === 'own_dept')
 const canAll = computed(() => myPermissions.value?.ideenkiste_scope === 'all')

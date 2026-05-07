@@ -7,7 +7,7 @@ const items = ref<IdeenkisteItem[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
-export function useIdeenkiste() {
+export function useIdeaBox() {
 	async function fetchItems(): Promise<void> {
 		loading.value = true;
 		error.value = null;

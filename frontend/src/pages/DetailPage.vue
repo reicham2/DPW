@@ -9,7 +9,7 @@ import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
-import { useIdeenkiste } from '../composables/useIdeenkiste';
+import { useIdeaBox } from '../composables/useIdeaBox';
 import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
@@ -2056,7 +2056,7 @@ function endProgramDrag() {
 }
 
 // ---- Ideenkiste integration --------------------------------------------------
-const { items: ideenkisteItems, fetchItems: fetchIdeenkiste, createItem: createIdeenkisteItem, deleteItem: deleteIdeenkisteItem } = useIdeenkiste();
+const { items: ideenkisteItems, fetchItems: fetchIdeenkiste, createItem: createIdeenkisteItem, deleteItem: deleteIdeenkisteItem } = useIdeaBox();
 const showIdeenDropdown = ref(false);
 const ideenSearch = ref('');
 const ideenSaving = ref<number | null>(null);
