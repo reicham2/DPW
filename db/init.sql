@@ -55,6 +55,20 @@ INSERT INTO departments (name, color) VALUES
     ('Allgemein', '#6b7280')
 ON CONFLICT (name) DO NOTHING;
 
+-- Ensure sort_order exists before seeding roles (idempotent for existing DBs)
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS sort_order INTEGER;
+WITH ranked_roles AS (
+    SELECT name, ROW_NUMBER() OVER (ORDER BY name) - 1 AS rn
+    FROM roles
+)
+UPDATE roles r
+SET sort_order = rr.rn
+FROM ranked_roles rr
+WHERE r.name = rr.name
+  AND r.sort_order IS NULL;
+ALTER TABLE roles ALTER COLUMN sort_order SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_roles_sort_order_unique ON roles (sort_order);
+
 INSERT INTO roles (name, color, sort_order) VALUES
     ('admin',    '#92400e', 0),
     ('Mitglied', '#6b7280', 1)
@@ -353,6 +367,14 @@ CREATE TABLE IF NOT EXISTS role_dept_access (
     PRIMARY KEY (role, department)
 );
 
+-- Ensure ideenkiste columns exist before seeding (idempotent for existing DBs)
+ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_scope TEXT NOT NULL DEFAULT 'none'
+    CHECK (ideenkiste_scope IN ('none', 'own_dept', 'all'));
+ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_add_scope TEXT NOT NULL DEFAULT 'none'
+    CHECK (ideenkiste_add_scope IN ('none', 'own_dept', 'all'));
+ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_delete_scope TEXT NOT NULL DEFAULT 'none'
+    CHECK (ideenkiste_delete_scope IN ('none', 'own_dept', 'all'));
+
 -- Seed default role permissions
 INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope, ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope) VALUES
     ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all'),
@@ -490,19 +512,6 @@ CREATE TRIGGER trg_form_drafts_updated_at
 ALTER TABLE departments ADD COLUMN IF NOT EXISTS midata_group_id TEXT;
 ALTER TABLE departments ADD COLUMN IF NOT EXISTS midata_child_roles TEXT[] NOT NULL DEFAULT '{}';
 
-ALTER TABLE roles ADD COLUMN IF NOT EXISTS sort_order INTEGER;
-WITH ranked_roles AS (
-    SELECT name, ROW_NUMBER() OVER (ORDER BY name) - 1 AS rn
-    FROM roles
-)
-UPDATE roles r
-SET sort_order = rr.rn
-FROM ranked_roles rr
-WHERE r.name = rr.name
-  AND r.sort_order IS NULL;
-ALTER TABLE roles ALTER COLUMN sort_order SET NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_roles_sort_order_unique ON roles (sort_order);
-
 ALTER TABLE users ADD COLUMN IF NOT EXISTS time_display_mode TEXT;
 UPDATE users SET time_display_mode = 'minutes' WHERE time_display_mode IS NULL;
 ALTER TABLE users ALTER COLUMN time_display_mode SET DEFAULT 'minutes';
@@ -553,13 +562,6 @@ EXCEPTION
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_form_drafts_activity ON form_drafts (activity_id);
-
-ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_scope TEXT NOT NULL DEFAULT 'none'
-    CHECK (ideenkiste_scope IN ('none', 'own_dept', 'all'));
-ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_add_scope TEXT NOT NULL DEFAULT 'none'
-    CHECK (ideenkiste_add_scope IN ('none', 'own_dept', 'all'));
-ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_delete_scope TEXT NOT NULL DEFAULT 'none'
-    CHECK (ideenkiste_delete_scope IN ('none', 'own_dept', 'all'));
 
 CREATE TABLE IF NOT EXISTS ideenkiste (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
