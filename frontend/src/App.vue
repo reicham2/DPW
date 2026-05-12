@@ -34,7 +34,7 @@
           <span v-if="user" class="nav-connection" :class="isOnline ? 'nav-connection--online' : 'nav-connection--offline'">
             {{ isOnline ? 'Online' : 'Offline' }}
           </span>
-          <a href="https://github.com/reicham2/DPW/wiki" target="_blank" rel="noopener noreferrer" class="global-nav-help" title="Hilfe">
+          <a href="https://github.com/reicham2/DPW/wiki/Erste-Schritte" target="_blank" rel="noopener noreferrer" class="global-nav-help" title="Hilfe">
             <CircleHelp :size="20" aria-hidden="true" />
           </a>
           <UserAvatar />
