@@ -10,7 +10,8 @@ import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
 import { useIdeaBox } from '../composables/useIdeaBox';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked } from 'lucide-vue-next';
+import { useActivityExport } from '../composables/useActivityExport';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -45,6 +46,7 @@ const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canFo
 
 const { fetchForm } = useForms();
 const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
+const { exportToWord } = useActivityExport();
 
 const activity = ref<Activity | null>(null);
 const activityMissingConfirmed = ref(false);
@@ -2765,6 +2767,14 @@ function copyShareLink() {
 					<button
 						type="button"
 						class="activity-actions-mobile-item"
+						@click="closeActivityActionsMenu(); exportToWord(activity!)"
+					>
+						<FileText class="btn-icon" :size="16" aria-hidden="true" />
+						<span>Word-Export</span>
+					</button>
+					<button
+						type="button"
+						class="activity-actions-mobile-item"
 						:class="{ 'activity-actions-mobile-item--active': shareCopied }"
 						:disabled="!canShareActivity || shareLoading || !shareToken"
 						@click="closeActivityActionsMenu(); copyShareLink()"
@@ -2829,6 +2839,15 @@ function copyShareLink() {
 				>
 					<CheckCircle2 class="btn-icon" :size="16" aria-hidden="true" />
 					Veröffentlicht (WP)
+				</button>
+				<button
+					v-if="activity && mode === 'view'"
+					class="btn-mail"
+					title="Als Word-Dokument exportieren"
+					@click="exportToWord(activity!)"
+				>
+					<FileText class="btn-icon" :size="16" aria-hidden="true" />
+					Word-Export
 				</button>
 				<div v-if="activity && mode === 'view'" class="share-link-wrap">
 					<button

@@ -12,6 +12,7 @@
 	},
 	"dependencies": {
 		"@azure/msal-browser": "^3.0.0",
+		"docx": "^9.6.1",
 		"html2canvas": "^1.4.1",
 		"lucide-vue-next": "^1.0.0",
 		"vue": "^3.4.0",
