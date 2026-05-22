@@ -6049,6 +6049,34 @@ void handle_post_admin_activity_restore(HttpRes *res, HttpReq *req, Database &db
     }
 }
 
+void handle_delete_admin_activity_trash(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
+    auto admin_user = require_strict_admin(res, req, db);
+    if (!admin_user)
+        return;
+
+    std::string id{req->getParameter(0)};
+    try
+    {
+        bool deleted = db.permanently_delete_activity(id);
+        if (!deleted)
+        {
+            send_json(res, 404, R"({"error":"Nicht gefunden"})");
+            return;
+        }
+
+        nlohmann::json msg = {{"event", "deleted"}, {"id", id}};
+        wm.broadcast(msg.dump());
+        cache_bump_version("activities");
+        cache_bump_version("activity");
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
 void handle_get_admin_midata_status(HttpRes *res, HttpReq *req, Database &db)
 {
     if (!require_admin(res, req, db))
@@ -7604,10 +7632,15 @@ void handle_get_shared_activity(HttpRes *res, HttpReq *req, Database &db)
 
 // ── Ideenkiste ───────────────────────────────────────────────────────────────
 
-enum class IdeenkisteOp { View, Add, Delete };
+enum class IdeenkisteOp
+{
+    View,
+    Add,
+    Delete
+};
 
 static std::optional<std::string> ideenkiste_check(HttpRes *res, HttpReq *req, Database &db,
-                                                    UserRecord &out_user, IdeenkisteOp op)
+                                                   UserRecord &out_user, IdeenkisteOp op)
 {
     TokenClaims claims;
     if (!require_auth(res, req, claims))
@@ -7628,9 +7661,15 @@ static std::optional<std::string> ideenkiste_check(HttpRes *res, HttpReq *req, D
     {
         switch (op)
         {
-        case IdeenkisteOp::View:   scope = perm->ideenkiste_scope; break;
-        case IdeenkisteOp::Add:    scope = perm->ideenkiste_add_scope; break;
-        case IdeenkisteOp::Delete: scope = perm->ideenkiste_delete_scope; break;
+        case IdeenkisteOp::View:
+            scope = perm->ideenkiste_scope;
+            break;
+        case IdeenkisteOp::Add:
+            scope = perm->ideenkiste_add_scope;
+            break;
+        case IdeenkisteOp::Delete:
+            scope = perm->ideenkiste_delete_scope;
+            break;
         }
     }
     else
@@ -7699,7 +7738,7 @@ void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
         return;
     res->onAborted([]() {});
     res->onData([res, &db, user_dept = user.department, scope = *scope](std::string_view body, bool last)
-    {
+                {
         if (!last) return;
         try
         {
@@ -7728,8 +7767,7 @@ void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
         catch (std::exception &e)
         {
             send_internal_error(res, "handler", e);
-        }
-    });
+        } });
 }
 
 void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
@@ -7741,7 +7779,7 @@ void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     res->onAborted([]() {});
     res->onData([res, &db, id, user_dept = user.department, scope = *scope](std::string_view body, bool last)
-    {
+                {
         if (!last) return;
         try
         {
@@ -7776,8 +7814,7 @@ void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
         catch (std::exception &e)
         {
             send_internal_error(res, "handler", e);
-        }
-    });
+        } });
 }
 
 void handle_delete_ideenkiste(HttpRes *res, HttpReq *req, Database &db)

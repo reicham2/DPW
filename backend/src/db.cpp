@@ -917,6 +917,44 @@ bool Database::restore_activity(const std::string &id)
     return ok;
 }
 
+bool Database::permanently_delete_activity(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM activities "
+                                 "WHERE id = $1 AND deleted_at IS NOT NULL",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK && PQcmdTuples(res)[0] != '0';
+    PQclear(res);
+    return ok;
+}
+
+int Database::purge_deleted_activities_older_than_days(int days)
+{
+    ensure_connected();
+    std::string days_text = std::to_string(days);
+    const char *params[1] = {days_text.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM activities "
+                                 "WHERE deleted_at IS NOT NULL "
+                                 "AND deleted_at < NOW() - ($1::int * INTERVAL '1 day')",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("purge_deleted_activities_older_than_days: " + err);
+    }
+
+    int deleted = 0;
+    const char *tuples = PQcmdTuples(res);
+    if (tuples && *tuples)
+        deleted = std::atoi(tuples);
+    PQclear(res);
+    return deleted;
+}
+
 std::vector<DeletedActivityRecord> Database::list_deleted_activities()
 {
     ensure_connected();

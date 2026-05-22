@@ -8,7 +8,72 @@
 #include <string>
 #include <cstdio>
 #include <vector>
+#include <thread>
+#include <algorithm>
+#include <chrono>
+#include <type_traits>
 #include <curl/curl.h>
+
+namespace
+{
+     constexpr int kDeletedActivityRetentionDays = 90;
+     constexpr auto kDeletedActivityPurgeInterval = std::chrono::hours(24);
+     constexpr auto kDeletedActivityPurgeStopCheckInterval = std::chrono::minutes(1);
+
+     void run_deleted_activity_purge_once(const std::string &conn_str)
+     {
+          Database job_db(conn_str);
+          const int deleted_count = job_db.purge_deleted_activities_older_than_days(kDeletedActivityRetentionDays);
+          if (deleted_count > 0)
+               std::printf("[jobs] purged %d deleted activit%s older than %d days\n",
+                           deleted_count,
+                           deleted_count == 1 ? "y" : "ies",
+                           kDeletedActivityRetentionDays);
+     }
+
+     void wait_for_next_purge(std::stop_token stop_token)
+     {
+          using purge_duration = std::common_type_t<decltype(kDeletedActivityPurgeInterval), decltype(kDeletedActivityPurgeStopCheckInterval)>;
+
+          auto remaining = purge_duration(kDeletedActivityPurgeInterval);
+          while (remaining > purge_duration::zero() && !stop_token.stop_requested())
+          {
+               const auto sleep_for = std::min(remaining, purge_duration(kDeletedActivityPurgeStopCheckInterval));
+               std::this_thread::sleep_for(sleep_for);
+               remaining -= sleep_for;
+          }
+     }
+
+     std::jthread start_deleted_activity_purge_job(const std::string &conn_str)
+     {
+          return std::jthread([conn_str](std::stop_token stop_token)
+                              {
+                                   try
+                                   {
+                                        run_deleted_activity_purge_once(conn_str);
+                                   }
+                                   catch (const std::exception &e)
+                                   {
+                                        std::fprintf(stderr, "[jobs] failed to purge deleted activities on startup: %s\n", e.what());
+                                   }
+
+                                   while (!stop_token.stop_requested())
+                                   {
+                                        wait_for_next_purge(stop_token);
+                                        if (stop_token.stop_requested())
+                                             break;
+
+                                        try
+                                        {
+                                             run_deleted_activity_purge_once(conn_str);
+                                        }
+                                        catch (const std::exception &e)
+                                        {
+                                             std::fprintf(stderr, "[jobs] failed to purge deleted activities: %s\n", e.what());
+                                        }
+                                   } });
+     }
+}
 
 static std::string url_decode_component(std::string_view src)
 {
@@ -104,6 +169,8 @@ int main()
           setenv("AZURE_CLIENT_ID", azure_client->c_str(), 1);
      if (azure_secret && !azure_secret->empty())
           setenv("AZURE_CLIENT_SECRET", azure_secret->c_str(), 1);
+
+     auto deleted_activity_purge_job = start_deleted_activity_purge_job(conn_str);
 
      WebSocketManager wm(db);
 
@@ -205,6 +272,8 @@ int main()
               { handle_get_admin_activity_trash(res, req, db); })
          .post("/admin/activities/:id/restore", [&](auto *res, auto *req)
                { handle_post_admin_activity_restore(res, req, db, wm); })
+         .del("/admin/activities/:id/trash", [&](auto *res, auto *req)
+              { handle_delete_admin_activity_trash(res, req, db, wm); })
 
          // Static data
          .get("/departments", [&](auto *res, auto *req)

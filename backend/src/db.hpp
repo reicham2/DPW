@@ -140,18 +140,18 @@ struct RolePermission
     bool can_write_own_dept;
     bool can_read_all_depts;
     bool can_write_all_depts;
-    std::string activity_read_scope;    // none|own|same_dept|all
-    std::string activity_create_scope;  // none|own_dept|all
-    std::string activity_edit_scope;    // none|own|same_dept|all
-    std::string mail_send_scope;        // none|own|same_dept|all
-    std::string mail_templates_scope;   // none|own_dept|all
-    std::string form_scope;             // none|own|same_dept|all
-    std::string form_templates_scope;   // none|own_dept|all
-    std::string event_templates_scope;  // none|own_dept|all
-    std::string event_publish_scope;    // none|own_dept|all
-    std::string user_dept_scope;        // none|own|own_dept|all
-    std::string user_role_scope;        // none|own|own_dept|all
-    std::string locations_manage_scope; // none|all
+    std::string activity_read_scope;     // none|own|same_dept|all
+    std::string activity_create_scope;   // none|own_dept|all
+    std::string activity_edit_scope;     // none|own|same_dept|all
+    std::string mail_send_scope;         // none|own|same_dept|all
+    std::string mail_templates_scope;    // none|own_dept|all
+    std::string form_scope;              // none|own|same_dept|all
+    std::string form_templates_scope;    // none|own_dept|all
+    std::string event_templates_scope;   // none|own_dept|all
+    std::string event_publish_scope;     // none|own_dept|all
+    std::string user_dept_scope;         // none|own|own_dept|all
+    std::string user_role_scope;         // none|own|own_dept|all
+    std::string locations_manage_scope;  // none|all
     std::string ideenkiste_scope;        // none|own_dept|all  (view + import)
     std::string ideenkiste_add_scope;    // none|own_dept|all  (create + edit)
     std::string ideenkiste_delete_scope; // none|own_dept|all  (delete)
@@ -200,6 +200,8 @@ public:
     bool delete_activity(const std::string &id);
     bool soft_delete_activity(const std::string &id, const std::string &deleted_by_user_id);
     bool restore_activity(const std::string &id);
+    bool permanently_delete_activity(const std::string &id);
+    int purge_deleted_activities_older_than_days(int days);
     std::vector<DeletedActivityRecord> list_deleted_activities();
     std::optional<int> get_activity_midata_children_value(const std::string &activity_id);
     bool set_activity_midata_children_value(const std::string &activity_id, int value);

@@ -18,7 +18,7 @@ import type { User, Department, UserRole, DeletedActivityRecord } from '../types
 
 const router = useRouter()
 const { departments: deptRecords, roles: roleRecords, fetchDepartments, fetchRoles, myPermissions, fetchMyPermissions, canManageUsers, canManageSystem, canManageLocations } = usePermissions()
-const { fetchDeletedActivities, restoreActivity } = useActivities()
+const { fetchDeletedActivities, restoreActivity, deleteDeletedActivity } = useActivities()
 
 const DEPARTMENTS = computed(() => deptRecords.value.map(d => d.name))
 const orderedRoles = computed(() => [...roleRecords.value].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de')))
@@ -55,6 +55,7 @@ const deletedActivities = ref<DeletedActivityRecord[]>([])
 const trashLoading = ref(false)
 const trashError = ref<string | null>(null)
 const restoringActivityId = ref<string | null>(null)
+const deletingActivityId = ref<string | null>(null)
 
 const filterDept = ref<Department | 'Alle'>('Alle')
 
@@ -87,6 +88,12 @@ function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString('de-DE')
 }
 
+function formatAutoDeleteDate(iso: string) {
+  const date = new Date(iso)
+  date.setDate(date.getDate() + 90)
+  return date.toLocaleString('de-DE')
+}
+
 async function loadDeletedActivities() {
   if (!canSeeTrashTab.value) return
   trashLoading.value = true
@@ -112,6 +119,25 @@ async function restoreDeletedActivity(entry: DeletedActivityRecord) {
     trashError.value = String(e)
   } finally {
     restoringActivityId.value = null
+  }
+}
+
+async function permanentlyDeleteActivity(entry: DeletedActivityRecord) {
+  if (!canSeeTrashTab.value) return
+  if (!window.confirm(`Aktivität "${entry.activity.title}" endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
+    return
+  }
+
+  deletingActivityId.value = entry.activity.id
+  trashError.value = null
+  try {
+    const deleted = await deleteDeletedActivity(entry.activity.id)
+    if (!deleted) throw new Error('Endgültiges Löschen fehlgeschlagen')
+    deletedActivities.value = deletedActivities.value.filter((item) => item.activity.id !== entry.activity.id)
+  } catch (e) {
+    trashError.value = String(e)
+  } finally {
+    deletingActivityId.value = null
   }
 }
 
@@ -389,6 +415,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
     <div class="tab-header">
       <div class="tab-header-left">
         <h2 class="trash-title">Gelöschte Aktivitäten</h2>
+        <p class="trash-note">Einträge im Papierkorb werden nach 90 Tagen automatisch endgültig gelöscht.</p>
       </div>
       <span class="user-count">{{ deletedActivities.length }} Einträge</span>
     </div>
@@ -402,6 +429,7 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
             <th>Titel</th>
             <th>Datum</th>
             <th>Gelöscht am</th>
+            <th>Auto-Löschung</th>
             <th>Gelöscht von</th>
             <th></th>
           </tr>
@@ -411,19 +439,29 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
             <td class="td-name" data-label="Titel">{{ entry.activity.title }}</td>
             <td data-label="Datum">{{ entry.activity.date }}</td>
             <td data-label="Gelöscht am">{{ formatDateTime(entry.deleted_at) }}</td>
+            <td data-label="Auto-Löschung">{{ formatAutoDeleteDate(entry.deleted_at) }}</td>
             <td class="td-email" data-label="Gelöscht von">{{ entry.deleted_by.display_name || entry.deleted_by.email || 'Unbekannt' }}</td>
             <td data-label="Aktionen">
-              <button
-                class="btn-primary btn-restore"
-                :disabled="restoringActivityId === entry.activity.id"
-                @click="restoreDeletedActivity(entry)"
-              >
-                {{ restoringActivityId === entry.activity.id ? 'Wird wiederhergestellt...' : 'Wiederherstellen' }}
-              </button>
+              <div class="trash-actions">
+                <button
+                  class="btn-primary btn-restore"
+                  :disabled="restoringActivityId === entry.activity.id || deletingActivityId === entry.activity.id"
+                  @click="restoreDeletedActivity(entry)"
+                >
+                  {{ restoringActivityId === entry.activity.id ? 'Wird wiederhergestellt...' : 'Wiederherstellen' }}
+                </button>
+                <button
+                  class="btn-danger btn-delete-forever"
+                  :disabled="deletingActivityId === entry.activity.id || restoringActivityId === entry.activity.id"
+                  @click="permanentlyDeleteActivity(entry)"
+                >
+                  {{ deletingActivityId === entry.activity.id ? 'Wird gelöscht...' : 'Endgültig löschen' }}
+                </button>
+              </div>
             </td>
           </tr>
           <tr v-if="deletedActivities.length === 0">
-            <td colspan="5" class="td-empty">Keine gelöschten Aktivitäten.</td>
+            <td colspan="6" class="td-empty">Keine gelöschten Aktivitäten.</td>
           </tr>
         </tbody>
       </table>
@@ -818,9 +856,30 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   color: var(--text-primary);
 }
 
+.trash-note {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.trash-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 180px;
+}
+
 .btn-restore {
   padding: 6px 12px;
   font-size: 0.82rem;
+  width: 100%;
+}
+
+.btn-delete-forever {
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  width: 100%;
 }
 
 @media (max-width: 599px) {
@@ -905,6 +964,9 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   .item-actions {
     justify-content: flex-start;
     gap: 8px;
+  }
+  .trash-actions {
+    min-width: 0;
   }
   .btn-edit,
   .btn-delete {

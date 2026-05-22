@@ -203,6 +203,23 @@ export function useActivities() {
 		}
 	}
 
+	async function deleteDeletedActivity(id: string): Promise<boolean> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/admin/activities/${id}/trash`, {
+				method: 'DELETE',
+			});
+			if (!res.ok) throw new Error(await res.text());
+			activities.value = activities.value.filter(
+				(activity) => activity.id !== id,
+			);
+			return true;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return false;
+		}
+	}
+
 	// ---- Predefined locations ------------------------------------------------
 
 	async function fetchLocations(): Promise<void> {
@@ -300,6 +317,7 @@ export function useActivities() {
 		deleteActivity,
 		fetchDeletedActivities,
 		restoreActivity,
+		deleteDeletedActivity,
 		fetchAttachments,
 		uploadAttachment,
 		deleteAttachment,
