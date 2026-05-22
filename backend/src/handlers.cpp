@@ -23,6 +23,9 @@
 #include <limits>
 #include <vector>
 #include <utility>
+#include <array>
+#include <cstdio>
+#include <sys/wait.h>
 #include <openssl/evp.h>
 #include <openssl/params.h>
 #include <openssl/core_names.h>
@@ -6072,6 +6075,169 @@ static std::optional<UserRecord> require_strict_admin(HttpRes *res, HttpReq *req
         return std::nullopt;
     }
     return user;
+}
+
+struct ShellExecResult
+{
+    int exit_code{1};
+    std::string output;
+};
+
+static ShellExecResult run_shell_command(const std::string &command)
+{
+    ShellExecResult result;
+    FILE *pipe = popen(command.c_str(), "r");
+    if (!pipe)
+    {
+        result.output = "Failed to start command.";
+        return result;
+    }
+
+    std::array<char, 4096> buffer{};
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
+    {
+        result.output.append(buffer.data());
+    }
+
+    int status = pclose(pipe);
+    if (status == -1)
+    {
+        result.exit_code = 1;
+    }
+    else if (WIFEXITED(status))
+    {
+        result.exit_code = WEXITSTATUS(status);
+    }
+    else
+    {
+        result.exit_code = 1;
+    }
+    return result;
+}
+
+static std::vector<std::string> split_lines_nonempty(const std::string &text)
+{
+    std::vector<std::string> out;
+    std::istringstream in(text);
+    std::string line;
+    while (std::getline(in, line))
+    {
+        line = trim_ascii(line);
+        if (!line.empty())
+            out.push_back(line);
+    }
+    return out;
+}
+
+static std::string detect_compose_project_name()
+{
+    const char *hostname = std::getenv("HOSTNAME");
+    if (!hostname || std::string(hostname).empty())
+        return "";
+
+    const auto inspect = run_shell_command(
+        "docker inspect " + std::string(hostname) +
+        " --format '{{ index .Config.Labels \"com.docker.compose.project\" }}' 2>&1");
+    if (inspect.exit_code != 0)
+        return "";
+    return trim_ascii(inspect.output);
+}
+
+void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_strict_admin(res, req, db))
+        return;
+
+    int tail = 300;
+    std::string tail_raw = std::string(req->getQuery("tail"));
+    if (!tail_raw.empty())
+    {
+        try
+        {
+            tail = std::max(50, std::min(3000, std::stoi(tail_raw)));
+        }
+        catch (...)
+        {
+            tail = 300;
+        }
+    }
+
+    const std::string compose_project = detect_compose_project_name();
+    if (compose_project.empty())
+    {
+        send_json(res, 500, nlohmann::json{{"error", "Compose-Projekt konnte nicht ermittelt werden"}}
+                                           .dump());
+        return;
+    }
+
+    const auto service_list_exec = run_shell_command(
+        "docker ps --filter label=com.docker.compose.project=" + compose_project +
+        " --format '{{.Label \"com.docker.compose.service\"}}' | sort -u 2>&1");
+    if (service_list_exec.exit_code != 0)
+    {
+        send_json(res, 500, nlohmann::json{{"error", "Container-Liste konnte nicht gelesen werden"},
+                                           {"details", service_list_exec.output}}
+                                           .dump());
+        return;
+    }
+
+    auto services = split_lines_nonempty(service_list_exec.output);
+    if (services.empty())
+    {
+        send_json(res, 200, nlohmann::json{{"services", nlohmann::json::array()},
+                                           {"selected_service", nullptr},
+                                           {"logs", ""},
+                                           {"tail", tail}}
+                                           .dump());
+        return;
+    }
+
+    std::string requested_service = trim_ascii(std::string(req->getQuery("service")));
+    std::string selected_service = services.front();
+    if (!requested_service.empty() && std::find(services.begin(), services.end(), requested_service) != services.end())
+        selected_service = requested_service;
+
+    std::vector<std::pair<std::string, std::string>> commands = {
+        {"docker compose project service", "docker ps --filter label=com.docker.compose.project=" + compose_project +
+            " --filter label=com.docker.compose.service=" + selected_service +
+            " --format '{{.Names}}' | xargs -r -I{} docker logs --timestamps --tail " + std::to_string(tail) + " {} 2>&1"},
+        {"docker service fallback", "docker ps --filter label=com.docker.compose.service=" + selected_service +
+            " --format '{{.Names}}' | xargs -r -I{} docker logs --timestamps --tail " + std::to_string(tail) + " {} 2>&1"},
+    };
+
+    nlohmann::json attempts = nlohmann::json::array();
+    for (const auto &entry : commands)
+    {
+        const auto exec = run_shell_command(entry.second);
+        attempts.push_back({
+            {"source", entry.first},
+            {"command", entry.second},
+            {"exit_code", exec.exit_code},
+        });
+
+        if (exec.exit_code == 0)
+        {
+            send_json(res, 200, nlohmann::json{
+                                   {"services", services},
+                                   {"selected_service", selected_service},
+                                   {"source", entry.first},
+                                   {"tail", tail},
+                                   {"logs", exec.output},
+                                   {"attempts", attempts},
+                               }
+                                   .dump());
+            return;
+        }
+    }
+
+    send_json(res, 500, nlohmann::json{
+                           {"error", "Container-Logs konnten nicht gelesen werden"},
+                           {"services", services},
+                           {"selected_service", selected_service},
+                           {"tail", tail},
+                           {"attempts", attempts},
+                       }
+                           .dump());
 }
 
 void handle_get_admin_activity_trash(HttpRes *res, HttpReq *req, Database &db)

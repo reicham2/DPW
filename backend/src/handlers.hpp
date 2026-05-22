@@ -23,6 +23,7 @@ void handle_get_setup_auth_config(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_setup_auth_config(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_admin_midata_status(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_admin_app_settings(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_admin_app_setting(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_admin_reset_azure_auth(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_department(HttpRes *res, HttpReq *req, Database &db);

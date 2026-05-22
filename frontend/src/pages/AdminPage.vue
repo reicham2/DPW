@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { Lock, MapPin, Trash2, Users } from 'lucide-vue-next'
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
+import { ChevronDown, Cog, Lock, MapPin, Trash2, Users } from 'lucide-vue-next'
 import { user as currentUser } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -36,9 +36,16 @@ const canEditRoles = computed(() => {
 const canSeePermissionsTab = computed(() => canManageSystem())
 const canSeeLocationsTab = computed(() => canManageLocations())
 const canSeeTrashTab = computed(() => currentUser.value?.role === 'admin')
+const canSeeLogsTab = computed(() => currentUser.value?.role === 'admin')
+const systemTabLabel = computed(() => {
+  if (activeTab.value !== 'system') return 'System'
+  return systemTab.value === 'logs' ? 'System: Container Logs' : 'System: Einstellungen'
+})
 
 // ── Tab management ──────────────────────────────────────────────────────────
 const activeTab = ref<'users' | 'permissions' | 'locations' | 'trash' | 'system'>('users')
+const systemTab = ref<'settings' | 'logs'>('settings')
+const systemMenuOpen = ref(false)
 
 // ── User management state ───────────────────────────────────────────────────
 const users = ref<User[]>([])
@@ -55,6 +62,19 @@ const deletedActivities = ref<DeletedActivityRecord[]>([])
 const trashLoading = ref(false)
 const trashError = ref<string | null>(null)
 const restoringActivityId = ref<string | null>(null)
+
+const containerLogs = ref('')
+const containerLogsSource = ref('')
+const containerLogsLoading = ref(false)
+const containerLogsError = ref<string | null>(null)
+const containerLogsTail = ref(300)
+const containerServices = ref<string[]>([])
+const selectedContainerService = ref('')
+const containerLogsViewer = ref<HTMLElement | null>(null)
+const followLatestLogs = ref(true)
+const autoRefreshLogs = ref(true)
+let containerLogsPollTimer: ReturnType<typeof setInterval> | null = null
+const LOG_FOLLOW_THRESHOLD_PX = 24
 
 const filterDept = ref<Department | 'Alle'>('Alle')
 
@@ -113,6 +133,111 @@ async function restoreDeletedActivity(entry: DeletedActivityRecord) {
   } finally {
     restoringActivityId.value = null
   }
+}
+
+async function loadContainerLogs(options: { silent?: boolean } = {}) {
+  if (!canSeeLogsTab.value) return
+  const silent = options.silent ?? false
+  if (!silent) {
+    containerLogsLoading.value = true
+    containerLogsError.value = null
+  }
+  try {
+    const tail = Math.max(50, Math.min(3000, containerLogsTail.value || 300))
+    containerLogsTail.value = tail
+    const params = new URLSearchParams({ tail: String(tail) })
+    if (selectedContainerService.value) params.set('service', selectedContainerService.value)
+    const res = await apiFetch(`/api/admin/container-logs?${params.toString()}`)
+    if (!res.ok) throw new Error(await res.text())
+    const data = await res.json() as {
+      logs?: string
+      source?: string
+      services?: string[]
+      selected_service?: string | null
+    }
+    containerServices.value = data.services || []
+    if (data.selected_service) selectedContainerService.value = data.selected_service
+    else if (!selectedContainerService.value && containerServices.value.length > 0) selectedContainerService.value = containerServices.value[0]
+    containerLogs.value = data.logs || ''
+    containerLogsSource.value = data.source || ''
+  } catch (e) {
+    containerLogsError.value = String(e)
+  } finally {
+    if (!silent) containerLogsLoading.value = false
+  }
+}
+
+async function scrollLogsToBottom() {
+  await nextTick()
+  if (!containerLogsViewer.value || !followLatestLogs.value) return
+  containerLogsViewer.value.scrollTop = containerLogsViewer.value.scrollHeight
+}
+
+function jumpToLatestLogEntry() {
+  followLatestLogs.value = true
+  void scrollLogsToBottom()
+}
+
+function handleLogsScroll() {
+  const viewer = containerLogsViewer.value
+  if (!viewer) return
+  const distanceFromBottom = viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight
+  if (distanceFromBottom > LOG_FOLLOW_THRESHOLD_PX) {
+    followLatestLogs.value = false
+    return
+  }
+  followLatestLogs.value = true
+}
+
+function stopContainerLogPolling() {
+  if (containerLogsPollTimer) {
+    clearInterval(containerLogsPollTimer)
+    containerLogsPollTimer = null
+  }
+}
+
+function closeSystemMenu() {
+  systemMenuOpen.value = false
+}
+
+function toggleSystemMenu() {
+  systemMenuOpen.value = !systemMenuOpen.value
+}
+
+function selectSystemTab(tab: 'settings' | 'logs') {
+  systemTab.value = tab
+  activeTab.value = 'system'
+  systemMenuOpen.value = false
+}
+
+function handleDocumentClick(event: MouseEvent) {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  if (target.closest('.system-tab-menu')) return
+  closeSystemMenu()
+}
+
+function startContainerLogPolling() {
+  stopContainerLogPolling()
+  if (!(activeTab.value === 'system' && systemTab.value === 'logs' && canSeeLogsTab.value && autoRefreshLogs.value)) return
+  containerLogsPollTimer = setInterval(() => {
+    void loadContainerLogs({ silent: true })
+  }, 2000)
+}
+
+function toggleFollowLatestLogs() {
+  followLatestLogs.value = !followLatestLogs.value
+  if (followLatestLogs.value) void scrollLogsToBottom()
+}
+
+function toggleAutoRefreshLogs() {
+  autoRefreshLogs.value = !autoRefreshLogs.value
+  if (autoRefreshLogs.value) {
+    void loadContainerLogs({ silent: true })
+    startContainerLogPolling()
+    return
+  }
+  stopContainerLogPolling()
 }
 
 async function fetchUsers() {
@@ -240,6 +365,35 @@ function closeDeleteConfirm() {
 
 const deptItems = computed(() => deptRecords.value.map(d => ({ value: d.name })))
 const roleItems = computed(() => assignableRoles.value.map(name => ({ value: name })))
+
+watch([activeTab, systemTab], async ([tab, subtab]) => {
+  if (tab === 'system' && subtab === 'logs' && canSeeLogsTab.value) {
+    if (!containerServices.value.length) await loadContainerLogs()
+    startContainerLogPolling()
+    return
+  }
+  stopContainerLogPolling()
+})
+
+watch(selectedContainerService, async (service, previous) => {
+  if (!service || service === previous) return
+  if (activeTab.value === 'system' && systemTab.value === 'logs') {
+    await loadContainerLogs()
+  }
+})
+
+watch(containerLogs, async () => {
+  await scrollLogsToBottom()
+})
+
+onUnmounted(() => {
+  stopContainerLogPolling()
+  document.removeEventListener('click', handleDocumentClick)
+})
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+})
 </script>
 
 <template>
@@ -285,15 +439,37 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
       <Trash2 :size="16" aria-hidden="true" />
       Papierkorb
     </button>
-    <button
-      v-if="canSeePermissionsTab"
-      class="tab-btn"
-      :class="{ 'tab-btn--active': activeTab === 'system' }"
-      @click="activeTab = 'system'"
-    >
-      <Lock :size="16" aria-hidden="true" />
-      System
-    </button>
+    <div v-if="canSeePermissionsTab" class="system-tab-menu">
+      <button
+        class="tab-btn"
+        :class="{ 'tab-btn--active': activeTab === 'system' || systemMenuOpen }"
+        @click.stop="toggleSystemMenu()"
+      >
+        <Cog :size="16" aria-hidden="true" />
+        {{ systemTabLabel }}
+        <ChevronDown :size="14" aria-hidden="true" class="system-tab-caret" :class="{ 'system-tab-caret--open': systemMenuOpen }" />
+      </button>
+
+      <div v-if="systemMenuOpen" class="system-tab-dropdown">
+        <button
+          type="button"
+          class="system-tab-dropdown-item"
+          :class="{ 'system-tab-dropdown-item--active': activeTab === 'system' && systemTab === 'settings' }"
+          @click="selectSystemTab('settings')"
+        >
+          Einstellungen
+        </button>
+        <button
+          v-if="canSeeLogsTab"
+          type="button"
+          class="system-tab-dropdown-item"
+          :class="{ 'system-tab-dropdown-item--active': activeTab === 'system' && systemTab === 'logs' }"
+          @click="selectSystemTab('logs')"
+        >
+          Container Logs
+        </button>
+      </div>
+    </div>
   </nav>
 
   <!-- Tab: Benutzerverwaltung -->
@@ -431,7 +607,75 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   </main>
 
   <main v-else-if="activeTab === 'system' && canSeePermissionsTab" class="main">
-    <SystemConfigManager />
+    <SystemConfigManager v-if="systemTab === 'settings'" />
+
+    <section v-else-if="systemTab === 'logs' && canSeeLogsTab">
+      <div class="tab-header">
+        <div class="tab-header-left">
+          <h2 class="trash-title">DPW Container Logs</h2>
+        </div>
+        <span class="user-count">Quelle: {{ containerLogsSource || '—' }}</span>
+      </div>
+
+      <div class="logs-toolbar">
+        <div class="logs-field">
+          <label class="filter-label" for="container-service-select">Container</label>
+          <select id="container-service-select" v-model="selectedContainerService" class="form-input logs-service-select">
+            <option v-for="service in containerServices" :key="service" :value="service">
+              {{ service }}
+            </option>
+          </select>
+        </div>
+
+        <div class="logs-field">
+          <label class="filter-label" for="tail-input">Tail</label>
+          <input
+            id="tail-input"
+            v-model.number="containerLogsTail"
+            class="form-input logs-tail-input"
+            type="number"
+            min="50"
+            max="3000"
+            step="50"
+          />
+        </div>
+
+        <div class="logs-actions">
+          <button class="btn-primary logs-action-btn logs-refresh-btn" :disabled="containerLogsLoading" @click="void loadContainerLogs()">
+            {{ containerLogsLoading ? 'Lade...' : 'Aktualisieren' }}
+          </button>
+          <button
+            type="button"
+            class="btn-edit logs-action-btn logs-toggle-btn"
+            :class="{ 'logs-toggle-btn--active': autoRefreshLogs }"
+            @click="toggleAutoRefreshLogs()"
+          >
+            Auto-Refresh {{ autoRefreshLogs ? 'AN (2s)' : 'AUS' }}
+          </button>
+          <button
+            type="button"
+            class="btn-edit logs-action-btn logs-toggle-btn"
+            :class="{ 'logs-toggle-btn--active': followLatestLogs }"
+            @click="toggleFollowLatestLogs()"
+          >
+            Follow Latest {{ followLatestLogs ? 'AN' : 'AUS' }}
+          </button>
+          <button
+            type="button"
+            class="btn-edit logs-action-btn logs-jump-btn"
+            :disabled="followLatestLogs"
+            @click="jumpToLatestLogEntry()"
+          >
+            Zum neuesten Eintrag springen
+          </button>
+        </div>
+      </div>
+
+      <div v-if="containerLogsError" class="error-msg"><ErrorAlert :error="containerLogsError" /></div>
+      <div v-else-if="containerLogsLoading && !containerLogs" class="loading">Lade Container-Logs...</div>
+      <div v-else-if="containerServices.length === 0" class="loading">Keine DPW-Container gefunden.</div>
+      <pre v-else ref="containerLogsViewer" class="logs-viewer" @scroll="handleLogsScroll()">{{ containerLogs || 'Keine Logs verfügbar.' }}</pre>
+    </section>
   </main>
 
   <!-- Edit modal -->
@@ -545,6 +789,53 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 .tab-btn--active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+}
+
+.system-tab-menu {
+  position: relative;
+}
+
+.system-tab-caret {
+  transition: transform 0.15s;
+}
+
+.system-tab-caret--open {
+  transform: rotate(180deg);
+}
+
+.system-tab-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 190px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+}
+
+.system-tab-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.system-tab-dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.system-tab-dropdown-item--active {
+  background: var(--bg-elevated);
+  color: var(--accent);
 }
 
 .tab-header {
@@ -823,6 +1114,74 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   font-size: 0.82rem;
 }
 
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.logs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.logs-service-select {
+  min-width: 180px;
+}
+
+.logs-tail-input {
+  width: 120px;
+}
+
+.logs-actions {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.logs-action-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.logs-refresh-btn {
+  min-width: 148px;
+}
+
+.logs-toggle-btn--active {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.logs-jump-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.logs-viewer {
+  margin: 0;
+  padding: 14px;
+  min-height: 280px;
+  max-height: 62vh;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0b1220;
+  color: #d7e0ea;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (max-width: 599px) {
   .header {
     padding: 20px 16px 0;
@@ -845,9 +1204,24 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
     white-space: nowrap;
     flex-shrink: 0;
   }
+  .system-tab-dropdown {
+    right: auto;
+    left: 0;
+  }
   .tab-header {
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .logs-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .logs-service-select,
+  .logs-tail-input {
+    width: 100%;
+  }
+  .logs-actions {
+    align-items: stretch;
   }
   .users-table {
     font-size: 0.82rem;
