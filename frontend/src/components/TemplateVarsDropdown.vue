@@ -31,7 +31,7 @@ const BASE_VARIABLES: TplVar[] = [
 	{ var: '{{verantwortlich}}', desc: 'Verantwortliche Person' },
 	{ var: '{{abteilung}}',      desc: 'Stufe' },
 	{ var: '{{ziel}}',           desc: 'Ziel der Aktivität' },
-	{ var: '{{material}}',       desc: 'Materialliste (kommagetrennt)' },
+	{ var: '{{tn_material}}',    desc: 'TN-Materialliste' },
 	{ var: '{{schlechtwetter}}', desc: 'Schlechtwetter-Info' },
 	{ var: '{{programm}}',       desc: 'Programmpunkte (formatiert)' },
 ];

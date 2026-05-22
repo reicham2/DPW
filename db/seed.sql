@@ -37,12 +37,12 @@ INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_r
 ON CONFLICT (role) DO NOTHING;
 
 INSERT INTO event_templates (department, title, body) VALUES
-    ('Allgemein', '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
-    ('Leiter',    '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
-    ('Pio',       '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
-    ('Pfadi',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
-    ('Wölfe',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
-    ('Biber',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>Material:</strong> {{material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>')
+    ('Allgemein', '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Leiter',    '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Pio',       '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Pfadi',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Wölfe',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
+    ('Biber',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>')
 ON CONFLICT (department) DO NOTHING;
 
 INSERT INTO mail_templates (department, subject, body, recipients, cc) VALUES
@@ -64,7 +64,7 @@ INSERT INTO users (id, microsoft_oid, email, display_name, department, role) VAL
 ON CONFLICT (microsoft_oid) DO NOTHING;
 
 -- ── Test-Aktivitäten ────────────────────────────────────────────────────────
-INSERT INTO activities (id, title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info) VALUES
+INSERT INTO activities (id, title, date, start_time, end_time, goal, location, responsible, department, material, tn_material, siko_text, bad_weather_info) VALUES
 
     -- Pfadi-Aktivität (vergangen)
     ('b0000000-0000-0000-0000-000000000001',
@@ -76,6 +76,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Leiter Eins', 'Stufen Leiter'],
      'Pfadi',
      '[{"name": "Karte 1:25000", "responsible": ["Leiter Eins"]}, {"name": "Kompass (5x)", "responsible": []}, {"name": "Posten-Blätter", "responsible": ["Stufen Leiter"]}]'::jsonb,
+    '["Wasserflaschen", "Notfallkarte"]'::jsonb,
      NULL,
      'Aktivität findet im Pfadiheim statt mit Indoor-Posten'),
 
@@ -89,6 +90,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Leiter Eins'],
      'Pfadi',
      '[{"name": "Seil 20m (3x)", "responsible": ["Leiter Eins"]}, {"name": "Blachen (4x)", "responsible": []}, {"name": "Zeltmaterial", "responsible": ["Stufen Leiter"]}]'::jsonb,
+    '["Rucksack", "Wanderschuhe"]'::jsonb,
      'Nächstes Spital: Kantonsspital, 10 Min. Kontakt: 044 123 45 67. Notfallnummern bei Leitung.',
      NULL),
 
@@ -102,6 +104,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Leiter Zwei'],
      'Wölfe',
      '[{"name": "Schatzkiste", "responsible": ["Leiter Zwei"]}, {"name": "Hinweis-Zettel (20x)", "responsible": []}]'::jsonb,
+    '["Outdoor-Kleidung"]'::jsonb,
      NULL,
      'Schatzsuche wird im Schulhaus durchgeführt'),
 
@@ -115,6 +118,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Pio Eins'],
      'Pio',
      '[{"name": "Kocher (2x)", "responsible": ["Pio Eins"]}, {"name": "Pfannen-Set", "responsible": []}, {"name": "Lebensmittel-Liste", "responsible": ["Pio Eins"]}]'::jsonb,
+    '["Teller", "Besteck", "Schlafsack"]'::jsonb,
      NULL,
      NULL),
 
@@ -128,6 +132,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Leiter Drei'],
      'Biber',
      '[{"name": "Bastelpapier", "responsible": []}, {"name": "Schere (10x)", "responsible": ["Leiter Drei"]}, {"name": "Leim", "responsible": []}]'::jsonb,
+    '["Malschürze", "Wasserflasche"]'::jsonb,
      NULL,
      NULL),
 
@@ -141,6 +146,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Admin User', 'Stufen Leiter'],
      'Leiter',
      '[]'::jsonb,
+    '[]'::jsonb,
      NULL,
      NULL),
 
@@ -154,6 +160,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Stufen Leiter'],
      'Pfadi',
      '[{"name": "Topomaps", "responsible": ["Stufen Leiter"]}, {"name": "Erste-Hilfe-Rucksack", "responsible": []}, {"name": "Proviant für 8h", "responsible": ["Leiter Eins"]}]'::jsonb,
+    '["Wanderschuhe", "Regenjacke", "Trinkflasche"]'::jsonb,
      'Sanitäter: Stufen Leiter (Handy stets erreichbar). Notfall Alpine Rettung: 1414',
      'Alternativ: Schloss Appenzell besichtiging'),
 
@@ -167,6 +174,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Leiter Zwei'],
      'Wölfe',
      '[{"name": "Mehl (5kg)", "responsible": ["Leiter Zwei"]}, {"name": "Belag (Käse, Tomaten, Salami)", "responsible": ["Leiter Zwei"]}, {"name": "Pizzaschaufel (3x)", "responsible": []}]'::jsonb,
+    '["Schürze", "Dose für Resten"]'::jsonb,
      NULL,
      'Backofen im Schulhaus Küche'),
 
@@ -180,6 +188,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Leiter Drei'],
      'Biber',
      '[{"name": "Schwimmleuchten (10x)", "responsible": []}, {"name": "Schwimmflügel-Set", "responsible": ["Leiter Drei"]}, {"name": "Mikrofon Badeverbot-Info", "responsible": []}]'::jsonb,
+    '["Badekleidung", "Badetuch"]'::jsonb,
      'Bademeister vor Ort, Erste Hilfe durch Leiter Drei',
      'Nur bei Schönwetter'),
 
@@ -193,6 +202,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Pio Eins'],
      'Pio',
      '[{"name": "Klettergurt (4x)", "responsible": ["Pio Eins"]}, {"name": "Kletterseile 50m", "responsible": ["Pio Eins"]}, {"name": "Karabiner-Set", "responsible": []}, {"name": "Sturzpuffer", "responsible": []}]'::jsonb,
+    '["Kletterhelm", "feste Schuhe", "Handschuhe"]'::jsonb,
      'Seilschaft max 2 Personen. Notfall: Bergwacht 140. Leiter Pio Eins begleitet.',
      'Nur bei stabiler Wetterlage'),
 
@@ -206,6 +216,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Leiter Eins', 'Stufen Leiter'],
      'Pfadi',
      '[{"name": "Tipis (2x)", "responsible": ["Leiter Eins"]}, {"name": "Schlafsäcke (8x)", "responsible": []}, {"name": "Isomatten (10x)", "responsible": ["Stufen Leiter"]}, {"name": "Brennholz", "responsible": []}, {"name": "Grill & Töpfe", "responsible": ["Leiter Eins"]}]'::jsonb,
+    '["Schlafsack", "Taschenlampe", "warme Kleidung"]'::jsonb,
      'Nachtbereitschaft: Leiter Eins hat GPS-Tracker. Notfallnummer vor Ort ausgehängt.',
      'Bei Gewitter: Übernachtung im Pfadiheim alternate'),
 
@@ -219,6 +230,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Stufen Leiter', 'Leiter Zwei'],
      'Pfadi',
      '[{"name": "Fahnen (4x)", "responsible": ["Stufen Leiter"]}, {"name": "Pfeifen (3x)", "responsible": ["Leiter Zwei"]}, {"name": "Urkunden", "responsible": []}]'::jsonb,
+    '["Trinkflasche", "Wetterfeste Kleidung"]'::jsonb,
      NULL,
      NULL),
 
@@ -232,6 +244,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      ARRAY['Leiter Zwei'],
      'Wölfe',
      '[{"name": "Springseile (5x)", "responsible": []}, {"name": "Hütchen (20x)", "responsible": ["Leiter Zwei"]}, {"name": "Fußbälle (3x)", "responsible": []}]'::jsonb,
+    '["Turnschuhe", "Trinkflasche"]'::jsonb,
      NULL,
     'Zeitgleich mit Pfadi-Waldspiel – koordinierte Aktivitäten'),
 
@@ -245,6 +258,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
     ARRAY['Leiter Drei'],
     'Biber',
     '[]'::jsonb,
+    '["Znüni", "Hausschuhe"]'::jsonb,
     NULL,
     'Bei Bedarf wird auf Bastelraum ausgewichen');
 
@@ -707,7 +721,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Zusätzliche historische Aktivitäten mit Antworten für Planwert-Schätzung
 -- Die neue Schätzung nutzt /form/stats ähnlicher vergangener Aktivitäten.
-INSERT INTO activities (id, title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info)
+INSERT INTO activities (id, title, date, start_time, end_time, goal, location, responsible, department, material, tn_material, siko_text, bad_weather_info)
 VALUES
     ('b0000000-0000-0000-0000-000000000015',
      'Pfadi-Postenlauf Frühling',
@@ -718,6 +732,7 @@ VALUES
      ARRAY['Leiter Eins', 'Stufen Leiter'],
      'Pfadi',
      '[{"name":"Postenkarten","responsible":["Leiter Eins"]},{"name":"Kompassset","responsible":[]}]'::jsonb,
+    '["Wasserflasche", "Notizblock"]'::jsonb,
      NULL,
      NULL),
     ('b0000000-0000-0000-0000-000000000016',
@@ -729,6 +744,7 @@ VALUES
      ARRAY['Leiter Zwei'],
      'Wölfe',
      '[{"name":"Ballset","responsible":["Leiter Zwei"]},{"name":"Markierungshütchen","responsible":[]}]'::jsonb,
+    '["Bewegliche Kleidung"]'::jsonb,
      NULL,
      NULL),
     ('b0000000-0000-0000-0000-000000000017',
@@ -740,6 +756,7 @@ VALUES
      ARRAY['Pio Eins'],
      'Pio',
      '[{"name":"Kocher","responsible":["Pio Eins"]},{"name":"Seiltechnik-Set","responsible":[]}]'::jsonb,
+    '["Kletterkleidung", "Helm"]'::jsonb,
      NULL,
      NULL),
     ('b0000000-0000-0000-0000-000000000018',
@@ -751,6 +768,7 @@ VALUES
      ARRAY['Leiter Drei'],
      'Biber',
      '[{"name":"Bastelmaterial","responsible":["Leiter Drei"]},{"name":"Farbstifte","responsible":[]}]'::jsonb,
+    '["Schürze", "Wechselkleidung"]'::jsonb,
      NULL,
      NULL)
 ON CONFLICT (id) DO NOTHING;

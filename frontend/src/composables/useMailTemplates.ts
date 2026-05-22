@@ -1,5 +1,11 @@
 import { ref } from 'vue';
-import type { MailTemplate, Department, SentMail, MailDraft } from '../types';
+import type {
+	MailTemplate,
+	Department,
+	SentMail,
+	MailDraft,
+	MailComposerContext,
+} from '../types';
 import { getGraphAccessToken } from './useAuth';
 import { apiFetch, formatApiError } from './useApi';
 
@@ -140,7 +146,12 @@ export function useMailTemplates() {
 				`${BASE}/activities/${encodeURIComponent(activityId)}/mail-draft`,
 				{
 					method: 'PUT',
-					body: JSON.stringify({ recipients, cc, subject, body_html: bodyHtml }),
+					body: JSON.stringify({
+						recipients,
+						cc,
+						subject,
+						body_html: bodyHtml,
+					}),
 				},
 			);
 			if (!res.ok) return null;
@@ -161,6 +172,20 @@ export function useMailTemplates() {
 		}
 	}
 
+	async function fetchComposerContext(
+		activityId: string,
+	): Promise<MailComposerContext | null> {
+		try {
+			const res = await apiFetch(
+				`${BASE}/activities/${encodeURIComponent(activityId)}/mail-context`,
+			);
+			if (!res.ok) return null;
+			return (await res.json()) as MailComposerContext;
+		} catch {
+			return null;
+		}
+	}
+
 	return {
 		templates,
 		loading,
@@ -174,5 +199,6 @@ export function useMailTemplates() {
 		fetchDraft,
 		saveDraft,
 		deleteDraft,
+		fetchComposerContext,
 	};
 }

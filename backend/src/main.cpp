@@ -366,6 +366,8 @@ int main()
 
          .post("/send-mail", [&](auto *res, auto *req)
                { handle_post_send_mail(res, req, db, wm); })
+         .get("/activities/:id/mail-context", [&](auto *res, auto *req)
+              { handle_get_mail_composer_context(res, req, db); })
          .get("/activities/:id/sent-mails", [&](auto *res, auto *req)
               { handle_get_sent_mails(res, req, db); })
          .get("/activities/:id/mail-draft", [&](auto *res, auto *req)

@@ -152,6 +152,16 @@ std::string replace_template_vars(const std::string &text, const Activity &act)
         }
         vars["material"] = m.empty() ? "\xe2\x80\x94" : m;
     }
+    {
+        std::string tn;
+        for (size_t i = 0; i < act.tn_material.size(); ++i)
+        {
+            if (i)
+                tn += ", ";
+            tn += act.tn_material[i];
+        }
+        vars["tn_material"] = tn.empty() ? "\xe2\x80\x94" : tn;
+    }
     vars["schlechtwetter"] = act.bad_weather_info.value_or("\xe2\x80\x94");
     {
         std::string p;
@@ -385,6 +395,18 @@ ActivityInput parse_activity_input(const nlohmann::json &j)
             }
             if (!mi.name.empty())
                 input.material.push_back(mi);
+        }
+    }
+    if (j.contains("tn_material") && j["tn_material"].is_array())
+    {
+        for (auto &m : j["tn_material"])
+        {
+            if (m.is_string())
+            {
+                std::string name = m.get<std::string>();
+                if (!name.empty())
+                    input.tn_material.push_back(name);
+            }
         }
     }
     if (j.contains("programs") && j["programs"].is_array())
