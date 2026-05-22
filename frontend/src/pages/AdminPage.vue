@@ -1241,6 +1241,74 @@ onMounted(() => {
   word-break: break-word;
 }
 
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.logs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.logs-service-select {
+  min-width: 180px;
+}
+
+.logs-tail-input {
+  width: 120px;
+}
+
+.logs-actions {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.logs-action-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.logs-refresh-btn {
+  min-width: 148px;
+}
+
+.logs-toggle-btn--active {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.logs-jump-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.logs-viewer {
+  margin: 0;
+  padding: 14px;
+  min-height: 280px;
+  max-height: 62vh;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0b1220;
+  color: #d7e0ea;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (max-width: 599px) {
   .header {
     padding: 20px 16px 0;
