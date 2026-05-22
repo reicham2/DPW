@@ -3,33 +3,12 @@
 #include "db.hpp"
 #include "ws_manager.hpp"
 #include "handlers.hpp"
+#include "utils.hpp"
 #include <cstdlib>
-#include <cctype>
 #include <string>
 #include <cstdio>
 #include <vector>
 #include <curl/curl.h>
-
-static std::string url_decode_component(std::string_view src)
-{
-     std::string out;
-     out.reserve(src.size());
-     for (size_t i = 0; i < src.size(); ++i)
-     {
-          if (src[i] == '%' && i + 2 < src.size())
-          {
-               unsigned int ch = 0;
-               if (sscanf(src.data() + i + 1, "%2x", &ch) == 1)
-               {
-                    out += static_cast<char>(ch);
-                    i += 2;
-                    continue;
-               }
-          }
-          out += (src[i] == '+') ? ' ' : src[i];
-     }
-     return out;
-}
 
 static std::string env(const char *key, const char *def = "")
 {
@@ -122,11 +101,11 @@ int main()
                     ->writeStatus("200 OK")
                     ->end("ok"); })
 
-        // Lightweight status endpoint (always 200)
-        .get("/status", [](auto *res, auto * /*req*/)
-            { res->writeHeader("Access-Control-Allow-Origin", "*")
-                 ->writeStatus("200 OK")
-                 ->end("ok"); })
+         // Lightweight status endpoint (always 200)
+         .get("/status", [](auto *res, auto * /*req*/)
+              { res->writeHeader("Access-Control-Allow-Origin", "*")
+                    ->writeStatus("200 OK")
+                    ->end("ok"); })
 
          // Initial auth setup (no auth required, only effective while auth config is incomplete)
          .get("/setup/auth-config", [&](auto *res, auto *req)
@@ -387,7 +366,7 @@ int main()
                                  .idleTimeout = 120,
                                  .upgrade = [&](auto *res, auto *req, auto *context)
                                  {
-                                      std::string token = url_decode_component(req->getQuery("token"));
+                                      std::string token = url_decode(std::string{req->getQuery("token")});
                                       if (token.empty())
                                       {
                                            res->writeStatus("401 Unauthorized")->end("Missing WebSocket token");

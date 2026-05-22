@@ -1,7 +1,7 @@
 #include "cache.hpp"
+#include "utils.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <netdb.h>
@@ -11,17 +11,6 @@
 
 namespace
 {
-    std::string trim_ascii(std::string s)
-    {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c)
-                                        { return !std::isspace(c); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c)
-                             { return !std::isspace(c); })
-                    .base(),
-                s.end());
-        return s;
-    }
-
     std::string env_or(const char *key, const std::string &fallback = "")
     {
         const char *v = std::getenv(key);
