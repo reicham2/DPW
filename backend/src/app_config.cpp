@@ -1,7 +1,6 @@
 #include "app_config.hpp"
+#include "utils.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <openssl/bn.h>
@@ -12,17 +11,6 @@
 
 namespace
 {
-    std::string trim_ascii(std::string s)
-    {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c)
-                                        { return !std::isspace(c); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c)
-                             { return !std::isspace(c); })
-                    .base(),
-                s.end());
-        return s;
-    }
-
     const app_config::SettingDef *find_def(const std::string &key)
     {
         const auto &defs = app_config::definitions();

@@ -11,6 +11,11 @@
 
 std::string url_decode(const std::string &src);
 
+// ── String normalization helpers ───────────────────────────────────────────
+
+std::string to_lower_ascii(std::string s);
+std::string trim_ascii(std::string s);
+
 // ── HTTP status text ────────────────────────────────────────────────────────
 
 const char *status_text(int code);

@@ -3,26 +3,23 @@
 #include <algorithm>
 #include <cctype>
 
-namespace
+std::string to_lower_ascii(std::string s)
 {
-    std::string to_lower_ascii(std::string s)
-    {
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c)
-                       { return static_cast<char>(std::tolower(c)); });
-        return s;
-    }
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c)
+                   { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
 
-    std::string trim_ascii(std::string s)
-    {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c)
-                                        { return !std::isspace(c); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c)
-                             { return !std::isspace(c); })
-                    .base(),
-                s.end());
-        return s;
-    }
-} // namespace
+std::string trim_ascii(std::string s)
+{
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c)
+                                    { return !std::isspace(c); }));
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c)
+                         { return !std::isspace(c); })
+                .base(),
+            s.end());
+    return s;
+}
 
 // ── HTTP status text ────────────────────────────────────────────────────────
 
