@@ -50,6 +50,14 @@ add_executable(server
     src/cache.cpp
     src/db.cpp
     src/handlers.cpp
+    src/handlers/core/http_core.cpp
+    src/handlers/core/setup_maintenance.cpp
+    src/handlers/domains/activities.cpp
+    src/handlers/domains/users_notifications.cpp
+    src/handlers/domains/mail.cpp
+    src/handlers/domains/admin_permissions.cpp
+    src/handlers/domains/share_ideenkiste.cpp
+    src/handlers/domains/forms.cpp
     src/auth.cpp
     src/ws_manager.cpp
     src/graph.cpp
