@@ -8,6 +8,9 @@ import { useIdeaBox } from '../composables/useIdeaBox'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
+import { sanitizeHtml } from '../utils/sanitizeHtml'
+import { defaultRichTextToolbarState, readRichTextToolbarState } from '../utils/richTextToolbar'
+import type { RichTextToolbarState } from '../utils/richTextToolbar'
 import type { IdeenkisteItem } from '../types'
 
 const router = useRouter()
@@ -72,17 +75,7 @@ const newDepartment = ref<string | null>(null)
 const saving = ref(false)
 const saveError = ref<string | null>(null)
 const newDescEditorRef = ref<HTMLElement | null>(null)
-const newDescToolbar = ref<{
-  bold: boolean
-  italic: boolean
-  underline: boolean
-  ul: boolean
-  ol: boolean
-  font: string
-  size: string
-  color: string
-  bgColor: string
-} | null>(null)
+const newDescToolbar = ref<RichTextToolbarState | null>(null)
 let newDescSavedSelection: Range | null = null
 let newDescLinkSavedRange: Range | null = null
 const showNewDescLinkDialog = ref(false)
@@ -98,17 +91,7 @@ const editDepartment = ref<string | null>(null)
 const editSaving = ref(false)
 const editError = ref<string | null>(null)
 const editDescEditorRef = ref<HTMLElement | null>(null)
-const editDescToolbar = ref<{
-  bold: boolean
-  italic: boolean
-  underline: boolean
-  ul: boolean
-  ol: boolean
-  font: string
-  size: string
-  color: string
-  bgColor: string
-} | null>(null)
+const editDescToolbar = ref<RichTextToolbarState | null>(null)
 let editDescSavedSelection: Range | null = null
 let editDescLinkSavedRange: Range | null = null
 const showEditDescLinkDialog = ref(false)
@@ -223,32 +206,11 @@ function updateNewDescToolbar() {
   if (!sel || !sel.rangeCount || !el) return
   const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement
   if (!node || !el.contains(node)) return
-  const cs = window.getComputedStyle(node)
-  newDescToolbar.value = {
-    bold: document.queryCommandState('bold'),
-    italic: document.queryCommandState('italic'),
-    underline: document.queryCommandState('underline'),
-    ul: document.queryCommandState('insertUnorderedList'),
-    ol: document.queryCommandState('insertOrderedList'),
-    font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
-    size: parseInt(cs.fontSize, 10).toString() || '12',
-    color: rgbToHex(cs.color) || '#000000',
-    bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
-  }
+  newDescToolbar.value = readRichTextToolbarState(node)
 }
 
 function onNewDescFocus() {
-  newDescToolbar.value = {
-    bold: false,
-    italic: false,
-    underline: false,
-    ul: false,
-    ol: false,
-    font: 'Arial',
-    size: '12',
-    color: '#000000',
-    bgColor: '#ffffff',
-  }
+  newDescToolbar.value = defaultRichTextToolbarState()
   updateNewDescToolbar()
 }
 
@@ -380,12 +342,6 @@ function canDeleteItem(item: IdeenkisteItem): boolean {
   return false
 }
 
-function rgbToHex(rgb: string): string {
-  const m = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/)
-  if (!m) return rgb
-  return '#' + [m[1], m[2], m[3]].map(x => parseInt(x, 10).toString(16).padStart(2, '0')).join('')
-}
-
 function syncEditDescEditor() {
   const el = editDescEditorRef.value
   if (!el) return
@@ -406,32 +362,11 @@ function updateEditDescToolbar() {
   if (!sel || !sel.rangeCount || !el) return
   const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement
   if (!node || !el.contains(node)) return
-  const cs = window.getComputedStyle(node)
-  editDescToolbar.value = {
-    bold: document.queryCommandState('bold'),
-    italic: document.queryCommandState('italic'),
-    underline: document.queryCommandState('underline'),
-    ul: document.queryCommandState('insertUnorderedList'),
-    ol: document.queryCommandState('insertOrderedList'),
-    font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
-    size: parseInt(cs.fontSize, 10).toString() || '12',
-    color: rgbToHex(cs.color) || '#000000',
-    bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
-  }
+  editDescToolbar.value = readRichTextToolbarState(node)
 }
 
 function onEditDescFocus() {
-  editDescToolbar.value = {
-    bold: false,
-    italic: false,
-    underline: false,
-    ul: false,
-    ol: false,
-    font: 'Arial',
-    size: '12',
-    color: '#000000',
-    bgColor: '#ffffff',
-  }
+  editDescToolbar.value = defaultRichTextToolbarState()
   updateEditDescToolbar()
 }
 
@@ -823,7 +758,7 @@ function openNewForm() {
             <div class="program-header">
               <p class="program-title">{{ item.title }}</p>
             </div>
-            <div v-if="item.description" class="program-desc" v-html="item.description" />
+            <div v-if="item.description" class="program-desc" v-html="sanitizeHtml(item.description)" />
           </div>
         </div>
       </div>

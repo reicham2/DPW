@@ -128,6 +128,8 @@ import { useRoute } from 'vue-router';
 import type { Activity } from '../types';
 import { Search } from 'lucide-vue-next';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
+import { addMinutesToClock, formatDuration } from '../utils/time';
 
 const route = useRoute();
 const token = route.params.token as string;
@@ -140,31 +142,6 @@ function formatDate(iso: string): string {
 	const d = new Date(iso + 'T00:00:00');
 	const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 	return `${days[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
-}
-
-function sanitizeHtml(html: string): string {
-	const div = document.createElement('div');
-	div.innerHTML = html;
-	div.querySelectorAll('script,iframe,object,embed,form').forEach(el => el.remove());
-	return div.innerHTML;
-}
-
-// ---- Time helpers (same as DetailPage, default to minutes mode) ----
-function addMinutesToClock(start: string, minutes: number): string {
-	const m = /^(\d{1,2}):(\d{2})$/.exec(start.trim());
-	if (!m) return '';
-	const total = parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + minutes;
-	const h = ((Math.floor(total / 60) % 24) + 24) % 24;
-	const mm = ((total % 60) + 60) % 60;
-	return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-
-function formatDuration(min: number): string {
-	if (!Number.isFinite(min) || min <= 0) return '0 min';
-	if (min < 60) return `${min} min`;
-	const h = Math.floor(min / 60);
-	const m = min % 60;
-	return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
 function programLabel(index: number): string {
