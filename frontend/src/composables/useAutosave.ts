@@ -19,10 +19,14 @@ export function useAutosave(saveFn: () => void | Promise<void>) {
 	const debounceEnabled = () => config.AUTOSAVE_DEBOUNCE;
 
 	function triggerSave(): Promise<void> {
-		const run = Promise.resolve(saveFn)
-			.then((save) => save())
-			.then(() => undefined)
-			.catch(() => undefined);
+		let run: Promise<void>;
+		try {
+			run = Promise.resolve(saveFn())
+				.then(() => undefined)
+				.catch(() => undefined);
+		} catch {
+			run = Promise.resolve();
+		}
 
 		pendingSave = run.finally(() => {
 			if (pendingSave === run) pendingSave = null;
