@@ -3,6 +3,7 @@ import type { PublicClientApplication, AccountInfo } from '@azure/msal-browser';
 import type { User } from '../types';
 import { config } from '../config';
 import { wsDisconnect } from './useWebSocket';
+import { maintenanceActive, maintenanceMessage, maintenanceScheduledEnd } from './useMaintenance';
 
 const msalConfig = {
 	auth: {
@@ -157,6 +158,19 @@ async function syncUser(idToken: string): Promise<void> {
 	});
 	if (res.ok) {
 		user.value = (await res.json()) as User;
+	} else if (res.status === 503) {
+		const data = await res.json().catch(() => ({})) as {
+			error?: string
+			message?: string
+			scheduled_end?: string
+		};
+		if (data.error === 'maintenance') {
+			maintenanceActive.value = true;
+			if (data.message) maintenanceMessage.value = data.message;
+			if (data.scheduled_end) maintenanceScheduledEnd.value = data.scheduled_end;
+			throw new Error('maintenance');
+		}
+		throw new Error(`Server-Fehler: ${res.status}`);
 	} else {
 		const text = await res.text();
 		throw new Error(text || `Server-Fehler: ${res.status}`);
@@ -173,6 +187,10 @@ export async function login(): Promise<void> {
 		msal.setActiveAccount(result.account);
 		await syncUser(result.idToken);
 	} catch (err) {
+		if (err instanceof Error && err.message === 'maintenance') {
+			window.location.replace('/maintenance');
+			return;
+		}
 		loginError.value =
 			err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen.';
 		throw err;
@@ -210,6 +228,10 @@ export async function debugLogin(userId: string): Promise<void> {
 		localStorage.setItem(DEBUG_USER_STORAGE_KEY, userId);
 		await syncUser(`debug:${userId}`);
 	} catch (err) {
+		if (err instanceof Error && err.message === 'maintenance') {
+			window.location.replace('/maintenance');
+			return;
+		}
 		debugUserId = null;
 		localStorage.removeItem(DEBUG_USER_STORAGE_KEY);
 		loginError.value =

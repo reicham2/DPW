@@ -276,6 +276,11 @@ namespace app_config
             {kWpUrl, "DPW_WP_URL", "", false, true, ValueType::Url, 0, 0},
             {kWpUser, "DPW_WP_USER", "", false, true, ValueType::Text, 0, 0},
             {kWpAppPassword, "DPW_WP_APP_PASSWORD", "", true, false, ValueType::Text, 0, 0},
+            {kMaintenanceEnabled, "", "false", false, true, ValueType::Boolean, 0, 0},
+            {kMaintenanceMessage, "", "", false, true, ValueType::Text, 0, 0},
+            {kMaintenanceScheduledStart, "", "", false, true, ValueType::Text, 0, 0},
+            {kMaintenanceScheduledEnd, "", "", false, true, ValueType::Text, 0, 0},
+            {kMaintenanceWindowsJson, "", "[]", false, true, ValueType::Text, 0, 0},
         };
         return defs;
     }
