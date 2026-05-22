@@ -12,6 +12,7 @@ import {
 	WidthType,
 } from 'docx';
 import type { Activity } from '../types';
+import { formatDuration } from '../utils/time';
 
 function formatDate(d: string): string {
 	return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
@@ -20,14 +21,6 @@ function formatDate(d: string): string {
 		month: 'long',
 		year: 'numeric',
 	});
-}
-
-function formatDuration(min: number): string {
-	if (!Number.isFinite(min) || min <= 0) return '0 min';
-	if (min < 60) return `${min} min`;
-	const h = Math.floor(min / 60);
-	const m = min % 60;
-	return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
 function label(text: string): Paragraph {
@@ -86,7 +79,11 @@ function metaTable(rows: [string, string][]): Table {
 						new TableCell({
 							width: { size: 75, type: WidthType.PERCENTAGE },
 							borders: noBorder,
-							children: [new Paragraph({ children: [new TextRun({ text: v || '—', size: 20 })] })],
+							children: [
+								new Paragraph({
+									children: [new TextRun({ text: v || '—', size: 20 })],
+								}),
+							],
 						}),
 					],
 				}),
@@ -116,18 +113,42 @@ function programsTable(activity: Activity): Table {
 			new TableRow({
 				children: [
 					new TableCell({
-						children: [new Paragraph({ children: [new TextRun({ text: formatDuration(p.duration_minutes), size: 20 })] })],
-					}),
-					new TableCell({
-						children: [new Paragraph({ children: [new TextRun({ text: p.title || '—', size: 20 })] })],
-					}),
-					new TableCell({
-						children: [new Paragraph({ children: [new TextRun({ text: p.description || '—', size: 20 })] })],
+						children: [
+							new Paragraph({
+								children: [
+									new TextRun({
+										text: formatDuration(p.duration_minutes),
+										size: 20,
+									}),
+								],
+							}),
+						],
 					}),
 					new TableCell({
 						children: [
 							new Paragraph({
-								children: [new TextRun({ text: p.responsible.join(', ') || '—', size: 20 })],
+								children: [new TextRun({ text: p.title || '—', size: 20 })],
+							}),
+						],
+					}),
+					new TableCell({
+						children: [
+							new Paragraph({
+								children: [
+									new TextRun({ text: p.description || '—', size: 20 }),
+								],
+							}),
+						],
+					}),
+					new TableCell({
+						children: [
+							new Paragraph({
+								children: [
+									new TextRun({
+										text: p.responsible.join(', ') || '—',
+										size: 20,
+									}),
+								],
 							}),
 						],
 					}),
@@ -162,8 +183,14 @@ export function useActivityExport() {
 		];
 		if (activity.department) metaRows.push(['Stufe:', activity.department]);
 		metaRows.push(['Verantwortlich:', activity.responsible.join(', ') || '—']);
-		if (activity.planned_participants_estimate !== null && activity.planned_participants_estimate !== undefined) {
-			metaRows.push(['Teilnehmende (gesch.):', String(activity.planned_participants_estimate)]);
+		if (
+			activity.planned_participants_estimate !== null &&
+			activity.planned_participants_estimate !== undefined
+		) {
+			metaRows.push([
+				'Teilnehmende (gesch.):',
+				String(activity.planned_participants_estimate),
+			]);
 		}
 
 		children.push(metaTable(metaRows));
@@ -184,7 +211,10 @@ export function useActivityExport() {
 		if (activity.material.length > 0) {
 			children.push(heading2('Material'));
 			for (const item of activity.material) {
-				const resp = item.responsible && item.responsible.length > 0 ? ` (${item.responsible.join(', ')})` : '';
+				const resp =
+					item.responsible && item.responsible.length > 0
+						? ` (${item.responsible.join(', ')})`
+						: '';
 				children.push(
 					new Paragraph({
 						bullet: { level: 0 },
@@ -213,7 +243,9 @@ export function useActivityExport() {
 		const blob = await Packer.toBlob(doc);
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
-		const safeTitle = activity.title.replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, '').trim() || 'Aktivitaet';
+		const safeTitle =
+			activity.title.replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, '').trim() ||
+			'Aktivitaet';
 		a.href = url;
 		a.download = `${safeTitle}.docx`;
 		document.body.appendChild(a);
