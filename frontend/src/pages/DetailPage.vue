@@ -2638,7 +2638,7 @@ async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 
 // ---- Delete ----------------------------------------------------------------
 async function doDelete() {
-	if (!confirm(`Aktivität "${activity.value?.title || id}" wirklich löschen?`))
+	if (!confirm(`Aktivität "${activity.value?.title || id}" in den Papierkorb verschieben?`))
 		return;
 	await deleteActivity(id);
 	router.push('/');
@@ -3782,7 +3782,7 @@ function copyShareLink() {
 					v-if="canDelete"
 					@click="doDelete"
 				>
-					Löschen
+					In Papierkorb
 				</button>
 				<button type="button" class="btn-secondary" @click="cancelEdit">
 					Abbrechen

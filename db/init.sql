@@ -95,9 +95,14 @@ CREATE TABLE IF NOT EXISTS activities (
     weather_location TEXT,
     weather_snapshot JSONB,
     weather_recorded_at TIMESTAMPTZ,
+    deleted_at       TIMESTAMPTZ,
+    deleted_by       UUID,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_by UUID;
 
 CREATE TABLE IF NOT EXISTS programs (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -122,6 +127,7 @@ CREATE TRIGGER trg_activities_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE INDEX IF NOT EXISTS idx_activities_date ON activities (date DESC, start_time);
+CREATE INDEX IF NOT EXISTS idx_activities_deleted_at ON activities (deleted_at);
 CREATE INDEX IF NOT EXISTS idx_programs_activity_id ON programs (activity_id);
 
 CREATE TABLE IF NOT EXISTS ideenkiste (
@@ -167,6 +173,20 @@ CREATE TRIGGER trg_users_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE INDEX IF NOT EXISTS idx_users_microsoft_oid ON users (microsoft_oid);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'activities_deleted_by_fkey'
+    ) THEN
+        ALTER TABLE activities
+            ADD CONSTRAINT activities_deleted_by_fkey
+            FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END;
+$$;
 
 -- Mail templates (one per department)
 CREATE TABLE IF NOT EXISTS mail_templates (

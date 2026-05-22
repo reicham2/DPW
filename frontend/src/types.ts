@@ -41,6 +41,16 @@ export interface Activity {
 	programs: Program[];
 }
 
+export interface DeletedActivityRecord {
+	activity: Activity;
+	deleted_at: string;
+	deleted_by: {
+		id: string | null;
+		display_name: string | null;
+		email: string | null;
+	};
+}
+
 export interface ActivityInput {
 	title: string;
 	date: string;

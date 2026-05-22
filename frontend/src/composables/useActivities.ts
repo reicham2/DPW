@@ -3,6 +3,7 @@ import type {
 	Activity,
 	ActivityInput,
 	Attachment,
+	DeletedActivityRecord,
 	Department,
 	WsEvent,
 } from '../types';
@@ -172,6 +173,53 @@ export function useActivities() {
 		}
 	}
 
+	async function fetchDeletedActivities(): Promise<DeletedActivityRecord[]> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/admin/activities/trash`);
+			if (!res.ok) throw new Error(await res.text());
+			return (await res.json()) as DeletedActivityRecord[];
+		} catch (e) {
+			error.value = formatApiError(e);
+			return [];
+		}
+	}
+
+	async function restoreActivity(id: string): Promise<Activity | null> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/admin/activities/${id}/restore`, {
+				method: 'POST',
+			});
+			if (!res.ok) throw new Error(await res.text());
+			const restored = (await res.json()) as Activity;
+			if (!activities.value.find((a) => a.id === restored.id)) {
+				activities.value.unshift(restored);
+			}
+			return restored;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return null;
+		}
+	}
+
+	async function deleteDeletedActivity(id: string): Promise<boolean> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/admin/activities/${id}/trash`, {
+				method: 'DELETE',
+			});
+			if (!res.ok) throw new Error(await res.text());
+			activities.value = activities.value.filter(
+				(activity) => activity.id !== id,
+			);
+			return true;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return false;
+		}
+	}
+
 	// ---- Predefined locations ------------------------------------------------
 
 	async function fetchLocations(): Promise<void> {
@@ -267,6 +315,9 @@ export function useActivities() {
 		createActivity,
 		updateActivity,
 		deleteActivity,
+		fetchDeletedActivities,
+		restoreActivity,
+		deleteDeletedActivity,
 		fetchAttachments,
 		uploadAttachment,
 		deleteAttachment,

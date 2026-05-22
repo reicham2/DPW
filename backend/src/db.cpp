@@ -565,7 +565,7 @@ std::vector<Activity> Database::list_activities()
                            "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
                            "       department, material, siko_text, "
                            "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
-                           "FROM activities ORDER BY date DESC, start_time");
+                           "FROM activities WHERE deleted_at IS NULL ORDER BY date DESC, start_time");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
@@ -593,7 +593,7 @@ std::optional<Activity> Database::get_activity_by_id(const std::string &id)
                                  "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
                                  "       department, material, siko_text, "
                                  "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
-                                 "FROM activities WHERE id = $1",
+                                 "FROM activities WHERE id = $1 AND deleted_at IS NULL",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
@@ -884,14 +884,128 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
 
 bool Database::delete_activity(const std::string &id)
 {
+    return soft_delete_activity(id, "");
+}
+
+bool Database::soft_delete_activity(const std::string &id, const std::string &deleted_by_user_id)
+{
+    ensure_connected();
+    const char *params[2] = {
+        id.c_str(),
+        deleted_by_user_id.empty() ? nullptr : deleted_by_user_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE activities "
+                                 "SET deleted_at = NOW(), deleted_by = $2::uuid "
+                                 "WHERE id = $1 AND deleted_at IS NULL",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK && PQcmdTuples(res)[0] != '0';
+    PQclear(res);
+    return ok;
+}
+
+bool Database::restore_activity(const std::string &id)
+{
     ensure_connected();
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "DELETE FROM activities WHERE id = $1",
+                                 "UPDATE activities "
+                                 "SET deleted_at = NULL, deleted_by = NULL "
+                                 "WHERE id = $1 AND deleted_at IS NOT NULL",
                                  1, nullptr, params, nullptr, nullptr, 0);
-    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK && PQcmdTuples(res)[0] != '0';
     PQclear(res);
     return ok;
+}
+
+bool Database::permanently_delete_activity(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM activities "
+                                 "WHERE id = $1 AND deleted_at IS NOT NULL",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK && PQcmdTuples(res)[0] != '0';
+    PQclear(res);
+    return ok;
+}
+
+int Database::purge_deleted_activities_older_than_days(int days)
+{
+    ensure_connected();
+    std::string days_text = std::to_string(days);
+    const char *params[1] = {days_text.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM activities "
+                                 "WHERE deleted_at IS NOT NULL "
+                                 "AND deleted_at < NOW() - ($1::int * INTERVAL '1 day')",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("purge_deleted_activities_older_than_days: " + err);
+    }
+
+    int deleted = 0;
+    const char *tuples = PQcmdTuples(res);
+    if (tuples && *tuples)
+        deleted = std::atoi(tuples);
+    PQclear(res);
+    return deleted;
+}
+
+std::vector<DeletedActivityRecord> Database::list_deleted_activities()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+                           "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, a.location, a.responsible, "
+                           "       a.department, a.material, a.siko_text, a.bad_weather_info, a.planned_participants_estimate, "
+                           "       a.created_at, a.updated_at, a.deleted_at, a.deleted_by::text, "
+                           "       u.display_name AS deleted_by_display_name, u.email AS deleted_by_email "
+                           "FROM activities a "
+                           "LEFT JOIN users u ON u.id = a.deleted_by "
+                           "WHERE a.deleted_at IS NOT NULL "
+                           "ORDER BY a.deleted_at DESC");
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_deleted_activities: " + err);
+    }
+
+    std::vector<DeletedActivityRecord> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+    {
+        DeletedActivityRecord rec;
+        rec.activity = row_to_activity(res, i);
+        int deleted_at_col = PQfnumber(res, "deleted_at");
+        if (deleted_at_col >= 0 && !PQgetisnull(res, i, deleted_at_col))
+            rec.deleted_at = PQgetvalue(res, i, deleted_at_col);
+
+        int deleted_by_id_col = PQfnumber(res, "deleted_by");
+        if (deleted_by_id_col >= 0 && !PQgetisnull(res, i, deleted_by_id_col))
+            rec.deleted_by_user_id = std::string(PQgetvalue(res, i, deleted_by_id_col));
+
+        int deleted_by_name_col = PQfnumber(res, "deleted_by_display_name");
+        if (deleted_by_name_col >= 0 && !PQgetisnull(res, i, deleted_by_name_col))
+            rec.deleted_by_display_name = std::string(PQgetvalue(res, i, deleted_by_name_col));
+
+        int deleted_by_email_col = PQfnumber(res, "deleted_by_email");
+        if (deleted_by_email_col >= 0 && !PQgetisnull(res, i, deleted_by_email_col))
+            rec.deleted_by_email = std::string(PQgetvalue(res, i, deleted_by_email_col));
+
+        out.push_back(std::move(rec));
+    }
+    PQclear(res);
+
+    for (auto &rec : out)
+        attach_programs_single(rec.activity);
+
+    return out;
 }
 
 std::optional<int> Database::get_activity_midata_children_value(const std::string &activity_id)
@@ -3568,7 +3682,7 @@ std::optional<Activity> Database::get_activity_by_share_token(const std::string 
                                  "       a.bad_weather_info, a.planned_participants_estimate, a.created_at, a.updated_at "
                                  "FROM activities a "
                                  "JOIN activity_share_links s ON s.activity_id = a.id "
-                                 "WHERE s.share_token = $1",
+                                 "WHERE s.share_token = $1 AND a.deleted_at IS NULL",
                                  1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
