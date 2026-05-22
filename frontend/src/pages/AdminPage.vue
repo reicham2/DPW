@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Lock, MapPin, Users } from 'lucide-vue-next'
+import { Lock, MapPin, Trash2, Users } from 'lucide-vue-next'
 import { user as currentUser } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -13,10 +13,12 @@ import DepartmentBadge from '../components/DepartmentBadge.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import { useRouter } from 'vue-router'
 import { usePermissions } from '../composables/usePermissions'
-import type { User, Department, UserRole } from '../types'
+import { useActivities } from '../composables/useActivities'
+import type { User, Department, UserRole, DeletedActivityRecord } from '../types'
 
 const router = useRouter()
 const { departments: deptRecords, roles: roleRecords, fetchDepartments, fetchRoles, myPermissions, fetchMyPermissions, canManageUsers, canManageSystem, canManageLocations } = usePermissions()
+const { fetchDeletedActivities, restoreActivity } = useActivities()
 
 const DEPARTMENTS = computed(() => deptRecords.value.map(d => d.name))
 const orderedRoles = computed(() => [...roleRecords.value].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de')))
@@ -33,9 +35,10 @@ const canEditRoles = computed(() => {
 })
 const canSeePermissionsTab = computed(() => canManageSystem())
 const canSeeLocationsTab = computed(() => canManageLocations())
+const canSeeTrashTab = computed(() => currentUser.value?.role === 'admin')
 
 // ── Tab management ──────────────────────────────────────────────────────────
-const activeTab = ref<'users' | 'permissions' | 'locations' | 'system'>('users')
+const activeTab = ref<'users' | 'permissions' | 'locations' | 'trash' | 'system'>('users')
 
 // ── User management state ───────────────────────────────────────────────────
 const users = ref<User[]>([])
@@ -47,6 +50,11 @@ const editForm = ref({ display_name: '', department: '' as Department | '', role
 const saving = ref(false)
 const saveError = ref<string | null>(null)
 const deleteTarget = ref<User | null>(null)
+
+const deletedActivities = ref<DeletedActivityRecord[]>([])
+const trashLoading = ref(false)
+const trashError = ref<string | null>(null)
+const restoringActivityId = ref<string | null>(null)
 
 const filterDept = ref<Department | 'Alle'>('Alle')
 
@@ -69,8 +77,43 @@ onMounted(async () => {
   if (canEditRoles.value || canSeePermissionsTab.value) {
     tasks.push(fetchRoles())
   }
+  if (canSeeTrashTab.value) {
+    tasks.push(loadDeletedActivities())
+  }
   await Promise.all(tasks)
 })
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString('de-DE')
+}
+
+async function loadDeletedActivities() {
+  if (!canSeeTrashTab.value) return
+  trashLoading.value = true
+  trashError.value = null
+  try {
+    deletedActivities.value = await fetchDeletedActivities()
+  } catch (e) {
+    trashError.value = String(e)
+  } finally {
+    trashLoading.value = false
+  }
+}
+
+async function restoreDeletedActivity(entry: DeletedActivityRecord) {
+  if (!canSeeTrashTab.value) return
+  restoringActivityId.value = entry.activity.id
+  trashError.value = null
+  try {
+    const restored = await restoreActivity(entry.activity.id)
+    if (!restored) throw new Error('Wiederherstellung fehlgeschlagen')
+    deletedActivities.value = deletedActivities.value.filter((item) => item.activity.id !== entry.activity.id)
+  } catch (e) {
+    trashError.value = String(e)
+  } finally {
+    restoringActivityId.value = null
+  }
+}
 
 async function fetchUsers() {
   loading.value = true
@@ -234,6 +277,15 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
       Orte
     </button>
     <button
+      v-if="canSeeTrashTab"
+      class="tab-btn"
+      :class="{ 'tab-btn--active': activeTab === 'trash' }"
+      @click="activeTab = 'trash'; void loadDeletedActivities()"
+    >
+      <Trash2 :size="16" aria-hidden="true" />
+      Papierkorb
+    </button>
+    <button
       v-if="canSeePermissionsTab"
       class="tab-btn"
       :class="{ 'tab-btn--active': activeTab === 'system' }"
@@ -331,6 +383,51 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
   <!-- Tab: Orte (locations_manage_scope = all) -->
   <main v-else-if="activeTab === 'locations' && canSeeLocationsTab" class="main">
     <LocationManager />
+  </main>
+
+  <main v-else-if="activeTab === 'trash' && canSeeTrashTab" class="main">
+    <div class="tab-header">
+      <div class="tab-header-left">
+        <h2 class="trash-title">Gelöschte Aktivitäten</h2>
+      </div>
+      <span class="user-count">{{ deletedActivities.length }} Einträge</span>
+    </div>
+
+    <div v-if="trashLoading" class="loading">Lade Papierkorb...</div>
+    <div v-else-if="trashError" class="error-msg"><ErrorAlert :error="trashError" /></div>
+    <div v-else class="table-wrap">
+      <table class="users-table">
+        <thead>
+          <tr>
+            <th>Titel</th>
+            <th>Datum</th>
+            <th>Gelöscht am</th>
+            <th>Gelöscht von</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="entry in deletedActivities" :key="entry.activity.id">
+            <td class="td-name" data-label="Titel">{{ entry.activity.title }}</td>
+            <td data-label="Datum">{{ entry.activity.date }}</td>
+            <td data-label="Gelöscht am">{{ formatDateTime(entry.deleted_at) }}</td>
+            <td class="td-email" data-label="Gelöscht von">{{ entry.deleted_by.display_name || entry.deleted_by.email || 'Unbekannt' }}</td>
+            <td data-label="Aktionen">
+              <button
+                class="btn-primary btn-restore"
+                :disabled="restoringActivityId === entry.activity.id"
+                @click="restoreDeletedActivity(entry)"
+              >
+                {{ restoringActivityId === entry.activity.id ? 'Wird wiederhergestellt...' : 'Wiederherstellen' }}
+              </button>
+            </td>
+          </tr>
+          <tr v-if="deletedActivities.length === 0">
+            <td colspan="5" class="td-empty">Keine gelöschten Aktivitäten.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </main>
 
   <main v-else-if="activeTab === 'system' && canSeePermissionsTab" class="main">
@@ -713,6 +810,18 @@ const roleItems = computed(() => assignableRoles.value.map(name => ({ value: nam
 }
 .btn-primary:hover:not(:disabled) { background: var(--btn-primary-bg-hover); }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
+
+.trash-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.btn-restore {
+  padding: 6px 12px;
+  font-size: 0.82rem;
+}
 
 @media (max-width: 599px) {
   .header {

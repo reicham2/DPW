@@ -174,6 +174,15 @@ struct ActivityShareLink
     std::string created_at;
 };
 
+struct DeletedActivityRecord
+{
+    Activity activity;
+    std::string deleted_at;
+    std::optional<std::string> deleted_by_user_id;
+    std::optional<std::string> deleted_by_display_name;
+    std::optional<std::string> deleted_by_email;
+};
+
 class Database
 {
 public:
@@ -189,6 +198,9 @@ public:
     std::optional<Activity> create_activity(const ActivityInput &input);
     std::optional<Activity> update_activity(const std::string &id, const ActivityInput &input);
     bool delete_activity(const std::string &id);
+    bool soft_delete_activity(const std::string &id, const std::string &deleted_by_user_id);
+    bool restore_activity(const std::string &id);
+    std::vector<DeletedActivityRecord> list_deleted_activities();
     std::optional<int> get_activity_midata_children_value(const std::string &activity_id);
     bool set_activity_midata_children_value(const std::string &activity_id, int value);
     std::optional<nlohmann::json> get_activity_weather_snapshot(const std::string &activity_id);

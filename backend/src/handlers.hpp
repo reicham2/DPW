@@ -38,6 +38,8 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
 void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_get_admin_activity_trash(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_admin_activity_restore(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 
 // Predefined locations
 void handle_get_locations(HttpRes *res, HttpReq *req, Database &db);

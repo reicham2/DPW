@@ -201,6 +201,10 @@ int main()
               { handle_get_role_dept_access(res, req, db); })
          .put("/admin/role-dept-access", [&](auto *res, auto *req)
               { handle_put_role_dept_access(res, req, db); })
+         .get("/admin/activities/trash", [&](auto *res, auto *req)
+              { handle_get_admin_activity_trash(res, req, db); })
+         .post("/admin/activities/:id/restore", [&](auto *res, auto *req)
+               { handle_post_admin_activity_restore(res, req, db, wm); })
 
          // Static data
          .get("/departments", [&](auto *res, auto *req)

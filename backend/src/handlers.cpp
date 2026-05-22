@@ -3485,7 +3485,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
 
     try
     {
-        bool ok = db.delete_activity(id);
+        bool ok = db.soft_delete_activity(id, current_user->id);
         if (!ok)
         {
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
@@ -5967,6 +5967,86 @@ static std::optional<UserRecord> require_admin(HttpRes *res, HttpReq *req, Datab
         return std::nullopt;
     }
     return user;
+}
+
+static nlohmann::json deleted_activity_to_json(const DeletedActivityRecord &r)
+{
+    nlohmann::json j;
+    j["activity"] = to_json(r.activity);
+    j["deleted_at"] = r.deleted_at;
+    j["deleted_by"] = {
+        {"id", r.deleted_by_user_id ? nlohmann::json(*r.deleted_by_user_id) : nlohmann::json(nullptr)},
+        {"display_name", r.deleted_by_display_name ? nlohmann::json(*r.deleted_by_display_name) : nlohmann::json(nullptr)},
+        {"email", r.deleted_by_email ? nlohmann::json(*r.deleted_by_email) : nlohmann::json(nullptr)}};
+    return j;
+}
+
+static std::optional<UserRecord> require_strict_admin(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return std::nullopt;
+    auto user = resolve_user(db, claims);
+    if (!user || !is_admin(*user))
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return std::nullopt;
+    }
+    return user;
+}
+
+void handle_get_admin_activity_trash(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_strict_admin(res, req, db))
+        return;
+
+    try
+    {
+        auto deleted = db.list_deleted_activities();
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &entry : deleted)
+            arr.push_back(deleted_activity_to_json(entry));
+        send_json(res, 200, arr.dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+void handle_post_admin_activity_restore(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
+    auto admin_user = require_strict_admin(res, req, db);
+    if (!admin_user)
+        return;
+
+    std::string id{req->getParameter(0)};
+    try
+    {
+        bool restored = db.restore_activity(id);
+        if (!restored)
+        {
+            send_json(res, 404, R"({"error":"Nicht gefunden"})");
+            return;
+        }
+
+        auto activity = db.get_activity_by_id(id);
+        if (!activity)
+        {
+            send_json(res, 500, R"({"error":"Wiederhergestellt, aber nicht lesbar"})");
+            return;
+        }
+
+        nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
+        wm.broadcast(msg.dump());
+        cache_bump_version("activities");
+        cache_bump_version("activity");
+        send_json(res, 200, to_json(*activity).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
 }
 
 void handle_get_admin_midata_status(HttpRes *res, HttpReq *req, Database &db)
