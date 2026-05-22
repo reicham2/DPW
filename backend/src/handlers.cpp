@@ -1886,9 +1886,9 @@ static void sync_azure_runtime_env_from_db(Database &db)
 
 struct MaintenanceState
 {
-    bool enabled{false};        // explicitly toggled on
-    bool scheduled_now{false};  // current time falls within any scheduled window
-    bool active{false};         // enabled || scheduled_now
+    bool enabled{false};       // explicitly toggled on
+    bool scheduled_now{false}; // current time falls within any scheduled window
+    bool active{false};        // enabled || scheduled_now
     std::string message;
     std::string scheduled_start; // currently active or next scheduled start
     std::string scheduled_end;   // currently active or next scheduled end
@@ -2477,9 +2477,8 @@ static MaintenanceState get_maintenance_state(Database &db)
 
     const size_t before_prune_count = windows.size();
     windows.erase(
-        std::remove_if(windows.begin(), windows.end(), [&](const MaintenanceWindow &w) {
-            return should_prune_window(w, prune_cutoff);
-        }),
+        std::remove_if(windows.begin(), windows.end(), [&](const MaintenanceWindow &w)
+                       { return should_prune_window(w, prune_cutoff); }),
         windows.end());
     if (windows.size() != before_prune_count)
     {
@@ -2507,11 +2506,11 @@ static MaintenanceState get_maintenance_state(Database &db)
     for (const auto &w : windows)
         expand_window_occurrences(w, now, horizon, occs);
 
-    std::sort(occs.begin(), occs.end(), [](const MaintenanceOccurrence &a, const MaintenanceOccurrence &b) {
+    std::sort(occs.begin(), occs.end(), [](const MaintenanceOccurrence &a, const MaintenanceOccurrence &b)
+              {
         if (a.start_ts != b.start_ts)
             return a.start_ts < b.start_ts;
-        return a.end_ts < b.end_ts;
-    });
+        return a.end_ts < b.end_ts; });
 
     for (const auto &occ : occs)
     {
@@ -2623,7 +2622,8 @@ void handle_put_admin_maintenance(HttpRes *res, HttpReq *req, Database &db, WebS
     std::string auth_header{req->getHeader("authorization")};
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, auth_header, &db, &wm](std::string_view chunk, bool last) {
+    res->onData([res, buf, auth_header, &db, &wm](std::string_view chunk, bool last)
+                {
         buf->append(chunk.data(), chunk.size());
         if (!last)
             return;
@@ -2811,8 +2811,7 @@ void handle_put_admin_maintenance(HttpRes *res, HttpReq *req, Database &db, WebS
         catch (std::exception &)
         {
             send_json(res, 500, R"({"error":"Interner Serverfehler"})");
-        }
-    });
+        } });
 }
 
 // ---- GET /departments -------------------------------------------------------
