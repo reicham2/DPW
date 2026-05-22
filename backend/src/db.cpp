@@ -477,6 +477,18 @@ Activity Database::row_to_activity(PGresult *res, int row)
         }
     }
 
+    const char *tn_mat = col("tn_material");
+    if (tn_mat)
+    {
+        auto tnj = nlohmann::json::parse(tn_mat, nullptr, false);
+        if (tnj.is_array())
+        {
+            for (const auto &item : tnj)
+                if (item.is_string())
+                    a.tn_material.push_back(item.get<std::string>());
+        }
+    }
+
     return a;
 }
 
@@ -563,7 +575,7 @@ std::vector<Activity> Database::list_activities()
     ensure_connected();
     PGresult *res = PQexec(conn_,
                            "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
-                           "       department, material, siko_text, "
+                           "       department, material, tn_material, siko_text, "
                            "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
                            "FROM activities WHERE deleted_at IS NULL ORDER BY date DESC, start_time");
 
@@ -591,7 +603,7 @@ std::optional<Activity> Database::get_activity_by_id(const std::string &id)
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                 "       department, material, siko_text, "
+                                 "       department, material, tn_material, siko_text, "
                                  "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
                                  "FROM activities WHERE id = $1 AND deleted_at IS NULL",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -756,6 +768,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
     ensure_connected();
 
     std::string mat_json = Database::format_material_items_param(input.material);
+    std::string tn_mat_json = Database::format_material_param(input.tn_material);
     std::string resp_json = Database::format_material_param(input.responsible);
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
@@ -769,25 +782,26 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
 
     try
     {
-        const char *p2[12] = {
+        const char *p2[13] = {
             input.title.c_str(), input.date.c_str(),
             input.start_time.c_str(), input.end_time.c_str(),
             input.goal.c_str(), input.location.c_str(),
             resp_json.c_str(),
             dept_param,
             mat_json.c_str(),
+            tn_mat_json.c_str(),
             siko_param,
             bwi_str.c_str(),
             ppe_param};
         PGresult *r = PQexecParams(conn_,
                                    "INSERT INTO activities "
-                                   "(title, date, start_time, end_time, goal, location, responsible, department, material, siko_text, bad_weather_info, planned_participants_estimate) "
+                                   "(title, date, start_time, end_time, goal, location, responsible, department, material, tn_material, siko_text, bad_weather_info, planned_participants_estimate) "
                                    "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
-                                   "$8, $9::jsonb, $10, $11, $12::int) "
+                                   "$8, $9::jsonb, $10::jsonb, $11, $12, $13::int) "
                                    "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                   "department, material, siko_text, "
+                                   "department, material, tn_material, siko_text, "
                                    "bad_weather_info, planned_participants_estimate, created_at, updated_at",
-                                   12, nullptr, p2, nullptr, nullptr, 0);
+                                   13, nullptr, p2, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
             std::string err = PQresultErrorMessage(r);
@@ -816,6 +830,7 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
     ensure_connected();
 
     std::string mat_json = Database::format_material_items_param(input.material);
+    std::string tn_mat_json = Database::format_material_param(input.tn_material);
     std::string resp_json = Database::format_material_param(input.responsible);
     std::string dept_str = input.department ? *input.department : "";
     std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
@@ -829,13 +844,14 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
 
     try
     {
-        const char *p[13] = {
+        const char *p[14] = {
             input.title.c_str(), input.date.c_str(),
             input.start_time.c_str(), input.end_time.c_str(),
             input.goal.c_str(), input.location.c_str(),
             resp_json.c_str(),
             dept_param,
             mat_json.c_str(),
+            tn_mat_json.c_str(),
             siko_param,
             bwi_str.c_str(),
             ppe_param,
@@ -844,13 +860,13 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
                                    "UPDATE activities SET "
                                    "title=$1, date=$2::date, start_time=$3, end_time=$4, "
                                    "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
-                                   "department=$8, material=$9::jsonb, "
-                                   "siko_text=$10, bad_weather_info=$11, planned_participants_estimate=$12 "
-                                   "WHERE id=$13 "
+                                   "department=$8, material=$9::jsonb, tn_material=$10::jsonb, "
+                                   "siko_text=$11, bad_weather_info=$12, planned_participants_estimate=$13 "
+                                   "WHERE id=$14 "
                                    "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
-                                   "department, material, siko_text, "
+                                   "department, material, tn_material, siko_text, "
                                    "bad_weather_info, planned_participants_estimate, created_at, updated_at",
-                                   13, nullptr, p, nullptr, nullptr, 0);
+                                   14, nullptr, p, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
             std::string err = PQresultErrorMessage(r);

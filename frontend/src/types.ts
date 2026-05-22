@@ -33,6 +33,7 @@ export interface Activity {
 	responsible: string[];
 	department: Department | null;
 	material: MaterialItem[];
+	tn_material: string[];
 	siko_text: string | null;
 	bad_weather_info: string | null;
 	planned_participants_estimate: number | null;
@@ -61,6 +62,7 @@ export interface ActivityInput {
 	responsible: string[];
 	department?: Department | null;
 	material: MaterialItem[];
+	tn_material: string[];
 	siko_text?: string | null;
 	bad_weather_info?: string | null;
 	planned_participants_estimate?: number | null;
@@ -73,6 +75,7 @@ export type EditSection =
 	| 'location'
 	| `program_${number}`
 	| `material_${number}`
+	| `tn_material_${number}`
 	| 'siko'
 	| 'goal_weather'
 	| 'tpl_recipients'
@@ -189,6 +192,16 @@ export interface MailDraft {
 	body_html: string;
 	updated_by: string;
 	updated_at: string;
+}
+
+export interface MailComposerFormContext {
+	exists: boolean;
+	public_slug: string | null;
+}
+
+export interface MailComposerContext {
+	template: MailTemplate | null;
+	form: MailComposerFormContext;
 }
 
 export interface Attachment {

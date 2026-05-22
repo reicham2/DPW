@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS activities (
     responsible      TEXT[]      NOT NULL DEFAULT '{}',
     department       TEXT        REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL,
     material         JSONB       NOT NULL DEFAULT '[]',
+    tn_material      JSONB       NOT NULL DEFAULT '[]',
     siko_text        TEXT,
     bad_weather_info TEXT,
     planned_participants_estimate INTEGER CHECK (planned_participants_estimate >= 0),
@@ -103,6 +104,7 @@ CREATE TABLE IF NOT EXISTS activities (
 
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_by UUID;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS tn_material JSONB NOT NULL DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS programs (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

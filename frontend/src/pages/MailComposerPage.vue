@@ -6,11 +6,10 @@ import { useMailTemplates } from '../composables/useMailTemplates';
 import { useContactSearch } from '../composables/useContactSearch';
 import { user } from '../composables/useAuth';
 import { usePermissions } from '../composables/usePermissions';
-import { useForms } from '../composables/useForms';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import { ArrowLeft, Save, Check, X, Clipboard, Send } from 'lucide-vue-next';
-import type { Activity, Department, SentMail } from '../types';
+import type { Activity, SentMail } from '../types';
 import { useAutosave } from '../composables/useAutosave';
 import { config } from '../config';
 
@@ -19,9 +18,8 @@ const router = useRouter()
 const activityId = route.params.id as string
 
 const { fetchActivity } = useActivities()
-const { fetchTemplate, sendMail, sending, error, fetchSentMails, fetchDraft, saveDraft, deleteDraft } = useMailTemplates()
+const { sendMail, sending, error, fetchSentMails, fetchDraft, saveDraft, deleteDraft, fetchComposerContext } = useMailTemplates()
 const { myPermissions, fetchMyPermissions } = usePermissions()
-const { fetchForm: fetchActivityForm } = useForms()
 
 const activity = ref<Activity | null>(null)
 const subject = ref('')
@@ -236,7 +234,8 @@ function formatPrograms(act: Activity): string {
   }).join('\n')
 }
 
-function replaceTemplateVars(text: string, act: Activity): string {
+function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: boolean } = {}): string {
+	const htmlLists = opts.htmlLists ?? true
   // Use a temporary DOM element to do replacements while preserving formatting.
   // Walking text nodes means <font face="Arial">{{titel}}</font> keeps its font.
   const container = document.createElement('div')
@@ -253,12 +252,29 @@ function replaceTemplateVars(text: string, act: Activity): string {
     verantwortlich: act.responsible.join(', '),
     abteilung: act.department ?? '—',
     ziel: act.goal,
-    material: act.material.map(m => m.name).join(', ') || '—',
+		tn_material: act.tn_material.join(', ') || '—',
     schlechtwetter: act.bad_weather_info ?? '—',
     programm: formatPrograms(act),
     absender_email: senderEmail,
     absender_name: senderName,
   }
+	const replaceSimpleVars = (input: string) =>
+		input.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
+			const lk = key.toLowerCase()
+			return lk in vars ? vars[lk] : m
+		})
+
+	const createTnMaterialList = (): Node => {
+		if (!htmlLists || !act.tn_material.length) return document.createTextNode(vars.tn_material)
+		const ul = document.createElement('ul')
+		for (const item of act.tn_material) {
+			const li = document.createElement('li')
+			li.textContent = item
+			ul.appendChild(li)
+		}
+		return ul
+	}
+
   const formLink = formUrl.value || '#'
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
   const textNodes: Text[] = []
@@ -271,10 +287,7 @@ function replaceTemplateVars(text: string, act: Activity): string {
       const parent = node.parentNode!
       for (let i = 0; i < parts.length; i++) {
         if (i % 2 === 0) {
-          const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, (m, key) => {
-            const lk = key.toLowerCase()
-            return lk in vars ? vars[lk] : m
-          })
+					const partText = replaceSimpleVars(parts[i])
           if (partText) parent.insertBefore(document.createTextNode(partText), node)
         } else {
           const a = document.createElement('a')
@@ -286,10 +299,20 @@ function replaceTemplateVars(text: string, act: Activity): string {
       parent.removeChild(node)
       continue
     }
-    const replaced = original.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
-      const lk = key.toLowerCase()
-      return lk in vars ? vars[lk] : m
-    })
+
+		if (/\{\{tn_material\}\}/i.test(original)) {
+			const parts = original.split(/\{\{tn_material\}\}/i)
+			const parent = node.parentNode!
+			for (let i = 0; i < parts.length; i++) {
+				const partText = replaceSimpleVars(parts[i])
+				if (partText) parent.insertBefore(document.createTextNode(partText), node)
+				if (i < parts.length - 1) parent.insertBefore(createTnMaterialList(), node)
+			}
+			parent.removeChild(node)
+			continue
+		}
+
+		const replaced = replaceSimpleVars(original)
     if (replaced !== original) node.nodeValue = replaced
   }
   return container.innerHTML
@@ -309,17 +332,16 @@ onMounted(async () => {
   }
   activity.value = act
 
-  // Check if a form exists for this activity
-  const existingForm = await fetchActivityForm(activityId)
-  if (existingForm) {
-    hasForm.value = true
+	const composerContext = await fetchComposerContext(activityId)
+	if (composerContext?.form.exists && composerContext.form.public_slug) {
+		hasForm.value = true
 		const baseUrl = configuredPublicBaseUrl()
 		if (!baseUrl) {
 			loadError.value = 'Öffentliche Basis-URL ist nicht konfiguriert.'
 		} else {
-			formUrl.value = `${baseUrl}/forms/${existingForm.public_slug}`
+			formUrl.value = `${baseUrl}/forms/${composerContext.form.public_slug}`
 		}
-  }
+	}
 
   // Load sent mails for this activity
   sentMails.value = await fetchSentMails(activityId)
@@ -327,19 +349,17 @@ onMounted(async () => {
     showWarning.value = true
   }
 
-  if (act.department) {
-    const tpl = await fetchTemplate(act.department as Department)
-    if (tpl) {
-      subject.value = replaceTemplateVars(tpl.subject, act)
-      body.value    = replaceTemplateVars(tpl.body, act)
-      if (tpl.recipients?.length) {
-        recipients.value = [...tpl.recipients]
-      }
-      if (tpl.cc?.length) {
-        cc.value = [...tpl.cc]
-      }
-    }
-  }
+	const tpl = composerContext?.template
+	if (tpl) {
+		subject.value = replaceTemplateVars(tpl.subject, act, { htmlLists: false })
+		body.value = replaceTemplateVars(tpl.body, act, { htmlLists: true })
+		if (tpl.recipients?.length) {
+			recipients.value = [...tpl.recipients]
+		}
+		if (tpl.cc?.length) {
+			cc.value = [...tpl.cc]
+		}
+	}
 
   // Load existing draft (overrides template if present)
   const draft = await fetchDraft(activityId)
