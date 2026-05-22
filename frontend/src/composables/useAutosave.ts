@@ -78,7 +78,9 @@ export function useAutosave(saveFn: () => void | Promise<void>) {
 	}
 
 	function onBeforeMaintenanceRedirect(event: Event) {
-		const detail = (event as CustomEvent<{ waitUntil?: (promise: Promise<unknown>) => void }>).detail;
+		const detail = (
+			event as CustomEvent<{ waitUntil?: (promise: Promise<unknown>) => void }>
+		).detail;
 		if (!detail?.waitUntil) return;
 		detail.waitUntil(flushAutoSave());
 	}
@@ -101,7 +103,10 @@ export function useAutosave(saveFn: () => void | Promise<void>) {
 		if (timer) clearTimeout(timer);
 		if (interval) clearInterval(interval);
 		if (typeof window !== 'undefined') {
-			window.removeEventListener('dpw:before-maintenance-redirect', onBeforeMaintenanceRedirect);
+			window.removeEventListener(
+				'dpw:before-maintenance-redirect',
+				onBeforeMaintenanceRedirect,
+			);
 		}
 		timer = null;
 		interval = null;
@@ -109,7 +114,10 @@ export function useAutosave(saveFn: () => void | Promise<void>) {
 	}
 
 	if (typeof window !== 'undefined') {
-		window.addEventListener('dpw:before-maintenance-redirect', onBeforeMaintenanceRedirect);
+		window.addEventListener(
+			'dpw:before-maintenance-redirect',
+			onBeforeMaintenanceRedirect,
+		);
 	}
 
 	onUnmounted(cleanup);
