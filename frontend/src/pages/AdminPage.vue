@@ -39,12 +39,14 @@ const canSeeTrashTab = computed(() => currentUser.value?.role === 'admin')
 const canSeeLogsTab = computed(() => currentUser.value?.role === 'admin')
 const systemTabLabel = computed(() => {
   if (activeTab.value !== 'system') return 'System'
-  return systemTab.value === 'logs' ? 'System: Container Logs' : 'System: Einstellungen'
+  if (systemTab.value === 'logs') return 'System: Container Logs'
+  if (systemTab.value === 'maintenance') return 'System: Wartungsfenster'
+  return 'System: Einstellungen'
 })
 
 // ── Tab management ──────────────────────────────────────────────────────────
 const activeTab = ref<'users' | 'permissions' | 'locations' | 'trash' | 'system'>('users')
-const systemTab = ref<'settings' | 'logs'>('settings')
+const systemTab = ref<'settings' | 'maintenance' | 'logs'>('settings')
 const systemMenuOpen = ref(false)
 
 // ── User management state ───────────────────────────────────────────────────
@@ -230,7 +232,7 @@ function toggleSystemMenu() {
   systemMenuOpen.value = !systemMenuOpen.value
 }
 
-function selectSystemTab(tab: 'settings' | 'logs') {
+function selectSystemTab(tab: 'settings' | 'maintenance' | 'logs') {
   systemTab.value = tab
   activeTab.value = 'system'
   systemMenuOpen.value = false
@@ -486,6 +488,14 @@ onMounted(() => {
           Einstellungen
         </button>
         <button
+          type="button"
+          class="system-tab-dropdown-item"
+          :class="{ 'system-tab-dropdown-item--active': activeTab === 'system' && systemTab === 'maintenance' }"
+          @click="selectSystemTab('maintenance')"
+        >
+          Wartungsfenster
+        </button>
+        <button
           v-if="canSeeLogsTab"
           type="button"
           class="system-tab-dropdown-item"
@@ -645,7 +655,9 @@ onMounted(() => {
   </main>
 
   <main v-else-if="activeTab === 'system' && canSeePermissionsTab" class="main">
-    <SystemConfigManager v-if="systemTab === 'settings'" />
+    <SystemConfigManager v-if="systemTab === 'settings'" mode="settings" />
+
+    <SystemConfigManager v-else-if="systemTab === 'maintenance'" mode="maintenance" />
 
     <section v-else-if="systemTab === 'logs' && canSeeLogsTab">
       <div class="tab-header">
