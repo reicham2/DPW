@@ -12,6 +12,7 @@ import ActivityFormsPage from '../pages/ActivityFormsPage.vue';
 import TemplatesPage from '../pages/TemplatesPage.vue';
 import IdeaBoxPage from '../pages/IdeaBoxPage.vue';
 import SetupPage from '../pages/SetupPage.vue';
+import MaintenancePage from '../pages/MaintenancePage.vue';
 import { user, authLoading } from '../composables/useAuth';
 import { ensureSetupStatus } from '../composables/useSetupAuthConfig';
 
@@ -19,6 +20,7 @@ export const router = createRouter({
 	history: createWebHistory(),
 	routes: [
 		{ path: '/setup', component: SetupPage, meta: { setup: true } },
+		{ path: '/maintenance', component: MaintenancePage, meta: { public: true } },
 		{ path: '/', component: IndexPage },
 		{ path: '/activities/new', component: CreatePage },
 		{ path: '/activities/:id', component: DetailPage },

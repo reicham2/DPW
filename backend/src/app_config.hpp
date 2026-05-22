@@ -67,4 +67,9 @@ namespace app_config
     inline constexpr const char *kAutosaveIntervalMs = "frontend.autosave_interval_ms";
     inline constexpr const char *kAutosaveDebounce = "frontend.autosave_debounce";
     inline constexpr const char *kMidataWeatherRefreshIntervalMs = "midata.weather_refresh_interval_ms";
+    inline constexpr const char *kMaintenanceEnabled = "maintenance.enabled";
+    inline constexpr const char *kMaintenanceMessage = "maintenance.message";
+    inline constexpr const char *kMaintenanceScheduledStart = "maintenance.scheduled_start";
+    inline constexpr const char *kMaintenanceScheduledEnd = "maintenance.scheduled_end";
+    inline constexpr const char *kMaintenanceWindowsJson = "maintenance.windows_json";
 }

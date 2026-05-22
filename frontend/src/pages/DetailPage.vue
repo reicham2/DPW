@@ -1540,6 +1540,7 @@ onMounted(() => {
 	window.addEventListener('keydown', onStatsDrawerKeydown);
 	document.addEventListener('pointerdown', onDocumentPointerDown);
 	window.addEventListener('resize', onWindowResize);
+	window.addEventListener('dpw:before-maintenance-redirect', onBeforeMaintenanceRedirect);
 });
 
 watch(activityActionsMenuOpen, async (open) => {
@@ -1577,6 +1578,7 @@ onUnmounted(() => {
 	window.removeEventListener('keydown', onStatsDrawerKeydown);
 	document.removeEventListener('pointerdown', onDocumentPointerDown);
 	window.removeEventListener('resize', onWindowResize);
+	window.removeEventListener('dpw:before-maintenance-redirect', onBeforeMaintenanceRedirect);
 	window.removeEventListener('dragover', onWindowProgramDragOver);
 	stopProgramDragAutoScroll();
 	// Leave the activity and unlock any held section
@@ -2584,16 +2586,27 @@ function stopAutoSaveInterval() {
 	hasPendingChanges = false;
 }
 
-function flushAutoSave() {
+function flushAutoSave(): Promise<void> {
+	const saveTasks: Promise<void>[] = [];
 	if (autoSaveTimer) {
 		clearTimeout(autoSaveTimer);
 		autoSaveTimer = null;
-		doSave();
+		saveTasks.push(doSave());
 	}
 	if (hasPendingChanges) {
 		hasPendingChanges = false;
-		doSave();
+		saveTasks.push(doSave());
 	}
+	if (saveTasks.length === 0) {
+		return Promise.resolve();
+	}
+	return Promise.allSettled(saveTasks).then(() => undefined);
+}
+
+function onBeforeMaintenanceRedirect(event: Event) {
+	const detail = (event as CustomEvent<{ waitUntil?: (promise: Promise<unknown>) => void }>).detail;
+	if (!detail?.waitUntil) return;
+	detail.waitUntil(flushAutoSave());
 }
 
 watch(mode, (val) => {
