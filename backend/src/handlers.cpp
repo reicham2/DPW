@@ -4349,6 +4349,23 @@ static nlohmann::json template_to_json(const MailTemplate &t)
         {"updated_at", t.updated_at}};
 }
 
+static bool can_send_mail_for_activity(const RolePermission &perm, const UserRecord &user,
+                                       const Activity &activity, const std::string &email)
+{
+    if (is_admin(user))
+        return true;
+    if (perm.mail_send_scope == "all")
+        return true;
+    if (perm.mail_send_scope == "same_dept")
+    {
+        return (activity.department && user.department && *activity.department == *user.department) ||
+               is_activity_responsible(activity, user, email);
+    }
+    if (perm.mail_send_scope == "own")
+        return is_activity_responsible(activity, user, email);
+    return false;
+}
+
 // ---- GET /mail-templates ----------------------------------------------------
 
 void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db)
@@ -4437,6 +4454,68 @@ void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
         send_json(res, 200, template_to_json(*tpl).dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
+}
+
+// ---- GET /activities/:id/mail-context --------------------------------------
+
+void handle_get_mail_composer_context(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    std::string activity_id{req->getParameter(0)};
+
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        auto activity = db.get_activity_by_id(activity_id);
+        if (!activity)
+        {
+            send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+            return;
+        }
+
+        auto perm = db.get_role_permission(current_user->role);
+        if (!perm || !can_send_mail_for_activity(*perm, *current_user, *activity, claims.email))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        nlohmann::json out = {
+            {"template", nullptr},
+            {"form", {{"exists", false}, {"public_slug", nullptr}}},
+        };
+
+        if (auto form = db.get_form_for_activity(activity_id))
+        {
+            out["form"] = {
+                {"exists", true},
+                {"public_slug", form->public_slug},
+            };
+        }
+
+        if (activity->department)
+        {
+            if (auto tpl = db.get_mail_template_by_department(*activity->department))
+            {
+                out["template"] = template_to_json(*tpl);
+            }
+        }
+
+        send_json(res, 200, out.dump());
     }
     catch (std::exception &e)
     {
@@ -7604,10 +7683,15 @@ void handle_get_shared_activity(HttpRes *res, HttpReq *req, Database &db)
 
 // ── Ideenkiste ───────────────────────────────────────────────────────────────
 
-enum class IdeenkisteOp { View, Add, Delete };
+enum class IdeenkisteOp
+{
+    View,
+    Add,
+    Delete
+};
 
 static std::optional<std::string> ideenkiste_check(HttpRes *res, HttpReq *req, Database &db,
-                                                    UserRecord &out_user, IdeenkisteOp op)
+                                                   UserRecord &out_user, IdeenkisteOp op)
 {
     TokenClaims claims;
     if (!require_auth(res, req, claims))
@@ -7628,9 +7712,15 @@ static std::optional<std::string> ideenkiste_check(HttpRes *res, HttpReq *req, D
     {
         switch (op)
         {
-        case IdeenkisteOp::View:   scope = perm->ideenkiste_scope; break;
-        case IdeenkisteOp::Add:    scope = perm->ideenkiste_add_scope; break;
-        case IdeenkisteOp::Delete: scope = perm->ideenkiste_delete_scope; break;
+        case IdeenkisteOp::View:
+            scope = perm->ideenkiste_scope;
+            break;
+        case IdeenkisteOp::Add:
+            scope = perm->ideenkiste_add_scope;
+            break;
+        case IdeenkisteOp::Delete:
+            scope = perm->ideenkiste_delete_scope;
+            break;
         }
     }
     else
@@ -7699,7 +7789,7 @@ void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
         return;
     res->onAborted([]() {});
     res->onData([res, &db, user_dept = user.department, scope = *scope](std::string_view body, bool last)
-    {
+                {
         if (!last) return;
         try
         {
@@ -7728,8 +7818,7 @@ void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
         catch (std::exception &e)
         {
             send_internal_error(res, "handler", e);
-        }
-    });
+        } });
 }
 
 void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
@@ -7741,7 +7830,7 @@ void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     res->onAborted([]() {});
     res->onData([res, &db, id, user_dept = user.department, scope = *scope](std::string_view body, bool last)
-    {
+                {
         if (!last) return;
         try
         {
@@ -7776,8 +7865,7 @@ void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
         catch (std::exception &e)
         {
             send_internal_error(res, "handler", e);
-        }
-    });
+        } });
 }
 
 void handle_delete_ideenkiste(HttpRes *res, HttpReq *req, Database &db)

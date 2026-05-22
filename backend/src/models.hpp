@@ -67,6 +67,7 @@ struct Activity
     std::vector<std::string> responsible;
     std::optional<std::string> department;
     std::vector<MaterialItem> material;
+    std::vector<std::string> tn_material;
     std::optional<std::string> siko_text;
     std::optional<std::string> bad_weather_info;
     std::optional<int> planned_participants_estimate;
@@ -86,6 +87,7 @@ struct ActivityInput
     std::vector<std::string> responsible;
     std::optional<std::string> department;
     std::vector<MaterialItem> material;
+    std::vector<std::string> tn_material;
     std::optional<std::string> siko_text;
     std::optional<std::string> bad_weather_info;
     std::optional<int> planned_participants_estimate;
@@ -297,6 +299,7 @@ inline nlohmann::json to_json(const Activity &a)
         {"created_at", a.created_at},
         {"updated_at", a.updated_at}};
     j["department"] = a.department ? nlohmann::json(*a.department) : nlohmann::json(nullptr);
+    j["tn_material"] = a.tn_material;
     j["siko_text"] = a.siko_text ? nlohmann::json(*a.siko_text) : nlohmann::json(nullptr);
     j["bad_weather_info"] = a.bad_weather_info ? nlohmann::json(*a.bad_weather_info) : nlohmann::json(nullptr);
     j["planned_participants_estimate"] = a.planned_participants_estimate

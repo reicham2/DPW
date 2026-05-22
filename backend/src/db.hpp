@@ -140,18 +140,18 @@ struct RolePermission
     bool can_write_own_dept;
     bool can_read_all_depts;
     bool can_write_all_depts;
-    std::string activity_read_scope;    // none|own|same_dept|all
-    std::string activity_create_scope;  // none|own_dept|all
-    std::string activity_edit_scope;    // none|own|same_dept|all
-    std::string mail_send_scope;        // none|own|same_dept|all
-    std::string mail_templates_scope;   // none|own_dept|all
-    std::string form_scope;             // none|own|same_dept|all
-    std::string form_templates_scope;   // none|own_dept|all
-    std::string event_templates_scope;  // none|own_dept|all
-    std::string event_publish_scope;    // none|own_dept|all
-    std::string user_dept_scope;        // none|own|own_dept|all
-    std::string user_role_scope;        // none|own|own_dept|all
-    std::string locations_manage_scope; // none|all
+    std::string activity_read_scope;     // none|own|same_dept|all
+    std::string activity_create_scope;   // none|own_dept|all
+    std::string activity_edit_scope;     // none|own|same_dept|all
+    std::string mail_send_scope;         // none|own|same_dept|all
+    std::string mail_templates_scope;    // none|own_dept|all
+    std::string form_scope;              // none|own|same_dept|all
+    std::string form_templates_scope;    // none|own_dept|all
+    std::string event_templates_scope;   // none|own_dept|all
+    std::string event_publish_scope;     // none|own_dept|all
+    std::string user_dept_scope;         // none|own|own_dept|all
+    std::string user_role_scope;         // none|own|own_dept|all
+    std::string locations_manage_scope;  // none|all
     std::string ideenkiste_scope;        // none|own_dept|all  (view + import)
     std::string ideenkiste_add_scope;    // none|own_dept|all  (create + edit)
     std::string ideenkiste_delete_scope; // none|own_dept|all  (delete)

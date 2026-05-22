@@ -312,6 +312,7 @@ const editLocation = ref('');
 const editResponsible = ref<string[]>([]);
 const editDepartment = ref<Department | ''>('');
 const editMaterial = ref<MaterialItem[]>([{ name: '', responsible: [] }]);
+const editTnMaterial = ref<string[]>(['']);
 const editSikoText = ref('');
 const editBadWeather = ref('');
 const editPrograms = ref<ProgramInput[]>([]);
@@ -326,6 +327,7 @@ interface EditSnapshot {
 	responsible: string[];
 	department: Department | '';
 	material: MaterialItem[];
+	tnMaterial: string[];
 	sikoText: string;
 	badWeather: string;
 	programs: ProgramInput[];
@@ -348,6 +350,10 @@ function cloneSnapshotMaterial(material: MaterialItem[]): MaterialItem[] {
 	return material.map((m) => ({ name: m.name, responsible: m.responsible ? [...m.responsible] : [] }));
 }
 
+function cloneSnapshotStringList(values: string[]): string[] {
+	return [...values];
+}
+
 function cloneSnapshotPrograms(programs: ProgramInput[]): ProgramInput[] {
 	return programs.map((p) => ({
 		duration_minutes: p.duration_minutes,
@@ -367,6 +373,7 @@ function applyEditSnapshot(snapshot: EditSnapshot) {
 	editResponsible.value = [...snapshot.responsible];
 	editDepartment.value = snapshot.department;
 	editMaterial.value = cloneSnapshotMaterial(snapshot.material);
+	editTnMaterial.value = cloneSnapshotStringList(snapshot.tnMaterial);
 	editSikoText.value = snapshot.sikoText;
 	editBadWeather.value = snapshot.badWeather;
 	editPrograms.value = cloneSnapshotPrograms(snapshot.programs);
@@ -383,6 +390,7 @@ function buildCurrentEditSnapshot(): EditSnapshot {
 		responsible: [...editResponsible.value],
 		department: editDepartment.value,
 		material: cloneSnapshotMaterial(editMaterial.value),
+		tnMaterial: cloneSnapshotStringList(editTnMaterial.value),
 		sikoText: editSikoText.value,
 		badWeather: editBadWeather.value,
 		programs: cloneSnapshotPrograms(editPrograms.value),
@@ -401,7 +409,13 @@ function readLocalDraft(): LocalEditDraft | null {
 		if (parsed.version !== 1) return null;
 		if (parsed.activityId !== id) return null;
 		if (!parsed.data || typeof parsed.savedAt !== 'number') return null;
-		return parsed as LocalEditDraft;
+		return {
+			...parsed,
+			data: {
+				...(parsed.data as EditSnapshot),
+				tnMaterial: Array.isArray((parsed.data as Partial<EditSnapshot>).tnMaterial) ? (parsed.data as Partial<EditSnapshot>).tnMaterial! : [],
+			},
+		} as LocalEditDraft;
 	} catch {
 		return null;
 	}
@@ -680,7 +694,7 @@ function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): stri
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
 		verantwortlich: act.responsible.join(', '), abteilung: act.department ?? '',
-		ziel: act.goal, material: act.material.map(m => m.name).join(', ') || '',
+		ziel: act.goal, tn_material: act.tn_material.join(', ') || '',
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
 	return text.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
@@ -696,7 +710,7 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
 		verantwortlich: act.responsible.join(', '), abteilung: act.department ?? '',
-		ziel: act.goal, material: act.material.map(m => m.name).join(', ') || '',
+		ziel: act.goal, tn_material: act.tn_material.join(', ') || '',
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
 	const replacer = (m: string, key: string) => { const lk = key.toLowerCase(); return lk in vars ? vars[lk] : m; };
@@ -835,6 +849,15 @@ function isPastActivityDate(date: string | undefined): boolean {
 }
 
 async function refreshLiveParticipants() {
+	if (!canForms.value) {
+		liveHasForm.value = false;
+		liveFormType.value = null;
+		liveExpectedParticipants.value = null;
+		liveRegistrationCount.value = null;
+		liveDeregistrationCount.value = null;
+		return;
+	}
+
 	liveParticipantsLoading.value = true;
 	try {
 		const formRes = await apiFetch(`/api/activities/${id}/form`);
@@ -1468,7 +1491,7 @@ onMounted(async () => {
 		if (canShareActivity.value) {
 			void fetchShareLink();
 		}
-		if (config.WP_PUBLISHING_ENABLED) {
+		if (config.WP_PUBLISHING_ENABLED && canPublishEvent.value) {
 			void fetchPublication(id).then(pub => { eventPublication.value = pub; });
 		}
 		const preloadTasks: Promise<unknown>[] = [];
@@ -1480,12 +1503,12 @@ onMounted(async () => {
 		}
 
 		detailDeferredLoadTimer = setTimeout(() => {
-			void refreshLiveParticipants();
+			if (canForms.value) void refreshLiveParticipants();
 			void refreshActivityMidataChildren();
 			void fetchWeatherLocation();
 
 			liveParticipantsRefreshTimer = setInterval(() => {
-				void refreshLiveParticipants();
+				if (canForms.value) void refreshLiveParticipants();
 				void refreshActivityMidataChildren();
 				void refreshExpectedWeather();
 			}, config.MIDATA_WEATHER_REFRESH_INTERVAL);
@@ -1573,6 +1596,7 @@ function syncEditFields(a: typeof activity.value) {
 	editResponsible.value = [...a.responsible];
 	editDepartment.value = a.department ?? '';
 	editMaterial.value = [...a.material.map(m => ({ name: m.name, responsible: m.responsible ?? [] })), { name: '', responsible: [] }]; // trailing empty = sentinel input
+	editTnMaterial.value = [...(a.tn_material ?? []), '']; // trailing empty = sentinel input
 	editSikoText.value = a.siko_text ?? '';
 	editBadWeather.value = a.bad_weather_info ?? '';
 	editPrograms.value = a.programs.map((p) => ({
@@ -1614,6 +1638,8 @@ watch(lastUpdatedActivity, (updated) => {
 			editBadWeather.value = updated.bad_weather_info ?? '';
 		if (JSON.stringify(updated.material) !== JSON.stringify(prev.material))
 			editMaterial.value = [...updated.material.map(m => ({ name: m.name, responsible: m.responsible ?? [] })), { name: '', responsible: [] }];
+		if (JSON.stringify(updated.tn_material ?? []) !== JSON.stringify(prev.tn_material ?? []))
+			editTnMaterial.value = [...(updated.tn_material ?? []), ''];
 		if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs)) {
 			editPrograms.value = updated.programs.map((p) => ({
 				duration_minutes: p.duration_minutes,
@@ -1735,6 +1761,28 @@ function removeMaterial(i: number) {
 		editMaterial.value.push({ name: '', responsible: [] });
 	}
 	markDirty('material');
+}
+
+// ---- TN-Material ----------------------------------------------------------
+// Sentinel pattern: array always ends with one empty string.
+function onTnMaterialInput(i: number) {
+	const isLast = i === editTnMaterial.value.length - 1;
+	if (isLast && editTnMaterial.value[i] !== '') {
+		editTnMaterial.value.push('');
+	}
+}
+function onTnMaterialBlur(i: number) {
+	const isLast = i === editTnMaterial.value.length - 1;
+	if (!isLast && editTnMaterial.value[i] === '') {
+		editTnMaterial.value.splice(i, 1);
+	}
+}
+function removeTnMaterial(i: number) {
+	editTnMaterial.value.splice(i, 1);
+	if (editTnMaterial.value.length === 0 || editTnMaterial.value[editTnMaterial.value.length - 1] !== '') {
+		editTnMaterial.value.push('');
+	}
+	markDirty('tn_material');
 }
 
 // ---- Material responsible search -------------------------------------------
@@ -2563,6 +2611,7 @@ watch(
 		editResponsible,
 		editDepartment,
 		editMaterial,
+		editTnMaterial,
 		editSikoText,
 		editBadWeather,
 		editPrograms,
@@ -2579,6 +2628,7 @@ watch([editEndTime], () => markDirty('end_time'));
 watch([editLocation], () => markDirty('location'));
 watch([editResponsible], () => markDirty('responsible'), { deep: true });
 watch([editDepartment], () => markDirty('department'));
+watch([editTnMaterial], () => markDirty('tn_material'), { deep: true });
 watch([editSikoText], () => markDirty('siko_text'));
 watch([editGoal], () => markDirty('goal'));
 watch([editBadWeather], () => markDirty('bad_weather'));
@@ -2623,6 +2673,7 @@ async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 		responsible: editResponsible.value,
 		department: editDepartment.value || null,
 		material: editMaterial.value.filter((m) => m.name.trim()).map(m => ({ name: m.name.trim(), ...(m.responsible?.length ? { responsible: m.responsible } : {}) })),
+		tn_material: editTnMaterial.value.map((value) => value.trim()).filter(Boolean),
 		siko_text: editSikoText.value.trim() || null,
 		bad_weather_info: editBadWeather.value.trim() || null,
 		programs: editPrograms.value,
@@ -3009,6 +3060,22 @@ function copyShareLink() {
 					>
 						<span class="material-list-name">{{ m.name }}</span>
 						<ResponsibleAvatars v-if="m.responsible?.length" :names="m.responsible" />
+					</li>
+				</ul>
+				<span v-else class="detail-value detail-value--muted">—</span>
+					</div>
+
+					<!-- TN-Material -->
+					<div class="detail-section">
+				<p class="detail-section-title">TN-Material</p>
+				<ul v-if="activity.tn_material.length" class="material-list-view">
+					<li
+						v-for="(item, i) in activity.tn_material"
+						:key="i"
+						:id="`section-tn_material_${i}`"
+						class="material-list-item"
+					>
+						<span class="material-list-name">{{ item }}</span>
 					</li>
 				</ul>
 				<span v-else class="detail-value detail-value--muted">—</span>
@@ -3616,15 +3683,17 @@ function copyShareLink() {
 						:class="{ 'is-locked': isLockedByOther(`material_${i}`) }"
 						@focusin="lockSection(`material_${i}`)" @focusout="unlockSection(`material_${i}`, $event)">
 						<div v-if="lockedBy(`material_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`material_${i}`) }}</div>
-						<button
-							v-if="i < editMaterial.length - 1"
-							type="button"
-							class="program-card__remove"
-							@click="removeMaterial(i)"
-							:disabled="isLockedByOther(`material_${i}`)"
-						>
-							<X :size="14" aria-hidden="true" />
-						</button>
+						<div class="program-card__top-actions">
+							<button
+								v-if="i < editMaterial.length - 1"
+								type="button"
+								class="program-card__remove"
+								@click="removeMaterial(i)"
+								:disabled="isLockedByOther(`material_${i}`)"
+							>
+								<X :size="14" aria-hidden="true" />
+							</button>
+						</div>
 						<div class="material-card__fields">
 							<div class="form-group material-card__name">
 								<label>Material</label>
@@ -3675,6 +3744,44 @@ function copyShareLink() {
 					</div>
 				</div>
 			</div>
+
+				<!-- TN-Material -->
+				<div class="form-section">
+					<p class="form-section-title">TN-Material</p>
+					<div class="material-list">
+						<div v-for="(_, i) in editTnMaterial" :key="i" class="material-card material-card--tn lock-wrapper"
+							:class="{ 'is-locked': isLockedByOther(`tn_material_${i}`) }"
+							@focusin="lockSection(`tn_material_${i}`)" @focusout="unlockSection(`tn_material_${i}`, $event)">
+							<div v-if="lockedBy(`tn_material_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`tn_material_${i}`) }}</div>
+							<div class="program-card__top-actions">
+								<button
+									v-if="i < editTnMaterial.length - 1"
+									type="button"
+									class="program-card__remove"
+									@click="removeTnMaterial(i)"
+									:disabled="isLockedByOther(`tn_material_${i}`)"
+								>
+									<X :size="14" aria-hidden="true" />
+								</button>
+							</div>
+							<div class="material-card__fields">
+								<div class="form-group material-card__name material-card__name--tn">
+									<div class="input-save-wrap">
+										<input
+											v-model="editTnMaterial[i]"
+											type="text"
+											placeholder="TN-Material…"
+											@input="onTnMaterialInput(i); markDirty(`tn_mat_${i}`)"
+											@blur="onTnMaterialBlur(i)"
+											:disabled="isLockedByOther(`tn_material_${i}`)"
+										/>
+										<span v-if="savedFields[`tn_mat_${i}`] && editTnMaterial[i].trim()" class="field-saved-icon" :key="savedFields[`tn_mat_${i}`]"><Save :size="12" aria-hidden="true" /></span>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
 
 			<!-- SiKo -->
 			<div class="form-section lock-wrapper" :class="{ 'is-locked': isLockedByOther('siko') }"
