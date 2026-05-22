@@ -19,9 +19,17 @@ COPY backend/CMakeLists.txt .
 COPY backend/deps/ deps/
 
 # Stub sources so cmake configure caches without real src/
-RUN mkdir -p src && for f in main app_config auth cache db handlers ws_manager graph utils wp_client; do \
+RUN mkdir -p src src/handlers/core src/handlers/domains && for f in main app_config auth cache db handlers ws_manager graph utils wp_client; do \
   echo "// stub" > src/$f.cpp; \
-  done && touch src/auth.hpp src/cache.hpp src/db.hpp src/handlers.hpp src/models.hpp \
+  done && echo "// stub" > src/handlers/core/http_core.cpp \
+  && echo "// stub" > src/handlers/core/setup_maintenance.cpp \
+  && echo "// stub" > src/handlers/domains/activities.cpp \
+  && echo "// stub" > src/handlers/domains/users_notifications.cpp \
+  && echo "// stub" > src/handlers/domains/mail.cpp \
+  && echo "// stub" > src/handlers/domains/admin_permissions.cpp \
+  && echo "// stub" > src/handlers/domains/share_ideenkiste.cpp \
+  && echo "// stub" > src/handlers/domains/forms.cpp \
+  && touch src/auth.hpp src/cache.hpp src/db.hpp src/handlers.hpp src/models.hpp \
   src/ws_manager.hpp src/graph.hpp src/utils.hpp src/wp_client.hpp src/app_config.hpp
 
 ARG BACKEND_BUILD_TYPE=Release
