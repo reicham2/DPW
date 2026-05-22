@@ -47,6 +47,7 @@ RUN apk add --no-cache \
   zlib \
   libuv \
   libpq \
+  docker-cli \
   postgresql16-client \
   libcurl \
   curl \
