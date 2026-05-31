@@ -62,22 +62,79 @@ ON CONFLICT (name) DO NOTHING;
 
 -- Ensure sort_order exists before seeding roles (idempotent for existing DBs)
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS sort_order INTEGER;
-WITH ranked_roles AS (
-    SELECT name, ROW_NUMBER() OVER (ORDER BY name) - 1 AS rn
+WITH null_roles AS (
+    SELECT name, ROW_NUMBER() OVER (ORDER BY name) AS rn
     FROM roles
+    WHERE sort_order IS NULL
+),
+max_existing AS (
+    SELECT COALESCE(MAX(sort_order), -1) AS max_so
+    FROM roles
+    WHERE sort_order IS NOT NULL
 )
 UPDATE roles r
-SET sort_order = rr.rn
-FROM ranked_roles rr
-WHERE r.name = rr.name
-  AND r.sort_order IS NULL;
+SET sort_order = me.max_so + nr.rn
+FROM null_roles nr
+CROSS JOIN max_existing me
+WHERE r.name = nr.name;
 ALTER TABLE roles ALTER COLUMN sort_order SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_roles_sort_order_unique ON roles (sort_order);
 
-INSERT INTO roles (name, color, sort_order) VALUES
-    ('admin',    '#92400e', 0),
-    ('Mitglied', '#6b7280', 1)
-ON CONFLICT (name) DO NOTHING;
+-- Seed default roles idempotently while keeping admin pinned at sort_order=0.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM roles WHERE name = 'admin') THEN
+        UPDATE roles SET color = '#92400e' WHERE name = 'admin';
+
+        IF EXISTS (
+            SELECT 1 FROM roles
+            WHERE name = 'admin' AND sort_order <> 0
+        ) THEN
+            WITH zero_roles AS (
+                SELECT name, ROW_NUMBER() OVER (ORDER BY name) AS rn
+                FROM roles
+                WHERE name <> 'admin' AND sort_order = 0
+            ),
+            max_existing AS (
+                SELECT COALESCE(MAX(sort_order), -1) AS max_so
+                FROM roles
+                WHERE name <> 'admin' AND sort_order <> 0
+            )
+            UPDATE roles r
+            SET sort_order = me.max_so + zr.rn
+            FROM zero_roles zr
+            CROSS JOIN max_existing me
+            WHERE r.name = zr.name;
+
+            UPDATE roles SET sort_order = 0 WHERE name = 'admin';
+        END IF;
+    ELSE
+        WITH zero_roles AS (
+            SELECT name, ROW_NUMBER() OVER (ORDER BY name) AS rn
+            FROM roles
+            WHERE sort_order = 0
+        ),
+        max_existing AS (
+            SELECT COALESCE(MAX(sort_order), -1) AS max_so
+            FROM roles
+            WHERE sort_order <> 0
+        )
+        UPDATE roles r
+        SET sort_order = me.max_so + zr.rn
+        FROM zero_roles zr
+        CROSS JOIN max_existing me
+        WHERE r.name = zr.name;
+
+        INSERT INTO roles (name, color, sort_order)
+        VALUES ('admin', '#92400e', 0);
+    END IF;
+END;
+$$;
+
+INSERT INTO roles (name, color, sort_order)
+SELECT 'Mitglied', '#6b7280', COALESCE(MAX(sort_order), -1) + 1
+FROM roles
+ON CONFLICT (name) DO UPDATE SET color = EXCLUDED.color;
 
 -- ── Core tables ─────────────────────────────────────────────────────────────
 
