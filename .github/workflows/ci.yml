@@ -52,6 +52,38 @@ jobs:
       - name: Run unit tests
         run: docker run --rm dpw-test-backend
 
+  test_api:
+    name: API Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create .env from example
+        run: cp .env.example .env
+
+      - name: Set required CI config
+        run: |
+          CI_EK="$(openssl rand -hex 32)"
+          if grep -q '^DPW_CONFIG_ENCRYPTION_KEY=' .env; then
+            sed -i "s|^DPW_CONFIG_ENCRYPTION_KEY=.*|DPW_CONFIG_ENCRYPTION_KEY=${CI_EK}|" .env
+          else
+            echo "DPW_CONFIG_ENCRYPTION_KEY=${CI_EK}" >> .env
+          fi
+
+      - name: Run API integration tests
+        run: make test-api
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose -f docker-compose-dev.yml logs --no-color
+
+      - name: Cleanup containers
+        if: always()
+        run: docker compose -f docker-compose-dev.yml down -v --remove-orphans
+
   metadata:
     name: Docker Metadata
     runs-on: ubuntu-latest

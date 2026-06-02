@@ -9,7 +9,7 @@ DC := docker compose -f docker-compose-dev.yml
        restart restart-backend restart-frontend restart-db \
 	db-reset db-seed ps clean full-rebuild update-deps \
 	build-prod rebuild-prod rebuild-backend-prod rebuild-frontend-prod \
-	new-branch fresh test test-frontend test-backend test-watch \
+	new-branch fresh test test-frontend test-backend test-api test-watch \
 	generate-vapid-keys
 
 # ── Shortcut-Targets ─────────────────────────────────────────────────────────
@@ -35,6 +35,13 @@ test-backend:
 	@echo "── Backend Unit Tests ───────────────────────────────────────────"
 	docker build -f backend/Dockerfile.test backend/ -t dpw-test-backend -q && \
 	docker run --rm dpw-test-backend
+
+test-api:
+	@echo "── Backend API Integration Tests ───────────────────────────────"
+	$(DC) down -v --remove-orphans
+	BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1 FRONTEND_ENABLE_DEBUG_AUTH=1 $(DC) up -d --build --wait db redis backend frontend
+	$(DC) exec -T db psql -U activities_user -d activities < db/seed.sql
+	DPW_API_BASE_URL=http://localhost:8000/api ./scripts/test-api.sh
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:
