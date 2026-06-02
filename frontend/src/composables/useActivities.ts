@@ -18,6 +18,7 @@ const activities = ref<Activity[]>([]);
 const lastUpdatedActivity = ref<Activity | null>(null);
 const departments = ref<Department[]>([]);
 const predefinedLocations = ref<string[]>([]);
+const predefinedMaterials = ref<string[]>([]);
 
 export function useActivities() {
 	const loading = ref(false);
@@ -231,6 +232,17 @@ export function useActivities() {
 		}
 	}
 
+	// ---- Predefined materials ------------------------------------------------
+
+	async function fetchMaterials(): Promise<void> {
+		try {
+			const res = await apiFetch(`${BASE}/materials/predefined`);
+			if (res.ok) predefinedMaterials.value = (await res.json()) as string[];
+		} catch {
+			/* non-critical */
+		}
+	}
+
 	// ---- Attachments ---------------------------------------------------------
 
 	async function fetchAttachments(activityId: string): Promise<Attachment[]> {
@@ -308,10 +320,12 @@ export function useActivities() {
 		lastUpdatedActivity,
 		departments,
 		predefinedLocations,
+		predefinedMaterials,
 		fetchActivities,
 		fetchActivity,
 		fetchDepartments,
 		fetchLocations,
+		fetchMaterials,
 		createActivity,
 		updateActivity,
 		deleteActivity,

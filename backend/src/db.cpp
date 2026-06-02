@@ -727,6 +727,110 @@ bool Database::delete_predefined_location(const std::string &id)
     return ok;
 }
 
+// ---- get_predefined_materials ------------------------------------------------
+
+std::vector<std::string> Database::get_predefined_materials()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_, "SELECT name FROM predefined_materials ORDER BY name");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        PQclear(res);
+        return {};
+    }
+    std::vector<std::string> out;
+    int n = PQntuples(res);
+    for (int i = 0; i < n; ++i)
+        out.push_back(PQgetvalue(res, i, 0));
+    PQclear(res);
+    return out;
+}
+
+MaterialNameRecord Database::row_to_material_name(PGresult *res, int row)
+{
+    auto col = [&](const char *name) -> std::string
+    {
+        int c = PQfnumber(res, name);
+        if (c < 0 || PQgetisnull(res, row, c))
+            return "";
+        return PQgetvalue(res, row, c);
+    };
+    MaterialNameRecord m;
+    m.id = col("id");
+    m.name = col("name");
+    m.created_at = col("created_at");
+    m.updated_at = col("updated_at");
+    return m;
+}
+
+std::vector<MaterialNameRecord> Database::list_predefined_materials()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+                           "SELECT id, name, created_at, updated_at FROM predefined_materials ORDER BY name");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_predefined_materials: " + err);
+    }
+    std::vector<MaterialNameRecord> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_material_name(res, i));
+    PQclear(res);
+    return out;
+}
+
+std::optional<MaterialNameRecord> Database::create_predefined_material(const std::string &name)
+{
+    ensure_connected();
+    const char *params[1] = {name.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO predefined_materials (name) VALUES ($1) "
+                                 "RETURNING id, name, created_at, updated_at",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto out = row_to_material_name(res, 0);
+    PQclear(res);
+    return out;
+}
+
+std::optional<MaterialNameRecord> Database::update_predefined_material(const std::string &id, const std::string &name)
+{
+    ensure_connected();
+    const char *params[2] = {id.c_str(), name.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE predefined_materials SET name = $2 WHERE id = $1 "
+                                 "RETURNING id, name, created_at, updated_at",
+                                 2, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    auto out = row_to_material_name(res, 0);
+    PQclear(res);
+    return out;
+}
+
+bool Database::delete_predefined_material(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM predefined_materials WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK && PQcmdTuples(res)[0] != '0';
+    PQclear(res);
+    return ok;
+}
+
 // ---- Transaction helpers ----------------------------------------------------
 
 static void exec_or_throw(PGconn *conn, const char *sql, const char *context)
@@ -2915,6 +3019,7 @@ RolePermission Database::row_to_role_perm(PGresult *res, int row)
     rp.user_dept_scope = col("user_dept_scope") ? col("user_dept_scope") : "none";
     rp.user_role_scope = col("user_role_scope") ? col("user_role_scope") : "none";
     rp.locations_manage_scope = col("locations_manage_scope") ? col("locations_manage_scope") : "none";
+    rp.materials_manage_scope = col("materials_manage_scope") ? col("materials_manage_scope") : "none";
     rp.ideenkiste_scope = col("ideenkiste_scope") ? col("ideenkiste_scope") : "none";
     rp.ideenkiste_add_scope = col("ideenkiste_add_scope") ? col("ideenkiste_add_scope") : "none";
     rp.ideenkiste_delete_scope = col("ideenkiste_delete_scope") ? col("ideenkiste_delete_scope") : "none";
@@ -2933,6 +3038,7 @@ std::vector<RolePermission> Database::list_role_permissions()
                            "       mail_templates_scope, form_scope, form_templates_scope, "
                            "       event_templates_scope, event_publish_scope, "
                            "       user_dept_scope, user_role_scope, locations_manage_scope, "
+                           "       materials_manage_scope, "
                            "       ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope "
                            "FROM role_permissions ORDER BY role");
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -2963,6 +3069,7 @@ std::optional<RolePermission> Database::get_role_permission(const std::string &r
                                  "       mail_templates_scope, form_scope, form_templates_scope, "
                                  "       event_templates_scope, event_publish_scope, "
                                  "       user_dept_scope, user_role_scope, locations_manage_scope, "
+                                 "       materials_manage_scope, "
                                  "       ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope "
                                  "FROM role_permissions WHERE role = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -2996,6 +3103,7 @@ bool Database::update_role_permission(const std::string &role,
                                       const std::string &user_dept_scope,
                                       const std::string &user_role_scope,
                                       const std::string &locations_manage_scope,
+                                      const std::string &materials_manage_scope,
                                       const std::string &ideenkiste_scope,
                                       const std::string &ideenkiste_add_scope,
                                       const std::string &ideenkiste_delete_scope)
@@ -3018,20 +3126,21 @@ bool Database::update_role_permission(const std::string &role,
     const char *p15 = user_dept_scope.c_str();
     const char *p16 = user_role_scope.c_str();
     const char *p17 = locations_manage_scope.c_str();
-    const char *p18 = ideenkiste_scope.c_str();
-    const char *p19 = ideenkiste_add_scope.c_str();
-    const char *p20 = ideenkiste_delete_scope.c_str();
-    const char *params[20] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20};
+    const char *p18 = materials_manage_scope.c_str();
+    const char *p19 = ideenkiste_scope.c_str();
+    const char *p20 = ideenkiste_add_scope.c_str();
+    const char *p21 = ideenkiste_delete_scope.c_str();
+    const char *params[21] = {p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21};
     PGresult *res = PQexecParams(conn_,
                                  "INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, "
                                  "can_read_all_depts, can_write_all_depts, "
                                  "activity_read_scope, activity_create_scope, activity_edit_scope, "
                                  "mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, "
                                  "event_templates_scope, event_publish_scope, "
-                                 "user_dept_scope, user_role_scope, locations_manage_scope, "
+                                 "user_dept_scope, user_role_scope, locations_manage_scope, materials_manage_scope, "
                                  "ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope) "
                                  "VALUES ($1, $2::boolean, $3::boolean, $4::boolean, $5::boolean, "
-                                 "$6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) "
+                                 "$6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) "
                                  "ON CONFLICT (role) DO UPDATE SET "
                                  "can_read_own_dept = $2::boolean, can_write_own_dept = $3::boolean, "
                                  "can_read_all_depts = $4::boolean, can_write_all_depts = $5::boolean, "
@@ -3040,9 +3149,10 @@ bool Database::update_role_permission(const std::string &role,
                                  "form_scope = $11, form_templates_scope = $12, "
                                  "event_templates_scope = $13, event_publish_scope = $14, "
                                  "user_dept_scope = $15, user_role_scope = $16, "
-                                 "locations_manage_scope = $17, ideenkiste_scope = $18, "
-                                 "ideenkiste_add_scope = $19, ideenkiste_delete_scope = $20",
-                                 20, nullptr, params, nullptr, nullptr, 0);
+                                 "locations_manage_scope = $17, materials_manage_scope = $18, "
+                                 "ideenkiste_scope = $19, "
+                                 "ideenkiste_add_scope = $20, ideenkiste_delete_scope = $21",
+                                 21, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
     return ok;

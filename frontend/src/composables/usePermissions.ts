@@ -4,6 +4,7 @@ import { wsAddGlobalHandler } from './useWebSocket';
 import type {
 	DepartmentRecord,
 	LocationRecord,
+	MaterialNameRecord,
 	RoleRecord,
 	RolePermission,
 	RoleDeptAccess,
@@ -309,6 +310,10 @@ function canManageLocations(): boolean {
 	return myPermissions.value?.locations_manage_scope === 'all';
 }
 
+function canManageMaterials(): boolean {
+	return myPermissions.value?.materials_manage_scope === 'all';
+}
+
 function canIdeenkiste(): boolean {
 	const p = myPermissions.value;
 	if (!p) return false;
@@ -364,6 +369,39 @@ async function deleteLocation(id: string): Promise<void> {
 		`/api/admin/locations/${encodeURIComponent(id)}`,
 		{ method: 'DELETE' },
 	);
+	if (!res.ok) throw new Error(await res.text());
+}
+
+// ── Materials CRUD ───────────────────────────────────────────────────────────
+
+async function fetchMaterialsAdmin(): Promise<MaterialNameRecord[]> {
+	const res = await apiFetch('/api/admin/materials');
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function createMaterial(name: string): Promise<MaterialNameRecord> {
+	const res = await apiFetch('/api/admin/materials', {
+		method: 'POST',
+		body: JSON.stringify({ name }),
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function updateMaterial(id: string, name: string): Promise<MaterialNameRecord> {
+	const res = await apiFetch(`/api/admin/materials/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify({ name }),
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function deleteMaterial(id: string): Promise<void> {
+	const res = await apiFetch(`/api/admin/materials/${encodeURIComponent(id)}`, {
+		method: 'DELETE',
+	});
 	if (!res.ok) throw new Error(await res.text());
 }
 
@@ -423,11 +461,16 @@ export function usePermissions() {
 		canIdeenkisteAdd,
 		canIdeenkisteDelete,
 		canManageLocations,
+		canManageMaterials,
 		readableDepts,
 		writableDepts,
 		fetchLocationsAdmin,
 		createLocation,
 		updateLocation,
 		deleteLocation,
+		fetchMaterialsAdmin,
+		createMaterial,
+		updateMaterial,
+		deleteMaterial,
 	};
 }

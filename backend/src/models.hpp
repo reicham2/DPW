@@ -104,6 +104,16 @@ struct LocationRecord
     std::string updated_at;
 };
 
+// ---- Predefined material name -----------------------------------------------
+
+struct MaterialNameRecord
+{
+    std::string id;
+    std::string name;
+    std::string created_at;
+    std::string updated_at;
+};
+
 // ---- Attachment -------------------------------------------------------------
 
 struct Attachment

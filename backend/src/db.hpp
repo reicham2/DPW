@@ -152,6 +152,7 @@ struct RolePermission
     std::string user_dept_scope;         // none|own|own_dept|all
     std::string user_role_scope;         // none|own|own_dept|all
     std::string locations_manage_scope;  // none|all
+    std::string materials_manage_scope;  // none|all
     std::string ideenkiste_scope;        // none|own_dept|all  (view + import)
     std::string ideenkiste_add_scope;    // none|own_dept|all  (create + edit)
     std::string ideenkiste_delete_scope; // none|own_dept|all  (delete)
@@ -216,6 +217,12 @@ public:
     std::optional<LocationRecord> create_predefined_location(const std::string &name);
     std::optional<LocationRecord> update_predefined_location(const std::string &id, const std::string &name);
     bool delete_predefined_location(const std::string &id);
+
+    std::vector<std::string> get_predefined_materials();
+    std::vector<MaterialNameRecord> list_predefined_materials();
+    std::optional<MaterialNameRecord> create_predefined_material(const std::string &name);
+    std::optional<MaterialNameRecord> update_predefined_material(const std::string &id, const std::string &name);
+    bool delete_predefined_material(const std::string &id);
 
     // Attachments
     std::optional<Attachment> add_attachment(const std::string &activity_id,
@@ -389,6 +396,7 @@ public:
                                 const std::string &user_dept_scope,
                                 const std::string &user_role_scope,
                                 const std::string &locations_manage_scope = "none",
+                                const std::string &materials_manage_scope = "none",
                                 const std::string &ideenkiste_scope = "none",
                                 const std::string &ideenkiste_add_scope = "none",
                                 const std::string &ideenkiste_delete_scope = "none");
@@ -492,6 +500,7 @@ private:
     RolePermission row_to_role_perm(PGresult *res, int row);
     RoleDeptAccess row_to_role_dept_access(PGresult *res, int row);
     LocationRecord row_to_location(PGresult *res, int row);
+    MaterialNameRecord row_to_material_name(PGresult *res, int row);
     void attach_programs(std::vector<Activity> &activities);
     void attach_programs_single(Activity &a);
 

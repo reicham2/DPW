@@ -378,6 +378,25 @@ INSERT INTO predefined_locations (name) VALUES
     ('Gemeindesaal')
 ON CONFLICT (name) DO NOTHING;
 
+-- Predefined material names (global, shared across all departments)
+CREATE TABLE IF NOT EXISTS predefined_materials (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name       TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_predefined_materials_updated_at ON predefined_materials;
+CREATE TRIGGER trg_predefined_materials_updated_at
+    BEFORE UPDATE ON predefined_materials
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+INSERT INTO predefined_materials (name) VALUES
+    ('Einkaufen'),
+    ('Pfadiheim'),
+    ('Material')
+ON CONFLICT (name) DO NOTHING;
+
 -- Attachments
 CREATE TABLE IF NOT EXISTS attachments (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -434,6 +453,8 @@ CREATE TABLE IF NOT EXISTS role_permissions (
         CHECK (user_role_scope IN ('none', 'own', 'own_dept', 'all')),
     locations_manage_scope   TEXT    NOT NULL DEFAULT 'none'
         CHECK (locations_manage_scope IN ('none', 'all')),
+    materials_manage_scope   TEXT    NOT NULL DEFAULT 'none'
+        CHECK (materials_manage_scope IN ('none', 'all')),
     ideenkiste_scope         TEXT    NOT NULL DEFAULT 'none'
         CHECK (ideenkiste_scope IN ('none', 'own_dept', 'all')),
     ideenkiste_add_scope     TEXT    NOT NULL DEFAULT 'none'
@@ -458,11 +479,13 @@ ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_add_scope TEXT 
     CHECK (ideenkiste_add_scope IN ('none', 'own_dept', 'all'));
 ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS ideenkiste_delete_scope TEXT NOT NULL DEFAULT 'none'
     CHECK (ideenkiste_delete_scope IN ('none', 'own_dept', 'all'));
+ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS materials_manage_scope TEXT NOT NULL DEFAULT 'none'
+    CHECK (materials_manage_scope IN ('none', 'all'));
 
 -- Seed default role permissions
-INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope, ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope) VALUES
-    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all'),
-    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none', 'none', 'none', 'none', 'none')
+INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_read_all_depts, can_write_all_depts, activity_read_scope, activity_create_scope, activity_edit_scope, mail_send_scope, mail_templates_scope, form_scope, form_templates_scope, user_dept_scope, user_role_scope, locations_manage_scope, materials_manage_scope, ideenkiste_scope, ideenkiste_add_scope, ideenkiste_delete_scope) VALUES
+    ('admin',    true, true, true,  true,  'all',       'all',      'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all', 'all'),
+    ('Mitglied', true, true, false, false, 'same_dept', 'own_dept', 'own', 'own', 'none', 'own', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none')
 ON CONFLICT (role) DO NOTHING;
 
 -- Triggers for departments & roles updated_at

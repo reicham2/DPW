@@ -53,6 +53,13 @@ void handle_post_location(HttpRes *res, HttpReq *req, Database &db);
 void handle_patch_location(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_location(HttpRes *res, HttpReq *req, Database &db);
 
+// Predefined materials
+void handle_get_materials_predefined(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_materials_admin(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_material(HttpRes *res, HttpReq *req, Database &db);
+void handle_patch_material(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_material(HttpRes *res, HttpReq *req, Database &db);
+
 // Attachments
 void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db);

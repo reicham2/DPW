@@ -225,6 +225,18 @@ int main()
          .del("/admin/locations/:id", [&](auto *res, auto *req)
               { handle_delete_location(res, req, db); })
 
+         // Predefined materials
+         .get("/materials/predefined", [&](auto *res, auto *req)
+              { handle_get_materials_predefined(res, req, db); })
+         .get("/admin/materials", [&](auto *res, auto *req)
+              { handle_get_materials_admin(res, req, db); })
+         .post("/admin/materials", [&](auto *res, auto *req)
+               { handle_post_material(res, req, db); })
+         .patch("/admin/materials/:id", [&](auto *res, auto *req)
+                { handle_patch_material(res, req, db); })
+         .del("/admin/materials/:id", [&](auto *res, auto *req)
+              { handle_delete_material(res, req, db); })
+
          // Attachments — must be registered BEFORE /activities/:id
          .get("/activities/:id/attachments", [&](auto *res, auto *req)
               { handle_get_attachments(res, req, db); })

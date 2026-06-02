@@ -34,6 +34,7 @@ const {
 	fetchActivity,
 	fetchDepartments,
 	fetchLocations,
+	fetchMaterials,
 	updateActivity,
 	deleteActivity,
 	fetchAttachments,
@@ -44,6 +45,7 @@ const {
 	lastUpdatedActivity,
 	departments,
 	predefinedLocations,
+	predefinedMaterials,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
 const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper, canIdeenkiste, canIdeenkisteAdd } = usePermissions();
@@ -1490,6 +1492,7 @@ onMounted(async () => {
 		const preloadTasks: Promise<unknown>[] = [];
 		if (departments.value.length === 0) preloadTasks.push(fetchDepartments());
 		if (predefinedLocations.value.length === 0) preloadTasks.push(fetchLocations());
+		if (predefinedMaterials.value.length === 0) preloadTasks.push(fetchMaterials());
 		if (activities.value.length === 0) preloadTasks.push(fetchActivities());
 		if (preloadTasks.length > 0) {
 			void Promise.allSettled(preloadTasks);
@@ -1787,7 +1790,13 @@ const materialRespDropdown = ref<number | null>(null);
 function materialRespFiltered(i: number) {
 	const q = (materialRespSearch.value[i] ?? '').toLowerCase();
 	const current = editMaterial.value[i].responsible ?? [];
-	return users.value.filter(u => !current.includes(u.display_name) && (q === '' || u.display_name.toLowerCase().includes(q)));
+	const predefined = predefinedMaterials.value
+		.filter(m => !current.includes(m) && (q === '' || m.toLowerCase().includes(q)))
+		.map(m => ({ label: m, value: m }));
+	const people = users.value
+		.filter(u => !current.includes(u.display_name) && (q === '' || u.display_name.toLowerCase().includes(q)))
+		.map(u => ({ label: u.display_name, value: u.display_name }));
+	return [...predefined, ...people];
 }
 function setMaterialResp(i: number, name: string) {
 	if (!editMaterial.value[i].responsible) editMaterial.value[i].responsible = [];
@@ -1872,6 +1881,7 @@ function selectLocation(loc: string) {
 	markDirty('location');
 	(document.activeElement as HTMLElement)?.blur();
 }
+
 
 function locationOverlapsFor(loc: string): OverlapInfo[] {
 	const currentDate = editDate.value;
@@ -3695,12 +3705,12 @@ function copyShareLink() {
 									/>
 									<div v-if="materialRespDropdown === i && materialRespFiltered(i).length" class="user-dropdown">
 										<div
-											v-for="u in materialRespFiltered(i)"
-											:key="u.id"
+											v-for="opt in materialRespFiltered(i)"
+											:key="opt.value"
 											class="user-dropdown-item"
-											@mousedown.prevent="setMaterialResp(i, u.display_name)"
+											@mousedown.prevent="setMaterialResp(i, opt.value)"
 										>
-											{{ u.display_name }}
+											{{ opt.label }}
 										</div>
 									</div>
 								</div>

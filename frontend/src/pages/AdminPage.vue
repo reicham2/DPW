@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
-import { ChevronDown, Cog, Lock, MapPin, Trash2, Users } from 'lucide-vue-next'
+import { ChevronDown, Cog, Lock, MapPin, Package, Trash2, Users } from 'lucide-vue-next'
 import { user as currentUser } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import DepartmentManager from '../components/DepartmentManager.vue'
 import RoleManager from '../components/RoleManager.vue'
 import LocationManager from '../components/LocationManager.vue'
+import MaterialManager from '../components/MaterialManager.vue'
 import SystemConfigManager from '../components/SystemConfigManager.vue'
 import RoleBadge from '../components/RoleBadge.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
@@ -17,7 +18,7 @@ import { useActivities } from '../composables/useActivities'
 import type { User, Department, UserRole, DeletedActivityRecord } from '../types'
 
 const router = useRouter()
-const { departments: deptRecords, roles: roleRecords, fetchDepartments, fetchRoles, myPermissions, fetchMyPermissions, canManageUsers, canManageSystem, canManageLocations } = usePermissions()
+const { departments: deptRecords, roles: roleRecords, fetchDepartments, fetchRoles, myPermissions, fetchMyPermissions, canManageUsers, canManageSystem, canManageLocations, canManageMaterials } = usePermissions()
 const { fetchDeletedActivities, restoreActivity, deleteDeletedActivity } = useActivities()
 
 const DEPARTMENTS = computed(() => deptRecords.value.map(d => d.name))
@@ -35,6 +36,7 @@ const canEditRoles = computed(() => {
 })
 const canSeePermissionsTab = computed(() => canManageSystem())
 const canSeeLocationsTab = computed(() => canManageLocations())
+const canSeeMaterialsTab = computed(() => canManageMaterials())
 const canSeeTrashTab = computed(() => currentUser.value?.role === 'admin')
 const canSeeLogsTab = computed(() => currentUser.value?.role === 'admin')
 const systemTabLabel = computed(() => {
@@ -45,7 +47,7 @@ const systemTabLabel = computed(() => {
 })
 
 // ── Tab management ──────────────────────────────────────────────────────────
-const activeTab = ref<'users' | 'permissions' | 'locations' | 'trash' | 'system'>('users')
+const activeTab = ref<'users' | 'permissions' | 'locations' | 'materials' | 'trash' | 'system'>('users')
 const systemTab = ref<'settings' | 'maintenance' | 'logs'>('settings')
 const systemMenuOpen = ref(false)
 
@@ -83,13 +85,15 @@ const filterDept = ref<Department | 'Alle'>('Alle')
 
 onMounted(async () => {
   await fetchMyPermissions()
-  if (!currentUser.value || (!canManageUsers() && !canManageLocations())) {
+  if (!currentUser.value || (!canManageUsers() && !canManageLocations() && !canManageMaterials())) {
     router.replace('/')
     return
   }
   // Set default tab based on permissions
   if (!canManageUsers() && canManageLocations()) {
     activeTab.value = 'locations'
+  } else if (!canManageUsers() && !canManageLocations() && canManageMaterials()) {
+    activeTab.value = 'materials'
   }
   // Lock filter to own dept if user can only manage own dept
   if (myPermissions.value?.user_dept_scope === 'own_dept') {
@@ -459,6 +463,15 @@ onMounted(() => {
       Orte
     </button>
     <button
+      v-if="canSeeMaterialsTab"
+      class="tab-btn"
+      :class="{ 'tab-btn--active': activeTab === 'materials' }"
+      @click="activeTab = 'materials'"
+    >
+      <Package :size="16" aria-hidden="true" />
+      Materialverantwortliche
+    </button>
+    <button
       v-if="canSeeTrashTab"
       class="tab-btn"
       :class="{ 'tab-btn--active': activeTab === 'trash' }"
@@ -595,6 +608,11 @@ onMounted(() => {
   <!-- Tab: Orte (locations_manage_scope = all) -->
   <main v-else-if="activeTab === 'locations' && canSeeLocationsTab" class="main">
     <LocationManager />
+  </main>
+
+  <!-- Tab: Material (materials_manage_scope = all) -->
+  <main v-else-if="activeTab === 'materials' && canSeeMaterialsTab" class="main">
+    <MaterialManager />
   </main>
 
   <main v-else-if="activeTab === 'trash' && canSeeTrashTab" class="main">
