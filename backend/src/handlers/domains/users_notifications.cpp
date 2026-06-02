@@ -490,34 +490,25 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
         std::string display_name = current_user->display_name;
 
         // Keep the current department unless an explicit department key is provided.
-        std::optional<std::string> department;
-        if (j.contains("department") && j["department"].is_string()) {
-            std::string new_dept = j["department"].get<std::string>();
-            department = new_dept;
+        std::optional<std::string> department = current_user->department;
+        if (j.contains("department")) {
+            std::optional<std::string> requested_department = current_user->department;
+            if (j["department"].is_string()) {
+                requested_department = j["department"].get<std::string>();
+            } else if (j["department"].is_null()) {
+                // NULL means explicit department removal.
+                requested_department = std::nullopt;
+            }
 
             // Only enforce permission when the department actually changes.
-            if (department != current_user->department) {
+            if (requested_department != current_user->department) {
                 auto perm = db.get_role_permission(current_user->role);
                 if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
                     send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
                     return;
                 }
             }
-        } else if (j.contains("department") && j["department"].is_null()) {
-            // NULL means explicit department removal.
-            department = std::nullopt;
-
-            // Only enforce permission when the department actually changes.
-            if (department != current_user->department) {
-                auto perm = db.get_role_permission(current_user->role);
-                if (!perm || (perm->user_dept_scope != "all" && perm->user_dept_scope != "own")) {
-                    send_json(res, 403, R"({"error":"Stufe kann nicht selbst geändert werden"})");
-                    return;
-                }
-            }
-        } else {
-            // department key missing → keep existing department
-            department = current_user->department;
+            department = requested_department;
         }
 
         std::optional<std::string> time_display_mode;
