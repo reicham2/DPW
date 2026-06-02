@@ -20,7 +20,7 @@ jobs:
         language: c++
         fuzz-seconds: 600
     - name: Upload crash
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: failure() && steps.build.outcome == 'success'
       with:
         name: artifacts
@@ -61,13 +61,15 @@ jobs:
     - name: Clone source
       run: git clone --recursive https://github.com/uNetworking/uWebSockets.git
     - name: Build source
-      run: make -C uWebSockets
+      run: cmake -S uWebSockets/libdeflate -B uWebSockets/libdeflate && make -C uWebSockets/libdeflate && CXXFLAGS="-DUWS_REMOTE_ADDRESS_USERSPACE" WITH_ASAN=1 WITH_LIBDEFLATE=1 make -C uWebSockets
     - name: List binaries
       run: ls uWebSockets
     - name: Install Deno
       run: curl -fsSL https://deno.land/x/install/install.sh | sh
     - name: Run smoke test
       run: make -C uWebSockets/tests smoke
+    - name: Run compliance test
+      run: make -C uWebSockets/tests compliance
     - name: Run unit tests
       run: make -C uWebSockets/tests
     - name: Autobahn|Testsuite

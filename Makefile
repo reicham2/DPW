@@ -1,5 +1,5 @@
 # ── Pinned dependency versions ───────────────────────────────────────────────
-UWEBSOCKETS_VERSION := v20.62.0
+UWEBSOCKETS_VERSION := v20.78.0
 USOCKETS_VERSION    := v0.8.8
 
 # Dev-Compose-Datei (docker-compose.yml = Produktion mit GHCR-Images)
