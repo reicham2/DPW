@@ -39,12 +39,14 @@ const canSeeTrashTab = computed(() => currentUser.value?.role === 'admin')
 const canSeeLogsTab = computed(() => currentUser.value?.role === 'admin')
 const systemTabLabel = computed(() => {
   if (activeTab.value !== 'system') return 'System'
-  return systemTab.value === 'logs' ? 'System: Container Logs' : 'System: Einstellungen'
+  if (systemTab.value === 'logs') return 'System: Container Logs'
+  if (systemTab.value === 'maintenance') return 'System: Wartungsfenster'
+  return 'System: Einstellungen'
 })
 
 // ── Tab management ──────────────────────────────────────────────────────────
 const activeTab = ref<'users' | 'permissions' | 'locations' | 'trash' | 'system'>('users')
-const systemTab = ref<'settings' | 'logs'>('settings')
+const systemTab = ref<'settings' | 'maintenance' | 'logs'>('settings')
 const systemMenuOpen = ref(false)
 
 // ── User management state ───────────────────────────────────────────────────
@@ -230,7 +232,7 @@ function toggleSystemMenu() {
   systemMenuOpen.value = !systemMenuOpen.value
 }
 
-function selectSystemTab(tab: 'settings' | 'logs') {
+function selectSystemTab(tab: 'settings' | 'maintenance' | 'logs') {
   systemTab.value = tab
   activeTab.value = 'system'
   systemMenuOpen.value = false
@@ -486,6 +488,14 @@ onMounted(() => {
           Einstellungen
         </button>
         <button
+          type="button"
+          class="system-tab-dropdown-item"
+          :class="{ 'system-tab-dropdown-item--active': activeTab === 'system' && systemTab === 'maintenance' }"
+          @click="selectSystemTab('maintenance')"
+        >
+          Wartungsfenster
+        </button>
+        <button
           v-if="canSeeLogsTab"
           type="button"
           class="system-tab-dropdown-item"
@@ -645,7 +655,9 @@ onMounted(() => {
   </main>
 
   <main v-else-if="activeTab === 'system' && canSeePermissionsTab" class="main">
-    <SystemConfigManager v-if="systemTab === 'settings'" />
+    <SystemConfigManager v-if="systemTab === 'settings'" mode="settings" />
+
+    <SystemConfigManager v-else-if="systemTab === 'maintenance'" mode="maintenance" />
 
     <section v-else-if="systemTab === 'logs' && canSeeLogsTab">
       <div class="tab-header">
@@ -1171,6 +1183,74 @@ onMounted(() => {
   padding: 6px 12px;
   font-size: 0.82rem;
   width: 100%;
+}
+
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.logs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.logs-service-select {
+  min-width: 180px;
+}
+
+.logs-tail-input {
+  width: 120px;
+}
+
+.logs-actions {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.logs-action-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.logs-refresh-btn {
+  min-width: 148px;
+}
+
+.logs-toggle-btn--active {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.logs-jump-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.logs-viewer {
+  margin: 0;
+  padding: 14px;
+  min-height: 280px;
+  max-height: 62vh;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0b1220;
+  color: #d7e0ea;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .logs-toolbar {

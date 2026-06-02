@@ -1,11 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Lock } from 'lucide-vue-next'
 import { apiFetch, formatApiError } from '../composables/useApi'
 import { applyRuntimeConfig } from '../config'
 import { setRuntimeAuthConfig } from '../composables/useAuth'
 import ErrorAlert from './ErrorAlert.vue'
 import type { AppSettingItem } from '../types'
+import { fetchAdminMaintenance, saveAdminMaintenance, type MaintenanceWindow } from '../composables/useMaintenance'
+import { useWebSocket } from '../composables/useWebSocket'
+
+useWebSocket((event) => {
+  if (event.event !== 'maintenance_status') return
+  maintenanceActive.value = event.active
+  maintenanceScheduled.value = event.scheduled_now
+  maintenanceForm.value.enabled = event.enabled
+  if (typeof event.message === 'string') maintenanceForm.value.message = event.message
+})
+
+const props = withDefaults(defineProps<{ mode?: 'settings' | 'maintenance' }>(), {
+  mode: 'settings',
+})
 
 type SettingFieldType = 'text' | 'password' | 'url' | 'number' | 'boolean'
 
@@ -28,9 +42,14 @@ const saveError = ref<string | null>(null)
 const savingKey = ref<string | null>(null)
 const editValues = ref<Record<string, string>>({})
 const resettingAzure = ref(false)
-const hiddenWebConfigKeys = new Set([
+const hiddenSettingsKeys = new Set([
   'push.vapid_public_key',
   'push.vapid_private_key',
+  'maintenance.enabled',
+  'maintenance.message',
+  'maintenance.scheduled_start',
+  'maintenance.scheduled_end',
+  'maintenance.windows_json',
 ])
 
 const settingMeta: Record<string, SettingMeta> = {
@@ -204,7 +223,7 @@ function metaFor(item: AppSettingItem): SettingMeta {
 
 const sortedSettings = computed(() => {
   return [...settings.value]
-    .filter((item) => !hiddenWebConfigKeys.has(item.key))
+    .filter((item) => !hiddenSettingsKeys.has(item.key))
     .sort((a, b) => {
     const ma = metaFor(a)
     const mb = metaFor(b)
@@ -445,13 +464,283 @@ async function resetAzureAuth() {
 }
 
 onMounted(() => {
+  if (props.mode === 'maintenance') {
+    void loadMaintenance()
+    return
+  }
   void fetchSettings()
 })
+
+// ---------- Wartungsmodus ----------
+interface MaintenanceForm {
+  enabled: boolean
+  message: string
+}
+
+const maintenanceForm = ref<MaintenanceForm>({
+  enabled: false,
+  message: '',
+})
+const maintenanceActive = ref(false)
+const maintenanceScheduled = ref(false)
+const loadingMaintenance = ref(false)
+const savingMaintenance = ref(false)
+const maintenanceError = ref<string | null>(null)
+const maintenanceWindows = ref<MaintenanceWindow[]>([])
+
+const newWindowStart = ref('')
+const newWindowEnd = ref('')
+const newWindowRecurrence = ref<'none' | 'daily' | 'weekly' | 'monthly'>('none')
+const newWindowInterval = ref(1)
+const newWindowUntil = ref('')
+
+function formatDateTimeLocal(iso: string): string {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('de-CH', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
+
+function formatDateLocal(iso: string): string {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleDateString('de-CH', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    })
+  } catch {
+    return iso
+  }
+}
+
+function formatTimeLocal(iso: string): string {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleTimeString('de-CH', {
+      hour: '2-digit', minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
+
+function formatWindowRange(startIso: string, endIso: string): string {
+  const start = new Date(startIso)
+  const end = new Date(endIso)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return `${formatDateTimeLocal(startIso)} bis ${formatDateTimeLocal(endIso)}`
+  }
+  const sameDay =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate()
+  if (sameDay) {
+    return `${formatDateLocal(startIso)} von ${formatTimeLocal(startIso)} bis ${formatTimeLocal(endIso)}`
+  }
+  return `${formatDateTimeLocal(startIso)} bis ${formatDateTimeLocal(endIso)}`
+}
+
+function windowStatus(window: MaintenanceWindow): 'planned' | 'active' | 'ended' {
+  if (window.status === 'planned' || window.status === 'active' || window.status === 'ended') {
+    return window.status
+  }
+  const now = Date.now()
+  const startTs = new Date(window.start).getTime()
+  const endTs = new Date(window.end).getTime()
+  if (!Number.isNaN(startTs) && !Number.isNaN(endTs)) {
+    if (now >= startTs && now < endTs) return 'active'
+    if (now >= endTs) return 'ended'
+  }
+  return 'planned'
+}
+
+function windowStatusLabel(window: MaintenanceWindow): string {
+  const status = windowStatus(window)
+  if (status === 'active') return 'Aktiv'
+  if (status === 'ended') return 'Beendet'
+  return 'Geplant'
+}
+
+function recurrenceLabel(freq: string, interval = 1): string {
+  if (freq === 'daily') return interval > 1 ? `alle ${interval} Tage` : 'täglich'
+  if (freq === 'weekly') return interval > 1 ? `alle ${interval} Wochen` : 'wöchentlich'
+  if (freq === 'monthly') return interval > 1 ? `alle ${interval} Monate` : 'monatlich'
+  return 'einmalig'
+}
+
+function resetWindowDraft() {
+  newWindowStart.value = ''
+  newWindowEnd.value = ''
+  newWindowRecurrence.value = 'none'
+  newWindowInterval.value = 1
+  newWindowUntil.value = ''
+}
+
+function windowsWithGlobalMessage(windows: MaintenanceWindow[]): MaintenanceWindow[] {
+  const globalMessage = maintenanceForm.value.message.trim()
+  return windows.map((w) => ({ ...w, message: globalMessage }))
+}
+
+async function persistWindows(): Promise<void> {
+  await saveAdminMaintenance({
+    windows: windowsWithGlobalMessage(maintenanceWindows.value),
+    message: maintenanceForm.value.message,
+  })
+}
+
+async function saveMaintenanceMessage() {
+  savingMaintenance.value = true
+  maintenanceError.value = null
+  try {
+    await saveAdminMaintenance({
+      message: maintenanceForm.value.message,
+      windows: windowsWithGlobalMessage(maintenanceWindows.value),
+    })
+    await loadMaintenance()
+  } catch (e) {
+    maintenanceError.value = formatApiError(e)
+  } finally {
+    savingMaintenance.value = false
+  }
+}
+
+async function addWindow() {
+  maintenanceError.value = null
+  const start = newWindowStart.value.trim()
+  const end = newWindowEnd.value.trim()
+  if (!start || !end) {
+    maintenanceError.value = 'Bitte Start und Ende ausfüllen.'
+    return
+  }
+  if (new Date(end).getTime() <= new Date(start).getTime()) {
+    maintenanceError.value = 'Das Ende muss nach dem Start liegen.'
+    return
+  }
+  const interval = Math.max(1, Math.floor(newWindowInterval.value || 1))
+  const nextWindow: MaintenanceWindow = {
+    id: `w-${Date.now()}-${maintenanceWindows.value.length + 1}`,
+    start,
+    end,
+    message: maintenanceForm.value.message.trim(),
+    recurrence: newWindowRecurrence.value,
+    interval,
+    until: newWindowRecurrence.value === 'none' ? '' : newWindowUntil.value.trim(),
+  }
+  maintenanceWindows.value.push(nextWindow)
+
+  savingMaintenance.value = true
+  try {
+    await persistWindows()
+    await loadMaintenance()
+    resetWindowDraft()
+  } catch (e) {
+    maintenanceWindows.value = maintenanceWindows.value.filter((w) => w.id !== nextWindow.id)
+    maintenanceError.value = formatApiError(e)
+  } finally {
+    savingMaintenance.value = false
+  }
+}
+
+async function removeWindow(id: string) {
+  maintenanceError.value = null
+  const previous = [...maintenanceWindows.value]
+  maintenanceWindows.value = maintenanceWindows.value.filter((w) => w.id !== id)
+
+  savingMaintenance.value = true
+  try {
+    await persistWindows()
+    await loadMaintenance()
+  } catch (e) {
+    maintenanceWindows.value = previous
+    maintenanceError.value = formatApiError(e)
+  } finally {
+    savingMaintenance.value = false
+  }
+}
+
+async function endWindowNow(id: string) {
+  savingMaintenance.value = true
+  maintenanceError.value = null
+  try {
+    await saveAdminMaintenance({ end_window_id: id })
+    await loadMaintenance()
+  } catch (e) {
+    maintenanceError.value = formatApiError(e)
+  } finally {
+    savingMaintenance.value = false
+  }
+}
+
+async function loadMaintenance() {
+  loadingMaintenance.value = true
+  maintenanceError.value = null
+  try {
+    const data = await fetchAdminMaintenance()
+    maintenanceActive.value = data.active
+    maintenanceScheduled.value = data.scheduled_now ?? false
+    maintenanceForm.value = {
+      enabled: data.enabled,
+      message: data.message ?? '',
+    }
+    maintenanceWindows.value = [...(data.windows ?? [])]
+  } catch (e) {
+    maintenanceError.value = formatApiError(e)
+  } finally {
+    loadingMaintenance.value = false
+  }
+}
+
+async function disableMaintenanceNow() {
+  savingMaintenance.value = true
+  maintenanceError.value = null
+  try {
+    await saveAdminMaintenance({
+      enabled: false,
+    })
+    await loadMaintenance()
+  } catch (e) {
+    maintenanceError.value = formatApiError(e)
+  } finally {
+    savingMaintenance.value = false
+  }
+}
+
+async function toggleMaintenanceNow() {
+  if (maintenanceActive.value) {
+    await disableMaintenanceNow()
+    return
+  }
+  savingMaintenance.value = true
+  maintenanceError.value = null
+  try {
+    await saveAdminMaintenance({ enabled: true })
+    await loadMaintenance()
+  } catch (e) {
+    maintenanceError.value = formatApiError(e)
+  } finally {
+    savingMaintenance.value = false
+  }
+}
+
+watch(
+  () => props.mode,
+  (mode) => {
+    if (mode === 'maintenance') {
+      void loadMaintenance()
+      return
+    }
+    void fetchSettings()
+  },
+)
 </script>
 
 <template>
   <section class="settings-wrap">
-    <header class="settings-header">
+    <header v-if="props.mode === 'settings'" class="settings-header">
       <div>
         <h2>System-Konfiguration</h2>
       </div>
@@ -460,10 +749,21 @@ onMounted(() => {
       </button>
     </header>
 
-    <ErrorAlert :error="error" />
-    <ErrorAlert :error="saveError" />
+    <header v-else class="settings-header">
+      <div>
+        <h2>Wartungsfenster</h2>
+      </div>
+    </header>
 
-    <div class="settings-list" v-if="!loading && sortedSettings.length">
+    <ErrorAlert v-if="props.mode === 'settings'" :error="error" />
+    <ErrorAlert v-if="props.mode === 'settings'" :error="saveError" />
+
+    <div v-if="props.mode === 'settings'" class="settings-list">
+      <div v-if="loading" class="maint-loading">Lade Einstellungen...</div>
+
+      <div v-else-if="!sortedSettings.length" class="maint-loading">Keine Einstellungen gefunden.</div>
+
+      <template v-else>
       <section v-if="azureSettings.length" class="settings-box settings-box--azure">
         <div class="group-header group-header--box">
           <div>
@@ -590,7 +890,113 @@ onMounted(() => {
           </div>
         </article>
       </template>
+      </template>
     </div>
+
+    <section v-if="props.mode === 'maintenance'" class="maint-section">
+      <div class="maint-header">
+        <div>
+          <h3 class="maint-title">Wartungsmodus</h3>
+          <p class="maint-copy">Nur Admins koennen sich anmelden, wenn der Wartungsmodus aktiv ist.</p>
+        </div>
+        <span
+          class="maint-status-badge"
+          :class="maintenanceActive ? 'maint-status-badge--active' : (maintenanceScheduled ? 'maint-status-badge--scheduled' : 'maint-status-badge--off')"
+        >
+          {{ maintenanceActive ? 'Aktiv' : (maintenanceScheduled ? 'Geplant' : 'Inaktiv') }}
+        </span>
+      </div>
+      <div class="maint-toggle-row">
+        <button class="btn-save" :disabled="savingMaintenance || loadingMaintenance" @click="toggleMaintenanceNow">
+          {{ maintenanceActive ? 'Wartungsmodus ausschalten' : 'Wartungsmodus aktivieren' }}
+        </button>
+        <button class="btn-refresh" :disabled="loadingMaintenance" @click="loadMaintenance">
+          Aktualisieren
+        </button>
+      </div>
+
+      <ErrorAlert :error="maintenanceError" />
+
+      <div v-if="loadingMaintenance" class="maint-loading">Ladet...</div>
+      <div v-else class="maint-form">
+        <label class="maint-field">
+          <span class="maint-label">Meldung</span>
+          <input
+            class="maint-input"
+            type="text"
+            v-model="maintenanceForm.message"
+            placeholder="z.B. Update laeuft, bitte spaeter erneut versuchen."
+            :disabled="savingMaintenance || loadingMaintenance"
+            @blur="saveMaintenanceMessage"
+          />
+        </label>
+
+        <div class="maint-add-grid">
+          <label class="maint-field">
+            <span class="maint-label">Start</span>
+            <input class="maint-input" type="datetime-local" v-model="newWindowStart" />
+          </label>
+
+          <label class="maint-field">
+            <span class="maint-label">Ende</span>
+            <input class="maint-input" type="datetime-local" v-model="newWindowEnd" />
+          </label>
+
+          <label class="maint-field">
+            <span class="maint-label">Wiederholung</span>
+            <select class="maint-input" v-model="newWindowRecurrence">
+              <option value="none">einmalig</option>
+              <option value="daily">täglich</option>
+              <option value="weekly">wöchentlich</option>
+              <option value="monthly">monatlich</option>
+            </select>
+          </label>
+
+          <label class="maint-field" v-if="newWindowRecurrence !== 'none'">
+            <span class="maint-label">Intervall</span>
+            <input class="maint-input" type="number" min="1" max="365" v-model.number="newWindowInterval" />
+          </label>
+
+          <label class="maint-field" v-if="newWindowRecurrence !== 'none'">
+            <span class="maint-label">Wiederholen bis</span>
+            <input class="maint-input" type="datetime-local" v-model="newWindowUntil" />
+          </label>
+
+          <div class="maint-add-actions">
+            <button class="btn-save" type="button" @click="addWindow">Hinzufügen</button>
+          </div>
+        </div>
+
+        <div class="maint-windows">
+          <h4 class="maint-subtitle">Geplante Wartungsfenster</h4>
+          <div v-if="!maintenanceWindows.length" class="maint-loading">Noch keine Wartungsfenster erstellt.</div>
+          <div v-else class="maint-list">
+            <article v-for="w in maintenanceWindows" :key="w.id" class="maint-list-item">
+              <div>
+                <strong>{{ formatWindowRange(w.start, w.end) }}</strong>
+                <p class="maint-list-meta">{{ recurrenceLabel(w.recurrence, w.interval) }}<span v-if="maintenanceForm.message"> | {{ maintenanceForm.message }}</span></p>
+                <p class="maint-list-meta">
+                  <span class="window-status" :class="`window-status--${windowStatus(w)}`">{{ windowStatusLabel(w) }}</span>
+                </p>
+              </div>
+              <div class="maint-item-actions">
+                <button
+                  v-if="windowStatus(w) === 'active'"
+                  class="btn-save"
+                  type="button"
+                  :disabled="savingMaintenance || loadingMaintenance"
+                  @click="endWindowNow(w.id)"
+                >
+                  Beenden
+                </button>
+                <button class="btn-clear" type="button" :disabled="savingMaintenance || loadingMaintenance" @click="removeWindow(w.id)">Entfernen</button>
+              </div>
+            </article>
+          </div>
+        </div>
+
+      </div>
+    </section>
   </section>
 </template>
 
@@ -775,6 +1181,156 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
+.maint-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  padding: 12px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.maint-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.maint-title {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+.maint-copy {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.maint-status-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.maint-status-badge--active {
+  color: var(--warning-color, #92400e);
+  background: var(--warning-bg, #fef3c7);
+  border-color: var(--warning-border, #f59e0b);
+}
+.maint-status-badge--scheduled {
+  color: var(--accent);
+  background: var(--nav-link-active-bg);
+  border-color: var(--accent);
+}
+.maint-status-badge--off {
+  color: var(--text-muted);
+  background: var(--bg-surface);
+}
+.maint-loading {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.maint-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.maint-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.maint-add-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.maint-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.maint-label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.maint-input {
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  padding: 6px 8px;
+  width: 100%;
+  background: var(--input-bg);
+  color: var(--input-color);
+}
+.maint-add-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.maint-windows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.maint-subtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.maint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.maint-list-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.maint-list-meta {
+  margin: 2px 0 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.maint-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.window-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+.window-status--active {
+  color: var(--warning-color, #92400e);
+  background: var(--warning-bg, #fef3c7);
+  border-color: var(--warning-border, #f59e0b);
+}
+.window-status--planned {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--nav-link-active-bg);
+}
+.window-status--ended {
+  color: var(--text-muted);
+  background: var(--bg-surface);
+}
 @media (max-width: 980px) {
   .group-header {
     align-items: flex-start;
@@ -786,6 +1342,19 @@ onMounted(() => {
   }
   .setting-actions {
     justify-content: flex-start;
+  }
+  .maint-form {
+    grid-template-columns: 1fr;
+  }
+  .maint-add-grid {
+    grid-template-columns: 1fr;
+  }
+  .maint-list-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .maint-item-actions {
+    width: 100%;
   }
 }
 </style>

@@ -21,6 +21,9 @@ std::string auth_token_from_header(HttpRes *res, const std::string &auth_header)
 void handle_get_departments(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_setup_auth_config(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_setup_auth_config(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_maintenance(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_admin_maintenance(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_admin_maintenance(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_get_admin_midata_status(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_admin_app_settings(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db);

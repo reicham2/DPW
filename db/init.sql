@@ -29,7 +29,12 @@ INSERT INTO app_settings (key, is_secret, value_text, value_secret) VALUES
     ('github.repo', false, 'reicham2/DPW', NULL),
     ('wp.url', true, NULL, NULL),
     ('wp.user', true, NULL, NULL),
-    ('wp.app_password', true, NULL, NULL)
+    ('wp.app_password', true, NULL, NULL),
+    ('maintenance.enabled', false, 'false', NULL),
+    ('maintenance.message', false, '', NULL),
+    ('maintenance.scheduled_start', false, '', NULL),
+    ('maintenance.scheduled_end', false, '', NULL),
+    ('maintenance.windows_json', false, '[]', NULL)
 ON CONFLICT (key) DO NOTHING;
 
 -- ── Dynamic departments & roles ─────────────────────────────────────────────

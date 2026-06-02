@@ -99,7 +99,16 @@ export type WsEvent =
 	| { event: 'lock'; activity_id: string; section: EditSection; user: string }
 	| { event: 'unlock'; activity_id: string; section: EditSection }
 	| { event: 'editors'; activity_id: string; users: string[] }
-	| { event: 'locks_state'; activity_id: string; locks: SectionLock[] };
+	| { event: 'locks_state'; activity_id: string; locks: SectionLock[] }
+	| {
+			event: 'maintenance_status';
+			active: boolean;
+			enabled: boolean;
+			scheduled_now: boolean;
+			message: string;
+			scheduled_start: string;
+			scheduled_end: string;
+	  };
 
 export type TimeDisplayMode = 'minutes' | 'clock';
 

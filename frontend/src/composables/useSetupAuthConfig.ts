@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { setRuntimeAuthConfig } from './useAuth';
 import { applyRuntimeConfig } from '../config';
+import { applyMaintenanceData } from './useMaintenance';
 
 export const setupLoading = ref(false);
 export const setupSubmitting = ref(false);
@@ -45,6 +46,10 @@ export async function ensureSetupStatus(force = false): Promise<boolean> {
 			github_bug_report_configured?: boolean;
 			wp_url?: string;
 			public_base_url?: string;
+			maintenance_active?: boolean;
+			maintenance_message?: string;
+			maintenance_scheduled_start?: string;
+			maintenance_scheduled_end?: string;
 		};
 
 		applyRuntimeConfig({
@@ -56,6 +61,13 @@ export async function ensureSetupStatus(force = false): Promise<boolean> {
 			githubBugReportEnabled: data.github_bug_report_configured,
 			wpUrl: data.wp_url,
 			publicBaseUrl: data.public_base_url,
+		});
+
+		applyMaintenanceData({
+			maintenance_active: data.maintenance_active,
+			maintenance_message: data.maintenance_message,
+			maintenance_scheduled_start: data.maintenance_scheduled_start,
+			maintenance_scheduled_end: data.maintenance_scheduled_end,
 		});
 
 		setupRequired.value = !data.configured;

@@ -19,7 +19,7 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U activities_user -d activities" ]
+      test: ["CMD-SHELL", "pg_isready -U activities_user -d activities"]
       interval: 2s
       timeout: 3s
       retries: 10
@@ -28,9 +28,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: [ "redis-server", "--save", "", "--appendonly", "no" ]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 2s
       timeout: 3s
       retries: 10
@@ -59,7 +59,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1" ]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1"]
       interval: 2s
       timeout: 3s
       retries: 10

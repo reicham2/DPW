@@ -107,11 +107,13 @@
 
     <!-- App content -->
     <div v-else class="app" :class="{ 'app--force-drawer-stats': statsDisplayMode === 'always-drawer' }">
+      <MaintenanceBanner />
       <router-view />
       <BugReportButton v-if="config.GITHUB_BUG_REPORT_ENABLED" />
     </div>
     </template>
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -120,6 +122,7 @@ import { CircleHelp } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import UserAvatar from './components/UserAvatar.vue'
 import BugReportButton from './components/BugReportButton.vue'
+import MaintenanceBanner from './components/MaintenanceBanner.vue'
 import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } from './composables/useAuth'
 import { usePermissions } from './composables/usePermissions'
 import { statsDisplayMode } from './composables/useUserPrefs'
@@ -128,13 +131,75 @@ import { useWebSocket } from './composables/useWebSocket'
 import { useApiConnectionStatus } from './composables/useApi'
 import { config } from './config'
 import { ensureSetupStatus, setupLoading } from './composables/useSetupAuthConfig'
+import {
+  applyMaintenanceStatus,
+  fetchMaintenanceStatus,
+  maintenanceActive,
+  startMaintenancePoll,
+  stopMaintenancePoll,
+} from './composables/useMaintenance'
 
 const route = useRoute()
 const { myPermissions, fetchMyPermissions, resetMyPermissions } = usePermissions()
 const { startMidataAutoRefresh, stopMidataAutoRefresh, resetMidataCounts } = useMidataCounts()
-const { connected } = useWebSocket(() => {})
+const { connected } = useWebSocket((event) => {
+  if (event.event !== 'maintenance_status') return
+  applyMaintenanceStatus({
+    active: event.active,
+    message: event.message,
+    scheduled_start: event.scheduled_start,
+    scheduled_end: event.scheduled_end,
+  })
+})
 const { apiOnline } = useApiConnectionStatus()
 const isOnline = computed(() => connected.value && apiOnline.value)
+const isAdmin = computed(() => user.value?.role === 'admin')
+
+let maintenanceRedirectInProgress = false
+
+async function flushPendingChangesBeforeMaintenanceRedirect() {
+  if (typeof window === 'undefined') return
+
+  const pendingTasks: Promise<unknown>[] = []
+  window.dispatchEvent(new CustomEvent<{ waitUntil: (promise: Promise<unknown>) => void }>(
+    'dpw:before-maintenance-redirect',
+    {
+      detail: {
+        waitUntil: (promise: Promise<unknown>) => {
+          pendingTasks.push(Promise.resolve(promise).catch(() => undefined))
+        },
+      },
+    },
+  ))
+
+  if (pendingTasks.length === 0) return
+
+  await Promise.race([
+    Promise.allSettled(pendingTasks),
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ])
+}
+
+async function redirectToMaintenanceIfNeeded() {
+  if (!maintenanceActive.value) return
+  if (!user.value) return
+  if (isAdmin.value) return
+  if (route.path === '/maintenance') return
+  if (maintenanceRedirectInProgress) return
+
+  maintenanceRedirectInProgress = true
+
+  await flushPendingChangesBeforeMaintenanceRedirect()
+
+  maintenanceRedirectInProgress = false
+
+  if (!maintenanceActive.value) return
+  if (!user.value) return
+  if (isAdmin.value) return
+  if (route.path === '/maintenance') return
+
+  window.location.replace('/maintenance')
+}
 
 const showVorlagen = computed(() =>
   (myPermissions.value?.mail_templates_scope && myPermissions.value.mail_templates_scope !== 'none') ||
@@ -155,6 +220,7 @@ const showAdmin = computed(() => {
 
 const loggingIn = ref(false)
 const mobileMenuOpen = ref(false)
+let maintenanceRedirectTimer: ReturnType<typeof setInterval> | null = null
 watch(() => route.path, () => { mobileMenuOpen.value = false })
 const debugSelectedUser = ref('')
 const debugUsers = ref<{ id: string; display_name: string; role: string; department: string | null }[]>([])
@@ -177,11 +243,32 @@ async function handleDebugLogin() {
   try { await debugLogin(debugSelectedUser.value) } finally { loggingIn.value = false }
 }
 
+async function enforceMaintenanceRedirect() {
+  if (!user.value) return
+  if (isAdmin.value) return
+  await fetchMaintenanceStatus()
+  await redirectToMaintenanceIfNeeded()
+}
+
 onMounted(() => {
   ensureSetupStatus().finally(() => {
     initAuth()
   })
   if (isDebug) fetchDebugUsers()
+  startMaintenancePoll(30_000)
+  maintenanceRedirectTimer = setInterval(() => {
+    void enforceMaintenanceRedirect()
+  }, 10_000)
+  void enforceMaintenanceRedirect()
+})
+
+onUnmounted(() => {
+  stopMidataAutoRefresh()
+  stopMaintenancePoll()
+  if (maintenanceRedirectTimer) {
+    clearInterval(maintenanceRedirectTimer)
+    maintenanceRedirectTimer = null
+  }
 })
 
 watch(user, (u) => {
@@ -216,9 +303,13 @@ watch(() => config.MIDATA_WEATHER_REFRESH_INTERVAL, (interval) => {
   startMidataAutoRefresh(interval, 5000)
 })
 
-onUnmounted(() => {
-  stopMidataAutoRefresh()
-})
+watch(
+  () => [maintenanceActive.value, isAdmin.value, authLoading.value, route.path],
+  () => {
+    void redirectToMaintenanceIfNeeded()
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>
@@ -521,5 +612,51 @@ onUnmounted(() => {
   .global-nav-inner {
     padding: 0 12px;
   }
+}
+
+.maintenance-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg, #f8fafc);
+  padding: 24px;
+}
+.maintenance-box {
+  background: var(--card-bg, #fff);
+  border-radius: 16px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.12);
+  padding: 48px 40px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.maintenance-icon { font-size: 3rem; line-height: 1; }
+.maintenance-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+.maintenance-message {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.maintenance-end {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+.maintenance-hint {
+  font-size: 0.82rem;
+  color: var(--text-subtle, var(--text-muted));
+  margin: 4px 0 0;
 }
 </style>
