@@ -22,7 +22,7 @@ fresh:
 	@echo "✅ Frische Umgebung aufgebaut und Testdaten geladen"
 
 # ── Tests (laufen im Container) ──────────────────────────────────────────────
-test: test-frontend test-backend
+test: test-frontend test-backend test-api
 
 generate-vapid-keys:
 	@node -e "const crypto=require('crypto'); const ecdh=crypto.createECDH('prime256v1'); ecdh.generateKeys(); const b64u=b=>b.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$$/,''); console.log('DPW_VAPID_PUBLIC_KEY=' + b64u(ecdh.getPublicKey())); console.log('DPW_VAPID_PRIVATE_KEY=' + b64u(ecdh.getPrivateKey())); console.log('DPW_VAPID_SUBJECT=mailto:admin@example.com');"
@@ -41,7 +41,9 @@ test-api:
 	$(DC) down -v --remove-orphans
 	BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1 FRONTEND_ENABLE_DEBUG_AUTH=1 $(DC) up -d --build --wait db redis backend frontend
 	$(DC) exec -T db psql -U activities_user -d activities < db/seed.sql
-	DPW_API_BASE_URL=http://localhost:8000/api ./scripts/test-api.sh
+	docker run --rm --network host -v "$(CURDIR):/etc/newman" postman/newman:alpine \
+		run /etc/newman/scripts/api-tests.postman_collection.json \
+		--env-var baseUrl=http://127.0.0.1:8000/api --reporters cli
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:
