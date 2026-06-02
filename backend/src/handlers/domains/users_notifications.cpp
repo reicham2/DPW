@@ -842,4 +842,3 @@ void handle_post_push_payload(HttpRes *res, HttpReq * /*req*/, Database &db)
         };
         send_json(res, 200, payload.dump()); });
 }
-

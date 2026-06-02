@@ -1439,4 +1439,3 @@ nlohmann::json notification_to_json(const NotificationRecord &n)
     j["link"] = n.link ? nlohmann::json(*n.link) : nlohmann::json(nullptr);
     return j;
 }
-

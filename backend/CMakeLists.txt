@@ -112,7 +112,11 @@ if (BUILD_TESTS)
     enable_testing()
 
     add_executable(run_tests
+        tests/test_harness.cpp
         tests/test_main.cpp
+        tests/test_auth.cpp
+        tests/test_utils.cpp
+        tests/test_models.cpp
         src/utils.cpp
         src/auth.cpp
     )

@@ -2,9 +2,13 @@ import { describe, it, expect } from 'vitest';
 import type {
 	Activity,
 	ActivityInput,
+	FormResponse,
+	NotificationRecord,
 	MaterialItem,
 	Program,
+	RolePermission,
 	User,
+	WsEvent,
 } from './types';
 
 /**
@@ -94,6 +98,29 @@ describe('Type structures', () => {
 		expect(input.bad_weather_info).toBeUndefined();
 	});
 
+	it('ActivityInput also allows nullable optional fields', () => {
+		const input: ActivityInput = {
+			title: 'Test',
+			date: '2025-06-01',
+			start_time: '10:00',
+			end_time: '12:00',
+			goal: 'Ziel',
+			location: 'Ort',
+			responsible: [],
+			department: null,
+			siko_text: null,
+			bad_weather_info: null,
+			planned_participants_estimate: null,
+			material: [],
+			tn_material: [],
+			programs: [],
+		};
+		expect(input.department).toBeNull();
+		expect(input.siko_text).toBeNull();
+		expect(input.bad_weather_info).toBeNull();
+		expect(input.planned_participants_estimate).toBeNull();
+	});
+
 	it('User has time_display_mode field', () => {
 		const user: User = {
 			id: 'u-1',
@@ -114,5 +141,86 @@ describe('Type structures', () => {
 			updated_at: '2025-01-01T00:00:00Z',
 		};
 		expect(['minutes', 'clock']).toContain(user.time_display_mode);
+	});
+
+	it('WsEvent supports lock and maintenance_status variants', () => {
+		const lockEvent: WsEvent = {
+			event: 'lock',
+			activity_id: 'a1',
+			section: 'title',
+			user: 'u1',
+		};
+		const maintenanceEvent: WsEvent = {
+			event: 'maintenance_status',
+			active: true,
+			enabled: true,
+			scheduled_now: false,
+			message: 'Wartung',
+			scheduled_start: '2026-01-01T10:00:00Z',
+			scheduled_end: '2026-01-01T12:00:00Z',
+		};
+
+		expect(lockEvent.event).toBe('lock');
+		expect(maintenanceEvent.event).toBe('maintenance_status');
+	});
+
+	it('NotificationRecord payload is arbitrary object data', () => {
+		const n: NotificationRecord = {
+			id: 'n1',
+			user_id: 'u1',
+			category: 'material_assigned',
+			title: 'Material',
+			message: 'Du wurdest eingeteilt',
+			link: '/activities/a1',
+			payload: { activity_id: 'a1', nested: { level: 2 } },
+			is_read: false,
+			created_at: '2026-01-01T00:00:00Z',
+		};
+
+		expect(n.payload).toHaveProperty('activity_id', 'a1');
+		expect(n.payload).toHaveProperty('nested');
+	});
+
+	it('RolePermission accepts all documented scope literals', () => {
+		const p: RolePermission = {
+			role: 'Mitglied',
+			activity_read_scope: 'same_dept',
+			activity_create_scope: 'own_dept',
+			activity_edit_scope: 'own',
+			mail_send_scope: 'all',
+			mail_templates_scope: 'all',
+			form_scope: 'same_dept',
+			form_templates_scope: 'own_dept',
+			event_templates_scope: 'all',
+			event_publish_scope: 'own_dept',
+			user_dept_scope: 'own',
+			user_role_scope: 'own_dept',
+			locations_manage_scope: 'all',
+			ideenkiste_scope: 'all',
+			ideenkiste_add_scope: 'own_dept',
+			ideenkiste_delete_scope: 'none',
+		};
+
+		expect(p.activity_edit_scope).toBe('own');
+		expect(p.locations_manage_scope).toBe('all');
+	});
+
+	it('FormResponse answers field is optional', () => {
+		const withAnswers: FormResponse = {
+			id: 'r1',
+			form_id: 'f1',
+			submission_mode: 'registration',
+			submitted_at: '2026-01-01T00:00:00Z',
+			answers: [{ question_id: 'q1', answer_value: 'Ja' }],
+		};
+		const withoutAnswers: FormResponse = {
+			id: 'r2',
+			form_id: 'f1',
+			submission_mode: 'deregistration',
+			submitted_at: '2026-01-01T00:00:00Z',
+		};
+
+		expect(withAnswers.answers).toHaveLength(1);
+		expect(withoutAnswers.answers).toBeUndefined();
 	});
 });

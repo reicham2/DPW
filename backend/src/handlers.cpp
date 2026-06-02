@@ -1780,9 +1780,7 @@ bool shared_user_matches_assignee(const UserRecord &user, const std::string &ass
 }
 
 std::vector<std::string> shared_newly_assigned_users_from_material_delta(const std::vector<MaterialItem> &old_material,
-                                                                          const std::vector<MaterialItem> &new_material)
+                                                                         const std::vector<MaterialItem> &new_material)
 {
     return newly_assigned_users_from_material_delta(old_material, new_material);
 }
-
-
