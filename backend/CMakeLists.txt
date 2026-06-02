@@ -16,8 +16,6 @@ find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(CURL REQUIRED)
 
-find_package(CURL REQUIRED)
-
 # Local cached deps
 set(UWEBSOCKETS_DIR ${CMAKE_SOURCE_DIR}/deps/uWebSockets)
 set(USOCKETS_DIR    ${CMAKE_SOURCE_DIR}/deps/uSockets)

@@ -1689,56 +1689,6 @@ namespace
         return out;
     }
 
-    struct PublicSubmitBucket
-    {
-        std::deque<std::chrono::steady_clock::time_point> attempts;
-    };
-
-    std::mutex public_submit_rate_limit_mutex;
-    std::unordered_map<std::string, PublicSubmitBucket> public_submit_rate_limit;
-
-    constexpr size_t kMaxPublicFormPayloadBytes = 128 * 1024;
-    constexpr size_t kPublicSubmitBurstLimit = 3;
-    constexpr size_t kPublicSubmitSustainedLimit = 12;
-    constexpr auto kPublicSubmitBurstWindow = std::chrono::seconds(30);
-    constexpr auto kPublicSubmitSustainedWindow = std::chrono::minutes(10);
-    constexpr size_t kMaxPublicAnswerLength = 4000;
-
-    std::string normalize_public_submit_client_key(const std::string &ip_address, const std::string &user_agent)
-    {
-        if (!ip_address.empty())
-            return ip_address;
-        if (user_agent.empty())
-            return "anonymous";
-        return user_agent.substr(0, std::min<size_t>(user_agent.size(), 160));
-    }
-
-    bool is_public_submit_rate_limited(const std::string &public_slug, const std::string &client_key)
-    {
-        auto now = std::chrono::steady_clock::now();
-        auto cutoff = now - kPublicSubmitSustainedWindow;
-        std::lock_guard<std::mutex> lock(public_submit_rate_limit_mutex);
-        auto &bucket = public_submit_rate_limit[public_slug + "|" + client_key];
-
-        while (!bucket.attempts.empty() && bucket.attempts.front() < cutoff)
-            bucket.attempts.pop_front();
-
-        size_t burst_count = 0;
-        auto burst_cutoff = now - kPublicSubmitBurstWindow;
-        for (auto it = bucket.attempts.rbegin(); it != bucket.attempts.rend(); ++it)
-        {
-            if (*it < burst_cutoff)
-                break;
-            ++burst_count;
-        }
-
-        if (burst_count >= kPublicSubmitBurstLimit || bucket.attempts.size() >= kPublicSubmitSustainedLimit)
-            return true;
-
-        bucket.attempts.push_back(now);
-        return false;
-    }
-
     std::string utc_today_ymd()
     {
         time_t now = time(nullptr);

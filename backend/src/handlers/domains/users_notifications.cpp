@@ -843,35 +843,3 @@ void handle_post_push_payload(HttpRes *res, HttpReq * /*req*/, Database &db)
         send_json(res, 200, payload.dump()); });
 }
 
-// ---- Mail template helpers --------------------------------------------------
-
-static nlohmann::json template_to_json(const MailTemplate &t)
-{
-    return {
-        {"id", t.id},
-        {"department", t.department},
-        {"subject", t.subject},
-        {"body", t.body},
-        {"recipients", t.recipients},
-        {"cc", t.cc},
-        {"created_at", t.created_at},
-        {"updated_at", t.updated_at}};
-}
-
-static bool can_send_mail_for_activity(const RolePermission &perm, const UserRecord &user,
-                                       const Activity &activity, const std::string &email)
-{
-    if (is_admin(user))
-        return true;
-    if (perm.mail_send_scope == "all")
-        return true;
-    if (perm.mail_send_scope == "same_dept")
-    {
-        return (activity.department && user.department && *activity.department == *user.department) ||
-               is_activity_responsible(activity, user, email);
-    }
-    if (perm.mail_send_scope == "own")
-        return is_activity_responsible(activity, user, email);
-    return false;
-}
-

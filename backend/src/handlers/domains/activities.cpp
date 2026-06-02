@@ -1424,30 +1424,6 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
     }
 }
 
-// ---- User helpers -----------------------------------------------------------
-
-static nlohmann::json user_to_json(const UserRecord &u)
-{
-    nlohmann::json j;
-    j["id"] = u.id;
-    j["microsoft_oid"] = u.microsoft_oid;
-    j["email"] = u.email;
-    j["display_name"] = u.display_name;
-    j["department"] = u.department ? nlohmann::json(*u.department) : nlohmann::json(nullptr);
-    j["role"] = u.role;
-    j["time_display_mode"] = u.time_display_mode;
-    j["notify_material_assigned"] = u.notify_material_assigned;
-    j["notify_activity_assigned"] = u.notify_activity_assigned;
-    j["notify_program_assigned"] = u.notify_program_assigned;
-    j["notify_mail_own_activity"] = u.notify_mail_own_activity;
-    j["notify_mail_department"] = u.notify_mail_department;
-    j["notify_channel_websocket"] = u.notify_channel_websocket;
-    j["notify_channel_email"] = u.notify_channel_email;
-    j["created_at"] = u.created_at;
-    j["updated_at"] = u.updated_at;
-    return j;
-}
-
 nlohmann::json notification_to_json(const NotificationRecord &n)
 {
     nlohmann::json j = {
