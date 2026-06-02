@@ -339,8 +339,8 @@ void handle_post_admin_activity_restore(HttpRes *res, HttpReq *req, Database &db
 
         nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
         wm.broadcast(msg.dump());
-        cache_bump_version("activities");
-        cache_bump_version("activity");
+        cache_bump_version(db, "activities");
+        cache_bump_version(db, "activity");
         send_json(res, 200, to_json(*activity).dump());
     }
     catch (std::exception &e)
@@ -367,8 +367,8 @@ void handle_delete_admin_activity_trash(HttpRes *res, HttpReq *req, Database &db
 
         nlohmann::json msg = {{"event", "deleted"}, {"id", id}};
         wm.broadcast(msg.dump());
-        cache_bump_version("activities");
-        cache_bump_version("activity");
+        cache_bump_version(db, "activities");
+        cache_bump_version(db, "activity");
         send_json(res, 200, R"({"ok":true})");
     }
     catch (std::exception &e)
@@ -574,10 +574,10 @@ void handle_post_department(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto d = db.create_department(name, color, midata_group_id);
             if (!d) { send_json(res, 409, R"({"error":"Abteilung existiert bereits"})"); return; }
-            cache_bump_version("departments");
-            cache_bump_version("activities");
-            cache_bump_version("activity");
-            cache_bump_version("mail_templates");
+            cache_bump_version(db, "departments");
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 201, nlohmann::json{{"name", d->name}, {"color", d->color}, {"midata_group_id", d->midata_group_id ? nlohmann::json(*d->midata_group_id) : nlohmann::json(nullptr)}}.dump());
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -620,10 +620,10 @@ void handle_patch_department(HttpRes *res, HttpReq *req, Database &db)
             }
             auto d = db.update_department(name, new_name, color, midata_group_id);
             if (!d) { send_json(res, 404, R"({"error":"Abteilung nicht gefunden"})"); return; }
-            cache_bump_version("departments");
-            cache_bump_version("activities");
-            cache_bump_version("activity");
-            cache_bump_version("mail_templates");
+            cache_bump_version(db, "departments");
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, nlohmann::json{{"name", d->name}, {"color", d->color}, {"midata_group_id", d->midata_group_id ? nlohmann::json(*d->midata_group_id) : nlohmann::json(nullptr)}}.dump());
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -670,10 +670,10 @@ void handle_delete_department(HttpRes *res, HttpReq *req, Database &db, WebSocke
             }
             nlohmann::json msg = {{"event", "department_deleted"}, {"name", name}};
             wm.broadcast(msg.dump());
-            cache_bump_version("departments");
-            cache_bump_version("activities");
-            cache_bump_version("activity");
-            cache_bump_version("mail_templates");
+            cache_bump_version(db, "departments");
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, R"({"ok":true})");
         }
         catch (std::exception &e)
@@ -725,6 +725,9 @@ void handle_post_role(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto r = db.create_role(name, color);
             if (!r) { send_json(res, 409, R"({"error":"Rolle existiert bereits"})"); return; }
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 201, nlohmann::json{{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}}.dump());
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -757,6 +760,9 @@ void handle_patch_role(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto r = db.update_role(name, new_name, color);
             if (!r) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, nlohmann::json{{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}}.dump());
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -792,6 +798,9 @@ void handle_post_role_move(HttpRes *res, HttpReq *req, Database &db)
         try {
             bool ok = db.move_role(name, direction == "up");
             if (!ok) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -825,6 +834,9 @@ void handle_post_roles_reorder(HttpRes *res, HttpReq *req, Database &db)
         }
         try {
             db.reorder_roles(names);
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -871,6 +883,9 @@ void handle_delete_role(HttpRes *res, HttpReq *req, Database &db, WebSocketManag
             if (!ok) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
             nlohmann::json msg = {{"event", "role_deleted"}, {"name", name}};
             wm.broadcast(msg.dump());
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -984,6 +999,9 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 404, R"({"error":"Rolle nicht gefunden"})");
                 return;
             }
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -1038,6 +1056,9 @@ void handle_put_role_dept_access(HttpRes *res, HttpReq *req, Database &db)
         bool can_write = j.value("can_write", false);
         try {
             db.set_role_dept_access(role, department, can_read, can_write);
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, R"({"ok":true})");
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);

@@ -1,12 +1,16 @@
 #include "cache.hpp"
+#include "app_config.hpp"
 #include "utils.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <unordered_map>
 #include <unistd.h>
 
 namespace
@@ -23,6 +27,54 @@ namespace
     std::string cache_version_key(const std::string &domain)
     {
         return "dpw:cache:ver:" + domain;
+    }
+
+    int cache_version_local_ttl_ms(Database &db)
+    {
+        return app_config::get_int_or(db, app_config::kCacheVersionLocalTtlMs, 1500, 0, 60000);
+    }
+
+    struct LocalVersionEntry
+    {
+        std::string value;
+        std::chrono::steady_clock::time_point expires_at;
+    };
+
+    std::mutex g_local_versions_mu;
+    std::unordered_map<std::string, LocalVersionEntry> g_local_versions;
+
+    std::optional<std::string> local_cached_version_get(const std::string &domain, int ttl_ms)
+    {
+        if (ttl_ms <= 0)
+            return std::nullopt;
+
+        auto now = std::chrono::steady_clock::now();
+        std::lock_guard<std::mutex> lock(g_local_versions_mu);
+        auto it = g_local_versions.find(domain);
+        if (it == g_local_versions.end())
+            return std::nullopt;
+        if (it->second.expires_at <= now)
+        {
+            g_local_versions.erase(it);
+            return std::nullopt;
+        }
+        return it->second.value;
+    }
+
+    void local_cached_version_set(const std::string &domain, const std::string &value, int ttl_ms)
+    {
+        if (ttl_ms <= 0)
+            return;
+
+        auto now = std::chrono::steady_clock::now();
+        std::lock_guard<std::mutex> lock(g_local_versions_mu);
+        g_local_versions[domain] = LocalVersionEntry{value, now + std::chrono::milliseconds(ttl_ms)};
+    }
+
+    void local_cached_version_erase(const std::string &domain)
+    {
+        std::lock_guard<std::mutex> lock(g_local_versions_mu);
+        g_local_versions.erase(domain);
     }
 }
 
@@ -51,6 +103,12 @@ RedisCache::RedisCache()
         port_ = std::max(1, std::atoi(env_or("REDIS_PORT", "6379").c_str()));
         timeout_ms_ = std::max(100, std::atoi(env_or("REDIS_TIMEOUT_MS", "250").c_str()));
     }
+}
+
+RedisCache::~RedisCache()
+{
+    std::lock_guard<std::mutex> lock(mu_);
+    close_socket_locked();
 }
 
 bool RedisCache::enabled() const
@@ -93,7 +151,7 @@ bool RedisCache::write_all(int fd, const std::string &buffer)
     size_t sent = 0;
     while (sent < buffer.size())
     {
-        ssize_t n = send(fd, buffer.data() + sent, buffer.size() - sent, 0);
+        ssize_t n = send(fd, buffer.data() + sent, buffer.size() - sent, MSG_NOSIGNAL);
         if (n <= 0)
             return false;
         sent += static_cast<size_t>(n);
@@ -225,12 +283,17 @@ int RedisCache::connect_socket()
     return fd;
 }
 
+void RedisCache::close_socket_locked()
+{
+    if (fd_ >= 0)
+    {
+        close(fd_);
+        fd_ = -1;
+    }
+}
+
 std::optional<RedisCache::RedisReply> RedisCache::command(const std::vector<std::string> &args)
 {
-    int fd = connect_socket();
-    if (fd < 0)
-        return std::nullopt;
-
     std::string payload;
     payload.reserve(128);
     payload += "*" + std::to_string(args.size()) + "\r\n";
@@ -241,15 +304,30 @@ std::optional<RedisCache::RedisReply> RedisCache::command(const std::vector<std:
         payload += "\r\n";
     }
 
-    if (!write_all(fd, payload))
+    std::lock_guard<std::mutex> lock(mu_);
+    for (int attempt = 0; attempt < 2; ++attempt)
     {
-        close(fd);
-        return std::nullopt;
+        if (fd_ < 0)
+            fd_ = connect_socket();
+        if (fd_ < 0)
+            return std::nullopt;
+
+        if (!write_all(fd_, payload))
+        {
+            close_socket_locked();
+            continue;
+        }
+
+        auto reply = read_reply(fd_);
+        if (!reply)
+        {
+            close_socket_locked();
+            continue;
+        }
+        return reply;
     }
 
-    auto reply = read_reply(fd);
-    close(fd);
-    return reply;
+    return std::nullopt;
 }
 
 RedisCache &redis_cache()
@@ -267,20 +345,39 @@ int response_cache_ttl_seconds()
     return ttl;
 }
 
-void cache_bump_version(const std::string &domain)
+void cache_bump_version(Database &db, const std::string &domain)
 {
-    (void)redis_cache().incr(cache_version_key(domain));
+    const int ttl_ms = cache_version_local_ttl_ms(db);
+    auto v = redis_cache().incr(cache_version_key(domain));
+    if (v)
+    {
+        local_cached_version_set(domain, std::to_string(*v), ttl_ms);
+    }
+    else
+    {
+        local_cached_version_erase(domain);
+    }
 }
 
-std::string cache_key(const std::string &domain, const std::string &scope)
+std::string cache_key(Database &db, const std::string &domain, const std::string &scope)
 {
+    const int ttl_ms = cache_version_local_ttl_ms(db);
+    auto local = local_cached_version_get(domain, ttl_ms);
+    if (local)
+        return "dpw:cache:" + domain + ":v" + *local + ":" + scope;
+
     auto v = redis_cache().get(cache_version_key(domain));
-    return "dpw:cache:" + domain + ":v" + (v ? *v : "0") + ":" + scope;
+    std::string version = v ? *v : "0";
+    local_cached_version_set(domain, version, ttl_ms);
+    return "dpw:cache:" + domain + ":v" + version + ":" + scope;
 }
 
 std::string cache_user_scope(const TokenClaims &claims, const std::optional<UserRecord> &user)
 {
     if (user)
-        return "u:" + user->id;
+    {
+        std::string dept = user->department ? *user->department : "_none";
+        return "u:" + user->id + ":r:" + user->role + ":d:" + dept;
+    }
     return "oid:" + claims.oid;
 }

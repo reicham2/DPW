@@ -47,7 +47,7 @@ void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-        const std::string ckey = cache_key("mail_templates", cache_user_scope(claims, current_user));
+        const std::string ckey = cache_key(db, "mail_templates", cache_user_scope(claims, current_user));
         if (auto cached = redis_cache().get(ckey))
         {
             send_json(res, 200, *cached);
@@ -272,7 +272,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
             }
             nlohmann::json msg = {{"event", "template_updated"}, {"template", template_to_json(*tpl)}};
             wm.broadcast(msg.dump());
-            cache_bump_version("mail_templates");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, template_to_json(*tpl).dump());
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);

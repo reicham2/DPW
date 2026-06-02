@@ -255,6 +255,7 @@ namespace app_config
             {kPublicBaseUrl, "DPW_PUBLIC_URL", "", false, true, ValueType::Url, 0, 0},
             {kAutosaveIntervalMs, "AUTOSAVE_INTERVAL", "1500", false, true, ValueType::Integer, 250, 600000},
             {kAutosaveDebounce, "AUTOSAVE_DEBOUNCE", "true", false, true, ValueType::Boolean, 0, 0},
+            {kCacheVersionLocalTtlMs, "DPW_CACHE_VERSION_TTL_MS", "1500", false, true, ValueType::Integer, 0, 60000},
             {kMidataWeatherRefreshIntervalMs, "MIDATA_WEATHER_REFRESH_INTERVAL", "900000", false, true, ValueType::Integer, 10000, 86400000},
             {kGitHubToken, "GITHUB_TOKEN", "", true, false, ValueType::Text, 0, 0},
             {kGitHubRepo, "GITHUB_REPO", "reicham2/DPW", false, true, ValueType::Slug, 0, 0},

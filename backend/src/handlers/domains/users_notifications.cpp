@@ -357,6 +357,9 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
+            cache_bump_version(db, "mail_templates");
             send_json(res, 200, user_to_json(*user).dump());
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);
@@ -434,6 +437,9 @@ void handle_delete_admin_user(HttpRes *res, HttpReq *req, Database &db)
 
     if (db.delete_user(target_id))
     {
+        cache_bump_version(db, "activities");
+        cache_bump_version(db, "activity");
+        cache_bump_version(db, "mail_templates");
         send_json(res, 200, R"({"ok":true})");
     }
     else

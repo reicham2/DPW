@@ -9,7 +9,7 @@ void handle_get_departments(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
-        const std::string ckey = cache_key("departments", "all");
+        const std::string ckey = cache_key(db, "departments", "all");
         if (auto cached = redis_cache().get(ckey))
         {
             send_json(res, 200, *cached);
@@ -42,7 +42,7 @@ void handle_get_activities(HttpRes *res, HttpReq *req, Database &db)
     try
     {
         auto current_user = resolve_user(db, claims);
-        const std::string ckey = cache_key("activities", cache_user_scope(claims, current_user));
+        const std::string ckey = cache_key(db, "activities", cache_user_scope(claims, current_user));
         if (auto cached = redis_cache().get(ckey))
         {
             send_json(res, 200, *cached);
@@ -90,7 +90,7 @@ void handle_get_activity(HttpRes *res, HttpReq *req, Database &db)
     try
     {
         auto current_user = resolve_user(db, claims);
-        const std::string ckey = cache_key("activity", cache_user_scope(claims, current_user) + ":" + id);
+        const std::string ckey = cache_key(db, "activity", cache_user_scope(claims, current_user) + ":" + id);
         if (auto cached = redis_cache().get(ckey))
         {
             send_json(res, 200, *cached);
@@ -469,7 +469,7 @@ void handle_get_locations(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
-        const std::string ckey = cache_key("locations", "public");
+        const std::string ckey = cache_key(db, "locations", "public");
         if (auto cached = redis_cache().get(ckey))
         {
             send_json(res, 200, *cached);
@@ -524,7 +524,7 @@ void handle_get_locations_admin(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
-        const std::string ckey = cache_key("locations_admin", "all");
+        const std::string ckey = cache_key(db, "locations_admin", "all");
         if (auto cached = redis_cache().get(ckey))
         {
             send_json(res, 200, *cached);
@@ -564,8 +564,8 @@ void handle_post_location(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto loc = db.create_predefined_location(name);
             if (!loc) { send_json(res, 409, R"({"error":"Ort existiert bereits"})"); return; }
-            cache_bump_version("locations");
-            cache_bump_version("locations_admin");
+            cache_bump_version(db, "locations");
+            cache_bump_version(db, "locations_admin");
             send_json(res, 201, location_to_json(*loc).dump());
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
@@ -592,8 +592,8 @@ void handle_patch_location(HttpRes *res, HttpReq *req, Database &db)
         try {
             auto loc = db.update_predefined_location(id, name);
             if (!loc) { send_json(res, 404, R"({"error":"Nicht gefunden"})"); return; }
-            cache_bump_version("locations");
-            cache_bump_version("locations_admin");
+            cache_bump_version(db, "locations");
+            cache_bump_version(db, "locations_admin");
             send_json(res, 200, location_to_json(*loc).dump());
         } catch (std::exception &e) {
             send_json(res, 500, nlohmann::json{{"error", e.what()}}.dump());
@@ -615,8 +615,8 @@ void handle_delete_location(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
-        cache_bump_version("locations");
-        cache_bump_version("locations_admin");
+        cache_bump_version(db, "locations");
+        cache_bump_version(db, "locations_admin");
         send_json(res, 204, "");
     }
     catch (std::exception &e)
@@ -1054,8 +1054,8 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
 
             nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
             wm.broadcast(msg.dump());
-            cache_bump_version("activities");
-            cache_bump_version("activity");
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
             std::string share_created_by = current_user ? current_user->id : "";
             auto share_link = db.create_share_link(activity->id, share_created_by);
 
@@ -1362,8 +1362,8 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
             nlohmann::json msg = {{"event", "updated"}, {"activity", to_json(*activity)}};
             wm.broadcast(msg.dump());
-            cache_bump_version("activities");
-            cache_bump_version("activity");
+            cache_bump_version(db, "activities");
+            cache_bump_version(db, "activity");
             send_json(res, 200, to_json(*activity).dump());
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);
@@ -1412,8 +1412,8 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
         }
         nlohmann::json msg = {{"event", "deleted"}, {"id", id}};
         wm.broadcast(msg.dump());
-        cache_bump_version("activities");
-        cache_bump_version("activity");
+        cache_bump_version(db, "activities");
+        cache_bump_version(db, "activity");
         set_cors(res);
         res->writeStatus("204 No Content");
         res->end();
