@@ -200,6 +200,8 @@ int main()
               { handle_get_admin_activity_trash(res, req, db); })
          .post("/admin/activities/:id/restore", [&](auto *res, auto *req)
                { handle_post_admin_activity_restore(res, req, db, wm); })
+         .del("/admin/activities/:id/trash", [&](auto *res, auto *req)
+              { handle_delete_admin_activity_trash(res, req, db, wm); })
 
          // Static data
          .get("/departments", [&](auto *res, auto *req)

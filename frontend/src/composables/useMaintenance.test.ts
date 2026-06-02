@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { apiFetchMock } = vi.hoisted(() => ({
 	apiFetchMock: vi.fn(),
@@ -41,6 +41,10 @@ describe('useMaintenance', () => {
 		maintenanceScheduledStart.value = '';
 		maintenanceScheduledEnd.value = '';
 		stopMaintenancePoll();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	it('applyMaintenanceData updates only provided fields', () => {

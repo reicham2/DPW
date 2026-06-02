@@ -13,6 +13,7 @@ request() {
 
   local tmp
   tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' RETURN
 
   local -a args
   args=( -sS -o "$tmp" -w "%{http_code}" -X "$method" "${BASE_URL}${path}" )
@@ -26,6 +27,7 @@ request() {
 
   RESP_CODE="$(curl "${args[@]}")"
   RESP_BODY="$(cat "$tmp")"
+  trap - RETURN
   rm -f "$tmp"
 }
 
@@ -202,10 +204,11 @@ assert_status "400" "create activity validation"
 
 # 9) Create activity
 SUFFIX="$(date +%s)"
+FUTURE_DATE="$(node -e 'const d = new Date(); d.setUTCDate(d.getUTCDate() + 30); process.stdout.write(d.toISOString().slice(0, 10));')"
 CREATE_PAYLOAD="$(cat <<JSON
 {
   "title": "API Test ${SUFFIX}",
-  "date": "2026-12-31",
+  "date": "${FUTURE_DATE}",
   "start_time": "10:00",
   "end_time": "11:00",
   "goal": "API test goal",
@@ -399,7 +402,7 @@ echo "OK: form removed"
 PATCH_PAYLOAD="$(cat <<JSON
 {
   "title": "API Test Updated ${SUFFIX}",
-  "date": "2026-12-31",
+  "date": "${FUTURE_DATE}",
   "start_time": "10:00",
   "end_time": "11:30",
   "goal": "Updated goal",

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WsEvent } from '../types';
 
 const { getIdTokenMock, onUnmountedCallbacks } = vi.hoisted(() => ({
@@ -93,6 +93,10 @@ describe('useWebSocket', () => {
 		});
 
 		wsDisconnect();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	it('connects on first use and dispatches incoming events to handlers', async () => {
