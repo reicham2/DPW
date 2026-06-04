@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [main]
   push:
-    branches: [ main ]
+    branches: [main]
     tags:
       - "v*"
 
@@ -53,8 +53,9 @@ jobs:
         run: docker run --rm dpw-test-backend
 
   metadata:
-    name: Docker Metadata
+    name: Docker Metadata (push only)
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     outputs:
       backend_tags: ${{ steps.backend_meta.outputs.tags }}
       backend_labels: ${{ steps.backend_meta.outputs.labels }}
@@ -86,9 +87,10 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
   build_backend:
-    name: Build Backend Image
+    name: Build Backend Image (push only)
     runs-on: ubuntu-latest
-    needs: [ metadata, test_backend ]
+    if: github.event_name == 'push'
+    needs: [metadata, test_backend, integration_test]
     permissions:
       contents: read
       packages: write
@@ -122,9 +124,10 @@ jobs:
           cache-to: type=gha,mode=max,scope=dpw-backend
 
   build_frontend:
-    name: Build Frontend Image
+    name: Build Frontend Image (push only)
     runs-on: ubuntu-latest
-    needs: [ metadata, test_frontend ]
+    if: github.event_name == 'push'
+    needs: [metadata, test_frontend, integration_test]
     permissions:
       contents: read
       packages: write
@@ -156,12 +159,12 @@ jobs:
           cache-from: type=gha,scope=dpw-frontend
           cache-to: type=gha,mode=max,scope=dpw-frontend
 
-  smoke_test:
-    name: Smoke Test (Docker Compose)
+  integration_test:
+    name: Integration Test (Smoke + API)
     runs-on: ubuntu-latest
-    needs: [ build_backend, build_frontend ]
-    timeout-minutes: 20
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    needs: [test_backend, test_frontend]
+    timeout-minutes: 35
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -188,7 +191,7 @@ jobs:
 
       - name: Build all containers
         run: >
-          BACKEND_BUILD_TYPE=Release ENABLE_DEBUG_AUTH=0
+          BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1
           FRONTEND_ENABLE_DEBUG_AUTH=0 docker compose -f docker-compose-dev.yml
           build
 
@@ -225,20 +228,35 @@ jobs:
           docker compose -f docker-compose-dev.yml logs frontend
           exit 1
 
-      - name: Verify push VAPID endpoint
+      - name: Smoke Phase - Start
+        run: echo "Running smoke checks..."
+
+      - name: Smoke - Verify push VAPID endpoint
         env:
           DPW_PUBLIC_URL: http://127.0.0.1:8000
         run: |
           curl -sf "$DPW_PUBLIC_URL/api/push/vapid-public-key" > /dev/null
           echo "Push VAPID endpoint reachable"
 
-      - name: Verify DB schema loaded
+      - name: Smoke - Verify DB schema loaded
         run: |
           docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities \
             -c "\\dt" | grep -q activities
           echo "DB schema present"
 
-      - name: Verify snapshot rollback on sync failure
+      - name: API Phase - Start
+        run: echo "Running API integration suite..."
+
+      - name: API - Seed database
+        run: docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities < db/seed.sql
+
+      - name: API - Run integration tests
+        run: |
+          docker run --rm --network host -v "$PWD:/etc/newman" postman/newman:alpine \
+            run /etc/newman/scripts/api-tests.postman_collection.json \
+            --env-var baseUrl=http://127.0.0.1:8000/api --reporters cli
+
+      - name: Smoke - Verify snapshot rollback on sync failure
         run: |
           set -e
           cp db/init.sql /tmp/init.sql.bak

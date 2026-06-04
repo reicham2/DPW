@@ -5,7 +5,7 @@ default:
 	./ChunkedEncoding
 	$(CXX) -std=c++17 -fsanitize=address TopicTree.cpp -o TopicTree
 	./TopicTree
-	$(CXX) -std=c++17 -fsanitize=address HttpRouter.cpp -o HttpRouter
+	$(CXX) -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG -std=c++17 -g -fsanitize=address HttpRouter.cpp -o HttpRouter
 	./HttpRouter
 	$(CXX) -std=c++17 -fsanitize=address BloomFilter.cpp -o BloomFilter
 	./BloomFilter
@@ -24,3 +24,9 @@ smoke:
 	~/.deno/bin/deno run --allow-net smoke.mjs
 	node smoke.mjs
 	pkill Crc32
+
+compliance:
+	../EchoBody &
+	sleep 1
+	~/.deno/bin/deno run --allow-net ../h1spec/http_test.ts localhost 3000
+	pkill EchoBody

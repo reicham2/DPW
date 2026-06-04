@@ -1,7 +1,6 @@
 #include "app_config.hpp"
+#include "utils.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <openssl/bn.h>
@@ -12,17 +11,6 @@
 
 namespace
 {
-    std::string trim_ascii(std::string s)
-    {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char c)
-                                        { return !std::isspace(c); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char c)
-                             { return !std::isspace(c); })
-                    .base(),
-                s.end());
-        return s;
-    }
-
     const app_config::SettingDef *find_def(const std::string &key)
     {
         const auto &defs = app_config::definitions();
@@ -267,6 +255,7 @@ namespace app_config
             {kPublicBaseUrl, "DPW_PUBLIC_URL", "", false, true, ValueType::Url, 0, 0},
             {kAutosaveIntervalMs, "AUTOSAVE_INTERVAL", "1500", false, true, ValueType::Integer, 250, 600000},
             {kAutosaveDebounce, "AUTOSAVE_DEBOUNCE", "true", false, true, ValueType::Boolean, 0, 0},
+            {kCacheVersionLocalTtlMs, "DPW_CACHE_VERSION_TTL_MS", "1500", false, true, ValueType::Integer, 0, 60000},
             {kMidataWeatherRefreshIntervalMs, "MIDATA_WEATHER_REFRESH_INTERVAL", "900000", false, true, ValueType::Integer, 10000, 86400000},
             {kGitHubToken, "GITHUB_TOKEN", "", true, false, ValueType::Text, 0, 0},
             {kGitHubRepo, "GITHUB_REPO", "reicham2/DPW", false, true, ValueType::Slug, 0, 0},

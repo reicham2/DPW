@@ -16,8 +16,6 @@ find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(CURL REQUIRED)
 
-find_package(CURL REQUIRED)
-
 # Local cached deps
 set(UWEBSOCKETS_DIR ${CMAKE_SOURCE_DIR}/deps/uWebSockets)
 set(USOCKETS_DIR    ${CMAKE_SOURCE_DIR}/deps/uSockets)
@@ -50,6 +48,14 @@ add_executable(server
     src/cache.cpp
     src/db.cpp
     src/handlers.cpp
+    src/handlers/core/http_core.cpp
+    src/handlers/core/setup_maintenance.cpp
+    src/handlers/domains/activities.cpp
+    src/handlers/domains/users_notifications.cpp
+    src/handlers/domains/mail.cpp
+    src/handlers/domains/admin_permissions.cpp
+    src/handlers/domains/share_ideenkiste.cpp
+    src/handlers/domains/forms.cpp
     src/auth.cpp
     src/ws_manager.cpp
     src/graph.cpp
@@ -106,7 +112,11 @@ if (BUILD_TESTS)
     enable_testing()
 
     add_executable(run_tests
+        tests/test_harness.cpp
         tests/test_main.cpp
+        tests/test_auth.cpp
+        tests/test_utils.cpp
+        tests/test_models.cpp
         src/utils.cpp
         src/auth.cpp
     )

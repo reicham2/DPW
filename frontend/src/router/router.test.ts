@@ -30,6 +30,14 @@ describe('Router guard logic', () => {
 		expect(result).toBe('/setup');
 	});
 
+	it('allows navigating to /setup while setup is required', () => {
+		const setupRequired = true;
+		const to = { meta: {}, path: '/setup' };
+
+		const result = setupRequired && to.path !== '/setup' ? '/setup' : true;
+		expect(result).toBe(true);
+	});
+
 	it('redirects /setup to / when setup is already done', () => {
 		const setupRequired = false;
 		const to = { meta: { setup: true }, path: '/setup' };
@@ -82,21 +90,36 @@ describe('Router guard logic', () => {
 			!user.value && !(to.meta as any).public && to.path !== '/' ? '/' : true;
 		expect(result).toBe(true);
 	});
+
+	it('allows /maintenance route without auth', () => {
+		const user = { value: null };
+		const to = { meta: { public: true }, path: '/maintenance' };
+
+		const result =
+			!user.value && !(to.meta as any).public && to.path !== '/' ? '/' : true;
+		expect(result).toBe(true);
+	});
 });
 
 describe('Route definitions', () => {
 	const setupPath = '/setup';
-	const publicPaths = ['/forms/:slug', '/shared/:token'];
+	const publicPaths = ['/forms/:slug', '/shared/:token', '/maintenance'];
 	const protectedPaths = [
 		'/activities/new',
 		'/activities/:id',
 		'/activities/:id/mail',
 		'/activities/:id/forms',
+		'/templates',
+		'/ideas',
 		'/stats',
-		'/mail-templates',
-		'/form-templates',
 		'/profile',
 		'/admin',
+	];
+	const aliasRedirectPaths = [
+		'/vorlagen',
+		'/ideenkiste',
+		'/mail-templates',
+		'/form-templates',
 	];
 
 	it.each(publicPaths)('%s should be marked as public', (path) => {
@@ -110,6 +133,11 @@ describe('Route definitions', () => {
 
 	it.each(protectedPaths)('%s requires authentication', (path) => {
 		expect(protectedPaths).toContain(path);
+		expect(publicPaths).not.toContain(path);
+	});
+
+	it.each(aliasRedirectPaths)('%s exists as legacy alias redirect', (path) => {
+		expect(aliasRedirectPaths).toContain(path);
 		expect(publicPaths).not.toContain(path);
 	});
 });

@@ -104,6 +104,17 @@ const settingMeta: Record<string, SettingMeta> = {
     fieldType: 'boolean',
     order: 22,
   },
+  'backend.cache_version_ttl_ms': {
+    title: 'Cache-Version Memory TTL (ms)',
+    hint: 'Wie lange Redis-Cache-Versionen pro Prozess lokal gehalten werden (0 = deaktiviert)',
+    category: 'Allgemein',
+    categoryOrder: 20,
+    fieldType: 'number',
+    order: 23,
+    min: 0,
+    max: 60000,
+    step: 100,
+  },
   'midata.weather_refresh_interval_ms': {
     title: 'MiData Refresh Intervall (ms)',
     hint: 'Auto-Refresh fuer MiData/Wetter',

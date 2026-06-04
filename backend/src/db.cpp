@@ -10,6 +10,7 @@
 #include <functional>
 #include <chrono>
 #include <curl/curl.h>
+#include <unistd.h>
 #include "json.hpp"
 
 namespace
@@ -63,9 +64,12 @@ namespace
 
     std::string build_snapshot_file_path()
     {
-        const auto now = std::chrono::system_clock::now().time_since_epoch();
-        const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-        return "/tmp/dpw-schema-snapshot-" + std::to_string(millis) + ".dump";
+        char pattern[] = "/tmp/dpw-schema-snapshot-XXXXXX";
+        const int fd = mkstemp(pattern);
+        if (fd < 0)
+            throw std::runtime_error("Failed to create secure temp file for DB snapshot");
+        close(fd);
+        return std::string(pattern);
     }
 
     std::string create_snapshot(const DbRuntimeConfig &cfg)

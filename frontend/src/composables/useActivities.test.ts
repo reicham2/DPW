@@ -109,4 +109,74 @@ describe('Activity WebSocket event handler', () => {
 		const result = applyWsEvent([act], { event: 'deleted', id: 'ghost' });
 		expect(result).toHaveLength(1);
 	});
+
+	it('does not mutate original list on created', () => {
+		const original = [makeActivity({ id: 'a1' })];
+		const newAct = makeActivity({ id: 'a2' });
+		const result = applyWsEvent(original, {
+			event: 'created',
+			activity: newAct,
+		});
+
+		expect(original).toHaveLength(1);
+		expect(original[0].id).toBe('a1');
+		expect(result).toHaveLength(2);
+	});
+
+	it('updates only the matching activity and preserves others', () => {
+		const act1 = makeActivity({ id: 'a1', title: 'One' });
+		const act2 = makeActivity({ id: 'a2', title: 'Two' });
+		const updated = makeActivity({ id: 'a1', title: 'One Updated' });
+		const result = applyWsEvent([act1, act2], {
+			event: 'updated',
+			activity: updated,
+		});
+
+		expect(result).toHaveLength(2);
+		expect(result[0].title).toBe('One Updated');
+		expect(result[1].title).toBe('Two');
+	});
+
+	it('removes all matching duplicates on deleted', () => {
+		const act1 = makeActivity({ id: 'dup' });
+		const act2 = makeActivity({ id: 'x' });
+		const act3 = makeActivity({ id: 'dup' });
+		const result = applyWsEvent([act1, act2, act3], {
+			event: 'deleted',
+			id: 'dup',
+		});
+
+		expect(result).toHaveLength(1);
+		expect(result[0].id).toBe('x');
+	});
+
+	it('handles department_deleted as no-op on list content', () => {
+		const activities = [makeActivity({ id: 'a1' }), makeActivity({ id: 'a2' })];
+		const result = applyWsEvent(activities, {
+			event: 'department_deleted',
+			name: 'Pfadi',
+		});
+
+		expect(result).toEqual(activities);
+		expect(result).not.toBe(activities);
+	});
+
+	it('ignores unsupported websocket events via fallback branch', () => {
+		const activities = [makeActivity({ id: 'a1' })];
+		const result = applyWsEvent(activities, {
+			event: 'template_updated',
+			template: {
+				id: 't1',
+				department: 'Pfadi',
+				subject: 'S',
+				body: 'B',
+				recipients: [],
+				cc: [],
+				created_at: '2026-01-01',
+				updated_at: '2026-01-02',
+			},
+		} as WsEvent);
+
+		expect(result).toEqual(activities);
+	});
 });

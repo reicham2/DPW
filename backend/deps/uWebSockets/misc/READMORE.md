@@ -105,7 +105,7 @@ That's why your sockets will be corked by default in most simple cases, includin
 You can make sure corking is enabled, even for cases where default corking would be enabled, by wrapping whatever sending function calls in a lambda like so:
 
 ```c++
-res->cork([]() {
+res->cork([res]() {
     res->end("This Http response will be properly corked and efficient in all cases");
 });
 ```
@@ -139,10 +139,10 @@ uWS::App().ws<PerSocketData>("/*", {
     .drain = [](auto *ws) {
         /* Check getBufferedAmount here */
     },
-    .ping = [](auto *ws) {
+    .ping = [](auto *ws, std::string_view message) {
 
     },
-    .pong = [](auto *ws) {
+    .pong = [](auto *ws, std::string_view message) {
 
     },
     .close = [](auto *ws, int code, std::string_view message) {

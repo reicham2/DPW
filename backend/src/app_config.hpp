@@ -66,6 +66,7 @@ namespace app_config
     inline constexpr const char *kGitHubRepo = "github.repo";
     inline constexpr const char *kAutosaveIntervalMs = "frontend.autosave_interval_ms";
     inline constexpr const char *kAutosaveDebounce = "frontend.autosave_debounce";
+    inline constexpr const char *kCacheVersionLocalTtlMs = "backend.cache_version_ttl_ms";
     inline constexpr const char *kMidataWeatherRefreshIntervalMs = "midata.weather_refresh_interval_ms";
     inline constexpr const char *kMaintenanceEnabled = "maintenance.enabled";
     inline constexpr const char *kMaintenanceMessage = "maintenance.message";

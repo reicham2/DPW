@@ -1,5 +1,5 @@
 # ── Pinned dependency versions ───────────────────────────────────────────────
-UWEBSOCKETS_VERSION := v20.62.0
+UWEBSOCKETS_VERSION := v20.78.0
 USOCKETS_VERSION    := v0.8.8
 
 # Dev-Compose-Datei (docker-compose.yml = Produktion mit GHCR-Images)
@@ -9,7 +9,7 @@ DC := docker compose -f docker-compose-dev.yml
        restart restart-backend restart-frontend restart-db \
 	db-reset db-seed ps clean full-rebuild update-deps \
 	build-prod rebuild-prod rebuild-backend-prod rebuild-frontend-prod \
-	new-branch fresh test test-frontend test-backend test-watch \
+	new-branch fresh test test-frontend test-backend test-api test-watch \
 	generate-vapid-keys
 
 # ── Shortcut-Targets ─────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ fresh:
 	@echo "✅ Frische Umgebung aufgebaut und Testdaten geladen"
 
 # ── Tests (laufen im Container) ──────────────────────────────────────────────
-test: test-frontend test-backend
+test: test-frontend test-backend test-api
 
 generate-vapid-keys:
 	@node -e "const crypto=require('crypto'); const ecdh=crypto.createECDH('prime256v1'); ecdh.generateKeys(); const b64u=b=>b.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$$/,''); console.log('DPW_VAPID_PUBLIC_KEY=' + b64u(ecdh.getPublicKey())); console.log('DPW_VAPID_PRIVATE_KEY=' + b64u(ecdh.getPrivateKey())); console.log('DPW_VAPID_SUBJECT=mailto:admin@example.com');"
@@ -35,6 +35,15 @@ test-backend:
 	@echo "── Backend Unit Tests ───────────────────────────────────────────"
 	docker build -f backend/Dockerfile.test backend/ -t dpw-test-backend -q && \
 	docker run --rm dpw-test-backend
+
+test-api:
+	@echo "── Backend API Integration Tests ───────────────────────────────"
+	$(DC) down -v --remove-orphans
+	BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1 FRONTEND_ENABLE_DEBUG_AUTH=1 $(DC) up -d --build --wait db redis backend frontend
+	$(DC) exec -T db psql -U activities_user -d activities < db/seed.sql
+	docker run --rm --network host -v "$(CURDIR):/etc/newman" postman/newman:alpine \
+		run /etc/newman/scripts/api-tests.postman_collection.json \
+		--env-var baseUrl=http://127.0.0.1:8000/api --reporters cli
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:

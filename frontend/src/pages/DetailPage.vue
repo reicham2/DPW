@@ -18,6 +18,10 @@ import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import BadgeSelect from '../components/BadgeSelect.vue';
 import ResponsibleAvatars from '../components/ResponsibleAvatars.vue';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
+import { addMinutesToClock, formatDuration } from '../utils/time';
+import { defaultRichTextToolbarState, readRichTextToolbarState } from '../utils/richTextToolbar';
+import type { RichTextToolbarState } from '../utils/richTextToolbar';
 
 
 const route = useRoute();
@@ -92,7 +96,7 @@ const eventPreviewTitle = ref('');
 const eventPreviewBody = ref('');
 const eventPublishing = ref(false);
 const eventPreviewEditorRef = ref<HTMLElement | null>(null);
-const evtPreviewToolbar = ref<{ bold: boolean; italic: boolean; underline: boolean; ul: boolean; ol: boolean; font: string; size: string; color: string; bgColor: string } | null>(null);
+const evtPreviewToolbar = ref<RichTextToolbarState | null>(null);
 let evtPreviewSavedSelection: Range | null = null;
 let evtPreviewLinkSavedRange: Range | null = null;
 const showEvtPreviewLinkDialog = ref(false);
@@ -123,18 +127,7 @@ function updateEvtPreviewToolbar() {
 	if (!sel || !sel.rangeCount || !el) return;
 	const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement;
 	if (!node || !el.contains(node)) return;
-	const cs = window.getComputedStyle(node);
-	evtPreviewToolbar.value = {
-		bold: document.queryCommandState('bold'),
-		italic: document.queryCommandState('italic'),
-		underline: document.queryCommandState('underline'),
-		ul: document.queryCommandState('insertUnorderedList'),
-		ol: document.queryCommandState('insertOrderedList'),
-		font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
-		size: parseInt(cs.fontSize).toString() || '12',
-		color: rgbToHex(cs.color) || '#000000',
-		bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
-	};
+	evtPreviewToolbar.value = readRichTextToolbarState(node);
 }
 
 function evtPreviewSaveSelection() {
@@ -1919,23 +1912,6 @@ const PROGRAM_DRAG_SCROLL_EDGE_PX = 96;
 const PROGRAM_DRAG_SCROLL_MAX_STEP = 22;
 
 // ---- Programs --------------------------------------------------------------
-function addMinutesToClock(start: string, minutes: number): string {
-	const m = /^(\d{1,2}):(\d{2})$/.exec(start.trim());
-	if (!m) return '';
-	const total = parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + minutes;
-	const h = ((Math.floor(total / 60) % 24) + 24) % 24;
-	const mm = ((total % 60) + 60) % 60;
-	return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-
-function formatDuration(min: number): string {
-	if (!Number.isFinite(min) || min <= 0) return '0 min';
-	if (min < 60) return `${min} min`;
-	const h = Math.floor(min / 60);
-	const m = min % 60;
-	return m === 0 ? `${h} h` : `${h} h ${m} min`;
-}
-
 const timeDisplayMode = computed<'minutes' | 'clock'>(
 	() => user.value?.time_display_mode === 'clock' ? 'clock' : 'minutes'
 );
@@ -2195,7 +2171,7 @@ function onProgRespBlur(i: number) {
 
 // ---- Program description rich editor ----------------------------------------
 const progEditorRefs = ref<Record<number, HTMLElement>>({});
-const progToolbar = ref<{ idx: number; bold: boolean; italic: boolean; underline: boolean; ul: boolean; ol: boolean; font: string; size: string; color: string; bgColor: string } | null>(null);
+const progToolbar = ref<({ idx: number } & RichTextToolbarState) | null>(null);
 
 function setProgEditorRef(el: any, i: number) {
 	if (el) progEditorRefs.value[i] = el as HTMLElement;
@@ -2215,25 +2191,7 @@ function updateProgToolbar(i: number) {
 	if (!sel || !sel.rangeCount || !el) return;
 	const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as HTMLElement;
 	if (!node || !el.contains(node)) return;
-	const cs = window.getComputedStyle(node);
-	progToolbar.value = {
-		idx: i,
-		bold: document.queryCommandState('bold'),
-		italic: document.queryCommandState('italic'),
-		underline: document.queryCommandState('underline'),
-		ul: document.queryCommandState('insertUnorderedList'),
-		ol: document.queryCommandState('insertOrderedList'),
-		font: cs.fontFamily.replace(/["']/g, '').split(',')[0].trim() || 'Arial',
-		size: parseInt(cs.fontSize).toString() || '12',
-		color: rgbToHex(cs.color) || '#000000',
-		bgColor: (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') ? '#ffffff' : (rgbToHex(cs.backgroundColor) || '#ffffff'),
-	};
-}
-
-function rgbToHex(rgb: string): string {
-	const m = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
-	if (!m) return rgb;
-	return '#' + [m[1], m[2], m[3]].map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+	progToolbar.value = { idx: i, ...readRichTextToolbarState(node) };
 }
 
 let progSavedSelection: Range | null = null;
@@ -2341,7 +2299,7 @@ function cancelProgLink() {
 }
 
 function onProgEditorFocus(i: number) {
-	progToolbar.value = { idx: i, bold: false, italic: false, underline: false, ul: false, ol: false, font: 'Arial', size: '12', color: '#000000', bgColor: '#ffffff' };
+	progToolbar.value = { idx: i, ...defaultRichTextToolbarState() };
 	updateProgToolbar(i);
 }
 
@@ -3054,7 +3012,7 @@ function copyShareLink() {
 										<p class="program-title">{{ prog.title }}</p>
 							</div>
 									<p v-if="prog.responsible.length" class="program-resp">Leitung: <ResponsibleAvatars :names="prog.responsible" /></p>
-									<div v-if="prog.description" class="program-desc" v-html="prog.description" />
+									<div v-if="prog.description" class="program-desc" v-html="sanitizeHtml(prog.description)" />
 						</div>
 					</div>
 				</div>
