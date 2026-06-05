@@ -18,29 +18,44 @@ services:
       POSTGRES_PASSWORD: activities_pass
     volumes:
       - db_data:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U activities_user -d activities"]
-      interval: 2s
-      timeout: 3s
-      retries: 10
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 3s
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    tmpfs:
+      - /data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
-      timeout: 3s
-      retries: 10
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 3s
 
   backend:
     image: ghcr.io/reicham2/dpw-backend:latest
     restart: unless-stopped
     env_file:
-      - .env
+      - path: ./ .env
+        required: false
+      - path: ./stack.env
+        required: false
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
@@ -53,6 +68,11 @@ services:
       REDIS_TIMEOUT_MS: "250"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -60,16 +80,24 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1"]
-      interval: 2s
-      timeout: 3s
-      retries: 10
+      interval: 15s
+      timeout: 5s
+      retries: 5
       start_period: 3s
 
   frontend:
     image: ghcr.io/reicham2/dpw-frontend:latest
     restart: unless-stopped
     env_file:
-      - .env
+      - path: ./ .env
+        required: false
+      - path: ./stack.env
+        required: false
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "8000:80"
     depends_on:
