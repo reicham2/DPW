@@ -139,6 +139,21 @@ static std::optional<UserRecord> require_strict_admin(HttpRes *res, HttpReq *req
     return user;
 }
 
+// Validates that a string only contains characters safe for use as a Docker
+// label value or service name in a shell command. Docker compose project and
+// service names are restricted to [a-zA-Z0-9_.-] by convention.
+static bool is_safe_shell_label(const std::string &s)
+{
+    if (s.empty() || s.size() > 128)
+        return false;
+    for (unsigned char c : s)
+    {
+        if (!std::isalnum(c) && c != '_' && c != '-' && c != '.')
+            return false;
+    }
+    return true;
+}
+
 struct ShellExecResult
 {
     int exit_code{1};
@@ -197,12 +212,19 @@ static std::string detect_compose_project_name()
     if (!hostname || std::string(hostname).empty())
         return "";
 
+    const std::string host_str(hostname);
+    if (!is_safe_shell_label(host_str))
+        return "";
+
     const auto inspect = run_shell_command(
-        "docker inspect " + std::string(hostname) +
+        "docker inspect " + host_str +
         " --format '{{ index .Config.Labels \"com.docker.compose.project\" }}' 2>&1");
     if (inspect.exit_code != 0)
         return "";
-    return trim_ascii(inspect.output);
+    const std::string project = trim_ascii(inspect.output);
+    if (!is_safe_shell_label(project))
+        return "";
+    return project;
 }
 
 void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db)
@@ -241,6 +263,15 @@ void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db)
     }
 
     auto services = split_lines_nonempty(service_list_exec.output);
+    // Reject any service name that isn't a safe label; these are used in shell commands.
+    for (const auto &svc : services)
+    {
+        if (!is_safe_shell_label(svc))
+        {
+            send_json(res, 500, nlohmann::json{{"error", "Unerwarteter Service-Name im Docker-Output"}}.dump());
+            return;
+        }
+    }
     if (services.empty())
     {
         send_json(res, 200, nlohmann::json{{"services", nlohmann::json::array()}, {"selected_service", nullptr}, {"logs", ""}, {"tail", tail}}.dump());
@@ -266,7 +297,6 @@ void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db)
         const auto exec = run_shell_command(entry.second);
         attempts.push_back({
             {"source", entry.first},
-            {"command", entry.second},
             {"exit_code", exec.exit_code},
         });
 
