@@ -1,5 +1,8 @@
 #include "handlers/internal/shared.hpp"
 
+#include <sys/wait.h>
+#include <unistd.h>
+
 // ── Permission management (admin only) ──────────────────────────────────────
 
 static nlohmann::json role_perm_to_json(const RolePermission &rp)
@@ -139,9 +142,9 @@ static std::optional<UserRecord> require_strict_admin(HttpRes *res, HttpReq *req
     return user;
 }
 
-// Validates that a string only contains characters safe for use as a Docker
-// label value or service name in a shell command. Docker compose project and
-// service names are restricted to [a-zA-Z0-9_.-] by convention.
+// Validates that a string only contains characters safe for Docker labels and
+// names. Docker compose project and service names are restricted to
+// [a-zA-Z0-9_.-] by convention.
 static bool is_safe_shell_label(const std::string &s)
 {
     if (s.empty() || s.size() > 128)
@@ -160,24 +163,61 @@ struct ShellExecResult
     std::string output;
 };
 
-static ShellExecResult run_shell_command(const std::string &command)
+static ShellExecResult run_process_command(const std::vector<std::string> &args)
 {
     ShellExecResult result;
-    FILE *pipe = popen(command.c_str(), "r");
-    if (!pipe)
+    if (args.empty())
     {
-        result.output = "Failed to start command.";
+        result.output = "Missing command.";
         return result;
     }
 
-    std::array<char, 4096> buffer{};
-    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
+    int pipe_fd[2] = {-1, -1};
+    if (pipe(pipe_fd) != 0)
     {
-        result.output.append(buffer.data());
+        result.output = "Failed to create pipe.";
+        return result;
     }
 
-    int status = pclose(pipe);
-    if (status == -1)
+    pid_t pid = fork();
+    if (pid < 0)
+    {
+        close(pipe_fd[0]);
+        close(pipe_fd[1]);
+        result.output = "Failed to start process.";
+        return result;
+    }
+
+    if (pid == 0)
+    {
+        if (dup2(pipe_fd[1], STDOUT_FILENO) < 0 || dup2(pipe_fd[1], STDERR_FILENO) < 0)
+            _exit(127);
+
+        close(pipe_fd[0]);
+        close(pipe_fd[1]);
+
+        std::vector<char *> argv;
+        argv.reserve(args.size() + 1);
+        for (const auto &arg : args)
+            argv.push_back(const_cast<char *>(arg.c_str()));
+        argv.push_back(nullptr);
+
+        execvp(argv[0], argv.data());
+        _exit(127);
+    }
+
+    close(pipe_fd[1]);
+
+    std::array<char, 4096> buffer{};
+    ssize_t bytes_read = 0;
+    while ((bytes_read = read(pipe_fd[0], buffer.data(), buffer.size())) > 0)
+    {
+        result.output.append(buffer.data(), static_cast<std::size_t>(bytes_read));
+    }
+    close(pipe_fd[0]);
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) == -1)
     {
         result.exit_code = 1;
     }
@@ -206,27 +246,6 @@ static std::vector<std::string> split_lines_nonempty(const std::string &text)
     return out;
 }
 
-static std::string detect_compose_project_name()
-{
-    const char *hostname = std::getenv("HOSTNAME");
-    if (!hostname || std::string(hostname).empty())
-        return "";
-
-    const std::string host_str(hostname);
-    if (!is_safe_shell_label(host_str))
-        return "";
-
-    const auto inspect = run_shell_command(
-        "docker inspect " + host_str +
-        " --format '{{ index .Config.Labels \"com.docker.compose.project\" }}' 2>&1");
-    if (inspect.exit_code != 0)
-        return "";
-    const std::string project = trim_ascii(inspect.output);
-    if (!is_safe_shell_label(project))
-        return "";
-    return project;
-}
-
 void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db)
 {
     if (!require_strict_admin(res, req, db))
@@ -246,16 +265,12 @@ void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db)
         }
     }
 
-    const std::string compose_project = detect_compose_project_name();
-    if (compose_project.empty())
-    {
-        send_json(res, 500, nlohmann::json{{"error", "Compose-Projekt konnte nicht ermittelt werden"}}.dump());
-        return;
-    }
-
-    const auto service_list_exec = run_shell_command(
-        "docker ps --filter label=com.docker.compose.project=" + compose_project +
-        " --format '{{.Label \"com.docker.compose.service\"}}' | sort -u 2>&1");
+    const auto service_list_exec = run_process_command({
+        "docker",
+        "ps",
+        "--format",
+        "{{.Label \"com.docker.compose.service\"}}",
+    });
     if (service_list_exec.exit_code != 0)
     {
         send_json(res, 500, nlohmann::json{{"error", "Container-Liste konnte nicht gelesen werden"}, {"details", service_list_exec.output}}.dump());
@@ -263,7 +278,10 @@ void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db)
     }
 
     auto services = split_lines_nonempty(service_list_exec.output);
-    // Reject any service name that isn't a safe label; these are used in shell commands.
+    std::sort(services.begin(), services.end());
+    services.erase(std::unique(services.begin(), services.end()), services.end());
+
+    // Reject unexpected service names before using them in Docker filter args.
     for (const auto &svc : services)
     {
         if (!is_safe_shell_label(svc))
@@ -283,36 +301,70 @@ void handle_get_admin_container_logs(HttpRes *res, HttpReq *req, Database &db)
     if (!requested_service.empty() && std::find(services.begin(), services.end(), requested_service) != services.end())
         selected_service = requested_service;
 
-    std::vector<std::pair<std::string, std::string>> commands = {
-        {"docker compose project service", "docker ps --filter label=com.docker.compose.project=" + compose_project +
-                                               " --filter label=com.docker.compose.service=" + selected_service +
-                                               " --format '{{.Names}}' | xargs -r -I{} docker logs --timestamps --tail " + std::to_string(tail) + " {} 2>&1"},
-        {"docker service fallback", "docker ps --filter label=com.docker.compose.service=" + selected_service +
-                                        " --format '{{.Names}}' | xargs -r -I{} docker logs --timestamps --tail " + std::to_string(tail) + " {} 2>&1"},
+    const auto fetch_logs_for_service = [&](const std::string &service_name)
+    {
+        const auto container_list_exec = run_process_command({
+            "docker",
+            "ps",
+            "--filter",
+            "label=com.docker.compose.service=" + service_name,
+            "--format",
+            "{{.Names}}",
+        });
+        if (container_list_exec.exit_code != 0)
+            return container_list_exec;
+
+        const auto container_names = split_lines_nonempty(container_list_exec.output);
+        ShellExecResult combined;
+        combined.exit_code = 0;
+
+        for (const auto &container : container_names)
+        {
+            if (!is_safe_shell_label(container))
+            {
+                combined.exit_code = 1;
+                combined.output = "Unerwarteter Container-Name im Docker-Output";
+                return combined;
+            }
+
+            const auto logs_exec = run_process_command({
+                "docker",
+                "logs",
+                "--timestamps",
+                "--tail",
+                std::to_string(tail),
+                container,
+            });
+            if (logs_exec.exit_code != 0)
+                return logs_exec;
+
+            if (!combined.output.empty() && !logs_exec.output.empty() && combined.output.back() != '\n')
+                combined.output.push_back('\n');
+            combined.output.append(logs_exec.output);
+        }
+
+        return combined;
     };
 
     nlohmann::json attempts = nlohmann::json::array();
-    for (const auto &entry : commands)
-    {
-        const auto exec = run_shell_command(entry.second);
-        attempts.push_back({
-            {"source", entry.first},
-            {"exit_code", exec.exit_code},
-        });
+    const auto exec = fetch_logs_for_service(selected_service);
+    attempts.push_back({
+        {"source", "docker service"},
+        {"exit_code", exec.exit_code},
+    });
 
-        if (exec.exit_code == 0)
-        {
-            send_json(res, 200, nlohmann::json{
-                                    {"services", services},
-                                    {"selected_service", selected_service},
-                                    {"source", entry.first},
-                                    {"tail", tail},
-                                    {"logs", exec.output},
-                                    {"attempts", attempts},
-                                }
-                                    .dump());
-            return;
-        }
+    if (exec.exit_code == 0)
+    {
+        send_json(res, 200, nlohmann::json{
+                                {"services", services},
+                                {"selected_service", selected_service},
+                                {"source", "docker service"},
+                                {"tail", tail},
+                                {"logs", exec.output},
+                                {"attempts", attempts},
+                            }
+                                .dump());
+        return;
     }
 
     send_json(res, 500, nlohmann::json{
