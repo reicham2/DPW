@@ -19,18 +19,30 @@ COPY backend/CMakeLists.txt .
 COPY backend/deps/ deps/
 
 # Stub sources so cmake configure caches without real src/
-RUN mkdir -p src src/handlers/core src/handlers/domains && for f in main app_config auth cache db handlers ws_manager graph utils wp_client; do \
-  echo "// stub" > src/$f.cpp; \
-  done && echo "// stub" > src/handlers/core/http_core.cpp \
-  && echo "// stub" > src/handlers/core/setup_maintenance.cpp \
-  && echo "// stub" > src/handlers/domains/activities.cpp \
-  && echo "// stub" > src/handlers/domains/users_notifications.cpp \
-  && echo "// stub" > src/handlers/domains/mail.cpp \
-  && echo "// stub" > src/handlers/domains/admin_permissions.cpp \
-  && echo "// stub" > src/handlers/domains/share_ideenkiste.cpp \
-  && echo "// stub" > src/handlers/domains/forms.cpp \
-  && touch src/auth.hpp src/cache.hpp src/db.hpp src/handlers.hpp src/models.hpp \
-  src/ws_manager.hpp src/graph.hpp src/utils.hpp src/wp_client.hpp src/app_config.hpp
+RUN mkdir -p src/core/models src/infra src/db src/utils src/handlers \
+  && echo "// stub" > src/main.cpp \
+  && for f in http request_helpers; do echo "// stub" > src/core/$f.cpp; done \
+  && for f in auth cache app_config ws_manager graph wp_client web_push midata_client weather_client; do \
+       echo "// stub" > src/infra/$f.cpp; done \
+  && for f in db_connection db_activities db_users db_notifications db_forms db_mail db_admin; do \
+       echo "// stub" > src/db/$f.cpp; done \
+  && for f in permissions strings templates activity_helpers; do \
+       echo "// stub" > src/utils/$f.cpp; done \
+  && for f in activities forms mail users notifications admin share_ideenkiste setup_maintenance; do \
+       echo "// stub" > src/handlers/$f.cpp; done \
+  && touch src/core/http.hpp src/core/request_helpers.hpp \
+  && touch src/core/models/all_models.hpp src/core/models/activity.hpp \
+     src/core/models/admin.hpp src/core/models/attachment.hpp src/core/models/form.hpp \
+     src/core/models/ideenkiste.hpp src/core/models/location.hpp src/core/models/mail.hpp \
+     src/core/models/notification.hpp src/core/models/serializers.hpp \
+     src/core/models/share.hpp src/core/models/user.hpp \
+  && touch src/infra/auth.hpp src/infra/cache.hpp src/infra/app_config.hpp \
+     src/infra/ws_manager.hpp src/infra/graph.hpp src/infra/wp_client.hpp \
+     src/infra/web_push.hpp src/infra/midata_client.hpp src/infra/weather_client.hpp \
+  && touch src/db/database.hpp \
+  && touch src/utils/permissions.hpp src/utils/strings.hpp src/utils/templates.hpp \
+     src/utils/activity_helpers.hpp \
+  && touch src/handlers/handlers.hpp src/handlers/handler_deps.hpp
 
 ARG BACKEND_BUILD_TYPE=Release
 ARG ENABLE_DEBUG_AUTH=0

@@ -1,9 +1,9 @@
 #include "App.h"
-#include "app_config.hpp"
-#include "db.hpp"
-#include "ws_manager.hpp"
-#include "handlers.hpp"
-#include "utils.hpp"
+#include "infra/app_config.hpp"
+#include "db/database.hpp"
+#include "infra/ws_manager.hpp"
+#include "handlers/handlers.hpp"
+#include "utils/strings.hpp"
 #include <cstdlib>
 #include <string>
 #include <cstdio>

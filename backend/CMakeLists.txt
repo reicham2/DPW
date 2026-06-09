@@ -42,25 +42,60 @@ set(USOCKETS_SOURCES
 )
 set_source_files_properties(${USOCKETS_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
 
+# ── Modular source groups ────────────────────────────────────────────────────
+
+set(CORE_SOURCES
+    src/core/http.cpp
+    src/core/request_helpers.cpp
+)
+
+set(INFRA_SOURCES
+    src/infra/auth.cpp
+    src/infra/cache.cpp
+    src/infra/app_config.cpp
+    src/infra/ws_manager.cpp
+    src/infra/graph.cpp
+    src/infra/wp_client.cpp
+    src/infra/web_push.cpp
+    src/infra/midata_client.cpp
+    src/infra/weather_client.cpp
+)
+
+set(DB_SOURCES
+    src/db/db_connection.cpp
+    src/db/db_activities.cpp
+    src/db/db_users.cpp
+    src/db/db_notifications.cpp
+    src/db/db_forms.cpp
+    src/db/db_mail.cpp
+    src/db/db_admin.cpp
+)
+
+set(UTILS_SOURCES
+    src/utils/permissions.cpp
+    src/utils/strings.cpp
+    src/utils/templates.cpp
+    src/utils/activity_helpers.cpp
+)
+
+set(HANDLER_SOURCES
+    src/handlers/activities.cpp
+    src/handlers/forms.cpp
+    src/handlers/mail.cpp
+    src/handlers/users.cpp
+    src/handlers/notifications.cpp
+    src/handlers/admin.cpp
+    src/handlers/share_ideenkiste.cpp
+    src/handlers/setup_maintenance.cpp
+)
+
 add_executable(server
     src/main.cpp
-    src/app_config.cpp
-    src/cache.cpp
-    src/db.cpp
-    src/handlers.cpp
-    src/handlers/core/http_core.cpp
-    src/handlers/core/setup_maintenance.cpp
-    src/handlers/domains/activities.cpp
-    src/handlers/domains/users_notifications.cpp
-    src/handlers/domains/mail.cpp
-    src/handlers/domains/admin_permissions.cpp
-    src/handlers/domains/share_ideenkiste.cpp
-    src/handlers/domains/forms.cpp
-    src/auth.cpp
-    src/ws_manager.cpp
-    src/graph.cpp
-    src/utils.cpp
-    src/wp_client.cpp
+    ${CORE_SOURCES}
+    ${INFRA_SOURCES}
+    ${DB_SOURCES}
+    ${UTILS_SOURCES}
+    ${HANDLER_SOURCES}
     ${USOCKETS_SOURCES}
 )
 
@@ -117,8 +152,10 @@ if (BUILD_TESTS)
         tests/test_auth.cpp
         tests/test_utils.cpp
         tests/test_models.cpp
-        src/utils.cpp
-        src/auth.cpp
+        src/utils/strings.cpp
+        src/utils/permissions.cpp
+        src/utils/templates.cpp
+        src/infra/auth.cpp
     )
 
     target_include_directories(run_tests PRIVATE

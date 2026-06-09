@@ -1,4 +1,6 @@
-#include "utils.hpp"
+#include "utils/permissions.hpp"
+#include "utils/strings.hpp"
+#include "utils/templates.hpp"
 #include "test_harness.hpp"
 #include "test_fixtures.hpp"
 
