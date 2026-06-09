@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
-import { ChevronDown, Cog, Lock, MapPin, Package, Trash2, Users } from 'lucide-vue-next'
+import { ChevronDown, Cog, Lock, Package, Trash2, Users } from 'lucide-vue-next'
 import { user as currentUser } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -37,8 +37,14 @@ const canEditRoles = computed(() => {
 const canSeePermissionsTab = computed(() => canManageSystem())
 const canSeeLocationsTab = computed(() => canManageLocations())
 const canSeeMaterialsTab = computed(() => canManageMaterials())
+const canSeeResourcesTab = computed(() => canSeeLocationsTab.value || canSeeMaterialsTab.value)
 const canSeeTrashTab = computed(() => currentUser.value?.role === 'admin')
 const canSeeLogsTab = computed(() => currentUser.value?.role === 'admin')
+const resourcesTabLabel = computed(() => {
+  if (activeTab.value !== 'resources') return 'Ressourcen'
+  if (resourcesTab.value === 'materials') return 'Ressourcen: Materialverantwortliche'
+  return 'Ressourcen: Orte'
+})
 const systemTabLabel = computed(() => {
   if (activeTab.value !== 'system') return 'System'
   if (systemTab.value === 'logs') return 'System: Container Logs'
@@ -47,7 +53,9 @@ const systemTabLabel = computed(() => {
 })
 
 // ── Tab management ──────────────────────────────────────────────────────────
-const activeTab = ref<'users' | 'permissions' | 'locations' | 'materials' | 'trash' | 'system'>('users')
+const activeTab = ref<'users' | 'permissions' | 'resources' | 'trash' | 'system'>('users')
+const resourcesTab = ref<'locations' | 'materials'>('locations')
+const resourcesMenuOpen = ref(false)
 const systemTab = ref<'settings' | 'maintenance' | 'logs'>('settings')
 const systemMenuOpen = ref(false)
 
@@ -90,10 +98,9 @@ onMounted(async () => {
     return
   }
   // Set default tab based on permissions
-  if (!canManageUsers() && canManageLocations()) {
-    activeTab.value = 'locations'
-  } else if (!canManageUsers() && !canManageLocations() && canManageMaterials()) {
-    activeTab.value = 'materials'
+  if (!canManageUsers() && (canManageLocations() || canManageMaterials())) {
+    activeTab.value = 'resources'
+    resourcesTab.value = canManageLocations() ? 'locations' : 'materials'
   }
   // Lock filter to own dept if user can only manage own dept
   if (myPermissions.value?.user_dept_scope === 'own_dept') {
@@ -234,6 +241,7 @@ function closeSystemMenu() {
 
 function toggleSystemMenu() {
   systemMenuOpen.value = !systemMenuOpen.value
+  if (systemMenuOpen.value) resourcesMenuOpen.value = false
 }
 
 function selectSystemTab(tab: 'settings' | 'maintenance' | 'logs') {
@@ -242,11 +250,23 @@ function selectSystemTab(tab: 'settings' | 'maintenance' | 'logs') {
   systemMenuOpen.value = false
 }
 
+function toggleResourcesMenu() {
+  resourcesMenuOpen.value = !resourcesMenuOpen.value
+  if (resourcesMenuOpen.value) systemMenuOpen.value = false
+}
+
+function selectResourcesTab(tab: 'locations' | 'materials') {
+  resourcesTab.value = tab
+  activeTab.value = 'resources'
+  resourcesMenuOpen.value = false
+}
+
 function handleDocumentClick(event: MouseEvent) {
   const target = event.target
   if (!(target instanceof Element)) return
-  if (target.closest('.system-tab-menu')) return
+  if (target.closest('.system-tab-menu') || target.closest('.resources-tab-menu')) return
   closeSystemMenu()
+  resourcesMenuOpen.value = false
 }
 
 function startContainerLogPolling() {
@@ -453,24 +473,38 @@ onMounted(() => {
       <Lock :size="16" aria-hidden="true" />
       Stufen &amp; Rollen
     </button>
-    <button
-      v-if="canSeeLocationsTab"
-      class="tab-btn"
-      :class="{ 'tab-btn--active': activeTab === 'locations' }"
-      @click="activeTab = 'locations'"
-    >
-      <MapPin :size="16" aria-hidden="true" />
-      Orte
-    </button>
-    <button
-      v-if="canSeeMaterialsTab"
-      class="tab-btn"
-      :class="{ 'tab-btn--active': activeTab === 'materials' }"
-      @click="activeTab = 'materials'"
-    >
-      <Package :size="16" aria-hidden="true" />
-      Materialverantwortliche
-    </button>
+    <div v-if="canSeeResourcesTab" class="resources-tab-menu">
+      <button
+        class="tab-btn"
+        :class="{ 'tab-btn--active': activeTab === 'resources' || resourcesMenuOpen }"
+        @click.stop="toggleResourcesMenu()"
+      >
+        <Package :size="16" aria-hidden="true" />
+        {{ resourcesTabLabel }}
+        <ChevronDown :size="14" aria-hidden="true" class="system-tab-caret" :class="{ 'system-tab-caret--open': resourcesMenuOpen }" />
+      </button>
+
+      <div v-if="resourcesMenuOpen" class="system-tab-dropdown">
+        <button
+          v-if="canSeeLocationsTab"
+          type="button"
+          class="system-tab-dropdown-item"
+          :class="{ 'system-tab-dropdown-item--active': activeTab === 'resources' && resourcesTab === 'locations' }"
+          @click="selectResourcesTab('locations')"
+        >
+          Orte
+        </button>
+        <button
+          v-if="canSeeMaterialsTab"
+          type="button"
+          class="system-tab-dropdown-item"
+          :class="{ 'system-tab-dropdown-item--active': activeTab === 'resources' && resourcesTab === 'materials' }"
+          @click="selectResourcesTab('materials')"
+        >
+          Materialverantwortliche
+        </button>
+      </div>
+    </div>
     <button
       v-if="canSeeTrashTab"
       class="tab-btn"
@@ -605,14 +639,10 @@ onMounted(() => {
     <RoleManager />
   </main>
 
-  <!-- Tab: Orte (locations_manage_scope = all) -->
-  <main v-else-if="activeTab === 'locations' && canSeeLocationsTab" class="main">
-    <LocationManager />
-  </main>
-
-  <!-- Tab: Material (materials_manage_scope = all) -->
-  <main v-else-if="activeTab === 'materials' && canSeeMaterialsTab" class="main">
-    <MaterialManager />
+  <!-- Tab: Ressourcen (Orte + Materialverantwortliche) -->
+  <main v-else-if="activeTab === 'resources' && canSeeResourcesTab" class="main">
+    <LocationManager v-if="resourcesTab === 'locations' && canSeeLocationsTab" />
+    <MaterialManager v-else-if="resourcesTab === 'materials' && canSeeMaterialsTab" />
   </main>
 
   <main v-else-if="activeTab === 'trash' && canSeeTrashTab" class="main">
@@ -859,7 +889,8 @@ onMounted(() => {
   border-bottom-color: var(--accent);
 }
 
-.system-tab-menu {
+.system-tab-menu,
+.resources-tab-menu {
   position: relative;
 }
 

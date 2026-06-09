@@ -65,6 +65,7 @@ void handle_get_my_permissions(HttpRes *res, HttpReq *req, Database &db)
                 {"user_dept_scope", "all"},
                 {"user_role_scope", "all"},
                 {"locations_manage_scope", "all"},
+                {"materials_manage_scope", "all"},
                 {"ideenkiste_scope", "all"},
                 {"ideenkiste_add_scope", "all"},
                 {"ideenkiste_delete_scope", "all"},
