@@ -85,23 +85,10 @@ function markdownToHtml(md: string): string {
     .replace(/\n/g, '<br>')
 }
 
-function htmlToMarkdown(html: string): string {
-  return html
-    .replace(/<strong>(.*?)<\/strong>/gi, '**$1**')
-    .replace(/<b>(.*?)<\/b>/gi, '**$1**')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<div>/gi, '\n')
-    .replace(/<\/div>/gi, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
-}
-
 function onEditorInput() {
   if (editorRef.value) {
-    description.value = htmlToMarkdown(editorRef.value.innerHTML)
+    // Read editor content as plain text to avoid HTML/entity parsing pitfalls.
+    description.value = editorRef.value.innerText.replace(/\u00a0/g, ' ')
   }
 }
 
