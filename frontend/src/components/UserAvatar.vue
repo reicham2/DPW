@@ -5,6 +5,7 @@
 				class="avatar-circle"
 				@click="open = !open"
 				:title="user.display_name"
+				:style="{ backgroundColor: user.avatar_color || '#4f8cff', color: '#fff', borderColor: user.avatar_color || '#4f8cff' }"
 			>
 				{{ initials }}
 				<span v-if="unreadCount > 0" class="avatar-notification-badge">{{ unreadCount }}</span>

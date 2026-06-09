@@ -6,7 +6,7 @@
   <main class="page-content">
     <div class="profile-card">
       <div class="profile-identity">
-        <div class="profile-avatar-large">{{ initials }}</div>
+        <div class="profile-avatar-large" :style="{ backgroundColor: form.avatar_color }">{{ initials }}</div>
         <div class="profile-identity-info">
           <span class="profile-identity-name">{{ user?.display_name }}</span>
           <DepartmentBadge v-if="form.department" :department="form.department" />
@@ -14,7 +14,7 @@
         </div>
       </div>
 
-      <form class="profile-form" @submit.prevent="save">
+      <div class="profile-form">
 
         <div class="form-group">
           <label class="form-label">E-Mail</label>
@@ -117,6 +117,46 @@
           </div>
         </div>
 
+        <div class="form-group">
+          <label class="form-label">Avatar-Farbe</label>
+          <div class="color-picker-row">
+            <button
+              v-for="color in avatarColors"
+              :key="color"
+              type="button"
+              class="color-swatch"
+              :class="{ 'color-swatch--active': form.avatar_color === color }"
+              :style="{ backgroundColor: color }"
+              @click="form.avatar_color = color"
+            />
+            <label
+              class="color-swatch color-swatch--custom"
+              :class="{ 'color-swatch--active': !avatarColors.includes(form.avatar_color) }"
+              :style="{ backgroundColor: form.avatar_color }"
+              title="Eigene Farbe wählen"
+            >
+              <input
+                type="color"
+                class="color-input-native"
+                :value="form.avatar_color"
+                @input="form.avatar_color = ($event.target as HTMLInputElement).value"
+              />
+              <span class="color-swatch-icon">✎</span>
+            </label>
+          </div>
+          <div v-if="!avatarColors.includes(form.avatar_color)" class="color-hex-input-row">
+            <input
+              type="text"
+              class="form-input color-hex-input"
+              :value="form.avatar_color"
+              maxlength="7"
+              placeholder="#ff0000"
+              @input="onHexInput($event)"
+            />
+            <span class="color-hex-preview" :style="{ backgroundColor: form.avatar_color }" />
+          </div>
+        </div>
+
         <div class="form-row-2">
           <div class="form-group">
             <label class="form-label">Benachrichtigungen abonnieren</label>
@@ -160,17 +200,13 @@
 
         <ErrorAlert :error="error" />
         <div v-if="saved" class="profile-success">Gespeichert!</div>
-
-        <button type="submit" class="btn-primary" :disabled="saving">
-          {{ saving ? 'Speichern...' : 'Speichern' }}
-        </button>
-      </form>
+      </div>
     </div>
   </main>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { user } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import { usePermissions } from '../composables/usePermissions'
@@ -182,9 +218,16 @@ import type { User, TimeDisplayMode } from '../types'
 
 const { myPermissions, fetchMyPermissions, departments: deptRecords, fetchDepartments } = usePermissions()
 
+const avatarColors = [
+  '#4f8cff', '#6c5ce7', '#e84393', '#fd79a8',
+  '#e17055', '#fdcb6e', '#00b894', '#0984e3',
+  '#636e72', '#2d3436',
+]
+
 const form = ref({
   department:   user.value?.department   ?? '',
   time_display_mode: (user.value?.time_display_mode ?? 'minutes') as TimeDisplayMode,
+  avatar_color: user.value?.avatar_color ?? '#4f8cff',
   notify_material_assigned: user.value?.notify_material_assigned ?? true,
   notify_activity_assigned: user.value?.notify_activity_assigned ?? true,
   notify_program_assigned: user.value?.notify_program_assigned ?? true,
@@ -205,13 +248,22 @@ const initials = computed(() => {
   return words.slice(0, 2).map(w => w[0].toUpperCase()).join('')
 })
 
+function onHexInput(e: Event) {
+  const val = (e.target as HTMLInputElement).value
+  if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+    form.value.avatar_color = val
+  }
+}
+
 let initialLoaded = false
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   await Promise.all([fetchMyPermissions(), fetchDepartments()])
   if (user.value) {
     form.value.department   = user.value.department ?? ''
     form.value.time_display_mode = user.value.time_display_mode ?? 'minutes'
+    form.value.avatar_color = user.value.avatar_color ?? '#4f8cff'
     form.value.notify_material_assigned = user.value.notify_material_assigned ?? true
     form.value.notify_activity_assigned = user.value.notify_activity_assigned ?? true
     form.value.notify_program_assigned = user.value.notify_program_assigned ?? true
@@ -223,6 +275,16 @@ onMounted(async () => {
   initialLoaded = true
 })
 
+onUnmounted(() => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+})
+
+watch(form, () => {
+  if (!initialLoaded) return
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(save, 500)
+}, { deep: true })
+
 async function save() {
   saving.value = true
   saved.value  = false
@@ -233,6 +295,7 @@ async function save() {
       body: JSON.stringify({
         department:   form.value.department || null,
         time_display_mode: form.value.time_display_mode,
+        avatar_color: form.value.avatar_color,
         notify_material_assigned: form.value.notify_material_assigned,
         notify_activity_assigned: form.value.notify_activity_assigned,
         notify_program_assigned: form.value.notify_program_assigned,
@@ -244,7 +307,6 @@ async function save() {
     })
     if (!res.ok) throw new Error(await res.text())
     const updated: User = await res.json()
-    // Update global user state
     if (user.value) Object.assign(user.value, updated)
 
     if (form.value.notify_channel_websocket) {
@@ -252,7 +314,7 @@ async function save() {
     }
     await syncPushSubscription(form.value.notify_channel_websocket)
     saved.value = true
-    setTimeout(() => { saved.value = false }, 3000)
+    setTimeout(() => { saved.value = false }, 2000)
   } catch (e) {
     error.value = String(e)
   } finally {
@@ -526,5 +588,63 @@ async function save() {
   height: 10px;
   background: #1f2937;
   transform: rotate(45deg);
+}
+.color-picker-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.color-swatch:hover {
+  transform: scale(1.15);
+}
+.color-swatch--active {
+  border-color: var(--text-primary);
+  transform: scale(1.15);
+}
+.color-swatch--custom {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+.color-input-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.color-swatch-icon {
+  font-size: 0.75rem;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+.color-hex-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.color-hex-input {
+  width: 100px;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+.color-hex-preview {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
 }
 </style>

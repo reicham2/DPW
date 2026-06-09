@@ -5,6 +5,7 @@
 #include "json.hpp"
 #include <unordered_set>
 #include <cstdlib>
+#include <regex>
 
 std::string activity_absolute_link(Database &db, const std::string &activity_id)
 {
@@ -64,12 +65,57 @@ std::string normalize_assignee_key(const std::string &name)
     return to_lower_ascii(trim_ascii(name));
 }
 
+static const std::regex uuid_regex(
+    "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    std::regex::icase | std::regex::optimize);
+
+bool is_uuid_format(const std::string &s)
+{
+    return s.size() == 36 && std::regex_match(s, uuid_regex);
+}
+
+std::vector<std::string> resolve_ids_to_display_names(
+    const std::vector<std::string> &entries,
+    const std::vector<UserRecord> &all_users)
+{
+    std::vector<std::string> out;
+    out.reserve(entries.size());
+    for (const auto &entry : entries)
+    {
+        const std::string trimmed = trim_ascii(entry);
+        if (is_uuid_format(trimmed))
+        {
+            bool found = false;
+            for (const auto &u : all_users)
+            {
+                if (u.id == trimmed)
+                {
+                    out.push_back(u.display_name);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                out.push_back(trimmed);
+        }
+        else
+        {
+            out.push_back(trimmed);
+        }
+    }
+    return out;
+}
+
 bool user_matches_assignee(const UserRecord &user, const std::string &assignee)
 {
-    const std::string assignee_key = normalize_assignee_key(assignee);
-    if (assignee_key.empty())
+    const std::string trimmed = trim_ascii(assignee);
+    if (trimmed.empty())
         return false;
 
+    if (trimmed == user.id)
+        return true;
+
+    const std::string assignee_key = to_lower_ascii(trimmed);
     if (assignee_key == normalize_assignee_key(user.display_name))
         return true;
     if (assignee_key == normalize_assignee_key(user.email))

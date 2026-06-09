@@ -18,6 +18,7 @@ struct UserRecord
     bool notify_mail_department{true};
     bool notify_channel_websocket{true};
     bool notify_channel_email{false};
+    std::string avatar_color{"#4f8cff"};
     std::string created_at;
     std::string updated_at;
 };

@@ -82,7 +82,8 @@ public:
                                           const std::optional<bool> &notify_mail_own_activity = std::nullopt,
                                           const std::optional<bool> &notify_mail_department = std::nullopt,
                                           const std::optional<bool> &notify_channel_websocket = std::nullopt,
-                                          const std::optional<bool> &notify_channel_email = std::nullopt);
+                                          const std::optional<bool> &notify_channel_email = std::nullopt,
+                                          const std::optional<std::string> &avatar_color = std::nullopt);
     // Admin: update any user's display_name, department and role.
     std::optional<UserRecord> update_user_admin(const std::string &id,
                                                 const std::string &display_name,

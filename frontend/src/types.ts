@@ -127,6 +127,7 @@ export interface User {
 	notify_mail_department: boolean;
 	notify_channel_websocket: boolean;
 	notify_channel_email: boolean;
+	avatar_color: string;
 	created_at: string;
 	updated_at: string;
 }

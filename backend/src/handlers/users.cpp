@@ -17,6 +17,7 @@ static nlohmann::json user_to_json(const UserRecord &u)
     j["notify_mail_department"] = u.notify_mail_department;
     j["notify_channel_websocket"] = u.notify_channel_websocket;
     j["notify_channel_email"] = u.notify_channel_email;
+    j["avatar_color"] = u.avatar_color;
     j["created_at"] = u.created_at;
     j["updated_at"] = u.updated_at;
     return j;
@@ -562,6 +563,14 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             notify_channel_email = j["notify_channel_email"].get<bool>();
         }
 
+        std::optional<std::string> avatar_color;
+        if (j.contains("avatar_color") && j["avatar_color"].is_string()) {
+            std::string color = j["avatar_color"].get<std::string>();
+            if (color.size() == 7 && color[0] == '#') {
+                avatar_color = color;
+            }
+        }
+
         try {
             auto user = db.update_user(
                 current_user->microsoft_oid,
@@ -574,7 +583,8 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
                 notify_mail_own_activity,
                 notify_mail_department,
                 notify_channel_websocket,
-                notify_channel_email
+                notify_channel_email,
+                avatar_color
             );
             if (!user) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");

@@ -1,10 +1,12 @@
 #include "utils/templates.hpp"
 #include "utils/strings.hpp"
+#include "utils/activity_helpers.hpp"
 #include <map>
 
 // ── Template variable substitution ──────────────────────────────────────────
 
-std::string replace_template_vars(const std::string &text, const Activity &act)
+std::string replace_template_vars(const std::string &text, const Activity &act,
+                                  const std::vector<UserRecord> &all_users)
 {
     if (text.find("{{") == std::string::npos)
         return text;
@@ -16,12 +18,13 @@ std::string replace_template_vars(const std::string &text, const Activity &act)
     vars["endzeit"] = act.end_time;
     vars["ort"] = act.location;
     {
+        auto resolved = resolve_ids_to_display_names(act.responsible, all_users);
         std::string r;
-        for (size_t i = 0; i < act.responsible.size(); ++i)
+        for (size_t i = 0; i < resolved.size(); ++i)
         {
             if (i)
                 r += ", ";
-            r += act.responsible[i];
+            r += resolved[i];
         }
         vars["verantwortlich"] = r;
     }
@@ -58,12 +61,13 @@ std::string replace_template_vars(const std::string &text, const Activity &act)
             p += " \xe2\x80\x93 " + pr.title;
             if (!pr.responsible.empty())
             {
+                auto resolved_pr = resolve_ids_to_display_names(pr.responsible, all_users);
                 std::string rj;
-                for (size_t ri = 0; ri < pr.responsible.size(); ++ri)
+                for (size_t ri = 0; ri < resolved_pr.size(); ++ri)
                 {
                     if (ri)
                         rj += ", ";
-                    rj += pr.responsible[ri];
+                    rj += resolved_pr[ri];
                 }
                 p += " (" + rj + ")";
             }

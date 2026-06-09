@@ -294,7 +294,7 @@ async function loadActivityFormsPage(id: string) {
 		act &&
 		user.value &&
 		myPermissions.value &&
-		!canForms(act, user.value.display_name, user.value.department)
+		!canForms(act, user.value.id, user.value.department)
 	) {
 		router.replace(`/activities/${id}`);
 		return;

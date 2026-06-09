@@ -239,6 +239,13 @@ void handle_get_shared_activity(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
+        // Resolve user IDs to display names for public view
+        auto all_users = db.list_users();
+        activity->responsible = resolve_ids_to_display_names(activity->responsible, all_users);
+        for (auto &p : activity->programs)
+            p.responsible = resolve_ids_to_display_names(p.responsible, all_users);
+        for (auto &m : activity->material)
+            m.responsible = resolve_ids_to_display_names(m.responsible, all_users);
         send_json(res, 200, to_json(*activity).dump());
     }
     catch (std::exception &e)

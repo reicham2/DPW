@@ -31,6 +31,7 @@ UserRecord Database::row_to_user(PGresult *res, int row)
     u.notify_mail_department = col("notify_mail_department") ? std::string(col("notify_mail_department")) == "t" : true;
     u.notify_channel_websocket = col("notify_channel_websocket") ? std::string(col("notify_channel_websocket")) == "t" : true;
     u.notify_channel_email = col("notify_channel_email") ? std::string(col("notify_channel_email")) == "t" : false;
+    u.avatar_color = col("avatar_color") ? col("avatar_color") : "#4f8cff";
     u.created_at = col("created_at") ? col("created_at") : "";
     u.updated_at = col("updated_at") ? col("updated_at") : "";
     if (col("department"))
@@ -67,7 +68,7 @@ std::vector<UserRecord> Database::list_users()
     PGresult *res = PQexec(conn_,
                            "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
                            "       notify_material_assigned, notify_activity_assigned, notify_program_assigned, notify_mail_own_activity, notify_mail_department, "
-                           "       notify_channel_websocket, notify_channel_email, "
+                           "       notify_channel_websocket, notify_channel_email, avatar_color, "
                            "       created_at, updated_at "
                            "FROM users ORDER BY display_name");
 
@@ -121,7 +122,7 @@ std::optional<UserRecord> Database::upsert_user(const std::string &oid,
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
         "          notify_material_assigned, notify_activity_assigned, notify_program_assigned, "
         "          notify_mail_own_activity, notify_mail_department, "
-        "          notify_channel_websocket, notify_channel_email, "
+        "          notify_channel_websocket, notify_channel_email, avatar_color, "
         "          created_at, updated_at";
 
     const char *params[3] = {oid.c_str(), email.c_str(), display_name.c_str()};
@@ -146,7 +147,7 @@ std::optional<UserRecord> Database::get_user_by_oid(const std::string &oid)
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
                                  "       notify_material_assigned, notify_activity_assigned, notify_program_assigned, notify_mail_own_activity, notify_mail_department, "
-                                 "       notify_channel_websocket, notify_channel_email, "
+                                 "       notify_channel_websocket, notify_channel_email, avatar_color, "
                                  "       created_at, updated_at "
                                  "FROM users WHERE microsoft_oid = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -170,7 +171,7 @@ std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
                                  "       notify_material_assigned, notify_activity_assigned, notify_program_assigned, notify_mail_own_activity, notify_mail_department, "
-                                 "       notify_channel_websocket, notify_channel_email, "
+                                 "       notify_channel_websocket, notify_channel_email, avatar_color, "
                                  "       created_at, updated_at "
                                  "FROM users WHERE id = $1",
                                  1, nullptr, params, nullptr, nullptr, 0);
@@ -197,7 +198,8 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
                                                 const std::optional<bool> &notify_mail_own_activity,
                                                 const std::optional<bool> &notify_mail_department,
                                                 const std::optional<bool> &notify_channel_websocket,
-                                                const std::optional<bool> &notify_channel_email)
+                                                const std::optional<bool> &notify_channel_email,
+                                                const std::optional<std::string> &avatar_color)
 {
     ensure_connected();
     std::string dept_str = department ? *department : "";
@@ -222,12 +224,14 @@ std::optional<UserRecord> Database::update_user(const std::string &oid,
         sql += std::string(", notify_channel_websocket = ") + (*notify_channel_websocket ? "true" : "false");
     if (notify_channel_email.has_value())
         sql += std::string(", notify_channel_email = ") + (*notify_channel_email ? "true" : "false");
+    if (avatar_color.has_value())
+        sql += ", avatar_color = '" + *avatar_color + "'";
     sql +=
         " WHERE microsoft_oid = $2 "
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
         "          notify_material_assigned, notify_activity_assigned, notify_program_assigned, "
         "          notify_mail_own_activity, notify_mail_department, "
-        "          notify_channel_websocket, notify_channel_email, "
+        "          notify_channel_websocket, notify_channel_email, avatar_color, "
         "          created_at, updated_at";
 
     const char *params[2] = {display_name.c_str(), oid.c_str()};
@@ -261,7 +265,7 @@ std::optional<UserRecord> Database::update_user_admin(const std::string &id,
         "RETURNING id, microsoft_oid, email, display_name, department, role, time_display_mode, "
         "          notify_material_assigned, notify_activity_assigned, notify_program_assigned, "
         "          notify_mail_own_activity, notify_mail_department, "
-        "          notify_channel_websocket, notify_channel_email, "
+        "          notify_channel_websocket, notify_channel_email, avatar_color, "
         "          created_at, updated_at";
 
     const char *params[3] = {display_name.c_str(), role.c_str(), id.c_str()};

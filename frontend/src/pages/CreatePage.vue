@@ -56,7 +56,7 @@ async function submit() {
     end_time:        end_time.value,
     goal:            '',
     location:        '',
-    responsible:     user.value ? [user.value.display_name] : [],
+    responsible:     user.value ? [user.value.id] : [],
     department:      department.value,
     material:        [],
     bad_weather_info: null,

@@ -45,6 +45,15 @@ bool can_read_dept(const RolePermission &perm, const UserRecord &user,
 bool is_activity_responsible(const Activity &activity, const UserRecord &user,
                              const std::string &email)
 {
+    for (const auto &responsible : activity.responsible)
+    {
+        const std::string trimmed = trim_ascii(responsible);
+        if (trimmed.empty())
+            continue;
+        if (trimmed == user.id)
+            return true;
+    }
+
     auto normalize = [](const std::string &value)
     {
         return to_lower_ascii(trim_ascii(value));

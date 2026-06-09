@@ -66,7 +66,7 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
 		end_time: '12:00',
 		goal: 'Ziel',
 		location: 'Ort',
-		responsible: ['Anna'],
+		responsible: ['user-anna-id'],
 		department: 'Pfadi',
 		material: [],
 		tn_material: [],
@@ -187,10 +187,10 @@ describe('usePermissions', () => {
 
 		const activity = makeActivity({
 			department: 'Pfadi',
-			responsible: ['Anna'],
+			responsible: ['user-anna-id'],
 		});
-		expect(p.canReadActivity(activity, 'Anna', 'Pfadi')).toBe(true);
-		expect(p.canForms(activity, 'Anna', 'Wolfe')).toBe(true);
+		expect(p.canReadActivity(activity, 'user-anna-id', 'Pfadi')).toBe(true);
+		expect(p.canForms(activity, 'user-anna-id', 'Wolfe')).toBe(true);
 		expect(p.canManageUsers()).toBe(true);
 		expect(p.canManageSystem()).toBe(true);
 		expect(p.canManageLocations()).toBe(true);

@@ -497,14 +497,15 @@ void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
         auto act = db.get_activity_by_id(form->activity_id);
         if (act)
         {
-            form->title = replace_template_vars(form->title, *act);
+            auto all_users = db.list_users();
+            form->title = replace_template_vars(form->title, *act, all_users);
             for (auto &q : form->questions)
             {
-                q.question_text = replace_template_vars(q.question_text, *act);
+                q.question_text = replace_template_vars(q.question_text, *act, all_users);
                 // Also resolve subtitle in section metadata
                 if (q.metadata.contains("subtitle") && q.metadata["subtitle"].is_string())
                 {
-                    q.metadata["subtitle"] = replace_template_vars(q.metadata["subtitle"].get<std::string>(), *act);
+                    q.metadata["subtitle"] = replace_template_vars(q.metadata["subtitle"].get<std::string>(), *act, all_users);
                 }
                 // Resolve choice labels
                 if (q.metadata.contains("choices") && q.metadata["choices"].is_array())
@@ -513,7 +514,7 @@ void handle_get_public_form(HttpRes *res, HttpReq *req, Database &db)
                     {
                         if (c.contains("label") && c["label"].is_string())
                         {
-                            c["label"] = replace_template_vars(c["label"].get<std::string>(), *act);
+                            c["label"] = replace_template_vars(c["label"].get<std::string>(), *act, all_users);
                         }
                     }
                 }

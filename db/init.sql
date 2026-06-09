@@ -227,6 +227,7 @@ CREATE TABLE IF NOT EXISTS users (
     notify_mail_department BOOLEAN NOT NULL DEFAULT true,
     notify_channel_websocket BOOLEAN NOT NULL DEFAULT true,
     notify_channel_email BOOLEAN NOT NULL DEFAULT false,
+    avatar_color  TEXT        NOT NULL DEFAULT '#4f8cff',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -237,6 +238,8 @@ CREATE TRIGGER trg_users_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE INDEX IF NOT EXISTS idx_users_microsoft_oid ON users (microsoft_oid);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_color TEXT NOT NULL DEFAULT '#4f8cff';
 
 DO $$
 BEGIN

@@ -897,7 +897,8 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                     std::string time_range = activity->start_time + "-" + activity->end_time;
                     std::string date_short = format_date_ddmmyyyy(activity->date);
                     std::string full_link = activity_absolute_link(db, activity->id);
-                    std::string recipients_text = join_display(all_assigned);
+                    auto all_assigned_names = resolve_ids_to_display_names(all_assigned, users);
+                    std::string recipients_text = join_display(all_assigned_names);
                     nlohmann::json payload = {
                         {"activity_id", activity->id},
                         {"activity_title", activity->title},
@@ -905,8 +906,8 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                         {"activity_date_display", date_short},
                         {"activity_time", time_range},
                         {"location", activity->location},
-                        {"assigned_users", all_assigned},
-                        {"recipients", all_assigned},
+                        {"assigned_users", all_assigned_names},
+                        {"recipients", all_assigned_names},
                         {"notification_recipient_name", u.display_name},
                         {"notification_recipient_email", u.email},
                         {"triggered_by_name", current_user->display_name},
@@ -951,7 +952,8 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                         std::string time_range = activity->start_time + "-" + activity->end_time;
                         std::string date_short = format_date_ddmmyyyy(activity->date);
                         std::string full_link = activity_absolute_link(db, activity->id);
-                        std::string recipients_text = join_display(activity->responsible);
+                        auto responsible_names = resolve_ids_to_display_names(activity->responsible, users);
+                        std::string recipients_text = join_display(responsible_names);
                         nlohmann::json payload = {
                             {"activity_id", activity->id},
                             {"activity_title", activity->title},
@@ -959,7 +961,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                             {"activity_date_display", date_short},
                             {"activity_time", time_range},
                             {"location", activity->location},
-                            {"assigned_users", activity->responsible},
+                            {"assigned_users", responsible_names},
                             {"notification_recipient_name", u.display_name},
                             {"notification_recipient_email", u.email},
                             {"triggered_by_name", current_user->display_name},
@@ -1172,7 +1174,8 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                         std::string time_range = activity->start_time + "-" + activity->end_time;
                         std::string date_short = format_date_ddmmyyyy(activity->date);
                         std::string full_link = activity_absolute_link(db, activity->id);
-                        std::string recipients_text = join_display(new_assigned);
+                        auto new_assigned_names = resolve_ids_to_display_names(new_assigned, users);
+                        std::string recipients_text = join_display(new_assigned_names);
                         nlohmann::json payload = {
                             {"activity_id", activity->id},
                             {"activity_title", activity->title},
@@ -1180,9 +1183,9 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                             {"activity_date_display", date_short},
                             {"activity_time", time_range},
                             {"location", activity->location},
-                            {"assigned_users", new_assigned},
-                            {"newly_assigned_users", newly_assigned},
-                            {"recipients", new_assigned},
+                            {"assigned_users", new_assigned_names},
+                            {"newly_assigned_users", resolve_ids_to_display_names(newly_assigned, users)},
+                            {"recipients", new_assigned_names},
                             {"notification_recipient_name", u.display_name},
                             {"notification_recipient_email", u.email},
                             {"triggered_by_name", current_user->display_name},
@@ -1236,7 +1239,8 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                             std::string time_range = activity->start_time + "-" + activity->end_time;
                             std::string date_short = format_date_ddmmyyyy(activity->date);
                             std::string full_link = activity_absolute_link(db, activity->id);
-                            std::string recipients_text = join_display(activity->responsible);
+                            auto resp_names = resolve_ids_to_display_names(activity->responsible, users_list);
+                            std::string recipients_text = join_display(resp_names);
                             nlohmann::json payload = {
                                 {"activity_id", activity->id},
                                 {"activity_title", activity->title},
@@ -1244,7 +1248,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                                 {"activity_date_display", date_short},
                                 {"activity_time", time_range},
                                 {"location", activity->location},
-                                {"assigned_users", activity->responsible},
+                                {"assigned_users", resp_names},
                                 {"notification_recipient_name", u.display_name},
                                 {"notification_recipient_email", u.email},
                                 {"triggered_by_name", current_user->display_name},

@@ -253,7 +253,7 @@ function canManageSystem(): boolean {
 
 function canForms(
 	activity: Activity,
-	userDisplayName?: string | null,
+	userId?: string | null,
 	userDept?: string | null,
 ): boolean {
 	const p = myPermissions.value;
@@ -268,8 +268,8 @@ function canForms(
 		return true;
 	if (
 		p.form_scope === 'own' &&
-		userDisplayName &&
-		activity.responsible.includes(userDisplayName)
+		userId &&
+		activity.responsible.includes(userId)
 	)
 		return true;
 	return false;

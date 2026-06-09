@@ -19,4 +19,9 @@ bool user_matches_assignee(const UserRecord &user, const std::string &assignee);
 std::vector<std::string> newly_assigned_users_from_material_delta(const std::vector<MaterialItem> &old_material,
                                                                    const std::vector<MaterialItem> &new_material);
 
+bool is_uuid_format(const std::string &s);
+std::vector<std::string> resolve_ids_to_display_names(
+    const std::vector<std::string> &entries,
+    const std::vector<UserRecord> &all_users);
+
 nlohmann::json notification_to_json(const NotificationRecord &n);
