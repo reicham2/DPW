@@ -13,6 +13,7 @@ import {
 } from 'docx';
 import type { Activity } from '../types';
 import { formatDuration } from '../utils/time';
+import { useUserResolver } from './useUserResolver';
 
 function formatDate(d: string): string {
 	return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', {
@@ -145,7 +146,7 @@ function programsTable(activity: Activity): Table {
 							new Paragraph({
 								children: [
 									new TextRun({
-										text: p.responsible.join(', ') || '—',
+										text: p.responsible.map(r => resolveResponsibleName(r)).join(', ') || '—',
 										size: 20,
 									}),
 								],
@@ -163,6 +164,8 @@ function programsTable(activity: Activity): Table {
 }
 
 export function useActivityExport() {
+	const { resolveResponsibleName } = useUserResolver();
+
 	async function exportToWord(activity: Activity): Promise<void> {
 		const children: (Paragraph | Table)[] = [];
 
@@ -182,7 +185,7 @@ export function useActivityExport() {
 			['Ort:', activity.location || '—'],
 		];
 		if (activity.department) metaRows.push(['Stufe:', activity.department]);
-		metaRows.push(['Verantwortlich:', activity.responsible.join(', ') || '—']);
+		metaRows.push(['Verantwortlich:', activity.responsible.map(r => resolveResponsibleName(r)).join(', ') || '—']);
 		if (
 			activity.planned_participants_estimate !== null &&
 			activity.planned_participants_estimate !== undefined
@@ -213,7 +216,7 @@ export function useActivityExport() {
 			for (const item of activity.material) {
 				const resp =
 					item.responsible && item.responsible.length > 0
-						? ` (${item.responsible.join(', ')})`
+						? ` (${item.responsible.map(r => resolveResponsibleName(r)).join(', ')})`
 						: '';
 				children.push(
 					new Paragraph({

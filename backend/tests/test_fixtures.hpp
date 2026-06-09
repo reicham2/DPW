@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "models.hpp"
+#include "core/models/all_models.hpp"
 
 inline Activity make_activity()
 {

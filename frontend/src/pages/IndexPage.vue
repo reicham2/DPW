@@ -8,6 +8,9 @@ import DepartmentBadge from '../components/DepartmentBadge.vue'
 import type { Activity, Department, MaterialItem } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import { Search, X, UserRound } from 'lucide-vue-next'
+import { useUserResolver } from '../composables/useUserResolver'
+
+const { resolveResponsibleName } = useUserResolver()
 
 const { departments: deptRecords, fetchDepartments: fetchDeptRecords, myPermissions, fetchMyPermissions, canReadActivity, readableDepts, writableDepts } = usePermissions()
 const DEPARTMENTS = computed<Department[]>(() => readableDepts(user.value?.department))
@@ -156,7 +159,7 @@ const filteredEntries = computed<ListEntry[]>(() => {
   if (q) {
     list = list.filter(a =>
       a.title.toLowerCase().includes(q) ||
-      a.responsible.join(' ').toLowerCase().includes(q) ||
+      a.responsible.map(r => resolveResponsibleName(r)).join(' ').toLowerCase().includes(q) ||
       a.location.toLowerCase().includes(q) ||
       (a.goal ?? '').toLowerCase().includes(q)
     )
@@ -192,12 +195,12 @@ const filteredEntries = computed<ListEntry[]>(() => {
 
   // Build entries
   if (onlyMine.value && user.value) {
-    const me = user.value.display_name.toLowerCase()
+    const myId = user.value.id
     const entries: ListEntry[] = []
     for (const a of list) {
-      const isResponsible = a.responsible.some(r => r.toLowerCase() === me)
+      const isResponsible = a.responsible.includes(myId)
       const myMats = (a.material ?? []).filter(m =>
-        (m.responsible ?? []).some(r => r.toLowerCase() === me)
+        (m.responsible ?? []).includes(myId)
       )
       if (isResponsible) {
         entries.push({ activity: a, dimmed: false, myMaterials: myMats })
@@ -221,7 +224,7 @@ const baseList = computed(() => {
   if (q) {
     list = list.filter(a =>
       a.title.toLowerCase().includes(q) ||
-      a.responsible.join(' ').toLowerCase().includes(q) ||
+      a.responsible.map(r => resolveResponsibleName(r)).join(' ').toLowerCase().includes(q) ||
       a.location.toLowerCase().includes(q) ||
       (a.goal ?? '').toLowerCase().includes(q)
     )

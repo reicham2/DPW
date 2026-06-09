@@ -4,6 +4,7 @@ import { wsAddGlobalHandler } from './useWebSocket';
 import type {
 	DepartmentRecord,
 	LocationRecord,
+	MaterialNameRecord,
 	RoleRecord,
 	RolePermission,
 	RoleDeptAccess,
@@ -252,7 +253,7 @@ function canManageSystem(): boolean {
 
 function canForms(
 	activity: Activity,
-	userDisplayName?: string | null,
+	userId?: string | null,
 	userDept?: string | null,
 ): boolean {
 	const p = myPermissions.value;
@@ -267,8 +268,8 @@ function canForms(
 		return true;
 	if (
 		p.form_scope === 'own' &&
-		userDisplayName &&
-		activity.responsible.includes(userDisplayName)
+		userId &&
+		activity.responsible.includes(userId)
 	)
 		return true;
 	return false;
@@ -307,6 +308,10 @@ function writableDepts(userDept: string | null | undefined): string[] {
 
 function canManageLocations(): boolean {
 	return myPermissions.value?.locations_manage_scope === 'all';
+}
+
+function canManageMaterials(): boolean {
+	return myPermissions.value?.materials_manage_scope === 'all';
 }
 
 function canIdeenkiste(): boolean {
@@ -367,6 +372,39 @@ async function deleteLocation(id: string): Promise<void> {
 	if (!res.ok) throw new Error(await res.text());
 }
 
+// ── Materials CRUD ───────────────────────────────────────────────────────────
+
+async function fetchMaterialsAdmin(): Promise<MaterialNameRecord[]> {
+	const res = await apiFetch('/api/admin/materials');
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function createMaterial(name: string): Promise<MaterialNameRecord> {
+	const res = await apiFetch('/api/admin/materials', {
+		method: 'POST',
+		body: JSON.stringify({ name }),
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function updateMaterial(id: string, name: string): Promise<MaterialNameRecord> {
+	const res = await apiFetch(`/api/admin/materials/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify({ name }),
+	});
+	if (!res.ok) throw new Error(await res.text());
+	return await res.json();
+}
+
+async function deleteMaterial(id: string): Promise<void> {
+	const res = await apiFetch(`/api/admin/materials/${encodeURIComponent(id)}`, {
+		method: 'DELETE',
+	});
+	if (!res.ok) throw new Error(await res.text());
+}
+
 // ── Fetch all ───────────────────────────────────────────────────────────────
 
 async function fetchAll() {
@@ -423,11 +461,16 @@ export function usePermissions() {
 		canIdeenkisteAdd,
 		canIdeenkisteDelete,
 		canManageLocations,
+		canManageMaterials,
 		readableDepts,
 		writableDepts,
 		fetchLocationsAdmin,
 		createLocation,
 		updateLocation,
 		deleteLocation,
+		fetchMaterialsAdmin,
+		createMaterial,
+		updateMaterial,
+		deleteMaterial,
 	};
 }

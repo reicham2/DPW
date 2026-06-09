@@ -12,6 +12,7 @@ import { ArrowLeft, Save, Check, X, Clipboard, Send } from 'lucide-vue-next';
 import type { Activity, SentMail } from '../types';
 import { useAutosave } from '../composables/useAutosave';
 import { config } from '../config';
+import { useUserResolver } from '../composables/useUserResolver';
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +21,7 @@ const activityId = route.params.id as string
 const { fetchActivity } = useActivities()
 const { sendMail, sending, error, fetchSentMails, fetchDraft, saveDraft, deleteDraft, fetchComposerContext } = useMailTemplates()
 const { myPermissions, fetchMyPermissions } = usePermissions()
+const { resolveResponsibleName } = useUserResolver()
 
 const activity = ref<Activity | null>(null)
 const subject = ref('')
@@ -228,7 +230,7 @@ function formatPrograms(act: Activity): string {
   if (!act.programs.length) return '—'
   return act.programs.map(p => {
     const dur = p.duration_minutes ? `${p.duration_minutes} min` : '—'
-    const resp = p.responsible && p.responsible.length ? ' (' + p.responsible.join(', ') + ')' : ''
+    const resp = p.responsible && p.responsible.length ? ' (' + p.responsible.map(r => resolveResponsibleName(r)).join(', ') + ')' : ''
     const desc = p.description ? ': ' + p.description : ''
     return `${dur} – ${p.title}${resp}${desc}`
   }).join('\n')
@@ -249,7 +251,7 @@ function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: bo
     startzeit: act.start_time,
     endzeit: act.end_time,
     ort: act.location,
-    verantwortlich: act.responsible.join(', '),
+    verantwortlich: act.responsible.map(r => resolveResponsibleName(r)).join(', '),
     abteilung: act.department ?? '—',
     ziel: act.goal,
 		tn_material: act.tn_material.join(', ') || '—',

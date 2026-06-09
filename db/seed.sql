@@ -3,6 +3,11 @@
 -- Ausführen mit: make db-seed
 -- ============================================================================
 
+-- ── Setup überspringen (Debug) ──────────────────────────────────────────────
+UPDATE app_settings SET value_text = 'mailto:development@pfadihue.ch' WHERE key = 'push.vapid_subject';
+UPDATE app_settings SET value_text = 'debug-tenant' WHERE key = 'azure.tenant_id';
+UPDATE app_settings SET value_text = 'debug-client' WHERE key = 'azure.client_id';
+
 -- ── Stufen & Rollen ─────────────────────────────────────────────────────────
 INSERT INTO departments (name, color) VALUES
     ('Leiter', '#065f46'),
@@ -54,13 +59,13 @@ INSERT INTO mail_templates (department, subject, body, recipients, cc) VALUES
 ON CONFLICT (department) DO NOTHING;
 
 -- ── Test-Benutzer ───────────────────────────────────────────────────────────
-INSERT INTO users (id, microsoft_oid, email, display_name, department, role) VALUES
-    ('a0000000-0000-0000-0000-000000000001', 'oid-admin',        'development@pfadihue.ch',     'Admin User',       'Leiter', 'admin'),
-    ('a0000000-0000-0000-0000-000000000002', 'oid-stufenleiter', 'stufenleiter@pfadihue.ch', 'Stufen Leiter', 'Pfadi',  'Stufenleiter'),
-    ('a0000000-0000-0000-0000-000000000003', 'oid-leiter1',      'leiter1@pfadihue.ch',   'Leiter Eins',      'Pfadi',  'Leiter'),
-    ('a0000000-0000-0000-0000-000000000004', 'oid-leiter2',      'leiter2@pfadihue.ch',   'Leiter Zwei',      'Wölfe',  'Leiter'),
-    ('a0000000-0000-0000-0000-000000000005', 'oid-pio1',         'pio1@pfadihue.ch',      'Pio Eins',         'Pio',    'Pio'),
-    ('a0000000-0000-0000-0000-000000000006', 'oid-leiter3',      'leiter3@pfadihue.ch',   'Leiter Drei',      'Biber',  'Leiter')
+INSERT INTO users (id, microsoft_oid, email, display_name, department, role, avatar_color) VALUES
+    ('a0000000-0000-0000-0000-000000000001', 'oid-admin',        'development@pfadihue.ch',     'Admin User',       'Leiter', 'admin',         '#e84393'),
+    ('a0000000-0000-0000-0000-000000000002', 'oid-stufenleiter', 'stufenleiter@pfadihue.ch', 'Stufen Leiter', 'Pfadi',  'Stufenleiter',  '#6c5ce7'),
+    ('a0000000-0000-0000-0000-000000000003', 'oid-leiter1',      'leiter1@pfadihue.ch',   'Leiter Eins',      'Pfadi',  'Leiter',        '#0984e3'),
+    ('a0000000-0000-0000-0000-000000000004', 'oid-leiter2',      'leiter2@pfadihue.ch',   'Leiter Zwei',      'Wölfe',  'Leiter',        '#00b894'),
+    ('a0000000-0000-0000-0000-000000000005', 'oid-pio1',         'pio1@pfadihue.ch',      'Pio Eins',         'Pio',    'Pio',           '#fdcb6e'),
+    ('a0000000-0000-0000-0000-000000000006', 'oid-leiter3',      'leiter3@pfadihue.ch',   'Leiter Drei',      'Biber',  'Leiter',        '#e17055')
 ON CONFLICT (microsoft_oid) DO NOTHING;
 
 -- ── Test-Aktivitäten ────────────────────────────────────────────────────────
@@ -73,9 +78,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '14:00', '17:00',
      'Orientierung und Teamwork üben',
      'Waldlichtung Hüttenberg',
-     ARRAY['Leiter Eins', 'Stufen Leiter'],
+     ARRAY['a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000002'],
      'Pfadi',
-     '[{"name": "Karte 1:25000", "responsible": ["Leiter Eins"]}, {"name": "Kompass (5x)", "responsible": []}, {"name": "Posten-Blätter", "responsible": ["Stufen Leiter"]}]'::jsonb,
+     '[{"name": "Karte 1:25000", "responsible": ["a0000000-0000-0000-0000-000000000003"]}, {"name": "Kompass (5x)", "responsible": []}, {"name": "Posten-Blätter", "responsible": ["a0000000-0000-0000-0000-000000000002"]}]'::jsonb,
     '["Wasserflaschen", "Notfallkarte"]'::jsonb,
      NULL,
      'Aktivität findet im Pfadiheim statt mit Indoor-Posten'),
@@ -87,9 +92,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '13:30', '17:00',
      'Seilbrücke bauen und Knoten repetieren',
      'Pfadiheim Hüetli',
-     ARRAY['Leiter Eins'],
+     ARRAY['a0000000-0000-0000-0000-000000000003'],
      'Pfadi',
-     '[{"name": "Seil 20m (3x)", "responsible": ["Leiter Eins"]}, {"name": "Blachen (4x)", "responsible": []}, {"name": "Zeltmaterial", "responsible": ["Stufen Leiter"]}]'::jsonb,
+     '[{"name": "Seil 20m (3x)", "responsible": ["a0000000-0000-0000-0000-000000000003"]}, {"name": "Blachen (4x)", "responsible": []}, {"name": "Zeltmaterial", "responsible": ["a0000000-0000-0000-0000-000000000002"]}]'::jsonb,
     '["Rucksack", "Wanderschuhe"]'::jsonb,
      'Nächstes Spital: Kantonsspital, 10 Min. Kontakt: 044 123 45 67. Notfallnummern bei Leitung.',
      NULL),
@@ -101,9 +106,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '14:00', '16:30',
      'Spielerisch die Umgebung erkunden',
      'Schulhaus Dorf',
-     ARRAY['Leiter Zwei'],
+     ARRAY['a0000000-0000-0000-0000-000000000004'],
      'Wölfe',
-     '[{"name": "Schatzkiste", "responsible": ["Leiter Zwei"]}, {"name": "Hinweis-Zettel (20x)", "responsible": []}]'::jsonb,
+     '[{"name": "Schatzkiste", "responsible": ["a0000000-0000-0000-0000-000000000004"]}, {"name": "Hinweis-Zettel (20x)", "responsible": []}]'::jsonb,
     '["Outdoor-Kleidung"]'::jsonb,
      NULL,
      'Schatzsuche wird im Schulhaus durchgeführt'),
@@ -115,9 +120,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '10:00', '16:00',
      'Material für Biwak zusammenstellen und Menüplanung',
      'Pfadiheim Hüetli',
-     ARRAY['Pio Eins'],
+     ARRAY['a0000000-0000-0000-0000-000000000005'],
      'Pio',
-     '[{"name": "Kocher (2x)", "responsible": ["Pio Eins"]}, {"name": "Pfannen-Set", "responsible": []}, {"name": "Lebensmittel-Liste", "responsible": ["Pio Eins"]}]'::jsonb,
+     '[{"name": "Kocher (2x)", "responsible": ["a0000000-0000-0000-0000-000000000005"]}, {"name": "Pfannen-Set", "responsible": []}, {"name": "Lebensmittel-Liste", "responsible": ["a0000000-0000-0000-0000-000000000005"]}]'::jsonb,
     '["Teller", "Besteck", "Schlafsack"]'::jsonb,
      NULL,
      NULL),
@@ -129,9 +134,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '14:00', '16:00',
      'Kreativität fördern und Spass haben',
      'Gemeindesaal',
-     ARRAY['Leiter Drei'],
+     ARRAY['a0000000-0000-0000-0000-000000000006'],
      'Biber',
-     '[{"name": "Bastelpapier", "responsible": []}, {"name": "Schere (10x)", "responsible": ["Leiter Drei"]}, {"name": "Leim", "responsible": []}]'::jsonb,
+     '[{"name": "Bastelpapier", "responsible": []}, {"name": "Schere (10x)", "responsible": ["a0000000-0000-0000-0000-000000000006"]}, {"name": "Leim", "responsible": []}]'::jsonb,
     '["Malschürze", "Wasserflasche"]'::jsonb,
      NULL,
      NULL),
@@ -143,7 +148,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '19:00', '21:00',
      'Quartalsplanung und Rückblick',
      'Pfadiheim Hüetli',
-     ARRAY['Admin User', 'Stufen Leiter'],
+     ARRAY['a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002'],
      'Leiter',
      '[]'::jsonb,
     '[]'::jsonb,
@@ -157,9 +162,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '08:00', '16:00',
      'Alpine Tour und Naturkunde',
      'Appenzell, Säntis',
-     ARRAY['Stufen Leiter'],
+     ARRAY['a0000000-0000-0000-0000-000000000002'],
      'Pfadi',
-     '[{"name": "Topomaps", "responsible": ["Stufen Leiter"]}, {"name": "Erste-Hilfe-Rucksack", "responsible": []}, {"name": "Proviant für 8h", "responsible": ["Leiter Eins"]}]'::jsonb,
+     '[{"name": "Topomaps", "responsible": ["a0000000-0000-0000-0000-000000000002"]}, {"name": "Erste-Hilfe-Rucksack", "responsible": []}, {"name": "Proviant für 8h", "responsible": ["a0000000-0000-0000-0000-000000000003"]}]'::jsonb,
     '["Wanderschuhe", "Regenjacke", "Trinkflasche"]'::jsonb,
      'Sanitäter: Stufen Leiter (Handy stets erreichbar). Notfall Alpine Rettung: 1414',
      'Alternativ: Schloss Appenzell besichtiging'),
@@ -171,9 +176,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '15:00', '18:30',
      'Teig kneten und Pizza belegen',
      'Schulhaus Dorf',
-     ARRAY['Leiter Zwei'],
+     ARRAY['a0000000-0000-0000-0000-000000000004'],
      'Wölfe',
-     '[{"name": "Mehl (5kg)", "responsible": ["Leiter Zwei"]}, {"name": "Belag (Käse, Tomaten, Salami)", "responsible": ["Leiter Zwei"]}, {"name": "Pizzaschaufel (3x)", "responsible": []}]'::jsonb,
+     '[{"name": "Mehl (5kg)", "responsible": ["a0000000-0000-0000-0000-000000000004"]}, {"name": "Belag (Käse, Tomaten, Salami)", "responsible": ["a0000000-0000-0000-0000-000000000004"]}, {"name": "Pizzaschaufel (3x)", "responsible": []}]'::jsonb,
     '["Schürze", "Dose für Resten"]'::jsonb,
      NULL,
      'Backofen im Schulhaus Küche'),
@@ -185,9 +190,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '14:00', '16:30',
      'Schwimmen und Plantschen lernen',
      'Freibad Grünwald',
-     ARRAY['Leiter Drei'],
+     ARRAY['a0000000-0000-0000-0000-000000000006'],
      'Biber',
-     '[{"name": "Schwimmleuchten (10x)", "responsible": []}, {"name": "Schwimmflügel-Set", "responsible": ["Leiter Drei"]}, {"name": "Mikrofon Badeverbot-Info", "responsible": []}]'::jsonb,
+     '[{"name": "Schwimmleuchten (10x)", "responsible": []}, {"name": "Schwimmflügel-Set", "responsible": ["a0000000-0000-0000-0000-000000000006"]}, {"name": "Mikrofon Badeverbot-Info", "responsible": []}]'::jsonb,
     '["Badekleidung", "Badetuch"]'::jsonb,
      'Bademeister vor Ort, Erste Hilfe durch Leiter Drei',
      'Nur bei Schönwetter'),
@@ -199,9 +204,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '09:00', '17:00',
      'Klettertechniken und Sicherheit trainieren',
      'Alpstein',
-     ARRAY['Pio Eins'],
+     ARRAY['a0000000-0000-0000-0000-000000000005'],
      'Pio',
-     '[{"name": "Klettergurt (4x)", "responsible": ["Pio Eins"]}, {"name": "Kletterseile 50m", "responsible": ["Pio Eins"]}, {"name": "Karabiner-Set", "responsible": []}, {"name": "Sturzpuffer", "responsible": []}]'::jsonb,
+     '[{"name": "Klettergurt (4x)", "responsible": ["a0000000-0000-0000-0000-000000000005"]}, {"name": "Kletterseile 50m", "responsible": ["a0000000-0000-0000-0000-000000000005"]}, {"name": "Karabiner-Set", "responsible": []}, {"name": "Sturzpuffer", "responsible": []}]'::jsonb,
     '["Kletterhelm", "feste Schuhe", "Handschuhe"]'::jsonb,
      'Seilschaft max 2 Personen. Notfall: Bergwacht 140. Leiter Pio Eins begleitet.',
      'Nur bei stabiler Wetterlage'),
@@ -213,9 +218,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '17:00', '09:00',
      'Draußen übernachten und Lagerfeuer genießen',
      'Naturlehrgebiet Eggenberg',
-     ARRAY['Leiter Eins', 'Stufen Leiter'],
+     ARRAY['a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000002'],
      'Pfadi',
-     '[{"name": "Tipis (2x)", "responsible": ["Leiter Eins"]}, {"name": "Schlafsäcke (8x)", "responsible": []}, {"name": "Isomatten (10x)", "responsible": ["Stufen Leiter"]}, {"name": "Brennholz", "responsible": []}, {"name": "Grill & Töpfe", "responsible": ["Leiter Eins"]}]'::jsonb,
+     '[{"name": "Tipis (2x)", "responsible": ["a0000000-0000-0000-0000-000000000003"]}, {"name": "Schlafsäcke (8x)", "responsible": []}, {"name": "Isomatten (10x)", "responsible": ["a0000000-0000-0000-0000-000000000002"]}, {"name": "Brennholz", "responsible": []}, {"name": "Grill & Töpfe", "responsible": ["a0000000-0000-0000-0000-000000000003"]}]'::jsonb,
     '["Schlafsack", "Taschenlampe", "warme Kleidung"]'::jsonb,
      'Nachtbereitschaft: Leiter Eins hat GPS-Tracker. Notfallnummer vor Ort ausgehängt.',
      'Bei Gewitter: Übernachtung im Pfadiheim alternate'),
@@ -227,9 +232,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '10:00', '12:30',
      'Gemeinsame Waldspiele und Verbandsgeist',
      'Waldlichtung Hüttenberg',
-     ARRAY['Stufen Leiter', 'Leiter Zwei'],
+     ARRAY['a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000004'],
      'Pfadi',
-     '[{"name": "Fahnen (4x)", "responsible": ["Stufen Leiter"]}, {"name": "Pfeifen (3x)", "responsible": ["Leiter Zwei"]}, {"name": "Urkunden", "responsible": []}]'::jsonb,
+     '[{"name": "Fahnen (4x)", "responsible": ["a0000000-0000-0000-0000-000000000002"]}, {"name": "Pfeifen (3x)", "responsible": ["a0000000-0000-0000-0000-000000000004"]}, {"name": "Urkunden", "responsible": []}]'::jsonb,
     '["Trinkflasche", "Wetterfeste Kleidung"]'::jsonb,
      NULL,
      NULL),
@@ -241,9 +246,9 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
      '10:00', '12:30',
      'Gerätetraining auf dem Sportplatz',
      'Waldlichtung Hüttenberg',
-     ARRAY['Leiter Zwei'],
+     ARRAY['a0000000-0000-0000-0000-000000000004'],
      'Wölfe',
-     '[{"name": "Springseile (5x)", "responsible": []}, {"name": "Hütchen (20x)", "responsible": ["Leiter Zwei"]}, {"name": "Fußbälle (3x)", "responsible": []}]'::jsonb,
+     '[{"name": "Springseile (5x)", "responsible": []}, {"name": "Hütchen (20x)", "responsible": ["a0000000-0000-0000-0000-000000000004"]}, {"name": "Fußbälle (3x)", "responsible": []}]'::jsonb,
     '["Turnschuhe", "Trinkflasche"]'::jsonb,
      NULL,
     'Zeitgleich mit Pfadi-Waldspiel – koordinierte Aktivitäten'),
@@ -255,7 +260,7 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
     '18:30', '20:00',
     'Abzeichen reflektieren und Fotos schauen',
     'Pfadiheim Hüetli',
-    ARRAY['Leiter Drei'],
+    ARRAY['a0000000-0000-0000-0000-000000000006'],
     'Biber',
     '[]'::jsonb,
     '["Znüni", "Hausschuhe"]'::jsonb,
@@ -266,79 +271,79 @@ INSERT INTO activities (id, title, date, start_time, end_time, goal, location, r
 
 -- Programme für "Geländespiel im Wald" (14:00–17:00)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000001',  15, 'Einstieg',          'Begrüssung und Erklärung der Regeln',         ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000001', 105, 'Geländespiel',      'Posten im Wald ablaufen mit Karte & Kompass',  ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000001',  30, 'Auswertung',        'Punkte zählen und Sieger küren',               ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000001',  30, 'Abschluss',         'Zvieri und Aufräumen',                         ARRAY['Stufen Leiter']);
+    ('b0000000-0000-0000-0000-000000000001',  15, 'Einstieg',          'Begrüssung und Erklärung der Regeln',         ARRAY['a0000000-0000-0000-0000-000000000003']),
+    ('b0000000-0000-0000-0000-000000000001', 105, 'Geländespiel',      'Posten im Wald ablaufen mit Karte & Kompass',  ARRAY['a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000001',  30, 'Auswertung',        'Punkte zählen und Sieger küren',               ARRAY['a0000000-0000-0000-0000-000000000003']),
+    ('b0000000-0000-0000-0000-000000000001',  30, 'Abschluss',         'Zvieri und Aufräumen',                         ARRAY['a0000000-0000-0000-0000-000000000002']);
 
 -- Programme für "Pioniertechnik: Seilbrücke" (13:30–17:00)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000002',  45, 'Knoten-Repetition', 'Mastwurf, Kreuzknoten, Achterknoten üben',     ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000002',  30, 'Brücke planen',     'Standort wählen und Skizze zeichnen',          ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000002', 105, 'Brücke bauen',      'Seilbrücke aufbauen in Gruppen',               ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000002',  30, 'Überquerung & Abbau', 'Jede Gruppe überquert, danach Abbau',        ARRAY['Leiter Eins']);
+    ('b0000000-0000-0000-0000-000000000002',  45, 'Knoten-Repetition', 'Mastwurf, Kreuzknoten, Achterknoten üben',     ARRAY['a0000000-0000-0000-0000-000000000003']),
+    ('b0000000-0000-0000-0000-000000000002',  30, 'Brücke planen',     'Standort wählen und Skizze zeichnen',          ARRAY['a0000000-0000-0000-0000-000000000003']),
+    ('b0000000-0000-0000-0000-000000000002', 105, 'Brücke bauen',      'Seilbrücke aufbauen in Gruppen',               ARRAY['a0000000-0000-0000-0000-000000000003']),
+    ('b0000000-0000-0000-0000-000000000002',  30, 'Überquerung & Abbau', 'Jede Gruppe überquert, danach Abbau',        ARRAY['a0000000-0000-0000-0000-000000000003']);
 
 -- Programme für "Schatzsuche" (14:00–16:30)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000003',  20, 'Einführung',        'Geschichte erzählen und Gruppen bilden',        ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000003',  85, 'Schatzsuche',       'Hinweise suchen und Rätsel lösen',             ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000003',  15, 'Schatz öffnen',     'Gemeinsam den Schatz öffnen',                  ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000003',  30, 'Zvieri',            'Zvieri und Verabschiedung',                    ARRAY['Leiter Zwei']);
+    ('b0000000-0000-0000-0000-000000000003',  20, 'Einführung',        'Geschichte erzählen und Gruppen bilden',        ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000003',  85, 'Schatzsuche',       'Hinweise suchen und Rätsel lösen',             ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000003',  15, 'Schatz öffnen',     'Gemeinsam den Schatz öffnen',                  ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000003',  30, 'Zvieri',            'Zvieri und Verabschiedung',                    ARRAY['a0000000-0000-0000-0000-000000000004']);
 
 -- Programme für "Wanderung Säntis" (08:00–16:00)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000007',  60, 'Treffpunkt & Start', 'Ausrüstungskontrolle und Kurzbriefing',        ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000007', 180, 'Start Wanderung',   'Asphalt bis Berghütte',                        ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000007', 120, 'Gipfel & Picknick',  'Mittagspause mit Aussicht',                    ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000007', 120, 'Abstieg',           'Zurück zum Startpunkt',                        ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000007',   0, 'Debrief & Ende',    'Erlebnisse teilen, Abfahrt',                   ARRAY['Stufen Leiter']);
+    ('b0000000-0000-0000-0000-000000000007',  60, 'Treffpunkt & Start', 'Ausrüstungskontrolle und Kurzbriefing',        ARRAY['a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000007', 180, 'Start Wanderung',   'Asphalt bis Berghütte',                        ARRAY['a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000007', 120, 'Gipfel & Picknick',  'Mittagspause mit Aussicht',                    ARRAY['a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000007', 120, 'Abstieg',           'Zurück zum Startpunkt',                        ARRAY['a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000007',   0, 'Debrief & Ende',    'Erlebnisse teilen, Abfahrt',                   ARRAY['a0000000-0000-0000-0000-000000000002']);
 
 -- Programme für "Pizza selber backen" (15:00–18:30)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000008',  15, 'Einstieg',          'Pizzageschichte und Teig-Zutaten erklären',    ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000008',  45, 'Teig kneten',       'Jedes Kind knetet seinen Teig',                ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000008',  30, 'Formen & Belegen',  'Pizza-Formen verzieren und belegen',           ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000008',  90, 'Backen & Essen',    'Im Ofen backen und gemeinsam essen',           ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000008',  30, 'Aufräumen & Tschüss', 'Küche putzen und bis bald',                   ARRAY['Leiter Zwei']);
+    ('b0000000-0000-0000-0000-000000000008',  15, 'Einstieg',          'Pizzageschichte und Teig-Zutaten erklären',    ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000008',  45, 'Teig kneten',       'Jedes Kind knetet seinen Teig',                ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000008',  30, 'Formen & Belegen',  'Pizza-Formen verzieren und belegen',           ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000008',  90, 'Backen & Essen',    'Im Ofen backen und gemeinsam essen',           ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000008',  30, 'Aufräumen & Tschüss', 'Küche putzen und bis bald',                   ARRAY['a0000000-0000-0000-0000-000000000004']);
 
 -- Programme für "Badetag im Freibad" (14:00–16:30)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000009',  15, 'Umzug & Belegung',  'Umzug ins Freibad, Platz suchen',              ARRAY['Leiter Drei']),
-    ('b0000000-0000-0000-0000-000000000009',  30, 'Sicherheitsbriefing', 'Regeln erklären und Wassergewöhnung',        ARRAY['Leiter Drei']),
-    ('b0000000-0000-0000-0000-000000000009',  60, 'Freischwimmen',    'Freies Spielen im Wasser und Becken',         ARRAY['Leiter Drei']),
-    ('b0000000-0000-0000-0000-000000000009',  30, 'Flaschenbad',       'Erfrischungen und Snack am Beckenrand',        ARRAY['Leiter Drei']),
-    ('b0000000-0000-0000-0000-000000000009',  15, 'Umzug & Ende',      'Zurück zur Sammelstelle',                      ARRAY['Leiter Drei']);
+    ('b0000000-0000-0000-0000-000000000009',  15, 'Umzug & Belegung',  'Umzug ins Freibad, Platz suchen',              ARRAY['a0000000-0000-0000-0000-000000000006']),
+    ('b0000000-0000-0000-0000-000000000009',  30, 'Sicherheitsbriefing', 'Regeln erklären und Wassergewöhnung',        ARRAY['a0000000-0000-0000-0000-000000000006']),
+    ('b0000000-0000-0000-0000-000000000009',  60, 'Freischwimmen',    'Freies Spielen im Wasser und Becken',         ARRAY['a0000000-0000-0000-0000-000000000006']),
+    ('b0000000-0000-0000-0000-000000000009',  30, 'Flaschenbad',       'Erfrischungen und Snack am Beckenrand',        ARRAY['a0000000-0000-0000-0000-000000000006']),
+    ('b0000000-0000-0000-0000-000000000009',  15, 'Umzug & Ende',      'Zurück zur Sammelstelle',                      ARRAY['a0000000-0000-0000-0000-000000000006']);
 
 -- Programme für "Felsklettern: Seile und Sicherung" (09:00–17:00)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000010',  60, 'Anmarsch & Setup',  'Zu Kletterplatz gehen, Ausrüstung aufbauen',   ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010',  60, 'Theorie Knoten',    'Kletterknoten und Sicherung üben',             ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010',  90, 'Erste Kletter',     'Beginners an easy Via mit Sicherung',          ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010',  60, 'Mittagspause',      'Proviant und Aussicht genießen',               ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010', 150, 'Fortgeschrittene',  'Schwierigere Routen für Erfahrene',            ARRAY['Pio Eins']),
-    ('b0000000-0000-0000-0000-000000000010',  60, 'Abbau & Rückweg',   'Material packen und Debrief',                  ARRAY['Pio Eins']);
+    ('b0000000-0000-0000-0000-000000000010',  60, 'Anmarsch & Setup',  'Zu Kletterplatz gehen, Ausrüstung aufbauen',   ARRAY['a0000000-0000-0000-0000-000000000005']),
+    ('b0000000-0000-0000-0000-000000000010',  60, 'Theorie Knoten',    'Kletterknoten und Sicherung üben',             ARRAY['a0000000-0000-0000-0000-000000000005']),
+    ('b0000000-0000-0000-0000-000000000010',  90, 'Erste Kletter',     'Beginners an easy Via mit Sicherung',          ARRAY['a0000000-0000-0000-0000-000000000005']),
+    ('b0000000-0000-0000-0000-000000000010',  60, 'Mittagspause',      'Proviant und Aussicht genießen',               ARRAY['a0000000-0000-0000-0000-000000000005']),
+    ('b0000000-0000-0000-0000-000000000010', 150, 'Fortgeschrittene',  'Schwierigere Routen für Erfahrene',            ARRAY['a0000000-0000-0000-0000-000000000005']),
+    ('b0000000-0000-0000-0000-000000000010',  60, 'Abbau & Rückweg',   'Material packen und Debrief',                  ARRAY['a0000000-0000-0000-0000-000000000005']);
 
 -- Programme für "Tipi-Nacht" (17:00–09:00 Folgetag)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000011',  60, 'Anreise & Aufbau', 'Tipis aufbauen und Schlafplätze herrichten',  ARRAY['Leiter Eins', 'Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000011',  60, 'Feuer & Essen',    'Lagerfeuer entzünden und Abendessen kochen',   ARRAY['Leiter Eins']),
-    ('b0000000-0000-0000-0000-000000000011', 120, 'Lagerfeuer-Programm', 'Geschichten, Lieder, Spiele ums Feuer',     ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000011', 720, 'Zubettmachen',     'Runterfahren und Schlafen gehen',              ARRAY['Leiter Eins', 'Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000011',   0, 'Frühstück & Abbau', 'Frühstück zubereiten und Tipis abbauen',      ARRAY['Stufen Leiter']);
+    ('b0000000-0000-0000-0000-000000000011',  60, 'Anreise & Aufbau', 'Tipis aufbauen und Schlafplätze herrichten',  ARRAY['a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000011',  60, 'Feuer & Essen',    'Lagerfeuer entzünden und Abendessen kochen',   ARRAY['a0000000-0000-0000-0000-000000000003']),
+    ('b0000000-0000-0000-0000-000000000011', 120, 'Lagerfeuer-Programm', 'Geschichten, Lieder, Spiele ums Feuer',     ARRAY['a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000011', 720, 'Zubettmachen',     'Runterfahren und Schlafen gehen',              ARRAY['a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000011',   0, 'Frühstück & Abbau', 'Frühstück zubereiten und Tipis abbauen',      ARRAY['a0000000-0000-0000-0000-000000000002']);
 
 -- Programme für "Waldspiele kombiniert (Pfadi & Wölfe)" (10:00–12:30)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000012',  15, 'Begrüssung',       'Verbands- und Gruppengeist aktivieren',        ARRAY['Stufen Leiter']),
-    ('b0000000-0000-0000-0000-000000000012',  75, 'Gemischte Spiele', 'Alters-Mix: Staffeln und Teamspiele',          ARRAY['Stufen Leiter', 'Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000012',  30, 'Prämierung',       'Sieger küren und Urkunden verteilen',          ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000012',  30, 'Zvieri & Ende',    'Gemeinsamer Zvieri',                           ARRAY['Stufen Leiter']);
+    ('b0000000-0000-0000-0000-000000000012',  15, 'Begrüssung',       'Verbands- und Gruppengeist aktivieren',        ARRAY['a0000000-0000-0000-0000-000000000002']),
+    ('b0000000-0000-0000-0000-000000000012',  75, 'Gemischte Spiele', 'Alters-Mix: Staffeln und Teamspiele',          ARRAY['a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000012',  30, 'Prämierung',       'Sieger küren und Urkunden verteilen',          ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000012',  30, 'Zvieri & Ende',    'Gemeinsamer Zvieri',                           ARRAY['a0000000-0000-0000-0000-000000000002']);
 
 -- Programme für "Wölfe-Nachmittagstraining" (10:00–12:30)
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
-    ('b0000000-0000-0000-0000-000000000013',  15, 'Aufwärmspiel',     'Fangis und Ballgewöhnung',                     ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000013',  45, 'Koordinations-Parcours', 'Hütchen-Slalom und Sprünge',             ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000013',  45, 'Freispiel & Tore', 'Mannschaftsspiele auf Kleinfeldern',           ARRAY['Leiter Zwei']),
-    ('b0000000-0000-0000-0000-000000000013',  45, 'Cool-down',        'Dehnübungen und Abklatschen',                  ARRAY['Leiter Zwei']);
+    ('b0000000-0000-0000-0000-000000000013',  15, 'Aufwärmspiel',     'Fangis und Ballgewöhnung',                     ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000013',  45, 'Koordinations-Parcours', 'Hütchen-Slalom und Sprünge',             ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000013',  45, 'Freispiel & Tore', 'Mannschaftsspiele auf Kleinfeldern',           ARRAY['a0000000-0000-0000-0000-000000000004']),
+    ('b0000000-0000-0000-0000-000000000013',  45, 'Cool-down',        'Dehnübungen und Abklatschen',                  ARRAY['a0000000-0000-0000-0000-000000000004']);
 
 -- Lange Programmbeschreibungen für realistische UI-Tests (Zeilenumbruch/Lesbarkeit)
 UPDATE programs
@@ -364,46 +369,46 @@ WHERE activity_id IN (
 INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) VALUES
     ('b0000000-0000-0000-0000-000000000004',  45, 'Kickoff & Zielbild',
      'Zum Start werden Materialstand, Tagesziele und Verantwortlichkeiten gemeinsam abgestimmt. Danach legt die Gruppe fest, welche Teile für Logistik, Menüplanung und Sicherheit priorisiert werden, damit spätere Entscheidungen nachvollziehbar bleiben.',
-     ARRAY['Pio Eins']),
+     ARRAY['a0000000-0000-0000-0000-000000000005']),
     ('b0000000-0000-0000-0000-000000000004', 150, 'Materialstationen & Packlisten',
      'In rotierenden Kleingruppen wird das Biwakmaterial an mehreren Stationen geprüft, fehlende Gegenstände werden dokumentiert und direkt mit einer Ersatzstrategie ergänzt. Parallel entsteht eine belastbare Packliste, die sowohl Gewicht, Transport als auch Wetteroptionen abdeckt.',
-     ARRAY['Pio Eins']),
+     ARRAY['a0000000-0000-0000-0000-000000000005']),
     ('b0000000-0000-0000-0000-000000000004', 105, 'Menüplanung & Kochablauf',
      'Das Team erstellt einen vollständigen Ablauf von Einkauf bis Ausgabe, inklusive Allergiehinweisen, Portionsberechnung und Notfallreserve. Abschließend werden Rollen für Vorbereitung, Hygiene-Checks und Abwasch verteilt, damit der Einsatz unter realen Bedingungen testbar ist.',
-     ARRAY['Pio Eins']),
+     ARRAY['a0000000-0000-0000-0000-000000000005']),
     ('b0000000-0000-0000-0000-000000000004',  60, 'Review & Abschlussrunde',
      'In der Schlussrunde werden offene Punkte gesammelt, Risiken priorisiert und Verantwortliche mit konkreten Deadlines festgelegt. Das Ergebnis ist ein belastbarer Plan mit klaren Übergaben für die nächste Vorbereitungseinheit.',
-     ARRAY['Pio Eins']),
+     ARRAY['a0000000-0000-0000-0000-000000000005']),
 
     ('b0000000-0000-0000-0000-000000000005',  30, 'Ankommen & Materialbriefing',
      'Zu Beginn richtet die Leitung die Bastelzonen ein und erklärt den Kindern den Ablauf in einfachen Schritten. Dabei werden Werkzeuge und Sicherheitsregeln gemeinsam wiederholt, damit auch jüngere Teilnehmende sicher mitarbeiten können.',
-     ARRAY['Leiter Drei']),
+     ARRAY['a0000000-0000-0000-0000-000000000006']),
     ('b0000000-0000-0000-0000-000000000005',  75, 'Bastelwerkstatt in Gruppen',
      'Die Kinder arbeiten in kleinen Teams an mehreren Projekten, wechseln nach Zeitfenster die Stationen und dokumentieren ihre Ideen mit kurzen Präsentationen. Die Leitung begleitet aktiv, unterstützt feinmotorische Schritte und hält den Materialverbrauch für die Nachbereitung fest.',
-     ARRAY['Leiter Drei']),
+     ARRAY['a0000000-0000-0000-0000-000000000006']),
     ('b0000000-0000-0000-0000-000000000005',  15, 'Präsentation & Aufräumen',
      'Zum Ende werden die fertigen Werke vorgestellt, positives Feedback gesammelt und gemeinsame Aufräumaufgaben verteilt. So wird der Nachmittag sauber abgeschlossen und gleichzeitig ein ruhiger Übergang für Elternabholung geschaffen.',
-     ARRAY['Leiter Drei']),
+     ARRAY['a0000000-0000-0000-0000-000000000006']),
 
     ('b0000000-0000-0000-0000-000000000006',  25, 'Begrüssung & Agenda-Check',
      'Die Leitungsrunde priorisiert Traktanden, klärt Entscheidungswege und hält offene Punkte aus der letzten Sitzung fest. Bereits hier werden Zuständigkeiten sichtbar verteilt, damit der weitere Verlauf fokussiert bleibt.',
-     ARRAY['Admin User', 'Stufen Leiter']),
+     ARRAY['a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002']),
     ('b0000000-0000-0000-0000-000000000006',  70, 'Quartalsplanung mit Szenarien',
      'Für jedes Team werden Ressourcen, Terminüberschneidungen und Alternativszenarien strukturiert durchgearbeitet. Entscheidungen werden direkt protokolliert und mit Verantwortlichen, Fristen und Kommunikationskanal hinterlegt.',
-     ARRAY['Admin User', 'Stufen Leiter']),
+     ARRAY['a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002']),
     ('b0000000-0000-0000-0000-000000000006',  25, 'Rückblick & Beschlussliste',
      'Zum Abschluss werden Risiken, Learnings und nächste Schritte zusammengeführt und als verbindliche Beschlussliste verabschiedet. Dadurch ist sichergestellt, dass Folgeaufgaben ohne Interpretationsspielraum in die Teams zurückgehen.',
-     ARRAY['Admin User', 'Stufen Leiter']),
+     ARRAY['a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002']),
 
     ('b0000000-0000-0000-0000-000000000014',  20, 'Ankommen & Bilderwand',
      'Nach der Begrüssung richten die Kinder gemeinsam eine Bilderwand ein und wählen Schlüsselmomente aus der letzten Phase. Die Leitung moderiert den Einstieg so, dass jedes Kind mit einer kurzen Erinnerung aktiv teilnehmen kann.',
-     ARRAY['Leiter Drei']),
+     ARRAY['a0000000-0000-0000-0000-000000000006']),
     ('b0000000-0000-0000-0000-000000000014',  45, 'Reflexion in Kleingruppen',
      'In moderierten Gruppen werden Erlebnisse, Herausforderungen und persönliche Fortschritte besprochen, während eine Person die Kernaussagen notiert. Die Ergebnisse werden anschließend im Plenum zusammengeführt und für den nächsten Zyklus priorisiert.',
-     ARRAY['Leiter Drei']),
+     ARRAY['a0000000-0000-0000-0000-000000000006']),
     ('b0000000-0000-0000-0000-000000000014',  25, 'Abzeichen-Review & Ausblick',
      'Zum Ende werden Abzeichenstände erklärt, offene Schritte transparent gemacht und konkrete nächste Ziele pro Kind definiert. Damit entsteht ein realistischer Abschlussblock mit klarer Kommunikation gegenüber Kindern und Eltern.',
-     ARRAY['Leiter Drei']);
+     ARRAY['a0000000-0000-0000-0000-000000000006']);
 
 -- Mail-Templates mit Beispielinhalt
 UPDATE mail_templates SET
@@ -729,9 +734,9 @@ VALUES
      '13:30', '16:30',
      'Postenarbeit und Teamkoordination vertiefen',
      'Waldlichtung Hüttenberg',
-     ARRAY['Leiter Eins', 'Stufen Leiter'],
+     ARRAY['a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000002'],
      'Pfadi',
-     '[{"name":"Postenkarten","responsible":["Leiter Eins"]},{"name":"Kompassset","responsible":[]}]'::jsonb,
+     '[{"name":"Postenkarten","responsible":["a0000000-0000-0000-0000-000000000003"]},{"name":"Kompassset","responsible":[]}]'::jsonb,
     '["Wasserflasche", "Notizblock"]'::jsonb,
      NULL,
      NULL),
@@ -741,9 +746,9 @@ VALUES
      '14:00', '16:00',
      'Bewegungsspiele und Gruppenstärkung',
      'Schulhaus Dorf',
-     ARRAY['Leiter Zwei'],
+     ARRAY['a0000000-0000-0000-0000-000000000004'],
      'Wölfe',
-     '[{"name":"Ballset","responsible":["Leiter Zwei"]},{"name":"Markierungshütchen","responsible":[]}]'::jsonb,
+     '[{"name":"Ballset","responsible":["a0000000-0000-0000-0000-000000000004"]},{"name":"Markierungshütchen","responsible":[]}]'::jsonb,
     '["Bewegliche Kleidung"]'::jsonb,
      NULL,
      NULL),
@@ -753,9 +758,9 @@ VALUES
      '10:00', '15:00',
      'Outdoor-Kompetenzen in Teams trainieren',
      'Pfadiheim Hüetli',
-     ARRAY['Pio Eins'],
+     ARRAY['a0000000-0000-0000-0000-000000000005'],
      'Pio',
-     '[{"name":"Kocher","responsible":["Pio Eins"]},{"name":"Seiltechnik-Set","responsible":[]}]'::jsonb,
+     '[{"name":"Kocher","responsible":["a0000000-0000-0000-0000-000000000005"]},{"name":"Seiltechnik-Set","responsible":[]}]'::jsonb,
     '["Kletterkleidung", "Helm"]'::jsonb,
      NULL,
      NULL),
@@ -765,9 +770,9 @@ VALUES
      '14:00', '16:00',
      'Kreative Bastelposten und gemeinsames Spielen',
      'Gemeindesaal',
-     ARRAY['Leiter Drei'],
+     ARRAY['a0000000-0000-0000-0000-000000000006'],
      'Biber',
-     '[{"name":"Bastelmaterial","responsible":["Leiter Drei"]},{"name":"Farbstifte","responsible":[]}]'::jsonb,
+     '[{"name":"Bastelmaterial","responsible":["a0000000-0000-0000-0000-000000000006"]},{"name":"Farbstifte","responsible":[]}]'::jsonb,
     '["Schürze", "Wechselkleidung"]'::jsonb,
      NULL,
      NULL)

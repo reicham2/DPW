@@ -44,6 +44,7 @@ services:
       POSTGRES_DB: activities
       POSTGRES_USER: activities_user
       POSTGRES_PASSWORD: activities_pass
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-debug-secret}"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       DPW_CACHE_TTL_SECONDS: "30"

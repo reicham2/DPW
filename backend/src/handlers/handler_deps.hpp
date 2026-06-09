@@ -1,0 +1,37 @@
+#pragma once
+
+#include "core/http.hpp"
+#include "core/request_helpers.hpp"
+#include "core/models/all_models.hpp"
+#include "db/database.hpp"
+#include "infra/app_config.hpp"
+#include "infra/cache.hpp"
+#include "infra/web_push.hpp"
+#include "infra/midata_client.hpp"
+#include "infra/weather_client.hpp"
+#include "infra/graph.hpp"
+#include "infra/wp_client.hpp"
+#include "infra/ws_manager.hpp"
+#include "utils/permissions.hpp"
+#include "utils/strings.hpp"
+#include "utils/templates.hpp"
+#include "utils/activity_helpers.hpp"
+#include "json.hpp"
+
+#include <string>
+#include <vector>
+#include <optional>
+#include <algorithm>
+#include <ctime>
+#include <map>
+#include <chrono>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
+#include <cctype>
+#include <cstdlib>
+#include <regex>
+#include <sstream>
+#include <limits>
+#include <utility>
+#include <cstdio>

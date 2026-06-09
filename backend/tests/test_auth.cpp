@@ -1,4 +1,4 @@
-#include "auth.hpp"
+#include "infra/auth.hpp"
 #include "test_harness.hpp"
 
 TEST(extract_bearer_valid)

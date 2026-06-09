@@ -11,6 +11,7 @@ import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch } from '../composables/useApi';
 import { useIdeaBox } from '../composables/useIdeaBox';
 import { useActivityExport } from '../composables/useActivityExport';
+import { useUserResolver } from '../composables/useUserResolver';
 import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
@@ -34,6 +35,7 @@ const {
 	fetchActivity,
 	fetchDepartments,
 	fetchLocations,
+	fetchMaterials,
 	updateActivity,
 	deleteActivity,
 	fetchAttachments,
@@ -44,6 +46,7 @@ const {
 	lastUpdatedActivity,
 	departments,
 	predefinedLocations,
+	predefinedMaterials,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
 const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper, canIdeenkiste, canIdeenkisteAdd } = usePermissions();
@@ -51,6 +54,7 @@ const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canFo
 const { fetchForm } = useForms();
 const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
 const { exportToWord } = useActivityExport();
+const { resolveResponsibleName } = useUserResolver();
 
 const activity = ref<Activity | null>(null);
 const activityMissingConfirmed = ref(false);
@@ -588,14 +592,7 @@ function canEditByScope(scope: 'none' | 'own' | 'same_dept' | 'all') {
 	if (!user.value || !activity.value) return false;
 	const isOwnResponsible = () => {
 		if (!user.value || !activity.value) return false;
-		const normalize = (value: string) => value.trim().toLowerCase();
-		const userName = normalize(user.value.display_name ?? '');
-		const userEmail = normalize(user.value.email ?? '');
-		const userEmailLocal = userEmail.includes('@') ? userEmail.split('@')[0] : '';
-		return activity.value.responsible.some((entry) => {
-			const candidate = normalize(entry ?? '');
-			return !!candidate && (candidate === userName || candidate === userEmail || (!!userEmailLocal && candidate === userEmailLocal));
-		});
+		return activity.value.responsible.includes(user.value!.id);
 	};
 	if (scope === 'all') return true;
 	if (scope === 'same_dept') {
@@ -621,14 +618,7 @@ const canMail = computed(() => {
 	if (!user.value || !activity.value) return false;
 	const p = myPermissions.value;
 	if (!p) return false;
-	const normalize = (value: string) => value.trim().toLowerCase();
-	const userName = normalize(user.value.display_name ?? '');
-	const userEmail = normalize(user.value.email ?? '');
-	const userEmailLocal = userEmail.includes('@') ? userEmail.split('@')[0] : '';
-	const isOwnResponsible = activity.value.responsible.some((entry) => {
-		const candidate = normalize(entry ?? '');
-		return !!candidate && (candidate === userName || candidate === userEmail || (!!userEmailLocal && candidate === userEmailLocal));
-	});
+	const isOwnResponsible = activity.value.responsible.includes(user.value.id);
 	if (p.mail_send_scope === 'all') return true;
 	if (p.mail_send_scope === 'same_dept' && activity.value.department === user.value.department) return true;
 	if (p.mail_send_scope === 'own' && isOwnResponsible) return true;
@@ -646,7 +636,7 @@ async function handleMailClick() {
 
 const canForms = computed(() => {
 	if (!user.value || !activity.value) return false;
-	return canFormsHelper(activity.value, user.value.display_name, user.value.department);
+	return canFormsHelper(activity.value, user.value.id, user.value.department);
 });
 
 const canPublishEvent = computed(() => {
@@ -656,7 +646,7 @@ const canPublishEvent = computed(() => {
 	if (!p) return false;
 	if (p.event_publish_scope === 'all') return true;
 	if (p.event_publish_scope === 'own_dept' && activity.value.department && activity.value.department === user.value.department) return true;
-	if (p.event_publish_scope === 'own' && user.value.display_name && activity.value.responsible.includes(user.value.display_name)) return true;
+	if (p.event_publish_scope === 'own' && user.value.id && activity.value.responsible.includes(user.value.id)) return true;
 	return false;
 });
 
@@ -674,7 +664,7 @@ function evtFormatPrograms(act: Activity): string {
 	if (!act.programs.length) return '';
 	return act.programs.map(p => {
 		const dur = p.duration_minutes ? `${p.duration_minutes} min` : '';
-		const resp = p.responsible && p.responsible.length ? ' (' + p.responsible.join(', ') + ')' : '';
+		const resp = p.responsible && p.responsible.length ? ' (' + p.responsible.map(r => resolveResponsibleName(r)).join(', ') + ')' : '';
 		const desc = p.description ? ': ' + p.description : '';
 		return `${dur} – ${p.title}${resp}${desc}`;
 	}).join('\n');
@@ -686,7 +676,7 @@ function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): stri
 	const vars: Record<string, string> = {
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
-		verantwortlich: act.responsible.join(', '), abteilung: act.department ?? '',
+		verantwortlich: act.responsible.map(r => resolveResponsibleName(r)).join(', '), abteilung: act.department ?? '',
 		ziel: act.goal, tn_material: act.tn_material.join(', ') || '',
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
@@ -702,7 +692,7 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 	const vars: Record<string, string> = {
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
-		verantwortlich: act.responsible.join(', '), abteilung: act.department ?? '',
+		verantwortlich: act.responsible.map(r => resolveResponsibleName(r)).join(', '), abteilung: act.department ?? '',
 		ziel: act.goal, tn_material: act.tn_material.join(', ') || '',
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
@@ -1490,6 +1480,7 @@ onMounted(async () => {
 		const preloadTasks: Promise<unknown>[] = [];
 		if (departments.value.length === 0) preloadTasks.push(fetchDepartments());
 		if (predefinedLocations.value.length === 0) preloadTasks.push(fetchLocations());
+		if (predefinedMaterials.value.length === 0) preloadTasks.push(fetchMaterials());
 		if (activities.value.length === 0) preloadTasks.push(fetchActivities());
 		if (preloadTasks.length > 0) {
 			void Promise.allSettled(preloadTasks);
@@ -1787,7 +1778,13 @@ const materialRespDropdown = ref<number | null>(null);
 function materialRespFiltered(i: number) {
 	const q = (materialRespSearch.value[i] ?? '').toLowerCase();
 	const current = editMaterial.value[i].responsible ?? [];
-	return users.value.filter(u => !current.includes(u.display_name) && (q === '' || u.display_name.toLowerCase().includes(q)));
+	const predefined = predefinedMaterials.value
+		.filter(m => !current.includes(m) && (q === '' || m.toLowerCase().includes(q)))
+		.map(m => ({ label: m, value: m }));
+	const people = users.value
+		.filter(u => !current.includes(u.id) && (q === '' || u.display_name.toLowerCase().includes(q)))
+		.map(u => ({ label: u.display_name, value: u.id }));
+	return [...predefined, ...people];
 }
 function setMaterialResp(i: number, name: string) {
 	if (!editMaterial.value[i].responsible) editMaterial.value[i].responsible = [];
@@ -1831,14 +1828,14 @@ const filteredResponsibleUsers = computed(() => {
 	const q = responsibleSearch.value.toLowerCase();
 	return users.value.filter(
 		(u) =>
-			!editResponsible.value.includes(u.display_name) &&
+			!editResponsible.value.includes(u.id) &&
 			(q === '' || u.display_name.toLowerCase().includes(q)),
 	);
 });
 
-function addResponsible(name: string) {
-	if (!editResponsible.value.includes(name)) {
-		editResponsible.value.push(name);
+function addResponsible(id: string) {
+	if (!editResponsible.value.includes(id)) {
+		editResponsible.value.push(id);
 	}
 	responsibleSearch.value = '';
 	showResponsibleDropdown.value = false;
@@ -1872,6 +1869,7 @@ function selectLocation(loc: string) {
 	markDirty('location');
 	(document.activeElement as HTMLElement)?.blur();
 }
+
 
 function locationOverlapsFor(loc: string): OverlapInfo[] {
 	const currentDate = editDate.value;
@@ -2139,11 +2137,11 @@ const progRespDropdown = ref<number | null>(null);
 function progRespFiltered(i: number) {
 	const q = (progRespSearch.value[i] ?? '').toLowerCase();
 	const current = editPrograms.value[i].responsible;
-	return users.value.filter(u => !current.includes(u.display_name) && (q === '' || u.display_name.toLowerCase().includes(q)));
+	return users.value.filter(u => !current.includes(u.id) && (q === '' || u.display_name.toLowerCase().includes(q)));
 }
-function addProgResponsible(i: number, name: string) {
-	if (!editPrograms.value[i].responsible.includes(name)) {
-		editPrograms.value[i].responsible.push(name);
+function addProgResponsible(i: number, id: string) {
+	if (!editPrograms.value[i].responsible.includes(id)) {
+		editPrograms.value[i].responsible.push(id);
 	}
 	progRespSearch.value[i] = '';
 	progRespDropdown.value = null;
@@ -3410,15 +3408,15 @@ function copyShareLink() {
 								v-for="u in filteredResponsibleUsers"
 								:key="u.id"
 								class="user-dropdown-item"
-								@mousedown.prevent="addResponsible(u.display_name)"
+								@mousedown.prevent="addResponsible(u.id)"
 							>
 								{{ u.display_name }}
 							</div>
 						</div>
 					</div>
 					<div class="user-chips" v-if="editResponsible.length">
-						<span v-for="(name, i) in editResponsible" :key="name" class="user-chip">
-							{{ name }}
+						<span v-for="(entry, i) in editResponsible" :key="entry" class="user-chip">
+							{{ resolveResponsibleName(entry) }}
 							<button type="button" class="user-chip-remove" @click="removeResponsible(i)" :disabled="isLockedByOther('location')" aria-label="Verantwortliche Person entfernen"><X :size="12" aria-hidden="true" /></button>
 						</span>
 					</div>
@@ -3534,15 +3532,15 @@ function copyShareLink() {
 											v-for="u in progRespFiltered(i)"
 											:key="u.id"
 											class="user-dropdown-item"
-											@mousedown.prevent="addProgResponsible(i, u.display_name)"
+											@mousedown.prevent="addProgResponsible(i, u.id)"
 										>
 											{{ u.display_name }}
 										</div>
 									</div>
 								</div>
 								<div class="user-chips" v-if="prog.responsible.length">
-									<span v-for="(name, ri) in prog.responsible" :key="name" class="user-chip">
-										{{ name }}
+									<span v-for="(entry, ri) in prog.responsible" :key="entry" class="user-chip">
+										{{ resolveResponsibleName(entry) }}
 										<button type="button" class="user-chip-remove" @click="removeProgResponsible(i, ri)" :disabled="isLockedByOther(`program_${i}`)" aria-label="Programm-Verantwortliche Person entfernen"><X :size="12" aria-hidden="true" /></button>
 									</span>
 								</div>
@@ -3695,18 +3693,18 @@ function copyShareLink() {
 									/>
 									<div v-if="materialRespDropdown === i && materialRespFiltered(i).length" class="user-dropdown">
 										<div
-											v-for="u in materialRespFiltered(i)"
-											:key="u.id"
+											v-for="opt in materialRespFiltered(i)"
+											:key="opt.value"
 											class="user-dropdown-item"
-											@mousedown.prevent="setMaterialResp(i, u.display_name)"
+											@mousedown.prevent="setMaterialResp(i, opt.value)"
 										>
-											{{ u.display_name }}
+											{{ opt.label }}
 										</div>
 									</div>
 								</div>
 								<div class="user-chips" v-if="editMaterial[i].responsible?.length">
-									<span v-for="(name, ri) in editMaterial[i].responsible" :key="name" class="user-chip">
-										{{ name }}
+									<span v-for="(entry, ri) in editMaterial[i].responsible" :key="entry" class="user-chip">
+										{{ resolveResponsibleName(entry) }}
 										<button type="button" class="user-chip-remove" @click="clearMaterialResp(i, ri)" :disabled="isLockedByOther(`material_${i}`)" aria-label="Material-Verantwortliche Person entfernen"><X :size="12" aria-hidden="true" /></button>
 									</span>
 								</div>

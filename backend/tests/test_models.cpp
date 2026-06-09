@@ -1,4 +1,4 @@
-#include "models.hpp"
+#include "core/models/all_models.hpp"
 #include "test_harness.hpp"
 #include "test_fixtures.hpp"
 

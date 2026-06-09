@@ -633,6 +633,13 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
               </select>
             </div>
             <div class="perm-row">
+              <div class="perm-info"><span class="perm-label">Material verwalten</span></div>
+              <select class="scope-select" :value="getPermForRole(r.name)!.materials_manage_scope"
+                @change="updatePerm(r.name, 'materials_manage_scope', ($event.target as HTMLSelectElement).value)">
+                <option v-for="o in SCOPE_OPTIONS_LOCATIONS_MANAGE" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div class="perm-row">
               <div class="perm-info"><span class="perm-label">Ideenkiste anzeigen / importieren</span></div>
               <select class="scope-select" :value="getPermForRole(r.name)!.ideenkiste_scope"
                 @change="updatePerm(r.name, 'ideenkiste_scope', ($event.target as HTMLSelectElement).value)">
