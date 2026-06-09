@@ -892,6 +892,8 @@ onMounted(() => {
 .system-tab-menu,
 .resources-tab-menu {
   position: relative;
+  display: flex;
+  align-self: stretch;
 }
 
 .system-tab-caret {
