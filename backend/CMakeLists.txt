@@ -152,9 +152,11 @@ if (BUILD_TESTS)
         tests/test_auth.cpp
         tests/test_utils.cpp
         tests/test_models.cpp
+        tests/test_stubs.cpp
         src/utils/strings.cpp
         src/utils/permissions.cpp
         src/utils/templates.cpp
+        src/utils/activity_helpers.cpp
         src/infra/auth.cpp
     )
 

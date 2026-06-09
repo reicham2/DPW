@@ -60,6 +60,7 @@ Wichtig fuer zukuenftige Schema-Aenderungen:
 
 | Befehl                     | Beschreibung                               |
 | -------------------------- | ------------------------------------------ |
+| `make fresh`               | Clean Start: rebuild + DB seed             |
 | `make up`                  | Alle Container starten                     |
 | `make down`                | Alle Container stoppen                     |
 | `make rebuild`             | Alles neu bauen und starten                |
@@ -68,6 +69,7 @@ Wichtig fuer zukuenftige Schema-Aenderungen:
 | `make generate-vapid-keys` | VAPID-Schluessel fuer Web-Push erzeugen    |
 | `make logs`                | Alle Logs anzeigen                         |
 | `make logs-backend`        | Nur Backend-Logs                           |
+| `make test`                | Alle Tests (Frontend + Backend + API)      |
 | `make db-seed`             | DB zurücksetzen und Testdaten laden        |
 | `make db-shell`            | PostgreSQL Shell öffnen                    |
 | `make ps`                  | Container-Status anzeigen                  |
@@ -95,20 +97,28 @@ Zusätzlich fuer oeffentliche Links (z. B. in Benachrichtigungen/Mails):
 
 ## Role Permissions
 
-| Permission               | admin              | Stufenleiter                    | Leiter               | Pio                             |
-| ------------------------ | ------------------ | ------------------------------- | -------------------- | ------------------------------- |
-| View activities          | ✅ all             | ✅ all                          | ✅ all               | ✅ own dept only                |
-| Create activity          | ✅ any dept        | ✅ own dept + Leiter            | ✅ own dept + Leiter | ✅ own dept only                |
-| Edit activity            | ✅                 | ✅ own dept + if verantwortlich | ✅ if verantwortlich | ✅ if verantwortlich (own dept) |
-| Delete activity          | ✅                 | ✅ own dept + if verantwortlich | ✅ if verantwortlich | ✅ if verantwortlich (own dept) |
-| Send mail                | ✅                 | ✅ own dept + if verantwortlich | ✅ if verantwortlich | ✅ if verantwortlich            |
-| Change own dept          | ✅                 | ❌                              | ❌                   | ❌                              |
-| View mail templates      | ✅ any             | ✅ own dept only                | ❌                   | ❌                              |
-| Edit mail template       | ✅ any             | ✅ own dept only                | ❌                   | ❌                              |
-| View users (admin panel) | ✅ all             | ✅ own dept only                | ❌                   | ❌                              |
-| Edit users (admin panel) | ✅ all, incl. role | ✅ own dept, no role change     | ❌                   | ❌                              |
+Jede Rolle hat folgende Berechtigungen, jeweils mit einem Scope-Level (`none`, `own`, `own_dept`, `same_dept`, `all`):
 
-_As of 10 April 2026._
+| Permission | Beschreibung | Scopes |
+|---|---|---|
+| `activity_read_scope` | Aktivitaeten lesen/anzeigen | none / same_dept / all |
+| `activity_create_scope` | Neue Aktivitaeten erstellen | none / own_dept / all |
+| `activity_edit_scope` | Aktivitaeten bearbeiten und loeschen | none / own / same_dept / all |
+| `mail_send_scope` | Mails versenden | none / own / same_dept / all |
+| `mail_templates_scope` | Mail-Vorlagen verwalten | none / own_dept / all |
+| `form_scope` | Formulare erstellen und verwalten | none / own / same_dept / all |
+| `form_templates_scope` | Formular-Vorlagen verwalten | none / own_dept / all |
+| `event_templates_scope` | Event-Vorlagen verwalten | none / own_dept / all |
+| `event_publish_scope` | Events auf WordPress publizieren | none / own / own_dept / all |
+| `user_dept_scope` | Benutzer-Abteilung aendern | none / own / own_dept / all |
+| `user_role_scope` | Benutzer-Rolle aendern | none / own / own_dept / all |
+| `locations_manage_scope` | Vordefinierte Standorte verwalten | none / all |
+| `materials_manage_scope` | Vordefinierte Material-Verantwortliche verwalten | none / all |
+| `ideenkiste_scope` | Ideenkiste lesen | none / own_dept / all |
+| `ideenkiste_add_scope` | Ideen hinzufuegen | none / own_dept / all |
+| `ideenkiste_delete_scope` | Ideen loeschen | none / own_dept / all |
+
+Zusaetzlich gibt es Cross-Department-Zugriff (`role_dept_access`) um Rollen Lese-/Schreibzugriff auf andere Abteilungen zu geben.
 
 ## MiData Integration
 
