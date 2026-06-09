@@ -94,8 +94,6 @@ function htmlToMarkdown(html: string): string {
     .replace(/<\/div>/gi, '')
     .replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ')
 }
 
