@@ -393,4 +393,24 @@ async function confirmDelete() {
 .btn-danger:disabled {
   opacity: 0.6;
 }
+
+@media (max-width: 599px) {
+  .dept-manager { max-width: 100%; }
+  .item-row {
+    flex-wrap: wrap;
+  }
+  .item-name {
+    flex: 1 1 100%;
+  }
+  .item-actions {
+    width: 100%;
+  }
+  .item-actions button {
+    flex: 1;
+    min-height: 38px;
+  }
+  .modal {
+    padding: 22px 18px;
+  }
+}
 </style>

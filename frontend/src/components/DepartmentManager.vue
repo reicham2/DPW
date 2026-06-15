@@ -403,4 +403,32 @@ async function confirmDelete() {
 }
 .btn-danger:hover:not(:disabled) { background: var(--btn-danger-bg-hover); }
 .btn-danger:disabled { opacity: 0.6; }
+
+@media (max-width: 599px) {
+  .dept-manager { max-width: 100%; }
+  .item-row { flex-wrap: wrap; }
+  .item-name { flex: 1 1 100%; }
+  .item-actions { width: 100%; }
+  .item-actions button { flex: 1; min-height: 44px; }
+  .add-row { flex-wrap: wrap; }
+  .modal { padding: 22px 18px; }
+  .modal-select { max-width: 100%; }
+
+  /* Edit/add forms: stack inputs full-width, taller touch targets */
+  .item-row .form-input,
+  .add-row .form-input {
+    flex: 1 1 100%;
+    min-height: 44px;
+    font-size: 1rem;
+  }
+  .item-row .color-input,
+  .add-row .color-input {
+    width: 100%;
+    height: 44px;
+  }
+  .add-form .form-input {
+    min-height: 44px;
+    font-size: 1rem;
+  }
+}
 </style>

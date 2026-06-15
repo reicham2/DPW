@@ -944,4 +944,70 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
 }
 .btn-danger:hover:not(:disabled) { background: var(--btn-danger-bg-hover); }
 .btn-danger:disabled { opacity: 0.6; }
+
+@media (max-width: 599px) {
+  .role-manager { max-width: 100%; }
+  .role-card { padding: 16px 14px; }
+  .perm-row {
+    position: relative;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .perm-info { padding-right: 28px; }
+  .scope-select-wrap { width: 100%; }
+  .scope-select { width: 100%; }
+  .scope-hint-icon {
+    position: absolute;
+    top: 10px;
+    right: 0;
+  }
+  .perm-grid-header,
+  .perm-grid-row {
+    grid-template-columns: 1fr 140px;
+  }
+  .scope-hint-tooltip {
+    width: min(260px, calc(100vw - 48px));
+    left: auto;
+    right: 0;
+  }
+  .add-row { flex-wrap: wrap; }
+  .modal { padding: 22px 18px; }
+  .modal-select { max-width: 100%; }
+
+  /* Edit role header: stack title row + actions, full-width taller inputs */
+  .role-title-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .role-title-left--editing {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .role-title-left--editing .form-input {
+    flex: 1 1 100%;
+    min-height: 44px;
+    font-size: 1rem;
+  }
+  .role-title-left--editing .color-input {
+    width: 100%;
+    height: 44px;
+  }
+  .role-title-row .item-actions {
+    width: 100%;
+  }
+  .role-title-row .item-actions button {
+    flex: 1;
+    min-height: 44px;
+  }
+  .add-row .form-input {
+    flex: 1 1 100%;
+    min-height: 44px;
+    font-size: 1rem;
+  }
+  .add-row .color-input {
+    width: 100%;
+    height: 44px;
+  }
+}
 </style>
