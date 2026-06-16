@@ -58,6 +58,8 @@ const resourcesTab = ref<'locations' | 'materials'>('locations')
 const resourcesMenuOpen = ref(false)
 const systemTab = ref<'settings' | 'maintenance' | 'logs'>('settings')
 const systemMenuOpen = ref(false)
+const menuPos = ref({ top: 0, left: 0 })
+const MENU_WIDTH = 190
 
 // ── User management state ───────────────────────────────────────────────────
 const users = ref<User[]>([])
@@ -239,9 +241,20 @@ function closeSystemMenu() {
   systemMenuOpen.value = false
 }
 
-function toggleSystemMenu() {
+function positionMenuFrom(el: HTMLElement) {
+  const rect = el.getBoundingClientRect()
+  let left = rect.left
+  const maxLeft = window.innerWidth - MENU_WIDTH - 8
+  if (left > maxLeft) left = Math.max(8, maxLeft)
+  menuPos.value = { top: rect.bottom + 8, left }
+}
+
+function toggleSystemMenu(event: MouseEvent) {
   systemMenuOpen.value = !systemMenuOpen.value
-  if (systemMenuOpen.value) resourcesMenuOpen.value = false
+  if (systemMenuOpen.value) {
+    resourcesMenuOpen.value = false
+    positionMenuFrom(event.currentTarget as HTMLElement)
+  }
 }
 
 function selectSystemTab(tab: 'settings' | 'maintenance' | 'logs') {
@@ -250,9 +263,12 @@ function selectSystemTab(tab: 'settings' | 'maintenance' | 'logs') {
   systemMenuOpen.value = false
 }
 
-function toggleResourcesMenu() {
+function toggleResourcesMenu(event: MouseEvent) {
   resourcesMenuOpen.value = !resourcesMenuOpen.value
-  if (resourcesMenuOpen.value) systemMenuOpen.value = false
+  if (resourcesMenuOpen.value) {
+    systemMenuOpen.value = false
+    positionMenuFrom(event.currentTarget as HTMLElement)
+  }
 }
 
 function selectResourcesTab(tab: 'locations' | 'materials') {
@@ -477,14 +493,14 @@ onMounted(() => {
       <button
         class="tab-btn"
         :class="{ 'tab-btn--active': activeTab === 'resources' || resourcesMenuOpen }"
-        @click.stop="toggleResourcesMenu()"
+        @click.stop="toggleResourcesMenu($event)"
       >
         <Package :size="16" aria-hidden="true" />
         {{ resourcesTabLabel }}
         <ChevronDown :size="14" aria-hidden="true" class="system-tab-caret" :class="{ 'system-tab-caret--open': resourcesMenuOpen }" />
       </button>
 
-      <div v-if="resourcesMenuOpen" class="system-tab-dropdown">
+      <div v-if="resourcesMenuOpen" class="system-tab-dropdown" :style="{ top: menuPos.top + 'px', left: menuPos.left + 'px' }">
         <button
           v-if="canSeeLocationsTab"
           type="button"
@@ -518,14 +534,14 @@ onMounted(() => {
       <button
         class="tab-btn"
         :class="{ 'tab-btn--active': activeTab === 'system' || systemMenuOpen }"
-        @click.stop="toggleSystemMenu()"
+        @click.stop="toggleSystemMenu($event)"
       >
         <Cog :size="16" aria-hidden="true" />
         {{ systemTabLabel }}
         <ChevronDown :size="14" aria-hidden="true" class="system-tab-caret" :class="{ 'system-tab-caret--open': systemMenuOpen }" />
       </button>
 
-      <div v-if="systemMenuOpen" class="system-tab-dropdown">
+      <div v-if="systemMenuOpen" class="system-tab-dropdown" :style="{ top: menuPos.top + 'px', left: menuPos.left + 'px' }">
         <button
           type="button"
           class="system-tab-dropdown-item"
@@ -905,16 +921,15 @@ onMounted(() => {
 }
 
 .system-tab-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  position: fixed;
+  width: 190px;
   min-width: 190px;
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card-bg);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
-  z-index: 20;
+  z-index: 120;
 }
 
 .system-tab-dropdown-item {
@@ -1394,9 +1409,9 @@ onMounted(() => {
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .system-tab-dropdown {
-    right: auto;
-    left: 0;
+  .system-tab-dropdown-item {
+    padding: 14px 12px;
+    font-size: 0.95rem;
   }
   .tab-header {
     flex-wrap: wrap;
@@ -1415,8 +1430,6 @@ onMounted(() => {
   }
   .users-table {
     font-size: 0.82rem;
-    border-collapse: separate;
-    border-spacing: 0 10px;
     background: transparent;
   }
   .users-table thead {
@@ -1434,6 +1447,10 @@ onMounted(() => {
     background: var(--card-bg);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
     padding: 8px 10px;
+    margin-bottom: 12px;
+  }
+  .users-table tr:last-child {
+    margin-bottom: 0;
   }
   .users-table td {
     padding: 8px 6px;
