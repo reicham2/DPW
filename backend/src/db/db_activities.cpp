@@ -200,7 +200,7 @@ void Database::attach_programs(std::vector<Activity> &activities)
 
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, activity_id, duration_minutes, title, description, responsible "
-                                 "FROM programs WHERE activity_id = ANY($1::uuid[]) ORDER BY ctid",
+                                 "FROM programs WHERE activity_id = ANY($1::uuid[]) ORDER BY activity_id, position",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -249,20 +249,23 @@ static void insert_programs(PGconn *conn,
                             const std::vector<ProgramInput> &programs,
                             const std::function<std::string(const std::vector<std::string> &)> &fmt)
 {
-    for (const auto &pi : programs)
+    for (size_t idx = 0; idx < programs.size(); ++idx)
     {
+        const auto &pi = programs[idx];
         std::string resp_json = fmt(pi.responsible);
         std::string dm_str = std::to_string(pi.duration_minutes);
-        const char *params[5] = {
+        std::string pos_str = std::to_string(idx);
+        const char *params[6] = {
             activity_id.c_str(),
             dm_str.c_str(),
             pi.title.c_str(),
             pi.description.c_str(),
-            resp_json.c_str()};
+            resp_json.c_str(),
+            pos_str.c_str()};
         PGresult *r = PQexecParams(conn,
-                                   "INSERT INTO programs (activity_id, duration_minutes, title, description, responsible) "
-                                   "VALUES ($1, $2::int, $3, $4, array(select jsonb_array_elements_text($5::jsonb)))",
-                                   5, nullptr, params, nullptr, nullptr, 0);
+                                   "INSERT INTO programs (activity_id, duration_minutes, title, description, responsible, position) "
+                                   "VALUES ($1, $2::int, $3, $4, array(select jsonb_array_elements_text($5::jsonb)), $6::int)",
+                                   6, nullptr, params, nullptr, nullptr, 0);
         ExecStatusType s = PQresultStatus(r);
         PQclear(r);
         if (s != PGRES_COMMAND_OK)

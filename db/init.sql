@@ -174,8 +174,25 @@ CREATE TABLE IF NOT EXISTS programs (
     duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK (duration_minutes >= 0),
     title            TEXT NOT NULL,
     description      TEXT NOT NULL,
-    responsible      TEXT[] NOT NULL DEFAULT '{}'
+    responsible      TEXT[] NOT NULL DEFAULT '{}',
+    position         INTEGER NOT NULL DEFAULT 0
 );
+
+-- Backfill position for databases created before the column existed.
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM programs WHERE position <> 0) THEN
+        RETURN;
+    END IF;
+    UPDATE programs p
+    SET position = ordered.rn - 1
+    FROM (
+        SELECT id, row_number() OVER (PARTITION BY activity_id ORDER BY ctid) AS rn
+        FROM programs
+    ) ordered
+    WHERE p.id = ordered.id;
+END $$;
 
 CREATE OR REPLACE FUNCTION touch_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -192,7 +209,7 @@ CREATE TRIGGER trg_activities_updated_at
 
 CREATE INDEX IF NOT EXISTS idx_activities_date ON activities (date DESC, start_time);
 CREATE INDEX IF NOT EXISTS idx_activities_deleted_at ON activities (deleted_at);
-CREATE INDEX IF NOT EXISTS idx_programs_activity_id ON programs (activity_id);
+CREATE INDEX IF NOT EXISTS idx_programs_activity_id ON programs (activity_id, position);
 
 CREATE TABLE IF NOT EXISTS ideenkiste (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
