@@ -2,13 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { useActivities } from '../composables/useActivities'
 import { usePermissions } from '../composables/usePermissions'
+import { user } from '../composables/useAuth'
 import type { Activity } from '../types'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 
+const { departments, fetchDepartments, fetchMyPermissions, readableDepts } = usePermissions()
 const { activities, loading, error, fetchActivities } = useActivities()
-const { departments, fetchDepartments } = usePermissions()
 
 function formatIsoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -33,6 +34,7 @@ onMounted(() => {
   void Promise.all([
     fetchActivities(),
     fetchDepartments().catch(() => undefined),
+    fetchMyPermissions().catch(() => undefined),
   ])
 })
 
@@ -47,15 +49,16 @@ const pastActivities = computed(() => {
 })
 
 const stageOptions = computed(() => {
+  const allowed = new Set(readableDepts(user.value?.department))
   const uniqueStages = new Set<string>()
 
-  for (const department of departments.value) {
-    if (department.name?.trim()) uniqueStages.add(department.name.trim())
+  for (const name of allowed) {
+    if (name?.trim()) uniqueStages.add(name.trim())
   }
 
   for (const activity of pastActivities.value) {
     const department = activity.department?.trim()
-    if (department) uniqueStages.add(department)
+    if (department && allowed.has(department)) uniqueStages.add(department)
   }
 
   return Array.from(uniqueStages).sort((a, b) => a.localeCompare(b, 'de'))
