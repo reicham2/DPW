@@ -227,6 +227,23 @@ const savedFields = ref<Record<string, number>>({});
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
 let suppressDirtyTracking = true;
 let applyingRemote = false; // plain boolean — set while WS update patches edit fields
+// Signature of the programs we last sent ourselves, used to ignore our own save
+// echoed back over WebSocket (which would otherwise reset focused editors).
+// Normalized to content fields only, since the echo carries extra id/activity_id.
+let lastSavedProgramsJson: string | null = null;
+
+function programsSignature(
+	progs: ReadonlyArray<{ duration_minutes: number; title: string; description: string; responsible: readonly string[] }>,
+): string {
+	return JSON.stringify(
+		progs.map((p) => ({
+			duration_minutes: p.duration_minutes,
+			title: p.title,
+			description: p.description,
+			responsible: [...p.responsible],
+		})),
+	);
+}
 
 function markDirty(...fields: string[]) {
 	if (suppressDirtyTracking || applyingRemote) return;
@@ -1626,7 +1643,13 @@ watch(lastUpdatedActivity, (updated) => {
 			editMaterial.value = [...updated.material.map(m => ({ name: m.name, responsible: m.responsible ?? [] })), { name: '', responsible: [] }];
 		if (JSON.stringify(updated.tn_material ?? []) !== JSON.stringify(prev.tn_material ?? []))
 			editTnMaterial.value = [...(updated.tn_material ?? []), ''];
-		if (JSON.stringify(updated.programs) !== JSON.stringify(prev.programs)) {
+		const updatedProgramsJson = programsSignature(updated.programs);
+		// Skip when this update is merely our own save echoed back: reassigning
+		// editPrograms would reset focused editors and clobber freshly typed text.
+		if (
+			updatedProgramsJson !== programsSignature(prev.programs) &&
+			updatedProgramsJson !== lastSavedProgramsJson
+		) {
 			editPrograms.value = updated.programs.map((p) => ({
 				duration_minutes: p.duration_minutes,
 				title: p.title,
@@ -2305,6 +2328,9 @@ function initProgEditors() {
 	nextTick(() => {
 		for (let i = 0; i < editPrograms.value.length; i++) {
 			const el = progEditorRefs.value[i];
+			// Never rewrite the editor the user is currently typing in: an
+			// innerHTML reset destroys its text nodes and sends the caret to the start.
+			if (el === document.activeElement) continue;
 			if (el && el.innerHTML !== editPrograms.value[i].description) {
 				el.innerHTML = editPrograms.value[i].description;
 			}
@@ -2631,6 +2657,9 @@ async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 		return;
 	}
 	pendingFuzzyAcknowledged = false;
+
+	// Remember what we're sending so the echoed-back save is recognized as ours.
+	lastSavedProgramsJson = programsSignature(editPrograms.value);
 
 	await updateActivity(id, {
 		title: editTitle.value.trim(),
