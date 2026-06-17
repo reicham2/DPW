@@ -96,6 +96,7 @@ export type WsEvent =
 	| { event: 'notification'; notification: NotificationRecord }
 	| { event: 'department_deleted'; name: string }
 	| { event: 'role_deleted'; name: string }
+	| { event: 'camp_updated'; camp_id: string; kind: string }
 	| { event: 'lock'; activity_id: string; section: EditSection; user: string }
 	| { event: 'unlock'; activity_id: string; section: EditSection }
 	| { event: 'editors'; activity_id: string; users: string[] }

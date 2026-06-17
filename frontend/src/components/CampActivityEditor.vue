@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { X, Plus, Trash2, BookOpen, Users, Package, AlignLeft, ListChecks } from 'lucide-vue-next'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { X, Plus, Trash2, Lock, BookOpen, Users, Package, AlignLeft, ListChecks } from 'lucide-vue-next'
 import { useUsers } from '../composables/useUsers'
 import { useUserResolver } from '../composables/useUserResolver'
+import { useAutosave } from '../composables/useAutosave'
+import { useWebSocket, wsJoin, wsLeave, wsSend } from '../composables/useWebSocket'
+import { user } from '../composables/useAuth'
 import type {
   CampActivity,
   CampActivityInput,
@@ -32,6 +35,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'save', input: CampActivityInput): void
+  // Autosave: persist current state for an existing activity without closing.
+  (e: 'autosave', id: string, input: CampActivityInput): void
   (e: 'delete', id: string): void
   (e: 'close'): void
 }>()
@@ -287,6 +292,44 @@ function onProgRespBlur(i: number) {
   setTimeout(() => { if (progRespDropdown.value === i) progRespDropdown.value = null; progRespSearch.value[i] = '' }, 200)
 }
 
+// ── Programmpunkt drag & drop reorder (same as activity DetailPage) ────────────
+const draggedProgramIndex = ref<number | null>(null)
+const dragOverProgramIndex = ref<number | null>(null)
+const programHandleDragActive = ref(false)
+function startProgramDrag(i: number, event: DragEvent) {
+  draggedProgramIndex.value = i
+  dragOverProgramIndex.value = i
+  programHandleDragActive.value = true
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(i))
+  }
+}
+function onProgramDragOver(i: number, event: DragEvent) {
+  if (draggedProgramIndex.value === null) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  dragOverProgramIndex.value = i
+}
+function onProgramDrop(i: number, event: DragEvent) {
+  event.preventDefault()
+  if (draggedProgramIndex.value === null) return
+  const from = draggedProgramIndex.value
+  const to = i
+  if (from !== to && from >= 0 && to >= 0 && from < programs.value.length && to < programs.value.length) {
+    const moved = programs.value.splice(from, 1)[0]
+    programs.value.splice(to, 0, moved)
+  }
+  draggedProgramIndex.value = null
+  dragOverProgramIndex.value = null
+  programHandleDragActive.value = false
+}
+function endProgramDrag() {
+  draggedProgramIndex.value = null
+  dragOverProgramIndex.value = null
+  programHandleDragActive.value = false
+}
+
 // ── Build payload ────────────────────────────────────────────────────────────
 function buildContentNodes(): ContentNodeInput[] {
   const nodes: ContentNodeInput[] = []
@@ -320,9 +363,8 @@ function buildContentNodes(): ContentNodeInput[] {
   return nodes
 }
 
-function save() {
-  if (!title.value.trim()) return
-  const input: CampActivityInput = {
+function buildInput(): CampActivityInput {
+  return {
     category_id: categoryId.value,
     title: title.value,
     location: location.value,
@@ -345,8 +387,86 @@ function save() {
       : [],
     content_nodes: buildContentNodes(),
   }
-  emit('save', input)
 }
+function save() {
+  if (!title.value.trim()) return
+  emit('save', buildInput())
+}
+
+// ── Autosave (existing activities only) + realtime edit locks ─────────────────
+// New activities still use the explicit Speichern button (no id to PATCH yet).
+const isExisting = computed(() => !!props.activity?.id)
+// Suppress autosave while we are populating the form from props.
+let hydrating = true
+
+const { scheduleAutoSave, flushAutoSave, cancelAutoSave } = useAutosave(() => {
+  if (!isExisting.value || !props.activity || !title.value.trim()) return
+  emit('autosave', props.activity.id, buildInput())
+})
+
+function onAnyChange() {
+  if (hydrating || !isExisting.value) return
+  scheduleAutoSave()
+}
+
+// Watch every editable field; any change schedules an autosave.
+watch(
+  [title, location, categoryId, responsible, responsibleIds, programs, periodId, dayOffset, startMinutes, length, widgets],
+  onAnyChange,
+  { deep: true },
+)
+
+// ── Section edit locks (same protocol as activities) ──────────────────────────
+const sectionLocks = ref<Map<string, string>>(new Map())
+function lockedBy(section: string): string | null {
+  const u = sectionLocks.value.get(section)
+  return u && u !== user.value?.display_name ? u : null
+}
+function isLockedByOther(section: string): boolean {
+  return lockedBy(section) !== null
+}
+function lockSection(section: string) {
+  if (!isExisting.value || !props.activity) return
+  if (isLockedByOther(section)) return
+  wsSend({ type: 'lock', activity_id: props.activity.id, section })
+}
+function unlockSection(section: string) {
+  if (!isExisting.value || !props.activity) return
+  wsSend({ type: 'unlock', activity_id: props.activity.id, section })
+}
+
+useWebSocket((e) => {
+  const aid = props.activity?.id
+  if (!aid) return
+  if (e.event === 'lock' && e.activity_id === aid) {
+    sectionLocks.value.set(e.section, e.user)
+    sectionLocks.value = new Map(sectionLocks.value)
+  } else if (e.event === 'unlock' && e.activity_id === aid) {
+    sectionLocks.value.delete(e.section)
+    sectionLocks.value = new Map(sectionLocks.value)
+  } else if (e.event === 'locks_state' && e.activity_id === aid) {
+    const m = new Map<string, string>()
+    for (const l of e.locks) m.set(l.section, l.user)
+    sectionLocks.value = m
+  }
+})
+
+// Join the activity room for presence + lock sync (existing activities only).
+watch(
+  () => props.activity?.id,
+  (id, old) => {
+    if (old) { flushAutoSave(); wsLeave() }
+    hydrating = true
+    if (id) wsJoin(id)
+    nextTick(() => { hydrating = false })
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  flushAutoSave()
+  if (props.activity?.id) wsLeave()
+})
 
 const widgetIcon = (t: ContentNodeType) =>
   t === 'Storyboard' ? BookOpen
@@ -461,58 +581,91 @@ const widgetIcon = (t: ContentNodeType) =>
           </div>
         </div>
 
-        <!-- Programmpunkte — same fields as an activity -->
+        <!-- Programmpunkte — identical layout + drag&drop as activity editor -->
         <div class="section">
           <div class="section-label"><ListChecks :size="15" /> Programmpunkte</div>
-          <div class="prog-list">
-            <div v-for="(prog, i) in programs" :key="i" class="prog-card">
-              <div class="prog-card-head">
-                <span class="prog-time">{{ programTimeLabel(i) }}</span>
-                <button class="widget-del" @click="removeProgram(i)" title="Programmpunkt entfernen"><Trash2 :size="14" /></button>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <div
+              v-for="(prog, i) in programs" :key="i"
+              class="program-card"
+              :class="{
+                'program-card--drag-source': draggedProgramIndex === i,
+                'program-card--drag-over': draggedProgramIndex !== null && dragOverProgramIndex === i,
+                'is-locked': isLockedByOther(`program_${i}`),
+              }"
+              @dragover="onProgramDragOver(i, $event)"
+              @drop="onProgramDrop(i, $event)"
+              @focusin="lockSection(`program_${i}`)"
+              @focusout="unlockSection(`program_${i}`)"
+            >
+              <div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
+              <div
+                class="program-card__drag-handle"
+                :class="{ 'program-card__drag-handle--active': programHandleDragActive && draggedProgramIndex === i }"
+                draggable="true"
+                :title="`Programmpunkt verschieben (${i + 1})`"
+                aria-label="Programmpunkt verschieben"
+                @dragstart="startProgramDrag(i, $event)"
+                @dragover="onProgramDragOver(i, $event)"
+                @drop="onProgramDrop(i, $event)"
+                @dragend="endProgramDrag"
+              >
+                <span class="program-card__drag-dots" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span><span></span><span></span>
+                </span>
               </div>
-              <div class="prog-fields">
-                <label class="field prog-field-dur">
-                  <span class="field-label">Dauer (Min.)</span>
-                  <input type="number" min="0" step="5" class="field-input"
-                    :value="prog.duration_minutes"
-                    @input="prog.duration_minutes = Math.max(0, parseInt(($event.target as HTMLInputElement).value, 10) || 0)" />
-                </label>
-                <label class="field prog-field-title">
-                  <span class="field-label">Titel</span>
-                  <input v-model="prog.title" class="field-input" placeholder="Titel" />
-                </label>
+              <div class="program-card__top-actions">
+                <button type="button" class="program-card__remove" @click="removeProgram(i)" :disabled="isLockedByOther(`program_${i}`)" aria-label="Programmpunkt entfernen">
+                  <X :size="14" aria-hidden="true" />
+                </button>
               </div>
-              <div class="field">
-                <span class="field-label">Verantwortlich</span>
-                <div class="user-search-wrapper">
+              <div class="program-card__fields">
+                <div class="form-group">
+                  <label>Dauer (Minuten)</label>
                   <input
-                    type="text"
-                    class="field-input"
-                    :value="progRespSearch[i] ?? ''"
-                    @input="progRespSearch[i] = ($event.target as HTMLInputElement).value"
-                    placeholder="Person suchen oder eingeben…"
-                    @focus="progRespDropdown = i"
-                    @blur="onProgRespBlur(i)"
-                    @keydown.enter.prevent="addProgRespFreeText(i)"
+                    type="number" min="0" step="5" placeholder="z.B. 30"
+                    :value="prog.duration_minutes"
+                    :disabled="isLockedByOther(`program_${i}`)"
+                    @input="prog.duration_minutes = Math.max(0, parseInt(($event.target as HTMLInputElement).value, 10) || 0)"
                   />
-                  <div v-if="progRespDropdown === i && progRespFiltered(i).length" class="user-dropdown">
-                    <div v-for="u in progRespFiltered(i)" :key="u.id" class="user-dropdown-item" @mousedown.prevent="addProgResponsible(i, u.id)">{{ u.display_name }}</div>
+                  <p v-if="programTimeLabel(i)" style="margin: 4px 0 0; font-size: 0.78rem; color: var(--text-muted)">{{ programTimeLabel(i) }}</p>
+                </div>
+                <div class="form-group">
+                  <label>Titel</label>
+                  <input v-model="prog.title" type="text" placeholder="Titel" :disabled="isLockedByOther(`program_${i}`)" />
+                </div>
+                <div class="form-group user-search-group">
+                  <label>Verantwortlich</label>
+                  <div class="user-search-wrapper">
+                    <input
+                      type="text"
+                      :value="progRespSearch[i] ?? ''"
+                      @input="progRespSearch[i] = ($event.target as HTMLInputElement).value"
+                      placeholder="Person suchen oder eingeben…"
+                      @focus="progRespDropdown = i"
+                      @blur="onProgRespBlur(i)"
+                      @keydown.enter.prevent="addProgRespFreeText(i)"
+                      :disabled="isLockedByOther(`program_${i}`)"
+                    />
+                    <div v-if="progRespDropdown === i && progRespFiltered(i).length" class="user-dropdown">
+                      <div v-for="u in progRespFiltered(i)" :key="u.id" class="user-dropdown-item" @mousedown.prevent="addProgResponsible(i, u.id)">{{ u.display_name }}</div>
+                    </div>
+                  </div>
+                  <div class="user-chips" v-if="prog.responsible.length">
+                    <span v-for="(entry, ri) in prog.responsible" :key="entry" class="user-chip">
+                      {{ resolveResponsibleName(entry) }}
+                      <button type="button" class="user-chip-remove" @click="removeProgResponsible(i, ri)" aria-label="Entfernen"><X :size="12" /></button>
+                    </span>
                   </div>
                 </div>
-                <div class="user-chips" v-if="prog.responsible.length">
-                  <span v-for="(entry, ri) in prog.responsible" :key="entry" class="user-chip">
-                    {{ resolveResponsibleName(entry) }}
-                    <button type="button" class="user-chip-remove" @click="removeProgResponsible(i, ri)" aria-label="Entfernen"><X :size="12" /></button>
-                  </span>
+                <div class="form-group program-card__full">
+                  <label>Beschreibung</label>
+                  <textarea v-model="prog.description" rows="2" placeholder="Beschreibung…" :disabled="isLockedByOther(`program_${i}`)" />
                 </div>
               </div>
-              <label class="field">
-                <span class="field-label">Beschreibung</span>
-                <textarea v-model="prog.description" class="field-input" rows="2" placeholder="Beschreibung…" />
-              </label>
             </div>
           </div>
-          <button class="btn-add" @click="addProgram"><Plus :size="14" /> Programmpunkt</button>
+          <button class="btn-add" style="margin-top: 10px" @click="addProgram"><Plus :size="14" /> Programmpunkt</button>
         </div>
 
         <!-- Content widgets -->
@@ -578,8 +731,15 @@ const widgetIcon = (t: ContentNodeType) =>
           <Trash2 :size="15" /> Löschen
         </button>
         <span style="flex:1" />
-        <button class="btn-ghost" @click="emit('close')">Abbrechen</button>
-        <button class="btn-primary" :disabled="!title.trim()" @click="save">Speichern</button>
+        <!-- Existing activities autosave (no save button); new ones save explicitly. -->
+        <template v-if="isExisting">
+          <span class="autosave-hint">Änderungen werden automatisch gespeichert</span>
+          <button class="btn-primary" @click="flushAutoSave(); emit('close')">Fertig</button>
+        </template>
+        <template v-else>
+          <button class="btn-ghost" @click="emit('close')">Abbrechen</button>
+          <button class="btn-primary" :disabled="!title.trim()" @click="save">Speichern</button>
+        </template>
       </div>
     </div>
   </div>
@@ -658,13 +818,15 @@ const widgetIcon = (t: ContentNodeType) =>
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.prog-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
-.prog-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--bg-elevated); display: flex; flex-direction: column; gap: 10px; }
-.prog-card-head { display: flex; align-items: center; justify-content: space-between; }
-.prog-time { font-size: 0.78rem; font-weight: 700; color: var(--program-time-color, var(--accent)); background: var(--program-time-bg, var(--accent-bg)); padding: 3px 10px; border-radius: 999px; }
-.prog-fields { display: flex; gap: 12px; }
-.prog-field-dur { flex: 0 0 110px; }
-.prog-field-title { flex: 1; }
+/* Programmpunkt cards reuse the global .program-card styles from main.css. */
+.autosave-hint { font-size: 0.8rem; color: var(--text-muted); margin-right: 8px; }
+.lock-badge {
+  position: absolute; top: 10px; left: 14px; z-index: 3;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.72rem; font-weight: 600; color: var(--warning-color);
+  background: var(--warning-bg); padding: 2px 8px; border-radius: 999px;
+}
+.program-card.is-locked { opacity: 0.7; }
 .user-search-wrapper { position: relative; }
 .user-dropdown {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;

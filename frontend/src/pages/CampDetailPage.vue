@@ -15,6 +15,7 @@ import { buildActivityNumbers } from '../utils/campNumbering'
 import { formatMinuteOfDay, formatDuration } from '../utils/campTime'
 import { printCamp } from '../utils/campPrint'
 import { useUserResolver } from '../composables/useUserResolver'
+import { useWebSocket } from '../composables/useWebSocket'
 import type {
   CampActivity, CampActivityInput, CampCategory, CampDetail, CampPeriod,
 } from '../types'
@@ -78,6 +79,20 @@ onUnmounted(() => {
 
 function setTab(key: string) {
   router.push(`/camps/${campId.value}?tab=${key}`)
+}
+
+// Realtime: when another client changes this camp, pull the latest graph.
+// Skip while actively editing so an open editor isn't clobbered mid-typing.
+useWebSocket((e) => {
+  if (e.event === 'camp_updated' && e.camp_id === campId.value) {
+    if (editMode.value) return
+    void reloadSilent()
+  }
+})
+// Reload the camp graph without toggling the loading splash (for realtime).
+async function reloadSilent() {
+  const c = await fetchCamp(campId.value)
+  if (c) setActiveCamp(c.id, c.title)
 }
 
 // ── Period helpers ──────────────────────────────────────────────────────────
@@ -312,6 +327,12 @@ async function onSave(input: CampActivityInput) {
   else await createActivity(campId.value, input)
   closePanel()
   await reload()
+}
+// Autosave: persist in place, keep the editor open, refresh the graph quietly so
+// the calendar/list reflect the change without disrupting the open editor.
+async function onAutosave(id: string, input: CampActivityInput) {
+  await updateActivity(campId.value, id, input)
+  await reloadSilent()
 }
 async function onDelete(id: string) {
   if (!window.confirm('Aktivität löschen?')) return
@@ -640,6 +661,7 @@ function doPrint() {
             :prefill-schedule="prefillSchedule"
             inline
             @save="onSave"
+            @autosave="onAutosave"
             @delete="onDelete"
             @close="closePanel"
           />
@@ -732,6 +754,7 @@ function doPrint() {
       :default-period-id="activePeriodId"
       :prefill-schedule="prefillSchedule"
       @save="onSave"
+      @autosave="onAutosave"
       @delete="onDelete"
       @close="closePanel"
     />
