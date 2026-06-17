@@ -10,6 +10,7 @@ import {
   CalendarDays, List, Plus, Users, Clock, MapPin, Lock, Unlock, BookOpen, Package, Tag,
 } from 'lucide-vue-next'
 import { buildActivityNumbers } from '../utils/campNumbering'
+import { formatMinuteOfDay, formatDuration } from '../utils/campTime'
 import type {
   CampActivity, CampActivityInput, CampCategory, CampDetail, CampPeriod,
 } from '../types'
@@ -185,11 +186,15 @@ const listRows = computed<ListRow[]>(() => {
   return rows
 })
 const listByDay = computed(() =>
-  periodDays.value.map((day, idx) => ({ day, rows: listRows.value.filter((r) => r.dayIndex === idx) })),
+  periodDays.value.map((day, idx) => {
+    const rows = listRows.value.filter((r) => r.dayIndex === idx)
+    const totalMin = rows.reduce((sum, r) => sum + r.length, 0)
+    return { day, rows, count: rows.length, totalMin }
+  }),
 )
-function fmtMin(m: number): string {
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-}
+
+const fmtDuration = formatDuration
+const fmtMin = formatMinuteOfDay
 
 // Day responsibles lookup (Tagesverantwortliche), keyed by day index.
 const dayRespByIndex = computed<Record<number, string[]>>(() => {
@@ -466,6 +471,7 @@ function activityText(a: CampActivity): string {
           <div v-for="grp in listByDay" :key="grp.day" class="list-day">
             <h3 class="list-day-title">
               {{ dayLabel(grp.day) }}
+              <span v-if="grp.count" class="list-day-sum">{{ grp.count }} Punkte · {{ fmtDuration(grp.totalMin) }}</span>
               <span v-if="dayRespByIndex[listByDay.indexOf(grp)]?.length" class="list-day-resp">· {{ dayRespByIndex[listByDay.indexOf(grp)].join(', ') }}</span>
             </h3>
             <p v-if="grp.rows.length === 0" class="hint list-empty">Keine Programmpunkte.</p>
@@ -674,6 +680,7 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 .list-view { display: flex; flex-direction: column; gap: 18px; }
 .list-day-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
 .list-day-resp { font-weight: 600; font-size: 0.8rem; color: var(--accent); }
+.list-day-sum { font-weight: 500; font-size: 0.78rem; color: var(--text-muted); margin-left: 8px; }
 .list-empty { padding: 4px 0 8px; }
 .list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; background: var(--bg-surface); margin-bottom: 8px; cursor: pointer; }
 .list-row:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
