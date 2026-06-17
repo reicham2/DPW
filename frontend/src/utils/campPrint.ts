@@ -34,7 +34,12 @@ function daysInPeriod(startDate: string, endDate: string): string[] {
 // Builds a standalone, print-optimized HTML document for the whole camp program
 // (eCamp "PDF / Drucken"). Renders each period day-by-day with times, categories
 // and responsibles, then triggers the browser print dialog.
-export function buildCampPrintHtml(camp: CampDetail): string {
+// resolveName maps a user id (or free-text) to a display name, matching the
+// activity "Verantwortlich" system. Defaults to identity when not supplied.
+export function buildCampPrintHtml(
+	camp: CampDetail,
+	resolveName: (idOrText: string) => string = (s) => s,
+): string {
 	const numbers = buildActivityNumbers(camp.activities, camp.categories);
 	const catById = Object.fromEntries(camp.categories.map((c) => [c.id, c]));
 	const collabById = Object.fromEntries(
@@ -42,10 +47,11 @@ export function buildCampPrintHtml(camp: CampDetail): string {
 	);
 
 	function respString(a: CampActivity): string {
-		return a.responsible_collaboration_ids
+		const users = (a.responsible ?? []).map(resolveName);
+		const fns = a.responsible_collaboration_ids
 			.map((id) => collabById[id])
-			.filter(Boolean)
-			.join(', ');
+			.filter(Boolean);
+		return [...users, ...fns].filter(Boolean).join(', ');
 	}
 
 	let body = '';
@@ -124,8 +130,11 @@ export function buildCampPrintHtml(camp: CampDetail): string {
 }
 
 // Opens the print document in a new window and triggers the print dialog.
-export function printCamp(camp: CampDetail): void {
-	const html = buildCampPrintHtml(camp);
+export function printCamp(
+	camp: CampDetail,
+	resolveName: (idOrText: string) => string = (s) => s,
+): void {
+	const html = buildCampPrintHtml(camp, resolveName);
 	const w = window.open('', '_blank');
 	if (!w) return;
 	w.document.open();

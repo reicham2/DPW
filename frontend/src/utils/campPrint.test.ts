@@ -13,6 +13,7 @@ function makeCamp(): CampDetail {
 		collaborations: [{ id: 'co1', camp_id: 'c', user_id: null, display_name: 'Max', role: 'manager', camp_role: 'PR', abbreviation: 'MX', color: '#000', status: 'established', created_at: '', updated_at: '' }],
 		activities: [{
 			id: 'a1', camp_id: 'c', category_id: 'lp', title: 'Quidditch', location: 'Feld',
+			responsible: ['user-1'],
 			schedule_entries: [{ id: 's1', activity_id: 'a1', period_id: 'p1', period_offset: 540, length: 90, left_fraction: 0, width_fraction: 1 }],
 			responsible_collaboration_ids: ['co1'], content_nodes: [], created_at: '',
 		}],
@@ -30,11 +31,12 @@ describe('buildCampPrintHtml', () => {
 	});
 
 	it('renders the activity with numbered category, time and responsible', () => {
-		const html = buildCampPrintHtml(makeCamp());
+		const html = buildCampPrintHtml(makeCamp(), (id) => (id === 'user-1' ? 'Harry P.' : id));
 		expect(html).toContain('Quidditch');
 		expect(html).toContain('LP1');          // numbering applied
 		expect(html).toContain('09:00–10:30');  // start–end
-		expect(html).toContain('MX');           // responsible abbreviation
+		expect(html).toContain('MX');           // RF function abbreviation
+		expect(html).toContain('Harry P.');     // resolved user responsible
 	});
 
 	it('escapes HTML in user content', () => {

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { X, Plus, Trash2, BookOpen, Users, Package, AlignLeft, ListChecks } from 'lucide-vue-next'
+import { useUsers } from '../composables/useUsers'
+import { useUserResolver } from '../composables/useUserResolver'
 import type {
   CampActivity,
   CampActivityInput,
@@ -10,6 +12,10 @@ import type {
   ContentNodeInput,
   ContentNodeType,
 } from '../types'
+
+const { users, fetchUsers } = useUsers()
+const { resolveResponsibleName } = useUserResolver()
+onMounted(() => { fetchUsers() })
 
 const props = defineProps<{
   activity: CampActivity | null // null = create mode
@@ -31,7 +37,8 @@ const emit = defineEmits<{
 const title = ref('')
 const location = ref('')
 const categoryId = ref<string | null>(null)
-const responsibleIds = ref<string[]>([])
+const responsibleIds = ref<string[]>([])      // collaboration ids (RF-Liste)
+const responsible = ref<string[]>([])          // user ids / free-text, like Activity
 
 // Schedule (first entry only in editor; calendar handles multi-placement)
 const periodId = ref('')
@@ -67,6 +74,7 @@ function loadFromActivity(a: CampActivity | null) {
     location.value = ''
     categoryId.value = props.categories[0]?.id ?? null
     responsibleIds.value = []
+    responsible.value = []
     if (props.prefillSchedule) {
       periodId.value = props.prefillSchedule.period_id
       dayOffset.value = Math.floor(props.prefillSchedule.period_offset / (24 * 60))
@@ -85,6 +93,7 @@ function loadFromActivity(a: CampActivity | null) {
   location.value = a.location
   categoryId.value = a.category_id
   responsibleIds.value = [...a.responsible_collaboration_ids]
+  responsible.value = [...(a.responsible ?? [])]
   const se = a.schedule_entries[0]
   periodId.value = se?.period_id ?? props.defaultPeriodId
   const off = se?.period_offset ?? 540
@@ -193,6 +202,28 @@ function toggleResponsible(id: string) {
   else responsibleIds.value.splice(idx, 1)
 }
 
+// ── User responsible picker (same UX as activity DetailPage) ──────────────────
+const responsibleSearch = ref('')
+const showResponsibleDropdown = ref(false)
+const filteredResponsibleUsers = computed(() => {
+  const q = responsibleSearch.value.toLowerCase()
+  return users.value.filter(
+    (u) => !responsible.value.includes(u.id) &&
+      (q === '' || u.display_name.toLowerCase().includes(q)),
+  )
+})
+function addResponsible(id: string) {
+  if (!responsible.value.includes(id)) responsible.value.push(id)
+  responsibleSearch.value = ''
+  showResponsibleDropdown.value = false
+}
+function removeResponsible(i: number) {
+  responsible.value.splice(i, 1)
+}
+function onResponsibleBlur() {
+  setTimeout(() => { showResponsibleDropdown.value = false; responsibleSearch.value = '' }, 200)
+}
+
 // ── Build payload ────────────────────────────────────────────────────────────
 function buildContentNodes(): ContentNodeInput[] {
   const nodes: ContentNodeInput[] = []
@@ -232,6 +263,7 @@ function save() {
     category_id: categoryId.value,
     title: title.value,
     location: location.value,
+    responsible: [...responsible.value],
     responsible_collaboration_ids: [...responsibleIds.value],
     schedule_entries: periodId.value
       ? [{
@@ -313,9 +345,38 @@ const widgetIcon = (t: ContentNodeType) =>
           </label>
         </div>
 
-        <!-- Responsibilities (Verantwortlichkeiten) -->
+        <!-- Verantwortlich — same user picker as activities -->
         <div class="section">
-          <div class="section-label"><Users :size="15" /> Verantwortlichkeiten</div>
+          <div class="section-label"><Users :size="15" /> Verantwortlich</div>
+          <div class="user-search-wrapper">
+            <input
+              type="text"
+              class="field-input"
+              v-model="responsibleSearch"
+              placeholder="Person suchen…"
+              @focus="showResponsibleDropdown = true"
+              @blur="onResponsibleBlur"
+            />
+            <div v-if="showResponsibleDropdown && filteredResponsibleUsers.length" class="user-dropdown">
+              <div
+                v-for="u in filteredResponsibleUsers"
+                :key="u.id"
+                class="user-dropdown-item"
+                @mousedown.prevent="addResponsible(u.id)"
+              >{{ u.display_name }}</div>
+            </div>
+          </div>
+          <div class="user-chips" v-if="responsible.length">
+            <span v-for="(entry, i) in responsible" :key="entry" class="user-chip">
+              {{ resolveResponsibleName(entry) }}
+              <button type="button" class="user-chip-remove" @click="removeResponsible(i)" aria-label="Entfernen"><X :size="12" /></button>
+            </span>
+          </div>
+        </div>
+
+        <!-- Funktionen / RF-Liste assignment (camp-specific collaborations) -->
+        <div class="section" v-if="collaborations.length">
+          <div class="section-label"><Users :size="15" /> Funktion (RF-Liste)</div>
           <div class="resp-chips">
             <button
               v-for="c in collaborations"
@@ -328,7 +389,6 @@ const widgetIcon = (t: ContentNodeType) =>
             >
               {{ c.abbreviation || c.display_name }}
             </button>
-            <span v-if="collaborations.length === 0" class="hint">Noch keine Mitarbeitenden (RF-Liste) angelegt.</span>
           </div>
         </div>
 
@@ -465,6 +525,26 @@ const widgetIcon = (t: ContentNodeType) =>
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+.user-search-wrapper { position: relative; }
+.user-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
+  background: var(--dropdown-bg, var(--bg-surface)); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); max-height: 220px; overflow-y: auto; padding: 4px;
+}
+.user-dropdown-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 0.88rem; color: var(--text-secondary); }
+.user-dropdown-item:hover { background: var(--dropdown-hover, var(--bg-hover)); color: var(--accent); }
+.user-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.user-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 6px 4px 11px; border-radius: 999px;
+  background: var(--accent-bg); color: var(--accent); font-size: 0.82rem; font-weight: 600;
+}
+.user-chip-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.08); border: none; color: inherit; cursor: pointer;
+  width: 16px; height: 16px; border-radius: 50%; padding: 0;
+}
+.user-chip-remove:hover { background: rgba(0,0,0,0.18); }
 .resp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .resp-chip {
   padding: 5px 12px;

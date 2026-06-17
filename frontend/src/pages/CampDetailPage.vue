@@ -5,6 +5,7 @@ import { useCamps } from '../composables/useCamps'
 import { useCampContext, CAMP_TABS } from '../composables/useCampContext'
 import CampActivityEditor from '../components/CampActivityEditor.vue'
 import CampRfListe from '../components/CampRfListe.vue'
+import ResponsibleAvatars from '../components/ResponsibleAvatars.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import {
   CalendarDays, List, Plus, Users, Clock, MapPin, Lock, Unlock, BookOpen, Package, Tag, Printer,
@@ -12,6 +13,7 @@ import {
 import { buildActivityNumbers } from '../utils/campNumbering'
 import { formatMinuteOfDay, formatDuration } from '../utils/campTime'
 import { printCamp } from '../utils/campPrint'
+import { useUserResolver } from '../composables/useUserResolver'
 import type {
   CampActivity, CampActivityInput, CampCategory, CampDetail, CampPeriod,
 } from '../types'
@@ -26,6 +28,7 @@ const {
   createActivity, updateActivity, deleteActivity, updateScheduleEntry,
 } = useCamps()
 const { setActiveCamp } = useCampContext()
+const { resolveResponsibleName } = useUserResolver()
 
 const camp = computed<CampDetail | null>(() => currentCamp.value)
 const loading = ref(true)
@@ -348,7 +351,7 @@ function activityText(a: CampActivity): string {
 
 // PDF / Drucken — open print-optimized program document.
 function doPrint() {
-  if (camp.value) printCamp(camp.value)
+  if (camp.value) printCamp(camp.value, resolveResponsibleName)
 }
 </script>
 
@@ -399,6 +402,7 @@ function doPrint() {
             <span v-if="categoryShort(a)" class="dash-item-cat" :style="{ background: categoryColor(a) }">{{ categoryShort(a) }}</span>
             <span class="dash-item-title">{{ a.title }}</span>
             <span v-if="a.location" class="dash-item-loc"><MapPin :size="12" /> {{ a.location }}</span>
+            <ResponsibleAvatars v-if="a.responsible?.length" :names="a.responsible" />
             <span v-if="responsibleAbbrs(a).length" class="dash-item-resp"><Users :size="12" /> {{ responsibleAbbrs(a).join(', ') }}</span>
           </button>
           <p v-if="!camp.activities.some(a => a.schedule_entries.some(s => s.period_id === p.id))" class="hint">Noch keine Programmpunkte.</p>
@@ -529,6 +533,7 @@ function doPrint() {
               </div>
               <div class="list-meta">
                 <span v-if="row.activity.location" class="list-loc"><MapPin :size="12" /> {{ row.activity.location }}</span>
+                <ResponsibleAvatars v-if="row.activity.responsible?.length" :names="row.activity.responsible" />
                 <span v-if="responsibleAbbrs(row.activity).length" class="list-resp"><Users :size="12" /> {{ responsibleAbbrs(row.activity).join(', ') }}</span>
               </div>
             </div>
