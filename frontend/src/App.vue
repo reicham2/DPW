@@ -74,7 +74,6 @@
         <!-- Default DPWeb nav -->
         <div v-else-if="user" class="global-nav-links">
           <router-link to="/" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }">Aktivitäten</router-link>
-          <router-link to="/camps" class="global-nav-link" :class="{ 'global-nav-link--active': route.path.startsWith('/camps') }">Lager</router-link>
           <router-link to="/stats" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/stats' }">Statistik</router-link>
           <router-link v-if="showIdeenkiste" to="/ideas" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/ideas' }">Ideenkiste</router-link>
           <router-link v-if="showVorlagen" to="/templates" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/templates' }">Vorlagen</router-link>
@@ -104,7 +103,6 @@
       :class="{ 'mobile-nav-drawer--open': mobileMenuOpen }"
     >
       <router-link to="/" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }" @click="mobileMenuOpen = false">Aktivitäten</router-link>
-      <router-link to="/camps" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path.startsWith('/camps') }" @click="mobileMenuOpen = false">Lager</router-link>
       <router-link to="/stats" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/stats' }" @click="mobileMenuOpen = false">Statistik</router-link>
       <router-link v-if="showIdeenkiste" to="/ideas" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/ideas' }" @click="mobileMenuOpen = false">Ideenkiste</router-link>
       <router-link v-if="showVorlagen" to="/templates" class="mobile-nav-link" :class="{ 'mobile-nav-link--active': route.path === '/templates' }" @click="mobileMenuOpen = false">Vorlagen</router-link>
