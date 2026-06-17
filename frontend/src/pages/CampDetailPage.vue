@@ -102,6 +102,20 @@ function categoryShort(a: CampActivity): string {
   return activityNumbers.value[a.id]
     ?? (a.category_id ? categoryById.value[a.category_id]?.short_name ?? '' : '')
 }
+// Category filter (eCamp-style): set of hidden category ids. Empty = show all.
+// '__none__' represents activities without a category.
+const hiddenCats = ref<Set<string>>(new Set())
+function toggleCat(id: string) {
+  const next = new Set(hiddenCats.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  hiddenCats.value = next
+}
+function catVisible(a: CampActivity): boolean {
+  return !hiddenCats.value.has(a.category_id ?? '__none__')
+}
+const anyCatHidden = computed(() => hiddenCats.value.size > 0)
+
 const collabById = computed<Record<string, string>>(() => {
   const m: Record<string, string> = {}
   for (const c of camp.value?.collaborations ?? []) m[c.id] = c.abbreviation || c.display_name
@@ -134,6 +148,7 @@ const placedByDay = computed<PlacedEntry[][]>(() => {
   const cols: PlacedEntry[][] = periodDays.value.map(() => [])
   if (!activePeriod.value) return cols
   for (const a of camp.value?.activities ?? []) {
+    if (!catVisible(a)) continue
     for (const se of a.schedule_entries) {
       if (se.period_id !== activePeriod.value.id) continue
       const dayIndex = Math.floor(se.period_offset / (24 * 60))
@@ -159,6 +174,7 @@ const listRows = computed<ListRow[]>(() => {
   if (!activePeriod.value) return []
   const rows: ListRow[] = []
   for (const a of camp.value?.activities ?? []) {
+    if (!catVisible(a)) continue
     for (const se of a.schedule_entries) {
       if (se.period_id !== activePeriod.value.id) continue
       const dayIndex = Math.floor(se.period_offset / (24 * 60))
@@ -371,6 +387,23 @@ function activityText(a: CampActivity): string {
           </div>
         </div>
         <p v-if="!locked" class="lock-hint">Entsperrt: Programmpunkte verschieben (Drag &amp; Drop) oder über leere Flächen aufziehen, um neue zu erstellen.</p>
+
+        <!-- Category filter (eCamp legend + toggle) -->
+        <div v-if="camp.categories.length" class="cat-filter">
+          <button
+            v-for="c in camp.categories"
+            :key="c.id"
+            class="cat-chip"
+            :class="{ 'cat-chip--off': hiddenCats.has(c.id) }"
+            :style="!hiddenCats.has(c.id) ? { background: c.color + '22', borderColor: c.color, color: c.color } : {}"
+            @click="toggleCat(c.id)"
+            :title="hiddenCats.has(c.id) ? 'Einblenden' : 'Ausblenden'"
+          >
+            <span class="cat-chip-dot" :style="{ background: c.color }" />
+            {{ c.short_name }} · {{ c.name }}
+          </button>
+          <button v-if="anyCatHidden" class="cat-reset" @click="hiddenCats = new Set()">Alle anzeigen</button>
+        </div>
 
         <!-- Calendar -->
         <div v-if="progMode === 'calendar' && activePeriod" class="calendar">
@@ -601,6 +634,17 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 }
 .lock-btn--locked { background: var(--warning-bg); color: var(--warning-color); border-color: var(--warning-color); }
 .lock-hint { font-size: 0.8rem; color: var(--accent); margin: 0 0 10px; }
+.cat-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.cat-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--bg-surface);
+  font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
+  transition: opacity 0.12s, filter 0.12s;
+}
+.cat-chip--off { opacity: 0.45; text-decoration: line-through; }
+.cat-chip-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.cat-reset { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 0.8rem; cursor: pointer; }
 .view-toggle { display: flex; gap: 4px; background: var(--bg-hover); padding: 3px; border-radius: 9px; }
 .vt-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: none; background: transparent; border-radius: 7px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; }
 .vt-btn--active { background: var(--bg-surface); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
