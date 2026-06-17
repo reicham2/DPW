@@ -844,6 +844,19 @@ CREATE TABLE IF NOT EXISTS camp_activity_responsibles (
 
 CREATE INDEX IF NOT EXISTS idx_camp_act_resp_act ON camp_activity_responsibles (activity_id);
 
+-- ── Camp Programmpunkte (same structure as activity programs) ────────────────
+CREATE TABLE IF NOT EXISTS camp_programs (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id      UUID NOT NULL REFERENCES camp_activities(id) ON DELETE CASCADE,
+    duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK (duration_minutes >= 0),
+    title            TEXT NOT NULL DEFAULT '',
+    description      TEXT NOT NULL DEFAULT '',
+    responsible      TEXT[] NOT NULL DEFAULT '{}',
+    position         INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_camp_programs_activity ON camp_programs (activity_id, position);
+
 -- ── Content Nodes (recursive tree: layout + content widgets) ─────────────────
 --   content_type: ColumnLayout | Storyboard | MaterialNode | SingleText
 --                 | MultiSelect | Checklist

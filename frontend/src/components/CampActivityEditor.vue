@@ -11,6 +11,7 @@ import type {
   CampPeriod,
   ContentNodeInput,
   ContentNodeType,
+  ProgramInput,
 } from '../types'
 
 const { users, fetchUsers } = useUsers()
@@ -39,6 +40,7 @@ const location = ref('')
 const categoryId = ref<string | null>(null)
 const responsibleIds = ref<string[]>([])      // collaboration ids (RF-Liste)
 const responsible = ref<string[]>([])          // user ids / free-text, like Activity
+const programs = ref<ProgramInput[]>([])       // Programmpunkte, same as activity
 
 // Schedule (first entry only in editor; calendar handles multi-placement)
 const periodId = ref('')
@@ -75,6 +77,7 @@ function loadFromActivity(a: CampActivity | null) {
     categoryId.value = props.categories[0]?.id ?? null
     responsibleIds.value = []
     responsible.value = []
+    programs.value = []
     if (props.prefillSchedule) {
       periodId.value = props.prefillSchedule.period_id
       dayOffset.value = Math.floor(props.prefillSchedule.period_offset / (24 * 60))
@@ -94,6 +97,12 @@ function loadFromActivity(a: CampActivity | null) {
   categoryId.value = a.category_id
   responsibleIds.value = [...a.responsible_collaboration_ids]
   responsible.value = [...(a.responsible ?? [])]
+  programs.value = (a.programs ?? []).map((p) => ({
+    duration_minutes: p.duration_minutes,
+    title: p.title,
+    description: p.description,
+    responsible: [...p.responsible],
+  }))
   const se = a.schedule_entries[0]
   periodId.value = se?.period_id ?? props.defaultPeriodId
   const off = se?.period_offset ?? 540
@@ -224,6 +233,58 @@ function onResponsibleBlur() {
   setTimeout(() => { showResponsibleDropdown.value = false; responsibleSearch.value = '' }, 200)
 }
 
+// ── Programmpunkte (same model/UX as activity programs) ───────────────────────
+function addProgram() {
+  programs.value.push({
+    duration_minutes: 0,
+    title: '',
+    description: '',
+    responsible: responsible.value.length ? [responsible.value[0]] : [],
+  })
+}
+function removeProgram(i: number) {
+  programs.value.splice(i, 1)
+}
+// Sequential clock label for a program, based on the activity start time and
+// the cumulative duration of preceding programs (mirrors activity behaviour).
+function pad2(n: number): string { return String(n).padStart(2, '0') }
+function clockFromMinutes(total: number): string {
+  const t = ((total % 1440) + 1440) % 1440
+  return `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`
+}
+function programTimeLabel(i: number): string {
+  let acc = 0
+  for (let k = 0; k < i; k++) acc += Number(programs.value[k].duration_minutes) || 0
+  const start = startMinutes.value + acc
+  const end = start + (Number(programs.value[i].duration_minutes) || 0)
+  return `${clockFromMinutes(start)}–${clockFromMinutes(end)}`
+}
+// Per-program responsible picker state.
+const progRespSearch = ref<Record<number, string>>({})
+const progRespDropdown = ref<number | null>(null)
+function progRespFiltered(i: number) {
+  const q = (progRespSearch.value[i] ?? '').toLowerCase()
+  const cur = programs.value[i].responsible
+  return users.value.filter((u) => !cur.includes(u.id) && (q === '' || u.display_name.toLowerCase().includes(q)))
+}
+function addProgResponsible(i: number, id: string) {
+  if (!programs.value[i].responsible.includes(id)) programs.value[i].responsible.push(id)
+  progRespSearch.value[i] = ''
+  progRespDropdown.value = null
+}
+function addProgRespFreeText(i: number) {
+  const txt = (progRespSearch.value[i] ?? '').trim()
+  if (txt && !programs.value[i].responsible.includes(txt)) programs.value[i].responsible.push(txt)
+  progRespSearch.value[i] = ''
+  progRespDropdown.value = null
+}
+function removeProgResponsible(i: number, ri: number) {
+  programs.value[i].responsible.splice(ri, 1)
+}
+function onProgRespBlur(i: number) {
+  setTimeout(() => { if (progRespDropdown.value === i) progRespDropdown.value = null; progRespSearch.value[i] = '' }, 200)
+}
+
 // ── Build payload ────────────────────────────────────────────────────────────
 function buildContentNodes(): ContentNodeInput[] {
   const nodes: ContentNodeInput[] = []
@@ -264,6 +325,12 @@ function save() {
     title: title.value,
     location: location.value,
     responsible: [...responsible.value],
+    programs: programs.value.map((p) => ({
+      duration_minutes: Number(p.duration_minutes) || 0,
+      title: p.title,
+      description: p.description,
+      responsible: [...p.responsible],
+    })),
     responsible_collaboration_ids: [...responsibleIds.value],
     schedule_entries: periodId.value
       ? [{
@@ -392,9 +459,63 @@ const widgetIcon = (t: ContentNodeType) =>
           </div>
         </div>
 
+        <!-- Programmpunkte — same fields as an activity -->
+        <div class="section">
+          <div class="section-label"><ListChecks :size="15" /> Programmpunkte</div>
+          <div class="prog-list">
+            <div v-for="(prog, i) in programs" :key="i" class="prog-card">
+              <div class="prog-card-head">
+                <span class="prog-time">{{ programTimeLabel(i) }}</span>
+                <button class="widget-del" @click="removeProgram(i)" title="Programmpunkt entfernen"><Trash2 :size="14" /></button>
+              </div>
+              <div class="prog-fields">
+                <label class="field prog-field-dur">
+                  <span class="field-label">Dauer (Min.)</span>
+                  <input type="number" min="0" step="5" class="field-input"
+                    :value="prog.duration_minutes"
+                    @input="prog.duration_minutes = Math.max(0, parseInt(($event.target as HTMLInputElement).value, 10) || 0)" />
+                </label>
+                <label class="field prog-field-title">
+                  <span class="field-label">Titel</span>
+                  <input v-model="prog.title" class="field-input" placeholder="Titel" />
+                </label>
+              </div>
+              <div class="field">
+                <span class="field-label">Verantwortlich</span>
+                <div class="user-search-wrapper">
+                  <input
+                    type="text"
+                    class="field-input"
+                    :value="progRespSearch[i] ?? ''"
+                    @input="progRespSearch[i] = ($event.target as HTMLInputElement).value"
+                    placeholder="Person suchen oder eingeben…"
+                    @focus="progRespDropdown = i"
+                    @blur="onProgRespBlur(i)"
+                    @keydown.enter.prevent="addProgRespFreeText(i)"
+                  />
+                  <div v-if="progRespDropdown === i && progRespFiltered(i).length" class="user-dropdown">
+                    <div v-for="u in progRespFiltered(i)" :key="u.id" class="user-dropdown-item" @mousedown.prevent="addProgResponsible(i, u.id)">{{ u.display_name }}</div>
+                  </div>
+                </div>
+                <div class="user-chips" v-if="prog.responsible.length">
+                  <span v-for="(entry, ri) in prog.responsible" :key="entry" class="user-chip">
+                    {{ resolveResponsibleName(entry) }}
+                    <button type="button" class="user-chip-remove" @click="removeProgResponsible(i, ri)" aria-label="Entfernen"><X :size="12" /></button>
+                  </span>
+                </div>
+              </div>
+              <label class="field">
+                <span class="field-label">Beschreibung</span>
+                <textarea v-model="prog.description" class="field-input" rows="2" placeholder="Beschreibung…" />
+              </label>
+            </div>
+          </div>
+          <button class="btn-add" @click="addProgram"><Plus :size="14" /> Programmpunkt</button>
+        </div>
+
         <!-- Content widgets -->
         <div class="section">
-          <div class="section-label">Inhalt</div>
+          <div class="section-label">Weitere Inhalte</div>
           <div class="widget-list">
             <div v-for="w in widgets" :key="w.key" class="widget">
               <div class="widget-head">
@@ -525,6 +646,13 @@ const widgetIcon = (t: ContentNodeType) =>
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+.prog-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.prog-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--bg-elevated); display: flex; flex-direction: column; gap: 10px; }
+.prog-card-head { display: flex; align-items: center; justify-content: space-between; }
+.prog-time { font-size: 0.78rem; font-weight: 700; color: var(--program-time-color, var(--accent)); background: var(--program-time-bg, var(--accent-bg)); padding: 3px 10px; border-radius: 999px; }
+.prog-fields { display: flex; gap: 12px; }
+.prog-field-dur { flex: 0 0 110px; }
+.prog-field-title { flex: 1; }
 .user-search-wrapper { position: relative; }
 .user-dropdown {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;

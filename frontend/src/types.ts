@@ -560,6 +560,7 @@ export interface CampActivity {
 	title: string;
 	location: string;
 	responsible: string[]; // user IDs or free-text, same as Activity
+	programs: Program[]; // Programmpunkte, same as activity programs
 	schedule_entries: ScheduleEntry[];
 	responsible_collaboration_ids: string[];
 	content_nodes: ContentNode[];
@@ -591,6 +592,7 @@ export interface CampActivityInput {
 	title: string;
 	location: string;
 	responsible: string[]; // user IDs or free-text, same as Activity
+	programs: ProgramInput[]; // Programmpunkte
 	schedule_entries: ScheduleEntryInput[];
 	responsible_collaboration_ids: string[];
 	content_nodes: ContentNodeInput[];

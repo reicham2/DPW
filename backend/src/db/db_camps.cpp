@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <unordered_map>
+#include <functional>
 #include "json.hpp"
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
@@ -222,6 +223,30 @@ void Database::hydrate_camp_activity(CampActivity &a)
         if (PQresultStatus(r) == PGRES_TUPLES_OK)
             for (int i = 0; i < PQntuples(r); ++i)
                 a.content_nodes.push_back(row_to_content_node(r, i));
+        PQclear(r);
+    }
+    {
+        const char *p[1] = {a.id.c_str()};
+        PGresult *r = PQexecParams(conn_,
+                                   "SELECT id, activity_id, duration_minutes, title, description, responsible, position "
+                                   "FROM camp_programs WHERE activity_id=$1 ORDER BY position",
+                                   1, nullptr, p, nullptr, nullptr, 0);
+        if (PQresultStatus(r) == PGRES_TUPLES_OK)
+        {
+            for (int i = 0; i < PQntuples(r); ++i)
+            {
+                Program pr;
+                pr.id = col_str(r, i, "id");
+                pr.activity_id = col_str(r, i, "activity_id");
+                if (const char *d = col_val(r, i, "duration_minutes"))
+                    pr.duration_minutes = std::atoi(d);
+                pr.title = col_str(r, i, "title");
+                pr.description = col_str(r, i, "description");
+                if (const char *rp = col_val(r, i, "responsible"))
+                    pr.responsible = parse_pg_array(rp);
+                a.programs.push_back(std::move(pr));
+            }
+        }
         PQclear(r);
     }
 }
@@ -655,6 +680,29 @@ namespace
         }
     }
 
+    void insert_camp_programs(PGconn *conn, const std::string &activity_id,
+                              const std::vector<ProgramInput> &programs,
+                              const std::function<std::string(const std::vector<std::string> &)> &fmt)
+    {
+        for (size_t idx = 0; idx < programs.size(); ++idx)
+        {
+            const auto &pi = programs[idx];
+            std::string resp_json = fmt(pi.responsible);
+            std::string dm = std::to_string(pi.duration_minutes);
+            std::string pos = std::to_string(idx);
+            const char *p[6] = {activity_id.c_str(), dm.c_str(), pi.title.c_str(),
+                                pi.description.c_str(), resp_json.c_str(), pos.c_str()};
+            PGresult *r = PQexecParams(conn,
+                                       "INSERT INTO camp_programs (activity_id, duration_minutes, title, description, responsible, position) "
+                                       "VALUES ($1,$2::int,$3,$4,array(select jsonb_array_elements_text($5::jsonb)),$6::int)",
+                                       6, nullptr, p, nullptr, nullptr, 0);
+            ExecStatusType st = PQresultStatus(r);
+            PQclear(r);
+            if (st != PGRES_COMMAND_OK)
+                throw std::runtime_error("insert_camp_programs: " + std::string(PQerrorMessage(conn)));
+        }
+    }
+
     void insert_responsibles(PGconn *conn, const std::string &activity_id,
                              const std::vector<std::string> &collab_ids)
     {
@@ -730,6 +778,7 @@ std::optional<CampActivity> Database::create_camp_activity(const std::string &ca
         insert_schedule_entries(conn_, a.id, in.schedule_entries);
         insert_responsibles(conn_, a.id, in.responsible_collaboration_ids);
         insert_content_nodes(conn_, a.id, in.content_nodes);
+        insert_camp_programs(conn_, a.id, in.programs, Database::format_material_param);
 
         exec_or_throw_local(conn_, "COMMIT", "create_camp_activity COMMIT");
         hydrate_camp_activity(a);
@@ -773,10 +822,13 @@ std::optional<CampActivity> Database::update_camp_activity(const std::string &id
         PQclear(d2);
         PGresult *d3 = PQexecParams(conn_, "DELETE FROM content_nodes WHERE activity_id=$1", 1, nullptr, pid, nullptr, nullptr, 0);
         PQclear(d3);
+        PGresult *d4 = PQexecParams(conn_, "DELETE FROM camp_programs WHERE activity_id=$1", 1, nullptr, pid, nullptr, nullptr, 0);
+        PQclear(d4);
 
         insert_schedule_entries(conn_, a.id, in.schedule_entries);
         insert_responsibles(conn_, a.id, in.responsible_collaboration_ids);
         insert_content_nodes(conn_, a.id, in.content_nodes);
+        insert_camp_programs(conn_, a.id, in.programs, Database::format_material_param);
 
         exec_or_throw_local(conn_, "COMMIT", "update_camp_activity COMMIT");
         hydrate_camp_activity(a);

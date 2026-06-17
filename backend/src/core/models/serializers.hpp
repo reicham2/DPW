@@ -288,12 +288,16 @@ inline nlohmann::json to_json(const CampActivity &a)
     nlohmann::json nodes = nlohmann::json::array();
     for (const auto &n : a.content_nodes)
         nodes.push_back(to_json(n));
+    nlohmann::json progs = nlohmann::json::array();
+    for (const auto &p : a.programs)
+        progs.push_back(program_to_json(p));
     nlohmann::json j = {
         {"id", a.id},
         {"camp_id", a.camp_id},
         {"title", a.title},
         {"location", a.location},
         {"responsible", a.responsible},
+        {"programs", progs},
         {"schedule_entries", sched},
         {"responsible_collaboration_ids", a.responsible_collaboration_ids},
         {"content_nodes", nodes},

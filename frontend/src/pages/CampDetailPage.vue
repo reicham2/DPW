@@ -210,6 +210,16 @@ const listByDay = computed(() =>
 const fmtDuration = formatDuration
 const fmtMin = formatMinuteOfDay
 
+// Sequential clock range for a Programmpunkt within an activity, based on the
+// activity start minute-of-day and cumulative durations (mirrors activities).
+function programClock(startMin: number, progs: { duration_minutes: number }[], i: number): string {
+  let acc = 0
+  for (let k = 0; k < i; k++) acc += Number(progs[k].duration_minutes) || 0
+  const s = startMin + acc
+  const e = s + (Number(progs[i].duration_minutes) || 0)
+  return `${fmtMin(((s % 1440) + 1440) % 1440)}–${fmtMin(((e % 1440) + 1440) % 1440)}`
+}
+
 // ── "Now" indicator (eCamp red current-time line) ──────────────────────────────
 const nowMinute = ref(currentMinuteOfDay())
 const todayIso = ref(currentIsoDate())
@@ -260,7 +270,7 @@ async function onSave(input: CampActivityInput) {
   await reload()
 }
 async function onDelete(id: string) {
-  if (!window.confirm('Programmpunkt löschen?')) return
+  if (!window.confirm('Aktivität löschen?')) return
   await deleteActivity(campId.value, id)
   editorOpen.value = false
   await reload()
@@ -361,8 +371,8 @@ function doPrint() {
     <p v-if="loading" class="loading">Laden...</p>
 
     <template v-if="!loading && camp">
-      <!-- In-page tab strip (mirrors global tabs; also works on mobile) -->
-      <div class="camp-tabstrip">
+      <!-- In-page tab strip — mobile only; desktop uses the global nav tabs. -->
+      <div class="camp-tabstrip camp-tabstrip--mobile">
         <button
           v-for="t in CAMP_TABS"
           :key="t.key"
@@ -384,7 +394,7 @@ function doPrint() {
 
         <div class="dash-stats">
           <div class="stat"><span class="stat-num">{{ camp.periods.length }}</span><span class="stat-lbl">Lagerabschnitte</span></div>
-          <div class="stat"><span class="stat-num">{{ camp.activities.length }}</span><span class="stat-lbl">Programmpunkte</span></div>
+          <div class="stat"><span class="stat-num">{{ camp.activities.length }}</span><span class="stat-lbl">Aktivitäten</span></div>
           <div class="stat"><span class="stat-num">{{ camp.collaborations.length }}</span><span class="stat-lbl">Mitarbeitende</span></div>
           <div class="stat"><span class="stat-num">{{ camp.categories.length }}</span><span class="stat-lbl">Kategorien</span></div>
         </div>
@@ -405,7 +415,7 @@ function doPrint() {
             <ResponsibleAvatars v-if="a.responsible?.length" :names="a.responsible" />
             <span v-if="responsibleAbbrs(a).length" class="dash-item-resp"><Users :size="12" /> {{ responsibleAbbrs(a).join(', ') }}</span>
           </button>
-          <p v-if="!camp.activities.some(a => a.schedule_entries.some(s => s.period_id === p.id))" class="hint">Noch keine Programmpunkte.</p>
+          <p v-if="!camp.activities.some(a => a.schedule_entries.some(s => s.period_id === p.id))" class="hint">Noch keine Aktivitäten.</p>
         </div>
         <p v-if="camp.periods.length === 0" class="hint">Lege zuerst einen Lagerabschnitt an (Admin → Perioden).</p>
       </section>
@@ -430,10 +440,10 @@ function doPrint() {
               <button class="vt-btn" :class="{ 'vt-btn--active': progMode === 'list' }" @click="progMode = 'list'"><List :size="16" /> Liste</button>
             </div>
             <button class="btn-ghost" @click="doPrint" title="Programm drucken / als PDF"><Printer :size="16" /></button>
-            <button class="btn-primary" @click="openNew"><Plus :size="16" /> Programmpunkt</button>
+            <button class="btn-primary" @click="openNew"><Plus :size="16" /> Aktivität</button>
           </div>
         </div>
-        <p v-if="!locked" class="lock-hint">Entsperrt: Programmpunkte verschieben (Drag &amp; Drop) oder über leere Flächen aufziehen, um neue zu erstellen.</p>
+        <p v-if="!locked" class="lock-hint">Entsperrt: Aktivitäten verschieben (Drag &amp; Drop) oder über leere Flächen aufziehen, um neue zu erstellen.</p>
 
         <!-- Category filter (eCamp legend + toggle) -->
         <div v-if="camp.categories.length" class="cat-filter">
@@ -520,21 +530,36 @@ function doPrint() {
               <span v-if="grp.count" class="list-day-sum">{{ grp.count }} Punkte · {{ fmtDuration(grp.totalMin) }}</span>
               <span v-if="dayRespByIndex[listByDay.indexOf(grp)]?.length" class="list-day-resp">· {{ dayRespByIndex[listByDay.indexOf(grp)].join(', ') }}</span>
             </h3>
-            <p v-if="grp.rows.length === 0" class="hint list-empty">Keine Programmpunkte.</p>
-            <div
-              v-for="row in grp.rows" :key="row.activity.id + row.minuteOfDay"
-              class="list-row" :style="{ borderLeftColor: categoryColor(row.activity) }"
-              @click="openEdit(row.activity)"
-            >
-              <div class="list-time"><Clock :size="13" /> {{ fmtMin(row.minuteOfDay) }}–{{ fmtMin(row.minuteOfDay + row.length) }}</div>
-              <div class="list-main">
-                <span v-if="categoryShort(row.activity)" class="list-cat" :style="{ background: categoryColor(row.activity) }">{{ categoryShort(row.activity) }}</span>
-                <span class="list-title">{{ row.activity.title }}</span>
+            <p v-if="grp.rows.length === 0" class="hint list-empty">Keine Aktivitäten.</p>
+            <div v-for="row in grp.rows" :key="row.activity.id + row.minuteOfDay" class="list-entry">
+              <div
+                class="list-row" :style="{ borderLeftColor: categoryColor(row.activity) }"
+                @click="openEdit(row.activity)"
+              >
+                <div class="list-time"><Clock :size="13" /> {{ fmtMin(row.minuteOfDay) }}–{{ fmtMin(row.minuteOfDay + row.length) }}</div>
+                <div class="list-main">
+                  <span v-if="categoryShort(row.activity)" class="list-cat" :style="{ background: categoryColor(row.activity) }">{{ categoryShort(row.activity) }}</span>
+                  <span class="list-title">{{ row.activity.title }}</span>
+                </div>
+                <div class="list-meta">
+                  <span v-if="row.activity.location" class="list-loc"><MapPin :size="12" /> {{ row.activity.location }}</span>
+                  <ResponsibleAvatars v-if="row.activity.responsible?.length" :names="row.activity.responsible" />
+                  <span v-if="responsibleAbbrs(row.activity).length" class="list-resp"><Users :size="12" /> {{ responsibleAbbrs(row.activity).join(', ') }}</span>
+                </div>
               </div>
-              <div class="list-meta">
-                <span v-if="row.activity.location" class="list-loc"><MapPin :size="12" /> {{ row.activity.location }}</span>
-                <ResponsibleAvatars v-if="row.activity.responsible?.length" :names="row.activity.responsible" />
-                <span v-if="responsibleAbbrs(row.activity).length" class="list-resp"><Users :size="12" /> {{ responsibleAbbrs(row.activity).join(', ') }}</span>
+              <!-- Programmpunkte timeline (same as activity) -->
+              <div v-if="row.activity.programs?.length" class="prog-timeline">
+                <div v-for="(prog, pi) in row.activity.programs" :key="prog.id || pi" class="prog-tl-item">
+                  <span class="prog-tl-dot" :style="{ background: categoryColor(row.activity) }" />
+                  <div class="prog-tl-body">
+                    <div class="prog-tl-head">
+                      <span class="prog-tl-time">{{ programClock(row.minuteOfDay, row.activity.programs, pi) }}</span>
+                      <span class="prog-tl-title">{{ prog.title || '—' }}</span>
+                      <ResponsibleAvatars v-if="prog.responsible?.length" :names="prog.responsible" />
+                    </div>
+                    <div v-if="prog.description" class="prog-tl-desc" v-html="prog.description" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -639,6 +664,10 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
   margin-bottom: 18px;
   overflow-x: auto;
 }
+/* Desktop shows the global nav tabs; hide the in-page strip to avoid doubling. */
+@media (min-width: 768px) {
+  .camp-tabstrip--mobile { display: none; }
+}
 .ct-tab {
   padding: 10px 16px;
   border: none;
@@ -740,6 +769,15 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 .list-title { font-weight: 600; color: var(--text-primary); }
 .list-meta { display: flex; gap: 12px; flex-wrap: wrap; }
 .list-loc, .list-resp { display: inline-flex; align-items: center; gap: 3px; font-size: 0.78rem; color: var(--text-muted); }
+.list-entry { margin-bottom: 8px; }
+.prog-timeline { margin: 2px 0 4px 18px; padding-left: 14px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.prog-tl-item { display: flex; align-items: flex-start; gap: 8px; position: relative; }
+.prog-tl-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; margin-left: -19px; flex-shrink: 0; box-shadow: 0 0 0 2px var(--bg-base); }
+.prog-tl-body { flex: 1; min-width: 0; }
+.prog-tl-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.prog-tl-time { font-size: 0.74rem; font-weight: 700; color: var(--program-time-color, var(--accent)); background: var(--program-time-bg, var(--accent-bg)); padding: 1px 7px; border-radius: 999px; }
+.prog-tl-title { font-size: 0.84rem; font-weight: 600; color: var(--text-primary); }
+.prog-tl-desc { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
 
 /* Story */
 .story-card { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 10px; padding: 14px; margin: 12px 0; background: var(--bg-surface); }

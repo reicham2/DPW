@@ -3,6 +3,7 @@
 #include <vector>
 #include <optional>
 #include "json.hpp"
+#include "core/models/activity.hpp" // Program, ProgramInput reused for camp Programmpunkte
 
 // ── Camp Planning domain models (eCamp v3-inspired) ──────────────────────────
 
@@ -220,6 +221,7 @@ struct CampActivity
     std::vector<ScheduleEntry> schedule_entries;
     std::vector<std::string> responsible_collaboration_ids;
     std::vector<ContentNode> content_nodes;
+    std::vector<Program> programs; // Programmpunkte, same as activity programs
 };
 
 struct CampActivityInput
@@ -231,4 +233,5 @@ struct CampActivityInput
     std::vector<ScheduleEntryInput> schedule_entries;
     std::vector<std::string> responsible_collaboration_ids;
     std::vector<ContentNodeInput> content_nodes;
+    std::vector<ProgramInput> programs; // Programmpunkte
 };

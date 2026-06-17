@@ -190,6 +190,19 @@ namespace
         if (j.contains("content_nodes") && j["content_nodes"].is_array())
             for (const auto &n : j["content_nodes"])
                 in.content_nodes.push_back(parse_content_node_input(n));
+        if (j.contains("programs") && j["programs"].is_array())
+            for (const auto &p : j["programs"])
+            {
+                ProgramInput pi;
+                pi.duration_minutes = p.value("duration_minutes", 0);
+                pi.title = p.value("title", "");
+                pi.description = p.value("description", "");
+                if (p.contains("responsible") && p["responsible"].is_array())
+                    for (const auto &r : p["responsible"])
+                        if (r.is_string())
+                            pi.responsible.push_back(r.get<std::string>());
+                in.programs.push_back(std::move(pi));
+            }
         return in;
     }
 
