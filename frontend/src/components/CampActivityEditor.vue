@@ -1,0 +1,574 @@
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { X, Plus, Trash2, BookOpen, Users, Package, AlignLeft, ListChecks } from 'lucide-vue-next'
+import type {
+  CampActivity,
+  CampActivityInput,
+  CampCategory,
+  CampCollaboration,
+  CampPeriod,
+  ContentNodeInput,
+  ContentNodeType,
+} from '../types'
+
+const props = defineProps<{
+  activity: CampActivity | null // null = create mode
+  categories: CampCategory[]
+  collaborations: CampCollaboration[]
+  periods: CampPeriod[]
+  defaultPeriodId: string
+  // When set (calendar drag-create), prefills period + time on a new activity.
+  prefillSchedule?: { period_id: string; period_offset: number; length: number } | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'save', input: CampActivityInput): void
+  (e: 'delete', id: string): void
+  (e: 'close'): void
+}>()
+
+// ── Form state ────────────────────────────────────────────────────────────
+const title = ref('')
+const location = ref('')
+const categoryId = ref<string | null>(null)
+const responsibleIds = ref<string[]>([])
+
+// Schedule (first entry only in editor; calendar handles multi-placement)
+const periodId = ref('')
+const dayOffset = ref(0)        // which day of the period (0-based)
+const startMinutes = ref(540)   // minute-of-day, 09:00
+const length = ref(60)
+
+// Content widgets (flat list under an implicit root column)
+interface WidgetDraft {
+  key: string
+  id?: string
+  content_type: ContentNodeType
+  instance_name: string
+  // SingleText
+  html?: string
+  // Storyboard
+  sections?: { id: string; column1: string; column2: string }[]
+  // MultiSelect / Checklist
+  options?: { id: string; label: string; checked: boolean }[]
+}
+
+const widgets = ref<WidgetDraft[]>([])
+
+let keySeq = 0
+function nextKey() {
+  keySeq += 1
+  return `w${keySeq}`
+}
+
+function loadFromActivity(a: CampActivity | null) {
+  if (!a) {
+    title.value = ''
+    location.value = ''
+    categoryId.value = props.categories[0]?.id ?? null
+    responsibleIds.value = []
+    if (props.prefillSchedule) {
+      periodId.value = props.prefillSchedule.period_id
+      dayOffset.value = Math.floor(props.prefillSchedule.period_offset / (24 * 60))
+      startMinutes.value = props.prefillSchedule.period_offset - dayOffset.value * 24 * 60
+      length.value = props.prefillSchedule.length
+    } else {
+      periodId.value = props.defaultPeriodId
+      dayOffset.value = 0
+      startMinutes.value = 540
+      length.value = 60
+    }
+    widgets.value = []
+    return
+  }
+  title.value = a.title
+  location.value = a.location
+  categoryId.value = a.category_id
+  responsibleIds.value = [...a.responsible_collaboration_ids]
+  const se = a.schedule_entries[0]
+  periodId.value = se?.period_id ?? props.defaultPeriodId
+  const off = se?.period_offset ?? 540
+  dayOffset.value = Math.floor(off / (24 * 60))
+  startMinutes.value = off - dayOffset.value * 24 * 60
+  length.value = se?.length ?? 60
+
+  // Flatten non-layout content nodes into widget drafts.
+  widgets.value = a.content_nodes
+    .filter((n) => !n.is_root && n.content_type !== 'ColumnLayout')
+    .sort((x, y) => x.position - y.position)
+    .map((n) => {
+      const d = n.data as Record<string, unknown>
+      return {
+        key: nextKey(),
+        id: n.id,
+        content_type: n.content_type,
+        instance_name: n.instance_name,
+        html: typeof d.html === 'string' ? d.html : '',
+        sections: Array.isArray(d.sections)
+          ? (d.sections as WidgetDraft['sections'])
+          : [],
+        options: Array.isArray(d.options)
+          ? (d.options as WidgetDraft['options'])
+          : [],
+      }
+    })
+}
+
+watch(
+  () => props.activity,
+  (a) => loadFromActivity(a),
+  { immediate: true },
+)
+
+// ── Time helpers ────────────────────────────────────────────────────────────
+const startTime = computed({
+  get: () => minutesToTime(startMinutes.value),
+  set: (v: string) => { startMinutes.value = timeToMinutes(v) },
+})
+function minutesToTime(m: number): string {
+  const h = Math.floor(m / 60)
+  const mm = m % 60
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+// Days available in the currently selected period (for the day picker).
+const periodDayOptions = computed(() => {
+  const p = props.periods.find((x) => x.id === periodId.value)
+  if (!p) return [{ value: 0, label: 'Tag 1' }]
+  const start = new Date(p.start_date + 'T00:00:00')
+  const end = new Date(p.end_date + 'T00:00:00')
+  const out: { value: number; label: string }[] = []
+  let i = 0
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][d.getDay()]
+    out.push({ value: i, label: `Tag ${i + 1} · ${wd} ${d.getDate()}.${d.getMonth() + 1}.` })
+    i++
+  }
+  return out
+})
+
+// ── Widget management ────────────────────────────────────────────────────────
+function addWidget(type: ContentNodeType) {
+  const names: Record<string, string> = {
+    SingleText: 'Beschreibung',
+    Storyboard: 'Geschichte',
+    MaterialNode: 'Material',
+    MultiSelect: 'Auswahl',
+    Checklist: 'Checkliste',
+  }
+  widgets.value.push({
+    key: nextKey(),
+    content_type: type,
+    instance_name: names[type] ?? type,
+    html: '',
+    sections: type === 'Storyboard' ? [{ id: nextKey(), column1: '', column2: '' }] : [],
+    options: [],
+  })
+}
+function removeWidget(key: string) {
+  widgets.value = widgets.value.filter((w) => w.key !== key)
+}
+function addSection(w: WidgetDraft) {
+  w.sections = w.sections ?? []
+  w.sections.push({ id: nextKey(), column1: '', column2: '' })
+}
+function removeSection(w: WidgetDraft, id: string) {
+  w.sections = (w.sections ?? []).filter((s) => s.id !== id)
+}
+function addOption(w: WidgetDraft) {
+  w.options = w.options ?? []
+  w.options.push({ id: nextKey(), label: '', checked: false })
+}
+function removeOption(w: WidgetDraft, id: string) {
+  w.options = (w.options ?? []).filter((o) => o.id !== id)
+}
+
+function toggleResponsible(id: string) {
+  const idx = responsibleIds.value.indexOf(id)
+  if (idx === -1) responsibleIds.value.push(id)
+  else responsibleIds.value.splice(idx, 1)
+}
+
+// ── Build payload ────────────────────────────────────────────────────────────
+function buildContentNodes(): ContentNodeInput[] {
+  const nodes: ContentNodeInput[] = []
+  // Root column layout.
+  const rootKey = 'root'
+  nodes.push({
+    id: rootKey,
+    parent_id: null,
+    slot: '',
+    position: 0,
+    content_type: 'ColumnLayout',
+    instance_name: '',
+    is_root: true,
+    data: { columns: [{ slot: '1', width: 12 }] },
+  })
+  widgets.value.forEach((w, i) => {
+    let data: Record<string, unknown> = {}
+    if (w.content_type === 'SingleText') data = { html: w.html ?? '' }
+    else if (w.content_type === 'Storyboard') data = { sections: (w.sections ?? []).map((s, p) => ({ ...s, position: p })) }
+    else if (w.content_type === 'MultiSelect' || w.content_type === 'Checklist') data = { options: w.options ?? [] }
+    nodes.push({
+      parent_id: rootKey,
+      slot: '1',
+      position: i,
+      content_type: w.content_type,
+      instance_name: w.instance_name,
+      is_root: false,
+      data,
+    })
+  })
+  return nodes
+}
+
+function save() {
+  if (!title.value.trim()) return
+  const input: CampActivityInput = {
+    category_id: categoryId.value,
+    title: title.value,
+    location: location.value,
+    responsible_collaboration_ids: [...responsibleIds.value],
+    schedule_entries: periodId.value
+      ? [{
+          period_id: periodId.value,
+          period_offset: dayOffset.value * 24 * 60 + startMinutes.value,
+          length: length.value,
+          left_fraction: props.activity?.schedule_entries[0]?.left_fraction ?? 0,
+          width_fraction: props.activity?.schedule_entries[0]?.width_fraction ?? 1,
+        }]
+      : [],
+    content_nodes: buildContentNodes(),
+  }
+  emit('save', input)
+}
+
+const widgetIcon = (t: ContentNodeType) =>
+  t === 'Storyboard' ? BookOpen
+    : t === 'MaterialNode' ? Package
+    : t === 'Checklist' ? ListChecks
+    : t === 'MultiSelect' ? ListChecks
+    : AlignLeft
+</script>
+
+<template>
+  <div class="modal-backdrop" @click.self="emit('close')">
+    <div class="editor">
+      <div class="editor-head">
+        <h2>{{ activity ? 'Programmpunkt bearbeiten' : 'Neuer Programmpunkt' }}</h2>
+        <button class="modal-close" @click="emit('close')"><X :size="18" /></button>
+      </div>
+
+      <div class="editor-body">
+        <!-- Basics -->
+        <div class="field-row">
+          <label class="field" style="flex:2">
+            <span class="field-label">Titel *</span>
+            <input v-model="title" class="field-input" placeholder="z.B. Geländespiel" />
+          </label>
+          <label class="field">
+            <span class="field-label">Kategorie</span>
+            <select v-model="categoryId" class="field-input">
+              <option :value="null">—</option>
+              <option v-for="c in categories" :key="c.id" :value="c.id">
+                {{ c.short_name }} · {{ c.name }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">Ort</span>
+            <input v-model="location" class="field-input" placeholder="z.B. Wald" />
+          </label>
+          <label class="field">
+            <span class="field-label">Periode</span>
+            <select v-model="periodId" class="field-input">
+              <option v-for="p in periods" :key="p.id" :value="p.id">
+                {{ p.description || p.start_date }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">Tag</span>
+            <select v-model.number="dayOffset" class="field-input">
+              <option v-for="d in periodDayOptions" :key="d.value" :value="d.value">{{ d.label }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">Startzeit</span>
+            <input v-model="startTime" type="time" class="field-input" />
+          </label>
+          <label class="field">
+            <span class="field-label">Dauer (Min.)</span>
+            <input v-model.number="length" type="number" min="0" step="5" class="field-input" />
+          </label>
+        </div>
+
+        <!-- Responsibilities (Verantwortlichkeiten) -->
+        <div class="section">
+          <div class="section-label"><Users :size="15" /> Verantwortlichkeiten</div>
+          <div class="resp-chips">
+            <button
+              v-for="c in collaborations"
+              :key="c.id"
+              type="button"
+              class="resp-chip"
+              :class="{ 'resp-chip--on': responsibleIds.includes(c.id) }"
+              :style="responsibleIds.includes(c.id) ? { background: c.color, borderColor: c.color, color: '#fff' } : {}"
+              @click="toggleResponsible(c.id)"
+            >
+              {{ c.abbreviation || c.display_name }}
+            </button>
+            <span v-if="collaborations.length === 0" class="hint">Noch keine Mitarbeitenden (RF-Liste) angelegt.</span>
+          </div>
+        </div>
+
+        <!-- Content widgets -->
+        <div class="section">
+          <div class="section-label">Inhalt</div>
+          <div class="widget-list">
+            <div v-for="w in widgets" :key="w.key" class="widget">
+              <div class="widget-head">
+                <component :is="widgetIcon(w.content_type)" :size="15" />
+                <input v-model="w.instance_name" class="widget-name" />
+                <button class="widget-del" @click="removeWidget(w.key)"><Trash2 :size="14" /></button>
+              </div>
+
+              <!-- SingleText -->
+              <textarea
+                v-if="w.content_type === 'SingleText'"
+                v-model="w.html"
+                class="field-input widget-text"
+                rows="3"
+                placeholder="Text…"
+              />
+
+              <!-- Storyboard (Geschichte) -->
+              <div v-else-if="w.content_type === 'Storyboard'" class="story">
+                <div class="story-head">
+                  <span>Zeit / Phase</span><span>Was passiert</span><span></span>
+                </div>
+                <div v-for="s in w.sections" :key="s.id" class="story-row">
+                  <input v-model="s.column1" class="field-input" placeholder="00:00" />
+                  <textarea v-model="s.column2" class="field-input" rows="2" placeholder="Beschreibung…" />
+                  <button class="widget-del" @click="removeSection(w, s.id)"><X :size="14" /></button>
+                </div>
+                <button class="btn-add-sm" @click="addSection(w)"><Plus :size="14" /> Abschnitt</button>
+              </div>
+
+              <!-- MaterialNode -->
+              <p v-else-if="w.content_type === 'MaterialNode'" class="hint">
+                Material wird in der Materialliste des Lagers verwaltet und hier verknüpft.
+              </p>
+
+              <!-- MultiSelect / Checklist -->
+              <div v-else class="opts">
+                <div v-for="o in w.options" :key="o.id" class="opt-row">
+                  <input v-model="o.label" class="field-input" placeholder="Option…" />
+                  <button class="widget-del" @click="removeOption(w, o.id)"><X :size="14" /></button>
+                </div>
+                <button class="btn-add-sm" @click="addOption(w)"><Plus :size="14" /> Option</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="widget-add-bar">
+            <button class="btn-add" @click="addWidget('SingleText')"><AlignLeft :size="14" /> Text</button>
+            <button class="btn-add" @click="addWidget('Storyboard')"><BookOpen :size="14" /> Geschichte</button>
+            <button class="btn-add" @click="addWidget('MaterialNode')"><Package :size="14" /> Material</button>
+            <button class="btn-add" @click="addWidget('Checklist')"><ListChecks :size="14" /> Checkliste</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="editor-foot">
+        <button v-if="activity" class="btn-danger" @click="emit('delete', activity.id)">
+          <Trash2 :size="15" /> Löschen
+        </button>
+        <span style="flex:1" />
+        <button class="btn-ghost" @click="emit('close')">Abbrechen</button>
+        <button class="btn-primary" :disabled="!title.trim()" @click="save">Speichern</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 220;
+  padding: 20px;
+}
+.editor {
+  background: var(--bg-surface);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+}
+.editor-head, .editor-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+}
+.editor-head { border-bottom: 1px solid var(--border); }
+.editor-foot { border-top: 1px solid var(--border); }
+.editor-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-primary); flex: 1; }
+.editor-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.modal-close { background: transparent; border: none; cursor: pointer; color: var(--text-muted); padding: 4px; border-radius: 6px; display: inline-flex; }
+.modal-close:hover { background: var(--bg-hover); }
+.field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+.field-row { display: flex; gap: 12px; }
+.field-label { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+.field-input {
+  padding: 8px 10px;
+  border: 1px solid var(--input-border, var(--border-strong));
+  border-radius: 8px;
+  font-size: 0.88rem;
+  background: var(--input-bg, var(--bg-surface));
+  color: var(--input-color, var(--text-primary));
+  font-family: inherit;
+}
+.field-input:focus { outline: none; border-color: var(--accent); }
+.section { display: flex; flex-direction: column; gap: 10px; }
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.resp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.resp-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.resp-chip:hover { border-color: var(--accent); }
+.hint { font-size: 0.82rem; color: var(--text-subtle); }
+.widget-list { display: flex; flex-direction: column; gap: 12px; }
+.widget {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--bg-elevated);
+}
+.widget-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--text-muted); }
+.widget-name {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 2px 0;
+}
+.widget-name:focus { outline: none; border-bottom: 1px solid var(--accent); }
+.widget-del {
+  background: transparent;
+  border: none;
+  color: var(--text-subtle);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 5px;
+  display: inline-flex;
+}
+.widget-del:hover { color: var(--btn-danger-color); background: var(--btn-danger-bg); }
+.widget-text { width: 100%; resize: vertical; }
+.story { display: flex; flex-direction: column; gap: 6px; }
+.story-head, .story-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 26px;
+  gap: 8px;
+  align-items: start;
+}
+.story-head { font-size: 0.72rem; font-weight: 600; color: var(--text-subtle); }
+.opts { display: flex; flex-direction: column; gap: 6px; }
+.opt-row { display: grid; grid-template-columns: 1fr 26px; gap: 8px; align-items: center; }
+.btn-add-sm {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.btn-add-sm:hover { border-color: var(--accent); color: var(--accent); }
+.widget-add-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--accent-bg);
+  border: none;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.btn-add:hover { background: var(--accent-bg-hover); }
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.btn-ghost:hover { background: var(--bg-hover); }
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--btn-danger-bg);
+  color: var(--btn-danger-color);
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+</style>
