@@ -69,6 +69,7 @@ set(DB_SOURCES
     src/db/db_forms.cpp
     src/db/db_mail.cpp
     src/db/db_admin.cpp
+    src/db/db_camps.cpp
 )
 
 set(UTILS_SOURCES
@@ -87,6 +88,7 @@ set(HANDLER_SOURCES
     src/handlers/admin.cpp
     src/handlers/share_ideenkiste.cpp
     src/handlers/setup_maintenance.cpp
+    src/handlers/camps.cpp
 )
 
 add_executable(server

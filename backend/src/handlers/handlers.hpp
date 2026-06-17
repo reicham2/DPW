@@ -127,3 +127,42 @@ void handle_get_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
+
+// ── Camp Planning ───────────────────────────────────────────────────────────
+void handle_get_camps(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_camp(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_camp(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_patch_camp(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_camp(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+
+void handle_get_camp_collaborations(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_camp_collaboration(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_patch_camp_collaboration(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_camp_collaboration(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+
+void handle_get_camp_categories(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_camp_category(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_patch_camp_category(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_camp_category(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+
+void handle_get_camp_periods(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_camp_period(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_patch_camp_period(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_camp_period(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+
+void handle_get_camp_day_responsibles(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_camp_day_responsible(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_camp_day_responsible(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+
+void handle_get_camp_activities(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_camp_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_patch_camp_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_camp_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_patch_schedule_entry(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+
+void handle_get_camp_material_lists(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_camp_material_list(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_camp_material_list(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_post_camp_material_item(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_patch_camp_material_item(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_camp_material_item(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
