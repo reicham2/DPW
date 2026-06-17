@@ -462,6 +462,9 @@ function doPrint() {
           <button v-if="anyCatHidden" class="cat-reset" @click="hiddenCats = new Set()">Alle anzeigen</button>
         </div>
 
+        <!-- eCamp split: calendar/list left, inline editor right when open -->
+        <div class="prog-split" :class="{ 'prog-split--editing': editorOpen }">
+        <div class="prog-split-main">
         <!-- Calendar -->
         <div v-if="progMode === 'calendar' && activePeriod" class="calendar">
           <div class="cal-scroll">
@@ -564,6 +567,24 @@ function doPrint() {
             </div>
           </div>
         </div>
+        </div><!-- /prog-split-main -->
+
+        <!-- Inline editor pane (eCamp detail-on-the-right) -->
+        <aside v-if="editorOpen && camp" class="prog-split-aside">
+          <CampActivityEditor
+            :activity="editingActivity"
+            :categories="camp.categories"
+            :collaborations="camp.collaborations"
+            :periods="camp.periods"
+            :default-period-id="activePeriodId"
+            :prefill-schedule="prefillSchedule"
+            inline
+            @save="onSave"
+            @delete="onDelete"
+            @close="editorOpen = false"
+          />
+        </aside>
+        </div><!-- /prog-split -->
       </section>
 
       <!-- ══ GESCHICHTE (Story) ════════════════════════════════════════════ -->
@@ -629,8 +650,9 @@ function doPrint() {
       </section>
     </template>
 
+    <!-- Modal editor for non-Programm tabs (dashboard/geschichte open it as overlay) -->
     <CampActivityEditor
-      v-if="editorOpen && camp"
+      v-if="editorOpen && camp && tab !== 'programm'"
       :activity="editingActivity"
       :categories="camp.categories"
       :collaborations="camp.collaborations"
@@ -731,6 +753,23 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 .view-toggle { display: flex; gap: 4px; background: var(--bg-hover); padding: 3px; border-radius: 9px; }
 .vt-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: none; background: transparent; border-radius: 7px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; }
 .vt-btn--active { background: var(--bg-surface); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+/* eCamp split view: calendar/list left, inline editor right */
+.prog-split { display: flex; gap: 16px; align-items: flex-start; }
+.prog-split-main { flex: 1; min-width: 0; }
+.prog-split-aside {
+  flex: 0 0 clamp(380px, 42%, 560px);
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 90px);
+  display: flex;
+}
+.prog-split-aside > * { width: 100%; }
+@media (max-width: 900px) {
+  /* Stack on narrow screens; editor drops below the calendar. */
+  .prog-split { flex-direction: column; }
+  .prog-split-aside { flex-basis: auto; width: 100%; position: static; max-height: none; }
+}
 
 /* Calendar */
 .calendar { border: 1px solid var(--border); border-radius: 12px; background: var(--bg-surface); overflow: hidden; }

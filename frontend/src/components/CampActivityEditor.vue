@@ -26,6 +26,8 @@ const props = defineProps<{
   defaultPeriodId: string
   // When set (calendar drag-create), prefills period + time on a new activity.
   prefillSchedule?: { period_id: string; period_offset: number; length: number } | null
+  // inline = render as a side panel (eCamp split view) instead of a modal overlay.
+  inline?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -355,10 +357,10 @@ const widgetIcon = (t: ContentNodeType) =>
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="editor">
+  <div :class="inline ? 'editor-inline-host' : 'modal-backdrop'" @click.self="!inline && emit('close')">
+    <div class="editor" :class="{ 'editor--inline': inline }">
       <div class="editor-head">
-        <h2>{{ activity ? 'Programmpunkt bearbeiten' : 'Neuer Programmpunkt' }}</h2>
+        <h2>{{ activity ? 'Aktivität bearbeiten' : 'Neue Aktivität' }}</h2>
         <button class="modal-close" @click="emit('close')"><X :size="18" /></button>
       </div>
 
@@ -603,6 +605,16 @@ const widgetIcon = (t: ContentNodeType) =>
   display: flex;
   flex-direction: column;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+}
+/* Inline (eCamp split view): fill the right panel, scroll internally. */
+.editor-inline-host { height: 100%; }
+.editor--inline {
+  max-width: none;
+  max-height: 100%;
+  height: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-shadow: none;
 }
 .editor-head, .editor-foot {
   display: flex;
