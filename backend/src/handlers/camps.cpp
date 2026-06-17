@@ -176,6 +176,10 @@ namespace
         in.category_id = opt_str(j, "category_id");
         in.title = j.value("title", "");
         in.location = j.value("location", "");
+        if (j.contains("responsible") && j["responsible"].is_array())
+            for (const auto &r : j["responsible"])
+                if (r.is_string())
+                    in.responsible.push_back(r.get<std::string>());
         if (j.contains("schedule_entries") && j["schedule_entries"].is_array())
             for (const auto &s : j["schedule_entries"])
                 in.schedule_entries.push_back(parse_schedule_input(s));

@@ -214,6 +214,7 @@ struct CampActivity
     std::optional<std::string> category_id;
     std::string title;
     std::string location;
+    std::vector<std::string> responsible; // user IDs or free-text, like Activity
     std::string created_at;
     std::string updated_at;
     std::vector<ScheduleEntry> schedule_entries;
@@ -226,6 +227,7 @@ struct CampActivityInput
     std::optional<std::string> category_id;
     std::string title;
     std::string location;
+    std::vector<std::string> responsible; // user IDs or free-text, like Activity
     std::vector<ScheduleEntryInput> schedule_entries;
     std::vector<std::string> responsible_collaboration_ids;
     std::vector<ContentNodeInput> content_nodes;

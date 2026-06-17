@@ -801,9 +801,12 @@ CREATE TABLE IF NOT EXISTS camp_activities (
     category_id     UUID REFERENCES camp_categories(id) ON DELETE SET NULL,
     title           TEXT NOT NULL DEFAULT '',
     location        TEXT NOT NULL DEFAULT '',
+    -- Same "Verantwortlich" model as activities: user IDs or free-text names.
+    responsible     TEXT[] NOT NULL DEFAULT '{}',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE camp_activities ADD COLUMN IF NOT EXISTS responsible TEXT[] NOT NULL DEFAULT '{}';
 
 DROP TRIGGER IF EXISTS trg_camp_act_updated_at ON camp_activities;
 CREATE TRIGGER trg_camp_act_updated_at

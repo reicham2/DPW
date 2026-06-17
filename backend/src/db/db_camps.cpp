@@ -180,6 +180,8 @@ CampActivity Database::row_to_camp_activity(PGresult *res, int row)
         a.category_id = c;
     a.title = col_str(res, row, "title");
     a.location = col_str(res, row, "location");
+    if (const char *r = col_val(res, row, "responsible"))
+        a.responsible = parse_pg_array(r);
     a.created_at = col_str(res, row, "created_at");
     a.updated_at = col_str(res, row, "updated_at");
     return a;
@@ -710,11 +712,12 @@ std::optional<CampActivity> Database::create_camp_activity(const std::string &ca
     try
     {
         const char *cat = in.category_id ? in.category_id->c_str() : nullptr;
-        const char *p[4] = {camp_id.c_str(), cat, in.title.c_str(), in.location.c_str()};
+        std::string resp_json = Database::format_material_param(in.responsible);
+        const char *p[5] = {camp_id.c_str(), cat, in.title.c_str(), in.location.c_str(), resp_json.c_str()};
         PGresult *r = PQexecParams(conn_,
-                                   "INSERT INTO camp_activities (camp_id, category_id, title, location) "
-                                   "VALUES ($1,$2,$3,$4) RETURNING *",
-                                   4, nullptr, p, nullptr, nullptr, 0);
+                                   "INSERT INTO camp_activities (camp_id, category_id, title, location, responsible) "
+                                   "VALUES ($1,$2,$3,$4,array(select jsonb_array_elements_text($5::jsonb))) RETURNING *",
+                                   5, nullptr, p, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
             std::string err = PQerrorMessage(conn_);
@@ -746,11 +749,13 @@ std::optional<CampActivity> Database::update_camp_activity(const std::string &id
     try
     {
         const char *cat = in.category_id ? in.category_id->c_str() : nullptr;
-        const char *p[4] = {id.c_str(), cat, in.title.c_str(), in.location.c_str()};
+        std::string resp_json = Database::format_material_param(in.responsible);
+        const char *p[5] = {id.c_str(), cat, in.title.c_str(), in.location.c_str(), resp_json.c_str()};
         PGresult *r = PQexecParams(conn_,
-                                   "UPDATE camp_activities SET category_id=$2, title=$3, location=$4 "
+                                   "UPDATE camp_activities SET category_id=$2, title=$3, location=$4, "
+                                   "responsible=array(select jsonb_array_elements_text($5::jsonb)) "
                                    "WHERE id=$1 RETURNING *",
-                                   4, nullptr, p, nullptr, nullptr, 0);
+                                   5, nullptr, p, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
             PQclear(r);

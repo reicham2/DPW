@@ -293,6 +293,7 @@ inline nlohmann::json to_json(const CampActivity &a)
         {"camp_id", a.camp_id},
         {"title", a.title},
         {"location", a.location},
+        {"responsible", a.responsible},
         {"schedule_entries", sched},
         {"responsible_collaboration_ids", a.responsible_collaboration_ids},
         {"content_nodes", nodes},
