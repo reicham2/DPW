@@ -25,6 +25,7 @@ static nlohmann::json role_perm_to_json(const RolePermission &rp)
         {"user_dept_scope", rp.user_dept_scope},
         {"user_role_scope", rp.user_role_scope},
         {"locations_manage_scope", rp.locations_manage_scope},
+        {"materials_manage_scope", rp.materials_manage_scope},
         {"ideenkiste_scope", rp.ideenkiste_scope},
         {"ideenkiste_add_scope", rp.ideenkiste_add_scope},
         {"ideenkiste_delete_scope", rp.ideenkiste_delete_scope}};
