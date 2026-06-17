@@ -727,12 +727,19 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
 
         <div class="delete-section">
           <h3 class="delete-section-title">Benutzer</h3>
-          <label class="radio-row">
-            <input type="radio" v-model="userAction" value="transfer" />
+
+          <!-- When no target roles exist: disable transfer, force delete action -->
+          <div v-if="otherRoles.length === 0" class="no-target-roles-hint">
+            <Info :size="16" aria-hidden="true" /> Keine anderen Rollen verfügbar. Benutzer können nicht migriert werden.
+          </div>
+
+          <label class="radio-row" :class="{ 'radio-row--disabled': otherRoles.length === 0 }">
+            <input type="radio" v-model="userAction" value="transfer" :disabled="otherRoles.length === 0" />
             <span>An andere Rolle verschieben:</span>
           </label>
-          <select v-if="userAction === 'transfer'" v-model="userTransferTo" class="form-input modal-select">
+          <select v-if="userAction === 'transfer'" v-model="userTransferTo" class="form-input modal-select" :disabled="otherRoles.length === 0">
             <option v-for="r in otherRoles" :key="r.name" :value="r.name">{{ r.name }}</option>
+            <option v-if="otherRoles.length === 0" value="" disabled selected>Keine Rolle verfügbar</option>
           </select>
           <label class="radio-row">
             <input type="radio" v-model="userAction" value="delete" />
@@ -744,7 +751,9 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
 
         <div class="modal-actions">
           <button class="btn-cancel" @click="cancelDelete">Abbrechen</button>
-          <button class="btn-danger" @click="proceedToConfirm">Weiter</button>
+          <button class="btn-danger" @click="proceedToConfirm" :disabled="userAction === 'transfer' && !userTransferTo">
+            Weiter
+          </button>
         </div>
       </div>
     </div>
@@ -930,6 +939,25 @@ async function setDeptAccessLevel(role: string, dept: string, level: 'none' | 'r
   font-size: 0.88rem; color: var(--text-secondary); cursor: pointer;
 }
 .modal-select { margin: 4px 0 4px 24px; max-width: 220px; }
+
+.no-target-roles-hint {
+  font-size: 0.82rem; color: var(--text-secondary); background: #fff3cd; border: 1px solid #ffc107;
+  border-radius: 6px; padding: 7px 10px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.no-target-roles-hint :deep(svg) {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.radio-row--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.radio-row input:disabled {
+  cursor: not-allowed;
+}
+
 .delete-note { font-size: 0.82rem; color: var(--text-subtle); font-style: italic; margin: 0 0 18px; }
 
 .confirm-list {
