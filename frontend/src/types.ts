@@ -414,6 +414,196 @@ export interface FormStats {
 	>;
 }
 
+// ── Camp Planning ───────────────────────────────────────────────────────────
+
+export interface Camp {
+	id: string;
+	title: string;
+	short_title: string;
+	motto: string;
+	kind: string;
+	organizer: string;
+	address_name: string;
+	address_street: string;
+	address_zipcode: string;
+	address_city: string;
+	coach_name: string;
+	course_number: string;
+	color: string;
+	department: string | null;
+	created_by: string | null;
+	is_prototype: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CampInput {
+	title: string;
+	short_title?: string;
+	motto?: string;
+	kind?: string;
+	organizer?: string;
+	address_name?: string;
+	address_street?: string;
+	address_zipcode?: string;
+	address_city?: string;
+	coach_name?: string;
+	course_number?: string;
+	color?: string;
+	department?: string | null;
+}
+
+export interface CampCollaboration {
+	id: string;
+	camp_id: string;
+	user_id: string | null;
+	display_name: string;
+	role: 'member' | 'manager' | 'guest';
+	camp_role: string;
+	abbreviation: string;
+	color: string;
+	status: 'invited' | 'established' | 'inactive';
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CampCategory {
+	id: string;
+	camp_id: string;
+	short_name: string;
+	name: string;
+	color: string;
+	numbering_style: string;
+	position: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CampDayResponsible {
+	id: string;
+	period_id: string;
+	day_offset: number;
+	collaboration_id: string;
+}
+
+export interface CampPeriod {
+	id: string;
+	camp_id: string;
+	description: string;
+	start_date: string; // "YYYY-MM-DD"
+	end_date: string;
+	position: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ScheduleEntry {
+	id: string;
+	activity_id: string;
+	period_id: string;
+	period_offset: number; // minutes from period start
+	length: number; // minutes
+	left_fraction: number; // 0..1
+	width_fraction: number; // 0..1
+	created_at?: string;
+	updated_at?: string;
+}
+
+export type ContentNodeType =
+	| 'ColumnLayout'
+	| 'Storyboard'
+	| 'MaterialNode'
+	| 'SingleText'
+	| 'MultiSelect'
+	| 'Checklist';
+
+export interface ContentNode {
+	id: string;
+	activity_id: string;
+	parent_id: string | null;
+	slot: string;
+	position: number;
+	content_type: ContentNodeType;
+	instance_name: string;
+	is_root: boolean;
+	data: Record<string, unknown>;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface CampMaterialItem {
+	id: string;
+	material_list_id: string;
+	content_node_id: string | null;
+	period_id: string | null;
+	article_name: string;
+	quantity: number | null;
+	unit: string;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface CampMaterialList {
+	id: string;
+	camp_id: string;
+	collaboration_id: string | null;
+	name: string;
+	items: CampMaterialItem[];
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface CampActivity {
+	id: string;
+	camp_id: string;
+	category_id: string | null;
+	title: string;
+	location: string;
+	schedule_entries: ScheduleEntry[];
+	responsible_collaboration_ids: string[];
+	content_nodes: ContentNode[];
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface ContentNodeInput {
+	id?: string;
+	parent_id?: string | null;
+	slot: string;
+	position: number;
+	content_type: ContentNodeType;
+	instance_name: string;
+	is_root: boolean;
+	data: Record<string, unknown>;
+}
+
+export interface ScheduleEntryInput {
+	period_id: string;
+	period_offset: number;
+	length: number;
+	left_fraction: number;
+	width_fraction: number;
+}
+
+export interface CampActivityInput {
+	category_id?: string | null;
+	title: string;
+	location: string;
+	schedule_entries: ScheduleEntryInput[];
+	responsible_collaboration_ids: string[];
+	content_nodes: ContentNodeInput[];
+}
+
+// Full camp graph returned by GET /camps/:id
+export interface CampDetail extends Camp {
+	periods: CampPeriod[];
+	categories: CampCategory[];
+	collaborations: CampCollaboration[];
+	activities: CampActivity[];
+	material_lists: CampMaterialList[];
+	day_responsibles: CampDayResponsible[];
+}
+
 export interface ActivityExpectedWeather {
 	available: boolean;
 	mode?: 'forecast' | 'seasonal-average' | 'frozen';
