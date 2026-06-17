@@ -53,9 +53,19 @@ async function reload() {
   }
 }
 
-onMounted(reload)
+onMounted(() => {
+  reload()
+  // Refresh the current-time indicator every minute.
+  nowTimer = setInterval(() => {
+    nowMinute.value = currentMinuteOfDay()
+    todayIso.value = currentIsoDate()
+  }, 60_000)
+})
 watch(campId, reload)
-onUnmounted(() => setActiveCamp(null))
+onUnmounted(() => {
+  setActiveCamp(null)
+  if (nowTimer) clearInterval(nowTimer)
+})
 
 function setTab(key: string) {
   router.push(`/camps/${campId.value}?tab=${key}`)
@@ -195,6 +205,27 @@ const listByDay = computed(() =>
 
 const fmtDuration = formatDuration
 const fmtMin = formatMinuteOfDay
+
+// ── "Now" indicator (eCamp red current-time line) ──────────────────────────────
+const nowMinute = ref(currentMinuteOfDay())
+const todayIso = ref(currentIsoDate())
+let nowTimer: ReturnType<typeof setInterval> | null = null
+function currentMinuteOfDay(): number {
+  const d = new Date()
+  return d.getHours() * 60 + d.getMinutes()
+}
+function currentIsoDate(): string {
+  const d = new Date()
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+// Pixel offset of the now-line within a day column; null if outside the visible band.
+const nowTop = computed(() => {
+  if (nowMinute.value < HOUR_START * 60 || nowMinute.value > HOUR_END * 60) return null
+  return (nowMinute.value - HOUR_START * 60) * PX_PER_MIN
+})
+function isToday(dayIso: string): boolean {
+  return dayIso === todayIso.value
+}
 
 // Day responsibles lookup (Tagesverantwortliche), keyed by day index.
 const dayRespByIndex = computed<Record<number, string[]>>(() => {
@@ -438,6 +469,10 @@ function activityText(a: CampActivity): string {
                   @mouseleave="creating && creating.dayIndex === dayIndex ? (creating = null) : null"
                 >
                   <div v-for="h in hours" :key="h" class="cal-hline" :style="{ top: (h - HOUR_START) * 60 + 'px' }" />
+                  <!-- now indicator (only today, only if within visible band) -->
+                  <div v-if="isToday(day) && nowTop !== null" class="cal-now" :style="{ top: nowTop + 'px' }">
+                    <span class="cal-now-dot" />
+                  </div>
                   <!-- create ghost -->
                   <div v-if="creating && creating.dayIndex === dayIndex" class="cal-ghost" :style="ghostStyle()" />
                   <!-- events -->
@@ -670,6 +705,8 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 .cal-col--editable { cursor: crosshair; }
 .cal-hline { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); opacity: 0.6; }
 .cal-ghost { position: absolute; left: 2px; right: 2px; background: var(--accent-bg-hover); border: 1px dashed var(--accent); border-radius: 5px; opacity: 0.7; }
+.cal-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid #ef4444; z-index: 4; pointer-events: none; }
+.cal-now-dot { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
 .cal-event { position: absolute; border-left: 3px solid var(--accent); border-radius: 5px; padding: 3px 6px; overflow: hidden; font-size: 0.72rem; display: flex; flex-direction: column; gap: 1px; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
 .cal-event:hover { filter: brightness(0.96); z-index: 3; }
 .cal-event-cat { font-weight: 800; font-size: 0.64rem; }
