@@ -19,7 +19,7 @@
           <span class="burger-line" />
           <span class="burger-line" />
         </button>
-        <!-- Logo doubles as a camp switcher (eCamp-style) -->
+        <!-- Logo doubles as a camp switcher -->
         <div class="global-nav-logo-wrap">
           <button
             v-if="user"
@@ -61,7 +61,7 @@
           </div>
         </div>
 
-        <!-- In-camp tabs (eCamp) replace the default nav when a camp is open -->
+        <!-- In-camp tabs replace the default nav when a camp is open -->
         <div v-if="user && inCamp" class="global-nav-links">
           <router-link
             v-for="t in CAMP_TABS"

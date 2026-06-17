@@ -32,7 +32,7 @@ function daysInPeriod(startDate: string, endDate: string): string[] {
 }
 
 // Builds a standalone, print-optimized HTML document for the whole camp program
-// (eCamp "PDF / Drucken"). Renders each period day-by-day with times, categories
+// ("PDF / Drucken"). Renders each period day-by-day with times, categories
 // and responsibles, then triggers the browser print dialog.
 // resolveName maps a user id (or free-text) to a display name, matching the
 // activity "Verantwortlich" system. Defaults to identity when not supplied.

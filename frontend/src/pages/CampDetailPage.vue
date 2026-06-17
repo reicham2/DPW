@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCamps } from '../composables/useCamps'
 import { useCampContext, CAMP_TABS } from '../composables/useCampContext'
 import CampActivityEditor from '../components/CampActivityEditor.vue'
+import CampActivityView from '../components/CampActivityView.vue'
 import CampRfListe from '../components/CampRfListe.vue'
 import ResponsibleAvatars from '../components/ResponsibleAvatars.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -42,10 +43,14 @@ const showRf = ref(false)
 // Calendar lock: when locked, no time-shift / no drag-create. Details stay editable.
 const locked = ref(true)
 
-// ── Editor state ──────────────────────────────────────────────────────────
-const editorOpen = ref(false)
+// ── Detail panel state (split: slim single day left, panel right) ─────
+// panelOpen: a side panel is shown. editMode: true = editor, false = read-only view.
+const editorOpen = ref(false)        // any panel open (view or edit)
+const editMode = ref(false)          // false = view, true = edit
 const editingActivity = ref<CampActivity | null>(null)
 const prefillSchedule = ref<{ period_id: string; period_offset: number; length: number } | null>(null)
+// When the panel is open, the calendar collapses to this single day index.
+const focusedDayIndex = ref(0)
 
 async function reload() {
   loading.value = true
@@ -92,6 +97,15 @@ function daysInPeriod(p: CampPeriod): string[] {
   return out
 }
 const periodDays = computed(() => (activePeriod.value ? daysInPeriod(activePeriod.value) : []))
+// When a panel is open the calendar collapses to the single focused day;
+// otherwise it shows the whole period. Values are indexes into periodDays.
+const visibleDayIndexes = computed<number[]>(() => {
+  if (editorOpen.value) {
+    const i = Math.min(Math.max(focusedDayIndex.value, 0), Math.max(periodDays.value.length - 1, 0))
+    return periodDays.value.length ? [i] : []
+  }
+  return periodDays.value.map((_, i) => i)
+})
 function dayLabel(iso: string): string {
   const d = new Date(iso + 'T00:00:00')
   const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][d.getDay()]
@@ -107,7 +121,7 @@ const categoryById = computed<Record<string, CampCategory>>(() => {
 function categoryColor(a: CampActivity): string {
   return a.category_id ? categoryById.value[a.category_id]?.color ?? '#0080ff' : '#9ca3af'
 }
-// Per-category sequential numbers (eCamp-style: LP1, LP2, …).
+// Per-category sequential numbers (LP1, LP2, …).
 const activityNumbers = computed(() =>
   buildActivityNumbers(camp.value?.activities ?? [], camp.value?.categories ?? []),
 )
@@ -117,7 +131,7 @@ function categoryShort(a: CampActivity): string {
   return activityNumbers.value[a.id]
     ?? (a.category_id ? categoryById.value[a.category_id]?.short_name ?? '' : '')
 }
-// Category filter (eCamp-style): set of hidden category ids. Empty = show all.
+// Category filter: set of hidden category ids. Empty = show all.
 // '__none__' represents activities without a category.
 const hiddenCats = ref<Set<string>>(new Set())
 function toggleCat(id: string) {
@@ -220,7 +234,7 @@ function programClock(startMin: number, progs: { duration_minutes: number }[], i
   return `${fmtMin(((s % 1440) + 1440) % 1440)}–${fmtMin(((e % 1440) + 1440) % 1440)}`
 }
 
-// ── "Now" indicator (eCamp red current-time line) ──────────────────────────────
+// ── "Now" indicator (red current-time line) ──────────────────────────────
 const nowMinute = ref(currentMinuteOfDay())
 const todayIso = ref(currentIsoDate())
 let nowTimer: ReturnType<typeof setInterval> | null = null
@@ -252,27 +266,57 @@ const dayRespByIndex = computed<Record<number, string[]>>(() => {
   return m
 })
 
-// ── Editor actions ────────────────────────────────────────────────────────────
+// ── Detail panel actions ────────────────────────────────────────────────────
+// The day index of an activity's first schedule entry in the active period.
+function activityDayIndex(a: CampActivity): number {
+  const se = a.schedule_entries.find((s) => s.period_id === activePeriod.value?.id) ?? a.schedule_entries[0]
+  return se ? Math.floor(se.period_offset / (24 * 60)) : 0
+}
+function closePanel() {
+  editorOpen.value = false
+  editMode.value = false
+  editingActivity.value = null
+  prefillSchedule.value = null
+}
 function openNew() {
   editingActivity.value = null
   prefillSchedule.value = null
+  editMode.value = true        // new always starts in edit mode
   editorOpen.value = true
 }
-function openEdit(a: CampActivity) {
+// Click an activity → open read-only view first.
+function openActivity(a: CampActivity) {
   editingActivity.value = a
   prefillSchedule.value = null
+  focusedDayIndex.value = activityDayIndex(a)
+  editMode.value = false
   editorOpen.value = true
+}
+// Calendar drag-create → straight into edit mode with prefilled time.
+function openCreateAt(schedule: { period_id: string; period_offset: number; length: number }, dayIndex: number) {
+  editingActivity.value = null
+  prefillSchedule.value = schedule
+  focusedDayIndex.value = dayIndex
+  editMode.value = true
+  editorOpen.value = true
+}
+function startEdit() {
+  editMode.value = true
+}
+function dayNav(delta: number) {
+  const next = focusedDayIndex.value + delta
+  if (next >= 0 && next < periodDays.value.length) focusedDayIndex.value = next
 }
 async function onSave(input: CampActivityInput) {
   if (editingActivity.value) await updateActivity(campId.value, editingActivity.value.id, input)
   else await createActivity(campId.value, input)
-  editorOpen.value = false
+  closePanel()
   await reload()
 }
 async function onDelete(id: string) {
   if (!window.confirm('Aktivität löschen?')) return
   await deleteActivity(campId.value, id)
-  editorOpen.value = false
+  closePanel()
   await reload()
 }
 
@@ -332,13 +376,12 @@ function onSlotMouseUp() {
   const a = Math.min(creating.value.startMin, creating.value.curMin)
   const b = Math.max(creating.value.startMin, creating.value.curMin)
   const len = Math.max(15, b - a)
-  prefillSchedule.value = {
+  const dayIndex = creating.value.dayIndex
+  openCreateAt({
     period_id: activePeriod.value.id,
-    period_offset: creating.value.dayIndex * 24 * 60 + a,
+    period_offset: dayIndex * 24 * 60 + a,
     length: len,
-  }
-  editingActivity.value = null
-  editorOpen.value = true
+  }, dayIndex)
   creating.value = null
 }
 
@@ -407,7 +450,7 @@ function doPrint() {
             :key="a.id"
             class="dash-item"
             :style="{ borderLeftColor: categoryColor(a) }"
-            @click="activePeriodId = p.id; openEdit(a)"
+            @click="activePeriodId = p.id; openActivity(a)"
           >
             <span v-if="categoryShort(a)" class="dash-item-cat" :style="{ background: categoryColor(a) }">{{ categoryShort(a) }}</span>
             <span class="dash-item-title">{{ a.title }}</span>
@@ -445,7 +488,7 @@ function doPrint() {
         </div>
         <p v-if="!locked" class="lock-hint">Entsperrt: Aktivitäten verschieben (Drag &amp; Drop) oder über leere Flächen aufziehen, um neue zu erstellen.</p>
 
-        <!-- Category filter (eCamp legend + toggle) -->
+        <!-- Category filter (legend + toggle) -->
         <div v-if="camp.categories.length" class="cat-filter">
           <button
             v-for="c in camp.categories"
@@ -462,11 +505,17 @@ function doPrint() {
           <button v-if="anyCatHidden" class="cat-reset" @click="hiddenCats = new Set()">Alle anzeigen</button>
         </div>
 
-        <!-- eCamp split: calendar/list left, inline editor right when open -->
+        <!-- Split: calendar/list left, detail panel right when open -->
         <div class="prog-split" :class="{ 'prog-split--editing': editorOpen }">
         <div class="prog-split-main">
-        <!-- Calendar -->
-        <div v-if="progMode === 'calendar' && activePeriod" class="calendar">
+        <!-- Calendar (full period, or slim single day when a panel is open) -->
+        <div v-if="progMode === 'calendar' && activePeriod" class="calendar" :class="{ 'calendar--slim': editorOpen }">
+          <!-- Day switcher shown only in slim (panel-open) mode -->
+          <div v-if="editorOpen" class="cal-daynav">
+            <button class="cal-daynav-btn" :disabled="focusedDayIndex <= 0" @click="dayNav(-1)" aria-label="Vorheriger Tag">‹</button>
+            <span class="cal-daynav-label">{{ periodDays[focusedDayIndex] ? dayLabel(periodDays[focusedDayIndex]) : '' }}</span>
+            <button class="cal-daynav-btn" :disabled="focusedDayIndex >= periodDays.length - 1" @click="dayNav(1)" aria-label="Nächster Tag">›</button>
+          </div>
           <div class="cal-scroll">
             <div class="cal-gutter">
               <div class="cal-corner" />
@@ -474,14 +523,14 @@ function doPrint() {
             </div>
             <div class="cal-days">
               <div class="cal-day-headers">
-                <div v-for="(day, i) in periodDays" :key="day" class="cal-day-header">
-                  <span>{{ dayLabel(day) }}</span>
+                <div v-for="i in visibleDayIndexes" :key="periodDays[i]" class="cal-day-header">
+                  <span>{{ dayLabel(periodDays[i]) }}</span>
                   <span v-if="dayRespByIndex[i]?.length" class="cal-day-resp" :title="'Tagesverantwortliche'">{{ dayRespByIndex[i].join(', ') }}</span>
                 </div>
               </div>
               <div class="cal-grid">
                 <div
-                  v-for="(day, dayIndex) in periodDays" :key="day"
+                  v-for="dayIndex in visibleDayIndexes" :key="periodDays[dayIndex]"
                   class="cal-col"
                   :class="{ 'cal-col--editable': !locked }"
                   :style="{ height: (HOUR_END - HOUR_START) * 60 + 'px' }"
@@ -494,7 +543,7 @@ function doPrint() {
                 >
                   <div v-for="h in hours" :key="h" class="cal-hline" :style="{ top: (h - HOUR_START) * 60 + 'px' }" />
                   <!-- now indicator (only today, only if within visible band) -->
-                  <div v-if="isToday(day) && nowTop !== null" class="cal-now" :style="{ top: nowTop + 'px' }">
+                  <div v-if="isToday(periodDays[dayIndex]) && nowTop !== null" class="cal-now" :style="{ top: nowTop + 'px' }">
                     <span class="cal-now-dot" />
                   </div>
                   <!-- create ghost -->
@@ -503,6 +552,7 @@ function doPrint() {
                   <div
                     v-for="p in placedByDay[dayIndex]" :key="p.scheduleId"
                     class="cal-event"
+                    :class="{ 'cal-event--active': editingActivity && p.activity.id === editingActivity.id }"
                     :draggable="!locked"
                     :style="{
                       top: p.top + 'px', height: p.height + 'px',
@@ -512,7 +562,7 @@ function doPrint() {
                       borderLeftColor: categoryColor(p.activity),
                       cursor: locked ? 'pointer' : 'grab',
                     }"
-                    @click="openEdit(p.activity)"
+                    @click="openActivity(p.activity)"
                     @dragstart="onDragStart(p, $event)"
                   >
                     <span class="cal-event-cat" :style="{ color: categoryColor(p.activity) }">{{ categoryShort(p.activity) }}</span>
@@ -537,7 +587,7 @@ function doPrint() {
             <div v-for="row in grp.rows" :key="row.activity.id + row.minuteOfDay" class="list-entry">
               <div
                 class="list-row" :style="{ borderLeftColor: categoryColor(row.activity) }"
-                @click="openEdit(row.activity)"
+                @click="openActivity(row.activity)"
               >
                 <div class="list-time"><Clock :size="13" /> {{ fmtMin(row.minuteOfDay) }}–{{ fmtMin(row.minuteOfDay + row.length) }}</div>
                 <div class="list-main">
@@ -569,9 +619,19 @@ function doPrint() {
         </div>
         </div><!-- /prog-split-main -->
 
-        <!-- Inline editor pane (eCamp detail-on-the-right) -->
+        <!-- Detail pane (detail-on-the-right): view first, edit on demand -->
         <aside v-if="editorOpen && camp" class="prog-split-aside">
+          <CampActivityView
+            v-if="!editMode && editingActivity"
+            :activity="editingActivity"
+            :categories="camp.categories"
+            :number-label="categoryShort(editingActivity)"
+            @edit="startEdit"
+            @delete="onDelete"
+            @close="closePanel"
+          />
           <CampActivityEditor
+            v-else
             :activity="editingActivity"
             :categories="camp.categories"
             :collaborations="camp.collaborations"
@@ -581,7 +641,7 @@ function doPrint() {
             inline
             @save="onSave"
             @delete="onDelete"
-            @close="editorOpen = false"
+            @close="closePanel"
           />
         </aside>
         </div><!-- /prog-split -->
@@ -595,7 +655,7 @@ function doPrint() {
           <div class="story-card-head">
             <BookOpen :size="16" :style="{ color: categoryColor(a) }" />
             <strong>{{ a.title }}</strong>
-            <button class="btn-link" @click="openEdit(a)">Bearbeiten</button>
+            <button class="btn-link" @click="openActivity(a)">Bearbeiten</button>
           </div>
           <div v-for="(s, i) in activityStory(a)" :key="i" class="story-line">
             <span class="story-time">{{ s.time }}</span>
@@ -650,9 +710,21 @@ function doPrint() {
       </section>
     </template>
 
-    <!-- Modal editor for non-Programm tabs (dashboard/geschichte open it as overlay) -->
+    <!-- Modal for non-Programm tabs (dashboard/geschichte): view first, then edit -->
+    <div v-if="editorOpen && camp && tab !== 'programm' && !editMode && editingActivity" class="modal-backdrop" @click.self="closePanel">
+      <div class="modal-view">
+        <CampActivityView
+          :activity="editingActivity"
+          :categories="camp.categories"
+          :number-label="categoryShort(editingActivity)"
+          @edit="startEdit"
+          @delete="onDelete"
+          @close="closePanel"
+        />
+      </div>
+    </div>
     <CampActivityEditor
-      v-if="editorOpen && camp && tab !== 'programm'"
+      v-if="editorOpen && camp && tab !== 'programm' && editMode"
       :activity="editingActivity"
       :categories="camp.categories"
       :collaborations="camp.collaborations"
@@ -661,7 +733,7 @@ function doPrint() {
       :prefill-schedule="prefillSchedule"
       @save="onSave"
       @delete="onDelete"
-      @close="editorOpen = false"
+      @close="closePanel"
     />
 
     <CampRfListe
@@ -754,9 +826,12 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 .vt-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: none; background: transparent; border-radius: 7px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; }
 .vt-btn--active { background: var(--bg-surface); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
-/* eCamp split view: calendar/list left, inline editor right */
+/* Split view: calendar/list left, detail panel right */
 .prog-split { display: flex; gap: 16px; align-items: flex-start; }
 .prog-split-main { flex: 1; min-width: 0; }
+/* When a panel is open the slim calendar is fixed width and the panel grows. */
+.prog-split--editing .prog-split-main { flex: 0 0 auto; }
+.prog-split--editing .prog-split-aside { flex: 1 1 auto; }
 .prog-split-aside {
   flex: 0 0 clamp(380px, 42%, 560px);
   position: sticky;
@@ -773,6 +848,26 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 
 /* Calendar */
 .calendar { border: 1px solid var(--border); border-radius: 12px; background: var(--bg-surface); overflow: hidden; }
+/* Slim single-day calendar shown while the detail panel is open. */
+.calendar--slim { flex: 0 0 auto; }
+.calendar--slim .cal-day-header,
+.calendar--slim .cal-col { min-width: 160px; }
+.cal-daynav {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--bg-elevated);
+}
+.cal-daynav-label { font-size: 0.86rem; font-weight: 700; color: var(--text-primary); }
+.cal-daynav-btn {
+  width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border-strong);
+  background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; font-size: 1.1rem; line-height: 1;
+}
+.cal-daynav-btn:disabled { opacity: 0.4; cursor: default; }
+.cal-daynav-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--accent); }
+.cal-event--active { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 5; }
+.modal-view {
+  background: transparent; width: 100%; max-width: 640px; max-height: 90vh; display: flex;
+}
+.modal-view > * { width: 100%; }
 .cal-scroll { display: flex; overflow: auto; max-height: 70vh; }
 .cal-gutter { flex-shrink: 0; width: 52px; position: sticky; left: 0; background: var(--bg-surface); z-index: 2; }
 .cal-corner { height: 46px; border-bottom: 1px solid var(--border); }

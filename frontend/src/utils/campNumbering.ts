@@ -1,6 +1,6 @@
 import type { CampActivity, CampCategory } from '../types';
 
-// eCamp v3 numbers activities sequentially within their category, formatted by
+// Activities are numbered sequentially within their category, formatted by
 // the category's numbering style (arabic, latin letters, or roman numerals).
 
 function toLatin(n: number, upper: boolean): string {
@@ -50,7 +50,7 @@ export function formatNumber(ordinal: number, style: string): string {
 
 // Builds a map of activityId -> full label (e.g. "LP1") for all activities.
 // Ordering within a category follows the earliest schedule offset, falling back
-// to creation order, so the numbers stay stable and chronological like eCamp.
+// to creation order, so the numbers stay stable and chronological.
 export function buildActivityNumbers(
 	activities: CampActivity[],
 	categories: CampCategory[],

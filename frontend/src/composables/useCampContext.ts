@@ -10,7 +10,7 @@ const allCamps = ref<Camp[]>([]);
 const activeCampId = ref<string | null>(null);
 const activeCampTitle = ref<string>('');
 
-// eCamp-style in-camp navigation tabs. `key` maps to the ?tab query param.
+// In-camp navigation tabs. `key` maps to the ?tab query param.
 export const CAMP_TABS = [
 	{ key: 'dashboard', label: 'Dashboard' },
 	{ key: 'programm', label: 'Programm' },

@@ -26,7 +26,7 @@ const props = defineProps<{
   defaultPeriodId: string
   // When set (calendar drag-create), prefills period + time on a new activity.
   prefillSchedule?: { period_id: string; period_offset: number; length: number } | null
-  // inline = render as a side panel (eCamp split view) instead of a modal overlay.
+  // inline = render as a side panel (split view) instead of a modal overlay.
   inline?: boolean
 }>()
 
@@ -606,7 +606,7 @@ const widgetIcon = (t: ContentNodeType) =>
   flex-direction: column;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
 }
-/* Inline (eCamp split view): fill the right panel, scroll internally. */
+/* Inline (split view): fill the right panel, scroll internally. */
 .editor-inline-host { height: 100%; }
 .editor--inline {
   max-width: none;

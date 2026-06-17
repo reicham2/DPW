@@ -5,7 +5,7 @@
 #include "json.hpp"
 #include "core/models/activity.hpp" // Program, ProgramInput reused for camp Programmpunkte
 
-// ── Camp Planning domain models (eCamp v3-inspired) ──────────────────────────
+// ── Camp Planning domain models ──────────────────────────
 
 struct Camp
 {

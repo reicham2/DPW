@@ -691,7 +691,7 @@ CREATE TRIGGER trg_ideenkiste_updated_at
 CREATE INDEX IF NOT EXISTS idx_ideenkiste_department ON ideenkiste (department);
 
 -- ════════════════════════════════════════════════════════════════════════════
--- Camp Planning (Lagerplanung) — eCamp v3-inspired feature set
+-- Camp Planning (Lagerplanung)
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- ── Camps ───────────────────────────────────────────────────────────────────
