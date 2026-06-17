@@ -326,7 +326,7 @@ export function useCamps() {
 
 	async function addDayResponsible(
 		campId: string,
-		payload: { period_id: string; day_offset: number; collaboration_id: string },
+		payload: { period_id: string; day_offset: number; responsible: string },
 	): Promise<CampDayResponsible | null> {
 		try {
 			const res = await apiFetch(`${BASE}/camps/${campId}/day-responsibles`, {

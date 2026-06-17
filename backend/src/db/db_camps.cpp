@@ -546,7 +546,7 @@ std::vector<CampDayResponsible> Database::list_day_responsibles(const std::strin
     std::vector<CampDayResponsible> out;
     const char *p[1] = {camp_id.c_str()};
     PGresult *r = PQexecParams(conn_,
-                               "SELECT dr.id, dr.period_id, dr.day_offset, dr.collaboration_id "
+                               "SELECT dr.id, dr.period_id, dr.day_offset, dr.responsible "
                                "FROM camp_day_responsibles dr "
                                "JOIN camp_periods pe ON pe.id = dr.period_id "
                                "WHERE pe.camp_id=$1 ORDER BY dr.day_offset",
@@ -560,7 +560,7 @@ std::vector<CampDayResponsible> Database::list_day_responsibles(const std::strin
             d.period_id = col_str(r, i, "period_id");
             if (const char *o = col_val(r, i, "day_offset"))
                 d.day_offset = std::atoi(o);
-            d.collaboration_id = col_str(r, i, "collaboration_id");
+            d.responsible = col_str(r, i, "responsible");
             out.push_back(std::move(d));
         }
     }
@@ -569,16 +569,16 @@ std::vector<CampDayResponsible> Database::list_day_responsibles(const std::strin
 }
 
 std::optional<CampDayResponsible> Database::add_day_responsible(const std::string &period_id, int day_offset,
-                                                                const std::string &collaboration_id)
+                                                                const std::string &responsible)
 {
     ensure_connected();
     std::string off = std::to_string(day_offset);
-    const char *p[3] = {period_id.c_str(), off.c_str(), collaboration_id.c_str()};
+    const char *p[3] = {period_id.c_str(), off.c_str(), responsible.c_str()};
     PGresult *r = PQexecParams(conn_,
-                               "INSERT INTO camp_day_responsibles (period_id, day_offset, collaboration_id) "
+                               "INSERT INTO camp_day_responsibles (period_id, day_offset, responsible) "
                                "VALUES ($1,$2::int,$3) "
-                               "ON CONFLICT (period_id, day_offset, collaboration_id) DO UPDATE SET day_offset=EXCLUDED.day_offset "
-                               "RETURNING id, period_id, day_offset, collaboration_id",
+                               "ON CONFLICT (period_id, day_offset, responsible) DO UPDATE SET day_offset=EXCLUDED.day_offset "
+                               "RETURNING id, period_id, day_offset, responsible",
                                3, nullptr, p, nullptr, nullptr, 0);
     std::optional<CampDayResponsible> out;
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) > 0)
@@ -588,7 +588,7 @@ std::optional<CampDayResponsible> Database::add_day_responsible(const std::strin
         d.period_id = col_str(r, 0, "period_id");
         if (const char *o = col_val(r, 0, "day_offset"))
             d.day_offset = std::atoi(o);
-        d.collaboration_id = col_str(r, 0, "collaboration_id");
+        d.responsible = col_str(r, 0, "responsible");
         out = std::move(d);
     }
     else

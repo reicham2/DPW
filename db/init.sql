@@ -788,8 +788,9 @@ CREATE TABLE IF NOT EXISTS camp_day_responsibles (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     period_id       UUID NOT NULL REFERENCES camp_periods(id) ON DELETE CASCADE,
     day_offset      INTEGER NOT NULL DEFAULT 0,         -- 0 = start_date
-    collaboration_id UUID NOT NULL REFERENCES camp_collaborations(id) ON DELETE CASCADE,
-    UNIQUE (period_id, day_offset, collaboration_id)
+    -- user id or free-text name, same "Verantwortlich" model as activities
+    responsible     TEXT NOT NULL DEFAULT '',
+    UNIQUE (period_id, day_offset, responsible)
 );
 
 CREATE INDEX IF NOT EXISTS idx_camp_day_resp_period ON camp_day_responsibles (period_id, day_offset);

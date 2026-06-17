@@ -484,7 +484,7 @@ export interface CampDayResponsible {
 	id: string;
 	period_id: string;
 	day_offset: number;
-	collaboration_id: string;
+	responsible: string; // user id or free-text, like activity responsible
 }
 
 export interface CampPeriod {

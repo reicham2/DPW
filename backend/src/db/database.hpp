@@ -317,7 +317,7 @@ public:
 
     std::vector<CampDayResponsible> list_day_responsibles(const std::string &camp_id);
     std::optional<CampDayResponsible> add_day_responsible(const std::string &period_id, int day_offset,
-                                                          const std::string &collaboration_id);
+                                                          const std::string &responsible);
     bool delete_day_responsible(const std::string &id);
 
     std::vector<CampActivity> list_camp_activities(const std::string &camp_id);

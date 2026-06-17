@@ -644,13 +644,13 @@ void handle_post_camp_day_responsible(HttpRes *res, HttpReq *req, Database &db, 
                    {
         std::string period_id = j.value("period_id", "");
         int day_offset = j.value("day_offset", 0);
-        std::string collab = j.value("collaboration_id", "");
-        if (period_id.empty() || collab.empty())
+        std::string resp = j.value("responsible", "");
+        if (period_id.empty() || resp.empty())
         {
-            send_json(res, 400, R"({"error":"period_id und collaboration_id erforderlich"})");
+            send_json(res, 400, R"({"error":"period_id und responsible erforderlich"})");
             return;
         }
-        auto d = db.add_day_responsible(period_id, day_offset, collab);
+        auto d = db.add_day_responsible(period_id, day_offset, resp);
         if (!d)
         {
             send_json(res, 500, R"({"error":"Fehler beim Erstellen"})");

@@ -190,7 +190,7 @@ inline nlohmann::json to_json(const CampDayResponsible &d)
         {"id", d.id},
         {"period_id", d.period_id},
         {"day_offset", d.day_offset},
-        {"collaboration_id", d.collaboration_id}};
+        {"responsible", d.responsible}};
 }
 
 inline nlohmann::json to_json(const CampCategory &c)

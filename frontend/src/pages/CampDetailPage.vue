@@ -15,6 +15,7 @@ import { buildActivityNumbers } from '../utils/campNumbering'
 import { formatMinuteOfDay, formatDuration } from '../utils/campTime'
 import { printCamp } from '../utils/campPrint'
 import { useUserResolver } from '../composables/useUserResolver'
+import { useUsers } from '../composables/useUsers'
 import { useWebSocket } from '../composables/useWebSocket'
 import type {
   CampActivity, CampActivityInput, CampCategory, CampDetail, CampPeriod,
@@ -28,9 +29,11 @@ const tab = computed(() => (route.query.tab as string) || 'dashboard')
 const {
   currentCamp, error, fetchCamp,
   createActivity, updateActivity, deleteActivity, updateScheduleEntry,
+  addDayResponsible, deleteDayResponsible,
 } = useCamps()
 const { setActiveCamp } = useCampContext()
 const { resolveResponsibleName } = useUserResolver()
+const { users, fetchUsers } = useUsers()
 
 const camp = computed<CampDetail | null>(() => currentCamp.value)
 const loading = ref(true)
@@ -65,6 +68,7 @@ async function reload() {
 
 onMounted(() => {
   reload()
+  fetchUsers()
   // Refresh the current-time indicator every minute.
   nowTimer = setInterval(() => {
     nowMinute.value = currentMinuteOfDay()
@@ -270,16 +274,45 @@ function isToday(dayIso: string): boolean {
   return dayIso === todayIso.value
 }
 
-// Day responsibles lookup (Tagesverantwortliche), keyed by day index.
-const dayRespByIndex = computed<Record<number, string[]>>(() => {
-  const m: Record<number, string[]> = {}
+// Day responsibles (Tagesverantwortliche) for the active period, keyed by day
+// index. Holds the raw records so we can render avatars and remove entries.
+const dayRespByIndex = computed<Record<number, { id: string; responsible: string }[]>>(() => {
+  const m: Record<number, { id: string; responsible: string }[]> = {}
   if (!activePeriod.value) return m
   for (const dr of camp.value?.day_responsibles ?? []) {
     if (dr.period_id !== activePeriod.value.id) continue
-    ;(m[dr.day_offset] = m[dr.day_offset] || []).push(collabById.value[dr.collaboration_id] || '')
+    ;(m[dr.day_offset] = m[dr.day_offset] || []).push({ id: dr.id, responsible: dr.responsible })
   }
   return m
 })
+// Just the responsible ids/names for a day (for ResponsibleAvatars).
+function dayRespNames(dayIndex: number): string[] {
+  return (dayRespByIndex.value[dayIndex] ?? []).map((d) => d.responsible)
+}
+
+// ── Inline day-responsible editing (calendar header, when unlocked) ───────────
+const dayRespEditing = ref<number | null>(null)   // which day index has the picker open
+const dayRespSearch = ref('')
+const dayRespDropdownUsers = computed(() => {
+  const q = dayRespSearch.value.toLowerCase()
+  const cur = dayRespEditing.value !== null ? dayRespNames(dayRespEditing.value) : []
+  return users.value.filter((u) => !cur.includes(u.id) && (q === '' || u.display_name.toLowerCase().includes(q)))
+})
+function openDayRespPicker(dayIndex: number) {
+  dayRespEditing.value = dayIndex
+  dayRespSearch.value = ''
+}
+async function addDayResp(dayIndex: number, responsible: string) {
+  if (!activePeriod.value || !responsible.trim()) return
+  await addDayResponsible(campId.value, { period_id: activePeriod.value.id, day_offset: dayIndex, responsible })
+  dayRespSearch.value = ''
+  dayRespEditing.value = null
+  await reloadSilent()
+}
+async function removeDayResp(id: string) {
+  await deleteDayResponsible(campId.value, id)
+  await reloadSilent()
+}
 
 // ── Detail panel actions ────────────────────────────────────────────────────
 // The day index of an activity's first schedule entry in the active period.
@@ -556,8 +589,34 @@ function doPrint() {
             <div class="cal-days">
               <div class="cal-day-headers">
                 <div v-for="i in visibleDayIndexes" :key="periodDays[i]" class="cal-day-header">
-                  <span>{{ dayLabel(periodDays[i]) }}</span>
-                  <span v-if="dayRespByIndex[i]?.length" class="cal-day-resp" :title="'Tagesverantwortliche'">{{ dayRespByIndex[i].join(', ') }}</span>
+                  <span class="cal-day-date">{{ dayLabel(periodDays[i]) }}</span>
+                  <!-- Tagesverantwortliche: avatars; editable when unlocked -->
+                  <div class="cal-day-resp-row">
+                    <ResponsibleAvatars v-if="dayRespNames(i).length" :names="dayRespNames(i)" />
+                    <template v-if="!locked">
+                      <button
+                        v-for="dr in (dayRespByIndex[i] ?? [])" :key="dr.id"
+                        class="cal-day-resp-del" title="Entfernen"
+                        @click="removeDayResp(dr.id)"
+                      >×</button>
+                      <button class="cal-day-resp-add" title="Tagesverantwortliche hinzufügen" @click="openDayRespPicker(i)">＋</button>
+                    </template>
+                  </div>
+                  <!-- inline user picker -->
+                  <div v-if="dayRespEditing === i && !locked" class="cal-day-resp-picker">
+                    <input
+                      v-model="dayRespSearch" type="text" class="cal-day-resp-input"
+                      placeholder="Person suchen oder eingeben…" autofocus
+                      @keydown.enter.prevent="addDayResp(i, dayRespSearch.trim())"
+                      @keydown.esc="dayRespEditing = null"
+                    />
+                    <div v-if="dayRespDropdownUsers.length" class="cal-day-resp-dropdown">
+                      <button
+                        v-for="u in dayRespDropdownUsers" :key="u.id"
+                        class="cal-day-resp-option" @click="addDayResp(i, u.id)"
+                      >{{ u.display_name }}</button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="cal-grid">
@@ -613,7 +672,7 @@ function doPrint() {
             <h3 class="list-day-title">
               {{ dayLabel(grp.day) }}
               <span v-if="grp.count" class="list-day-sum">{{ grp.count }} Punkte · {{ fmtDuration(grp.totalMin) }}</span>
-              <span v-if="dayRespByIndex[listByDay.indexOf(grp)]?.length" class="list-day-resp">· {{ dayRespByIndex[listByDay.indexOf(grp)].join(', ') }}</span>
+              <ResponsibleAvatars v-if="dayRespNames(listByDay.indexOf(grp)).length" :names="dayRespNames(listByDay.indexOf(grp))" />
             </h3>
             <p v-if="grp.rows.length === 0" class="hint list-empty">Keine Aktivitäten.</p>
             <div v-for="row in grp.rows" :key="row.activity.id + row.minuteOfDay" class="list-entry">
@@ -724,7 +783,7 @@ function doPrint() {
         <div class="admin-grid">
           <button class="admin-card" @click="showRf = true"><Users :size="22" /><span>Mitarbeitende (RF-Liste)</span></button>
           <button class="admin-card" @click="showRf = true"><Tag :size="22" /><span>Kategorien</span></button>
-          <button class="admin-card" @click="showRf = true"><CalendarDays :size="22" /><span>Lagerabschnitte &amp; Tagesverantwortliche</span></button>
+          <button class="admin-card" @click="showRf = true"><CalendarDays :size="22" /><span>Lagerabschnitte</span></button>
           <button class="admin-card" @click="showRf = true"><Package :size="22" /><span>Materiallisten</span></button>
           <button class="admin-card" @click="doPrint"><Printer :size="22" /><span>PDF / Drucken</span></button>
         </div>
@@ -872,12 +931,27 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 .cal-event--active { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 5; }
 .cal-scroll { display: flex; overflow: auto; max-height: 70vh; }
 .cal-gutter { flex-shrink: 0; width: 52px; position: sticky; left: 0; background: var(--bg-surface); z-index: 2; }
-.cal-corner { height: 46px; border-bottom: 1px solid var(--border); }
+.cal-corner { min-height: 46px; border-bottom: 1px solid var(--border); }
 .cal-hour-label { font-size: 0.7rem; color: var(--text-subtle); text-align: right; padding-right: 6px; box-sizing: border-box; transform: translateY(-6px); }
 .cal-days { flex: 1; min-width: 0; }
 .cal-day-headers { display: flex; position: sticky; top: 0; z-index: 1; background: var(--bg-surface); }
-.cal-day-header { flex: 1; min-width: 120px; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); }
-.cal-day-resp { font-size: 0.66rem; font-weight: 600; color: var(--accent); }
+.cal-day-header { flex: 1; min-width: 120px; min-height: 46px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 5px 4px; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); }
+.cal-day-date { font-size: 0.8rem; }
+.cal-day-resp-row { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.cal-day-resp-del {
+  width: 16px; height: 16px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--btn-danger-bg); color: var(--btn-danger-color); font-size: 0.7rem; line-height: 1; padding: 0;
+}
+.cal-day-resp-add {
+  width: 18px; height: 18px; border-radius: 50%; cursor: pointer; padding: 0;
+  border: 1px dashed var(--border-strong); background: var(--bg-surface); color: var(--text-muted); font-size: 0.8rem; line-height: 1;
+}
+.cal-day-resp-add:hover { border-color: var(--accent); color: var(--accent); }
+.cal-day-resp-picker { position: absolute; top: 100%; left: 4px; right: 4px; z-index: 20; }
+.cal-day-resp-input { width: 100%; padding: 5px 8px; border: 1px solid var(--accent); border-radius: 6px; font-size: 0.78rem; background: var(--input-bg, var(--bg-surface)); color: var(--text-primary); }
+.cal-day-resp-dropdown { margin-top: 2px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); max-height: 180px; overflow-y: auto; }
+.cal-day-resp-option { display: block; width: 100%; text-align: left; padding: 6px 10px; border: none; background: transparent; cursor: pointer; font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); }
+.cal-day-resp-option:hover { background: var(--bg-hover); color: var(--accent); }
 .cal-grid { display: flex; }
 .cal-col { flex: 1; min-width: 120px; position: relative; border-left: 1px solid var(--border); }
 .cal-col--editable { cursor: crosshair; }

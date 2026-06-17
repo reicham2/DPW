@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { computed } from 'vue'
-import { X, Plus, Trash2, Users, Tag, CalendarRange, Package, CalendarCheck } from 'lucide-vue-next'
+import { X, Plus, Trash2, Users, Tag, CalendarRange, Package } from 'lucide-vue-next'
 import { useCamps } from '../composables/useCamps'
-import type { CampDetail, CampPeriod } from '../types'
+import type { CampDetail } from '../types'
 
 const props = defineProps<{ camp: CampDetail }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'changed'): void }>()
@@ -13,10 +12,9 @@ const {
   createCategory, deleteCategory,
   createPeriod, deletePeriod,
   createMaterialList, deleteMaterialList, createMaterialItem, deleteMaterialItem,
-  addDayResponsible, deleteDayResponsible,
 } = useCamps()
 
-type Tab = 'rf' | 'categories' | 'periods' | 'days' | 'material'
+type Tab = 'rf' | 'categories' | 'periods' | 'material'
 const tab = ref<Tab>('rf')
 const busy = ref(false)
 
@@ -77,39 +75,6 @@ function addPeriod() {
   })
 }
 
-// ── Tagesverantwortliche (day responsibles) ────────────────────────────────────
-function periodDays(p: CampPeriod): { offset: number; label: string }[] {
-  const start = new Date(p.start_date + 'T00:00:00')
-  const end = new Date(p.end_date + 'T00:00:00')
-  const out: { offset: number; label: string }[] = []
-  let i = 0
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][d.getDay()]
-    out.push({ offset: i, label: `${wd} ${d.getDate()}.${d.getMonth() + 1}.` })
-    i++
-  }
-  return out
-}
-const collabName = computed<Record<string, { name: string; color: string }>>(() => {
-  const m: Record<string, { name: string; color: string }> = {}
-  for (const c of props.camp.collaborations) m[c.id] = { name: c.abbreviation || c.display_name, color: c.color }
-  return m
-})
-function dayRespFor(periodId: string, offset: number) {
-  return props.camp.day_responsibles.filter((d) => d.period_id === periodId && d.day_offset === offset)
-}
-// per-day draft: selected collaboration to add
-const drDraft = ref<Record<string, string>>({})
-function drKey(periodId: string, offset: number) { return `${periodId}:${offset}` }
-function addDr(periodId: string, offset: number) {
-  const key = drKey(periodId, offset)
-  const cid = drDraft.value[key]
-  if (!cid) return
-  void run(async () => {
-    await addDayResponsible(props.camp.id, { period_id: periodId, day_offset: offset, collaboration_id: cid })
-    drDraft.value[key] = ''
-  })
-}
 
 // ── Material ──────────────────────────────────────────────────────────────────
 const listName = ref('')
@@ -151,7 +116,6 @@ function addItem(listId: string) {
         <button class="ptab" :class="{ 'ptab--active': tab === 'rf' }" @click="tab = 'rf'"><Users :size="15" /> RF-Liste</button>
         <button class="ptab" :class="{ 'ptab--active': tab === 'categories' }" @click="tab = 'categories'"><Tag :size="15" /> Kategorien</button>
         <button class="ptab" :class="{ 'ptab--active': tab === 'periods' }" @click="tab = 'periods'"><CalendarRange :size="15" /> Perioden</button>
-        <button class="ptab" :class="{ 'ptab--active': tab === 'days' }" @click="tab = 'days'"><CalendarCheck :size="15" /> Tagesverantw.</button>
         <button class="ptab" :class="{ 'ptab--active': tab === 'material' }" @click="tab = 'material'"><Package :size="15" /> Material</button>
       </div>
 
@@ -217,39 +181,6 @@ function addItem(listId: string) {
             <input v-model="pStart" type="date" class="fi fi--sm" />
             <input v-model="pEnd" type="date" class="fi fi--sm" />
             <button class="btn-add" :disabled="busy" @click="addPeriod"><Plus :size="15" /></button>
-          </div>
-        </template>
-
-        <!-- Tagesverantwortliche -->
-        <template v-else-if="tab === 'days'">
-          <p class="panel-hint">Verantwortliche Personen pro Lagertag.</p>
-          <p v-if="camp.periods.length === 0" class="hint">Lege zuerst eine Periode an.</p>
-          <div v-for="p in camp.periods" :key="p.id" class="dr-period">
-            <h4 class="dr-period-title">{{ p.description || p.start_date }}</h4>
-            <div v-for="day in periodDays(p)" :key="day.offset" class="dr-day">
-              <span class="dr-day-label">{{ day.label }}</span>
-              <div class="dr-chips">
-                <span
-                  v-for="dr in dayRespFor(p.id, day.offset)"
-                  :key="dr.id"
-                  class="dr-chip"
-                  :style="{ background: collabName[dr.collaboration_id]?.color || '#6b7280' }"
-                >
-                  {{ collabName[dr.collaboration_id]?.name || '?' }}
-                  <button class="dr-chip-x" @click="run(() => deleteDayResponsible(camp.id, dr.id))"><X :size="11" /></button>
-                </span>
-                <select
-                  v-model="drDraft[drKey(p.id, day.offset)]"
-                  class="dr-select"
-                  @change="addDr(p.id, day.offset)"
-                >
-                  <option value="">+ zuweisen</option>
-                  <option v-for="c in camp.collaborations" :key="c.id" :value="c.id">
-                    {{ c.display_name }}
-                  </option>
-                </select>
-              </div>
-            </div>
           </div>
         </template>
 
@@ -347,14 +278,6 @@ function addItem(listId: string) {
   border-radius: 8px; width: 38px; height: 36px; cursor: pointer;
 }
 .btn-add:disabled { opacity: 0.6; cursor: default; }
-.dr-period { margin-bottom: 16px; }
-.dr-period-title { font-size: 0.9rem; font-weight: 700; color: var(--text-secondary); margin: 0 0 8px; }
-.dr-day { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
-.dr-day-label { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); min-width: 90px; }
-.dr-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.dr-chip { display: inline-flex; align-items: center; gap: 4px; color: #fff; font-size: 0.76rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
-.dr-chip-x { background: rgba(255,255,255,0.3); border: none; color: #fff; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
-.dr-select { padding: 4px 8px; border: 1px dashed var(--border-strong); border-radius: 6px; font-size: 0.78rem; background: var(--bg-surface); color: var(--text-muted); cursor: pointer; }
 .mat-list { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
 .mat-list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--text-primary); }
 .mat-item { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 0.86rem; }

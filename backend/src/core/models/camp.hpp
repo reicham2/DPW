@@ -78,7 +78,7 @@ struct CampDayResponsible
     std::string id;
     std::string period_id;
     int day_offset{0}; // 0 = period start_date
-    std::string collaboration_id;
+    std::string responsible; // user id or free-text, like activity responsible
 };
 
 struct CampCategory
