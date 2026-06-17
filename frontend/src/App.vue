@@ -38,24 +38,26 @@
             <span class="global-nav-title">DPWeb</span>
           </router-link>
 
-          <!-- Camp dropdown -->
+          <!-- View switcher: Aktivitäten ↔ Lager -->
           <div v-if="campMenuOpen" class="camp-menu-backdrop" @click="campMenuOpen = false" />
           <div v-if="campMenuOpen" class="camp-menu">
-            <div class="camp-menu-label">Meine Lager</div>
+            <div class="camp-menu-label">Ansicht wechseln</div>
             <button
-              v-for="c in allCamps"
-              :key="c.id"
               class="camp-menu-item"
-              :class="{ 'camp-menu-item--active': c.id === activeCampId }"
-              @click="goToCamp(c.id)"
+              :class="{ 'camp-menu-item--active': !inCampSection }"
+              @click="switchView('activities')"
             >
-              <span class="camp-menu-dot" :style="{ background: c.color }" />
-              <span class="camp-menu-name">{{ c.title }}</span>
+              <ListTodo :size="16" class="camp-menu-ico" />
+              <span class="camp-menu-name">Aktivitätenansicht</span>
             </button>
-            <p v-if="allCamps.length === 0" class="camp-menu-empty">Noch keine Lager</p>
-            <div class="camp-menu-sep" />
-            <router-link to="/camps" class="camp-menu-action" @click="campMenuOpen = false">Alle Lager verwalten…</router-link>
-            <router-link to="/" class="camp-menu-action" @click="campMenuOpen = false">↩ Zurück zu DPWeb</router-link>
+            <button
+              class="camp-menu-item"
+              :class="{ 'camp-menu-item--active': inCampSection }"
+              @click="switchView('camps')"
+            >
+              <Tent :size="16" class="camp-menu-ico" />
+              <span class="camp-menu-name">Lageransicht</span>
+            </button>
           </div>
         </div>
 
@@ -167,7 +169,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { CircleHelp, ChevronDown } from 'lucide-vue-next'
+import { CircleHelp, ChevronDown, Tent, ListTodo } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useCampContext, CAMP_TABS } from './composables/useCampContext'
 import UserAvatar from './components/UserAvatar.vue'
@@ -191,17 +193,25 @@ import {
 
 const route = useRoute()
 const router = useRouter()
-const { allCamps, activeCampId, activeCampTitle, inCamp, loadCampList } = useCampContext()
+const { activeCampId, activeCampTitle, inCamp } = useCampContext()
 const campMenuOpen = ref(false)
 const activeTab = computed(() => (route.query.tab as string) || 'dashboard')
 
+// Whether the user is currently in the camp section (camp list or a camp).
+const inCampSection = computed(() => route.path.startsWith('/camps'))
+
 function toggleCampMenu() {
   campMenuOpen.value = !campMenuOpen.value
-  if (campMenuOpen.value) loadCampList()
 }
-function goToCamp(id: string) {
+// Switch between the two top-level views. Camp view lands on the camp list
+// unless a camp is already active (then stay in it).
+function switchView(target: 'activities' | 'camps') {
   campMenuOpen.value = false
-  router.push(`/camps/${id}?tab=dashboard`)
+  if (target === 'activities') {
+    router.push('/')
+  } else {
+    router.push(activeCampId.value ? `/camps/${activeCampId.value}?tab=dashboard` : '/camps')
+  }
 }
 watch(() => route.fullPath, () => { campMenuOpen.value = false })
 
@@ -564,6 +574,8 @@ watch(
 .camp-menu-item:hover { background: var(--bg-hover); }
 .camp-menu-item--active { background: var(--accent-bg); color: var(--accent); }
 .camp-menu-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.camp-menu-ico { flex-shrink: 0; color: var(--text-muted); }
+.camp-menu-item--active .camp-menu-ico { color: var(--accent); }
 .camp-menu-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .camp-menu-empty { font-size: 0.85rem; color: var(--text-subtle); padding: 4px 10px; margin: 0; }
 .camp-menu-sep { height: 1px; background: var(--border); margin: 6px 4px; }
