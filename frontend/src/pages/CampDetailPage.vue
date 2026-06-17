@@ -7,10 +7,11 @@ import CampActivityEditor from '../components/CampActivityEditor.vue'
 import CampRfListe from '../components/CampRfListe.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import {
-  CalendarDays, List, Plus, Users, Clock, MapPin, Lock, Unlock, BookOpen, Package, Tag,
+  CalendarDays, List, Plus, Users, Clock, MapPin, Lock, Unlock, BookOpen, Package, Tag, Printer,
 } from 'lucide-vue-next'
 import { buildActivityNumbers } from '../utils/campNumbering'
 import { formatMinuteOfDay, formatDuration } from '../utils/campTime'
+import { printCamp } from '../utils/campPrint'
 import type {
   CampActivity, CampActivityInput, CampCategory, CampDetail, CampPeriod,
 } from '../types'
@@ -344,6 +345,11 @@ function activityText(a: CampActivity): string {
   const node = a.content_nodes.find((n) => n.content_type === 'SingleText')
   return node ? String((node.data as { html?: string }).html ?? '') : ''
 }
+
+// PDF / Drucken — open print-optimized program document.
+function doPrint() {
+  if (camp.value) printCamp(camp.value)
+}
 </script>
 
 <template>
@@ -419,6 +425,7 @@ function activityText(a: CampActivity): string {
               <button class="vt-btn" :class="{ 'vt-btn--active': progMode === 'calendar' }" @click="progMode = 'calendar'"><CalendarDays :size="16" /> Kalender</button>
               <button class="vt-btn" :class="{ 'vt-btn--active': progMode === 'list' }" @click="progMode = 'list'"><List :size="16" /> Liste</button>
             </div>
+            <button class="btn-ghost" @click="doPrint" title="Programm drucken / als PDF"><Printer :size="16" /></button>
             <button class="btn-primary" @click="openNew"><Plus :size="16" /> Programmpunkt</button>
           </div>
         </div>
@@ -576,6 +583,7 @@ function activityText(a: CampActivity): string {
           <button class="admin-card" @click="showRf = true"><Tag :size="22" /><span>Kategorien</span></button>
           <button class="admin-card" @click="showRf = true"><CalendarDays :size="22" /><span>Lagerabschnitte &amp; Tagesverantwortliche</span></button>
           <button class="admin-card" @click="showRf = true"><Package :size="22" /><span>Materiallisten</span></button>
+          <button class="admin-card" @click="doPrint"><Printer :size="22" /><span>PDF / Drucken</span></button>
         </div>
         <div class="admin-info">
           <h3>Lagerinfos</h3>
