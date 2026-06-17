@@ -6,6 +6,7 @@
 #include "core/models/form.hpp"
 #include "core/models/mail.hpp"
 #include "core/models/notification.hpp"
+#include "core/models/camp.hpp"
 
 inline nlohmann::json ideenkiste_to_json(const IdeenkisteItem &item)
 {
@@ -137,5 +138,166 @@ inline nlohmann::json to_json(const Activity &a)
     for (const auto &p : a.programs)
         progs.push_back(program_to_json(p));
     j["programs"] = progs;
+    return j;
+}
+
+// ── Camp Planning serializers ────────────────────────────────────────────────
+
+inline nlohmann::json to_json(const Camp &c)
+{
+    nlohmann::json j = {
+        {"id", c.id},
+        {"title", c.title},
+        {"short_title", c.short_title},
+        {"motto", c.motto},
+        {"kind", c.kind},
+        {"organizer", c.organizer},
+        {"address_name", c.address_name},
+        {"address_street", c.address_street},
+        {"address_zipcode", c.address_zipcode},
+        {"address_city", c.address_city},
+        {"coach_name", c.coach_name},
+        {"course_number", c.course_number},
+        {"color", c.color},
+        {"is_prototype", c.is_prototype},
+        {"created_at", c.created_at},
+        {"updated_at", c.updated_at}};
+    j["department"] = c.department ? nlohmann::json(*c.department) : nlohmann::json(nullptr);
+    j["created_by"] = c.created_by ? nlohmann::json(*c.created_by) : nlohmann::json(nullptr);
+    return j;
+}
+
+inline nlohmann::json to_json(const CampCollaboration &c)
+{
+    nlohmann::json j = {
+        {"id", c.id},
+        {"camp_id", c.camp_id},
+        {"display_name", c.display_name},
+        {"role", c.role},
+        {"camp_role", c.camp_role},
+        {"abbreviation", c.abbreviation},
+        {"color", c.color},
+        {"status", c.status},
+        {"created_at", c.created_at},
+        {"updated_at", c.updated_at}};
+    j["user_id"] = c.user_id ? nlohmann::json(*c.user_id) : nlohmann::json(nullptr);
+    return j;
+}
+
+inline nlohmann::json to_json(const CampDayResponsible &d)
+{
+    return {
+        {"id", d.id},
+        {"period_id", d.period_id},
+        {"day_offset", d.day_offset},
+        {"collaboration_id", d.collaboration_id}};
+}
+
+inline nlohmann::json to_json(const CampCategory &c)
+{
+    return {
+        {"id", c.id},
+        {"camp_id", c.camp_id},
+        {"short_name", c.short_name},
+        {"name", c.name},
+        {"color", c.color},
+        {"numbering_style", c.numbering_style},
+        {"position", c.position},
+        {"created_at", c.created_at},
+        {"updated_at", c.updated_at}};
+}
+
+inline nlohmann::json to_json(const CampPeriod &p)
+{
+    return {
+        {"id", p.id},
+        {"camp_id", p.camp_id},
+        {"description", p.description},
+        {"start_date", p.start_date},
+        {"end_date", p.end_date},
+        {"position", p.position},
+        {"created_at", p.created_at},
+        {"updated_at", p.updated_at}};
+}
+
+inline nlohmann::json to_json(const ScheduleEntry &s)
+{
+    return {
+        {"id", s.id},
+        {"activity_id", s.activity_id},
+        {"period_id", s.period_id},
+        {"period_offset", s.period_offset},
+        {"length", s.length},
+        {"left_fraction", s.left_fraction},
+        {"width_fraction", s.width_fraction},
+        {"created_at", s.created_at},
+        {"updated_at", s.updated_at}};
+}
+
+inline nlohmann::json to_json(const ContentNode &n)
+{
+    nlohmann::json j = {
+        {"id", n.id},
+        {"activity_id", n.activity_id},
+        {"slot", n.slot},
+        {"position", n.position},
+        {"content_type", n.content_type},
+        {"instance_name", n.instance_name},
+        {"is_root", n.is_root},
+        {"data", n.data}};
+    j["parent_id"] = n.parent_id ? nlohmann::json(*n.parent_id) : nlohmann::json(nullptr);
+    return j;
+}
+
+inline nlohmann::json to_json(const CampMaterialItem &m)
+{
+    nlohmann::json j = {
+        {"id", m.id},
+        {"material_list_id", m.material_list_id},
+        {"article_name", m.article_name},
+        {"unit", m.unit},
+        {"created_at", m.created_at},
+        {"updated_at", m.updated_at}};
+    j["content_node_id"] = m.content_node_id ? nlohmann::json(*m.content_node_id) : nlohmann::json(nullptr);
+    j["period_id"] = m.period_id ? nlohmann::json(*m.period_id) : nlohmann::json(nullptr);
+    j["quantity"] = m.quantity ? nlohmann::json(*m.quantity) : nlohmann::json(nullptr);
+    return j;
+}
+
+inline nlohmann::json to_json(const CampMaterialList &l)
+{
+    nlohmann::json items = nlohmann::json::array();
+    for (const auto &it : l.items)
+        items.push_back(to_json(it));
+    nlohmann::json j = {
+        {"id", l.id},
+        {"camp_id", l.camp_id},
+        {"name", l.name},
+        {"items", items},
+        {"created_at", l.created_at},
+        {"updated_at", l.updated_at}};
+    j["collaboration_id"] = l.collaboration_id ? nlohmann::json(*l.collaboration_id) : nlohmann::json(nullptr);
+    return j;
+}
+
+inline nlohmann::json to_json(const CampActivity &a)
+{
+    nlohmann::json sched = nlohmann::json::array();
+    for (const auto &s : a.schedule_entries)
+        sched.push_back(to_json(s));
+    nlohmann::json nodes = nlohmann::json::array();
+    for (const auto &n : a.content_nodes)
+        nodes.push_back(to_json(n));
+    nlohmann::json j = {
+        {"id", a.id},
+        {"camp_id", a.camp_id},
+        {"title", a.title},
+        {"location", a.location},
+        {"schedule_entries", sched},
+        {"responsible_collaboration_ids", a.responsible_collaboration_ids},
+        {"content_nodes", nodes},
+        {"created_at", a.created_at},
+        {"updated_at", a.updated_at}};
+    j["category_id"] = a.category_id ? nlohmann::json(*a.category_id) : nlohmann::json(nullptr);
     return j;
 }
