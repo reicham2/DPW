@@ -299,13 +299,15 @@ function openNew() {
   editMode.value = true        // new always starts in edit mode
   editorOpen.value = true
 }
-// Click an activity → open read-only view first.
+// Click an activity → open read-only view first, in the Programm split view.
 function openActivity(a: CampActivity) {
   editingActivity.value = a
   prefillSchedule.value = null
   focusedDayIndex.value = activityDayIndex(a)
   editMode.value = false
   editorOpen.value = true
+  // The detail pane lives in the Programm tab; switch there if elsewhere.
+  if (tab.value !== 'programm') setTab('programm')
 }
 // Calendar drag-create → straight into edit mode with prefilled time.
 function openCreateAt(schedule: { period_id: string; period_offset: number; length: number }, dayIndex: number) {
@@ -317,6 +319,15 @@ function openCreateAt(schedule: { period_id: string; period_offset: number; leng
 }
 function startEdit() {
   editMode.value = true
+}
+// Closing the editor: for an existing activity, drop back to the read-only
+// view; for a brand-new (unsaved) one, close the panel entirely.
+function closeEditor() {
+  if (editingActivity.value) {
+    editMode.value = false
+  } else {
+    closePanel()
+  }
 }
 function dayNav(delta: number) {
   const next = focusedDayIndex.value + delta
@@ -663,7 +674,7 @@ function doPrint() {
             @save="onSave"
             @autosave="onAutosave"
             @delete="onDelete"
-            @close="closePanel"
+            @close="closeEditor"
           />
         </aside>
         </div><!-- /prog-split -->
@@ -731,33 +742,6 @@ function doPrint() {
         </div>
       </section>
     </template>
-
-    <!-- Modal for non-Programm tabs (dashboard/geschichte): view first, then edit -->
-    <div v-if="editorOpen && camp && tab !== 'programm' && !editMode && editingActivity" class="modal-backdrop" @click.self="closePanel">
-      <div class="modal-view">
-        <CampActivityView
-          :activity="editingActivity"
-          :categories="camp.categories"
-          :number-label="categoryShort(editingActivity)"
-          @edit="startEdit"
-          @delete="onDelete"
-          @close="closePanel"
-        />
-      </div>
-    </div>
-    <CampActivityEditor
-      v-if="editorOpen && camp && tab !== 'programm' && editMode"
-      :activity="editingActivity"
-      :categories="camp.categories"
-      :collaborations="camp.collaborations"
-      :periods="camp.periods"
-      :default-period-id="activePeriodId"
-      :prefill-schedule="prefillSchedule"
-      @save="onSave"
-      @autosave="onAutosave"
-      @delete="onDelete"
-      @close="closePanel"
-    />
 
     <CampRfListe
       v-if="showRf && camp"
@@ -887,10 +871,6 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 .cal-daynav-btn:disabled { opacity: 0.4; cursor: default; }
 .cal-daynav-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--accent); }
 .cal-event--active { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 5; }
-.modal-view {
-  background: transparent; width: 100%; max-width: 640px; max-height: 90vh; display: flex;
-}
-.modal-view > * { width: 100%; }
 .cal-scroll { display: flex; overflow: auto; max-height: 70vh; }
 .cal-gutter { flex-shrink: 0; width: 52px; position: sticky; left: 0; background: var(--bg-surface); z-index: 2; }
 .cal-corner { height: 46px; border-bottom: 1px solid var(--border); }
