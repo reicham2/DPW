@@ -2184,6 +2184,9 @@ video {
 	/* ---- Program card: single-column fields ---- */
 	.program-card {
 		padding: 48px 14px 14px;
+		max-width: 720px;
+		margin-left: auto;
+		margin-right: auto;
 	}
 
 	.program-card__fields {
@@ -3962,4 +3965,154 @@ a.wp-id-link:hover {
 .event-preview-body:focus {
 	border-color: var(--focus-border);
 	box-shadow: var(--focus-ring);
+}
+
+/* ---- Program toolbar spacing ------------------------------------------------ */
+.program-toolbar {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* ---- Program minimize toggle buttons ---------------------------------------- */
+.btn-program-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 18px;
+	margin: 8px 4px;
+	font-size: 0.9rem;
+	font-weight: 600;
+	border: 1px solid var(--border-strong);
+	border-radius: 7px;
+	background: var(--btn-secondary-bg);
+	color: var(--btn-secondary-color);
+	cursor: pointer;
+	transition:
+		background 150ms,
+		border-color 150ms;
+	white-space: nowrap;
+}
+
+.btn-program-toggle:hover:not(:disabled) {
+	background: var(--btn-secondary-bg-hover);
+	border-color: var(--border-strong);
+}
+
+.btn-program-toggle:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.btn-program-toggle--maximize:hover:not(:disabled) {
+	background: var(--bg-hover);
+	border-color: var(--border-strong);
+}
+
+.btn-program-toggle--minimize .btn-program-toggle--maximize {
+	color: var(--text-secondary);
+	border-color: var(--border);
+	background: var(--bg-elevated);
+}
+
+.btn-program-toggle--minimize:hover:not(:disabled) {
+	background: var(--bg-hover);
+	border-color: var(--border-strong);
+}
+
+/* ---- Minimized program card preview ----------------------------------------- */
+.program-card__minimized-preview {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 14px;
+	margin-bottom: 8px;
+	background: var(--bg-surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	cursor: pointer;
+	transition:
+		background 150ms,
+		border-color 150ms;
+}
+
+.program-card__minimized-preview:hover {
+	background: var(--accent-bg);
+	border-color: var(--accent);
+}
+
+.minimized-time {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--program-time-color);
+	background: var(--program-time-bg);
+	border-radius: 4px;
+	white-space: nowrap;
+}
+
+.minimized-title {
+	flex: 1;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--text-primary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.minimized-resp {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+/* ---- Lock badge (section lock indicator) ------------------------------------ */
+.lock-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--accent);
+	background: var(--accent-bg);
+	border-radius: 4px;
+	white-space: nowrap;
+}
+
+.lock-badge svg {
+	flex-shrink: 0;
+}
+
+/* ---- Section lock wrapper (focus tracking) ---------------------------------- */
+.section-lock-wrapper {
+	position: relative;
+}
+
+/* ---- Mobile adjustments ----------------------------------------------------- */
+@media (max-width: 768px) {
+	.btn-program-toggle {
+		min-height: 44px;
+		padding: 8px 16px;
+		font-size: 14px;
+	}
+
+	.program-card__minimized-preview {
+		gap: 8px;
+		padding: 8px 12px;
+	}
+
+	.minimized-time {
+		font-size: 12px;
+		padding: 2px 6px;
+	}
+
+	.minimized-title {
+		font-size: 13px;
+	}
 }

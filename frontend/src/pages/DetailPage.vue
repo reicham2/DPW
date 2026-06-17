@@ -12,7 +12,7 @@ import { apiFetch } from '../composables/useApi';
 import { useIdeaBox } from '../composables/useIdeaBox';
 import { useActivityExport } from '../composables/useActivityExport';
 import { useUserResolver } from '../composables/useUserResolver';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText } from 'lucide-vue-next';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText, ChevronUp, ChevronDown } from 'lucide-vue-next';
 import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -330,6 +330,37 @@ const editTnMaterial = ref<string[]>(['']);
 const editSikoText = ref('');
 const editBadWeather = ref('');
 const editPrograms = ref<ProgramInput[]>([]);
+
+// Minimize state for program cards
+const programMinimized = ref<boolean[]>([]);
+
+function initProgramMinimizeState(count: number) {
+  const isEditing = editing.value && activityId.value;
+  // On desktop (>768px) all maximized in editing, on mobile all minimized
+  const startsMinimized = isEditing ? window.innerWidth <= 768 : false;
+  programMinimized.value = Array.from({ length: count }, () => startsMinimized);
+}
+
+function toggleProgramMinimize(i: number) {
+  if (programMinimized.value[i] !== undefined) {
+    programMinimized.value[i] = !programMinimized.value[i];
+    programMinimized.value = [...programMinimized.value];
+  }
+}
+
+function minimizeAllPrograms() {
+  for (let i = 0; i < editPrograms.value.length; i++) {
+    programMinimized.value[i] = true;
+  }
+  programMinimized.value = [...programMinimized.value];
+}
+
+function maximizeAllPrograms() {
+  for (let i = 0; i < editPrograms.value.length; i++) {
+    programMinimized.value[i] = false;
+  }
+  programMinimized.value = [...programMinimized.value];
+}
 
 interface EditSnapshot {
 	title: string;
@@ -2993,18 +3024,16 @@ function copyShareLink() {
 											</li>
 										</ul>
 									</div>
-									<div v-if="fuzzyOverlaps.length" class="field-hint" style="margin-top: 6px">
+									<div v-if="fuzzyOverlaps.length" class="field-hint">
 										<Info :size="12" aria-hidden="true" /> Möglicherweise ähnlicher Ort:
 										<ul class="overlap-list">
 											<li v-for="o in fuzzyOverlaps" :key="o.id">
 												<a href="#" class="overlap-link" @click.prevent="openActivityPreview(o.id)">{{ o.title }}</a>
-												– «{{ o.location }}» ({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
+												– Ort: «{{ o.location }}» ({{ o.start }}–{{ o.end }}<template v-if="o.department">, {{ o.department }}</template>)
 											</li>
 										</ul>
 									</div>
 								</template>
-							</div>
-							<div class="detail-field">
 								<span class="detail-label">Verantwortlich</span>
 								<span class="detail-value"><ResponsibleAvatars :names="activity.responsible" /></span>
 							</div>
@@ -3465,8 +3494,18 @@ function copyShareLink() {
 			</div>
 
 			<!-- Programmpunkte -->
-			<div class="form-section">
-				<p class="form-section-title">Programmpunkte</p>
+			<div class="form-section" v-if="mode === 'edit' && !isLockedByOther('programs')">
+				<div class="program-section-header">
+					<p class="form-section-title" style="margin: 0;">Programmpunkte</p>
+					<div class="program-toolbar">
+						<button type="button" class="btn-program-toggle btn-program-toggle--maximize" @click="maximizeAllPrograms" :disabled="editPrograms.length === 0" title="Alle aufklappen">
+							<ChevronDown :size="14" aria-hidden="true" /> Aufklappen
+						</button>
+						<button type="button" class="btn-program-toggle btn-program-toggle--minimize" @click="minimizeAllPrograms" :disabled="editPrograms.length === 0" title="Alle zuklappen">
+							<ChevronUp :size="14" aria-hidden="true" /> Zuklappen
+						</button>
+					</div>
+				</div>
 				<div style="display: flex; flex-direction: column; gap: 10px">
 					<div v-for="(prog, i) in editPrograms" :key="i" class="program-card lock-wrapper"
 						:class="{
@@ -3500,6 +3539,15 @@ function copyShareLink() {
 						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
 						<div class="program-card__top-actions">
 							<button
+								type="button"
+								class="program-card__toggle-minimize"
+								@click="toggleProgramMinimize(i)"
+								:title="programMinimized[i] ? 'Aufklappen' : 'Zuklappen'"
+							>
+								<ChevronDown v-if="!programMinimized[i]" :size="14" aria-hidden="true" />
+								<ChevronUp v-else :size="14" aria-hidden="true" />
+							</button>
+							<button
 								v-if="canIdeenkisteAdd()"
 								type="button"
 								class="program-card__save-idee"
@@ -3519,7 +3567,17 @@ function copyShareLink() {
 								<X :size="14" aria-hidden="true" />
 							</button>
 						</div>
-						<div class="program-card__fields">
+						<div :class="['program-card__fields', { 'program-card__fields--collapsed': programMinimized[i] }]">
+							<!-- Minimized preview row -->
+							<div class="program-card__minimized-preview" v-if="programMinimized[i]">
+								<span class="minimized-time">{{ editProgramLabel(i) }}</span>
+								<span class="minimized-title">{{ prog.title || '(Ohne Titel)' }}</span>
+								<span v-if="prog.responsible.length" class="minimized-resp">
+									<ResponsibleAvatars :names="prog.responsible" />
+								</span>
+							</div>
+							<!-- Expanded fields -->
+							<template v-else>
 							<div class="form-group">
 								<label>Dauer (Minuten)</label>
 								<div class="input-save-wrap">
@@ -3624,6 +3682,7 @@ function copyShareLink() {
 									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 							</div>
+							</template>
 						</div>
 					</div>
 					<div :class="canIdeenkiste() ? 'btn-add-split' : 'btn-add-single'">
