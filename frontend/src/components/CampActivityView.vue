@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Pencil, Trash2, MapPin, Clock, Tag } from 'lucide-vue-next'
+import { Pencil, X, MapPin, Clock, Tag } from 'lucide-vue-next'
 import ResponsibleAvatars from './ResponsibleAvatars.vue'
 import { formatMinuteOfDay } from '../utils/campTime'
 import type { CampActivity, CampCategory } from '../types'
@@ -13,7 +13,6 @@ const props = defineProps<{
 
 defineEmits<{
   (e: 'edit'): void
-  (e: 'delete', id: string): void
   (e: 'close'): void
 }>()
 
@@ -66,7 +65,7 @@ function nodeSections(data: Record<string, unknown>): { column1: string; column2
       </div>
       <div class="av-head-actions">
         <button class="btn-primary" @click="$emit('edit')"><Pencil :size="15" /> Bearbeiten</button>
-        <button class="btn-icon" @click="$emit('delete', activity.id)" title="Löschen"><Trash2 :size="16" /></button>
+        <button class="btn-icon" @click="$emit('close')" title="Schliessen"><X :size="16" /></button>
       </div>
     </div>
 
@@ -164,5 +163,5 @@ function nodeSections(data: Record<string, unknown>): { column1: string; column2
   width: 34px; height: 34px; border-radius: 8px; cursor: pointer;
   background: transparent; border: 1px solid var(--border-strong); color: var(--text-muted);
 }
-.btn-icon:hover { color: var(--btn-danger-color); background: var(--btn-danger-bg); border-color: var(--btn-danger-bg); }
+.btn-icon:hover { background: var(--bg-hover); color: var(--text-secondary); }
 </style>

@@ -659,7 +659,6 @@ function doPrint() {
             :categories="camp.categories"
             :number-label="categoryShort(editingActivity)"
             @edit="startEdit"
-            @delete="onDelete"
             @close="closePanel"
           />
           <CampActivityEditor
