@@ -9,6 +9,7 @@ import ErrorAlert from '../components/ErrorAlert.vue'
 import {
   CalendarDays, List, Plus, Users, Clock, MapPin, Lock, Unlock, BookOpen, Package, Tag,
 } from 'lucide-vue-next'
+import { buildActivityNumbers } from '../utils/campNumbering'
 import type {
   CampActivity, CampActivityInput, CampCategory, CampDetail, CampPeriod,
 } from '../types'
@@ -91,8 +92,15 @@ const categoryById = computed<Record<string, CampCategory>>(() => {
 function categoryColor(a: CampActivity): string {
   return a.category_id ? categoryById.value[a.category_id]?.color ?? '#0080ff' : '#9ca3af'
 }
+// Per-category sequential numbers (eCamp-style: LP1, LP2, …).
+const activityNumbers = computed(() =>
+  buildActivityNumbers(camp.value?.activities ?? [], camp.value?.categories ?? []),
+)
+// Short label shown on cards: the numbered label (e.g. "LP1"), falling back to
+// the bare category short name when no number could be derived.
 function categoryShort(a: CampActivity): string {
-  return a.category_id ? categoryById.value[a.category_id]?.short_name ?? '' : ''
+  return activityNumbers.value[a.id]
+    ?? (a.category_id ? categoryById.value[a.category_id]?.short_name ?? '' : '')
 }
 const collabById = computed<Record<string, string>>(() => {
   const m: Record<string, string> = {}
