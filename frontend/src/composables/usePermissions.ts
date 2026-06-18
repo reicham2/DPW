@@ -266,11 +266,7 @@ function canForms(
 		activity.department === userDept
 	)
 		return true;
-	if (
-		p.form_scope === 'own' &&
-		userId &&
-		activity.responsible.includes(userId)
-	)
+	if (p.form_scope === 'own' && userId && activity.responsible.includes(userId))
 		return true;
 	return false;
 }
@@ -307,11 +303,19 @@ function writableDepts(userDept: string | null | undefined): string[] {
 }
 
 function canManageLocations(): boolean {
-	return myPermissions.value?.locations_manage_scope === 'all';
+	const p = myPermissions.value;
+	if (!p) return false;
+	// Admin users (user_role_scope === 'all') always have full access
+	if (p.user_role_scope === 'all') return true;
+	return p.locations_manage_scope === 'all';
 }
 
 function canManageMaterials(): boolean {
-	return myPermissions.value?.materials_manage_scope === 'all';
+	const p = myPermissions.value;
+	if (!p) return false;
+	// Admin users (user_role_scope === 'all') always have full access
+	if (p.user_role_scope === 'all') return true;
+	return p.materials_manage_scope === 'all';
 }
 
 function canIdeenkiste(): boolean {
@@ -353,22 +357,18 @@ async function updateLocation(
 	id: string,
 	name: string,
 ): Promise<LocationRecord> {
-	const res = await apiFetch(
-		`/api/admin/locations/${encodeURIComponent(id)}`,
-		{
-			method: 'PATCH',
-			body: JSON.stringify({ name }),
-		},
-	);
+	const res = await apiFetch(`/api/admin/locations/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify({ name }),
+	});
 	if (!res.ok) throw new Error(await res.text());
 	return await res.json();
 }
 
 async function deleteLocation(id: string): Promise<void> {
-	const res = await apiFetch(
-		`/api/admin/locations/${encodeURIComponent(id)}`,
-		{ method: 'DELETE' },
-	);
+	const res = await apiFetch(`/api/admin/locations/${encodeURIComponent(id)}`, {
+		method: 'DELETE',
+	});
 	if (!res.ok) throw new Error(await res.text());
 }
 
@@ -389,7 +389,10 @@ async function createMaterial(name: string): Promise<MaterialNameRecord> {
 	return await res.json();
 }
 
-async function updateMaterial(id: string, name: string): Promise<MaterialNameRecord> {
+async function updateMaterial(
+	id: string,
+	name: string,
+): Promise<MaterialNameRecord> {
 	const res = await apiFetch(`/api/admin/materials/${encodeURIComponent(id)}`, {
 		method: 'PATCH',
 		body: JSON.stringify({ name }),
