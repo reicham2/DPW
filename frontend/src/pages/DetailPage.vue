@@ -3065,7 +3065,7 @@ function copyShareLink() {
 										<span v-if="viewProgramSecondaryLabel(pi)" class="program-time-secondary">{{ viewProgramSecondaryLabel(pi) }}</span>
 									</div>
 									<div class="program-header">
-										<p class="program-title">{{ prog.title }}</p>
+						<p class="program-title">{{ prog.title || '(Ohne Titel)' }}</p>
 							</div>
 									<p v-if="prog.responsible.length" class="program-resp">Leitung: <ResponsibleAvatars :names="prog.responsible" /></p>
 									<div v-if="prog.description" class="program-desc" v-html="sanitizeHtml(prog.description)" />
