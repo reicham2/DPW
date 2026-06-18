@@ -151,6 +151,59 @@ TEST(template_vars_programm_placeholder)
     ASSERT_TRUE(out.find("Einstieg") != std::string::npos);
 }
 
+TEST(shift_iso_date_subtract)
+{
+    ASSERT_STR_EQ(shift_iso_date("2026-07-15", -2), "2026-07-13");
+}
+
+TEST(shift_iso_date_add)
+{
+    ASSERT_STR_EQ(shift_iso_date("2026-07-15", 7), "2026-07-22");
+}
+
+TEST(shift_iso_date_month_rollover)
+{
+    ASSERT_STR_EQ(shift_iso_date("2026-07-15", -15), "2026-06-30");
+}
+
+TEST(shift_iso_date_year_rollover)
+{
+    ASSERT_STR_EQ(shift_iso_date("2026-01-01", -1), "2025-12-31");
+}
+
+TEST(shift_iso_date_too_short)
+{
+    ASSERT_STR_EQ(shift_iso_date("x", -2), "x");
+}
+
+TEST(template_vars_datum_kurz_offset)
+{
+    Activity a = make_activity();
+    // Anmeldefrist: activity date (15.07.2026) minus 2 days
+    ASSERT_STR_EQ(replace_template_vars("Anmeldung bis {{datum_kurz|-2}}", a),
+                  "Anmeldung bis 13.07.2026");
+}
+
+TEST(template_vars_datum_offset_long)
+{
+    Activity a = make_activity();
+    std::string out = replace_template_vars("{{datum|-2}}", a);
+    ASSERT_TRUE(out.find("13. Juli 2026") != std::string::npos);
+}
+
+TEST(template_vars_datum_offset_positive)
+{
+    Activity a = make_activity();
+    ASSERT_STR_EQ(replace_template_vars("{{datum_kurz|7}}", a), "22.07.2026");
+}
+
+TEST(template_vars_datum_offset_invalid_left_intact)
+{
+    Activity a = make_activity();
+    // Non-numeric offset is left untouched rather than mangled
+    ASSERT_STR_EQ(replace_template_vars("{{datum_kurz|abc}}", a), "{{datum_kurz|abc}}");
+}
+
 TEST(is_admin_true)
 {
     ASSERT_TRUE(is_admin(make_user("admin")));

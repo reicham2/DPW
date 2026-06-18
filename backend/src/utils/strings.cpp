@@ -1,5 +1,6 @@
 #include "utils/strings.hpp"
 #include <ctime>
+#include <cstdio>
 #include <algorithm>
 #include <cctype>
 
@@ -112,4 +113,20 @@ std::string format_date_short_de(const std::string &iso_date)
     if (iso_date.size() < 10)
         return iso_date;
     return iso_date.substr(8, 2) + "." + iso_date.substr(5, 2) + "." + iso_date.substr(0, 4);
+}
+
+std::string shift_iso_date(const std::string &iso_date, int days)
+{
+    if (iso_date.size() < 10)
+        return iso_date;
+    struct tm t{};
+    t.tm_year = std::stoi(iso_date.substr(0, 4)) - 1900;
+    t.tm_mon = std::stoi(iso_date.substr(5, 2)) - 1;
+    t.tm_mday = std::stoi(iso_date.substr(8, 2)) + days;
+    t.tm_hour = 12; // noon avoids DST edge cases shifting the calendar day
+    std::mktime(&t);
+    char buf[11];
+    std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
+                  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+    return std::string(buf);
 }

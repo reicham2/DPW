@@ -88,6 +88,49 @@ std::string replace_template_vars(const std::string &text, const Activity &act,
             pos += val.size();
         }
     }
+
+    // Date variables with a day offset, e.g. {{datum|-2}} or {{datum_kurz|7}}.
+    // The offset shifts the activity date so templates can express a deadline
+    // (Anmeldefrist) relative to the activity. Plain {{datum}}/{{datum_kurz}}
+    // are already handled above.
+    auto replace_offset_date = [&](const std::string &name, bool long_fmt)
+    {
+        std::string token = "{{" + name + "|";
+        size_t pos = 0;
+        while ((pos = result.find(token, pos)) != std::string::npos)
+        {
+            size_t end = result.find("}}", pos + token.size());
+            if (end == std::string::npos)
+                break;
+            std::string num = result.substr(pos + token.size(), end - (pos + token.size()));
+            int days = 0;
+            bool ok = !num.empty();
+            try
+            {
+                size_t idx = 0;
+                days = std::stoi(num, &idx);
+                if (idx != num.size())
+                    ok = false;
+            }
+            catch (...)
+            {
+                ok = false;
+            }
+            if (!ok)
+            {
+                pos = end + 2;
+                continue;
+            }
+            std::string shifted = shift_iso_date(act.date, days);
+            std::string val = long_fmt ? format_date_long_de(shifted)
+                                       : format_date_short_de(shifted);
+            result.replace(pos, end + 2 - pos, val);
+            pos += val.size();
+        }
+    };
+    replace_offset_date("datum", true);
+    replace_offset_date("datum_kurz", false);
+
     return result;
 }
 

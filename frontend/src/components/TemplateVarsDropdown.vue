@@ -25,6 +25,8 @@ const BASE_VARIABLES: TplVar[] = [
 	{ var: '{{titel}}',          desc: 'Titel der Aktivität' },
 	{ var: '{{datum}}',          desc: 'Datum lang (z.B. Samstag, 12. April 2026)' },
 	{ var: '{{datum_kurz}}',     desc: 'Datum kurz (z.B. 12.04.2026)' },
+	{ var: '{{datum|-2}}',       desc: 'Datum lang mit Verschiebung in Tagen (−2 = 2 Tage vorher, z.B. Anmeldefrist; +N möglich)' },
+	{ var: '{{datum_kurz|-2}}',  desc: 'Datum kurz mit Verschiebung in Tagen (−2 = 2 Tage vorher, z.B. Anmeldefrist; +N möglich)' },
 	{ var: '{{startzeit}}',      desc: 'Startzeit (HH:MM)' },
 	{ var: '{{endzeit}}',        desc: 'Endzeit (HH:MM)' },
 	{ var: '{{ort}}',            desc: 'Veranstaltungsort' },

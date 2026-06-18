@@ -677,6 +677,23 @@ function evtFormatDateShort(d: string): string {
 		day: '2-digit', month: '2-digit', year: 'numeric'
 	});
 }
+// Shifts an ISO date (YYYY-MM-DD) by a number of days; negative moves earlier.
+function evtShiftIsoDate(iso: string, days: number): string {
+	const dt = new Date(iso + 'T00:00:00');
+	dt.setDate(dt.getDate() + days);
+	const y = dt.getFullYear();
+	const m = String(dt.getMonth() + 1).padStart(2, '0');
+	const d = String(dt.getDate()).padStart(2, '0');
+	return `${y}-${m}-${d}`;
+}
+// Replaces {{datum|-2}} / {{datum_kurz|7}} with the activity date shifted by the
+// given number of days (e.g. an Anmeldefrist relative to the activity).
+function evtReplaceDateOffsets(text: string, act: Activity): string {
+	return text.replace(/\{\{(datum|datum_kurz)\|(-?\d+)\}\}/gi, (_m, name, num) => {
+		const iso = evtShiftIsoDate(act.date, parseInt(num, 10));
+		return name.toLowerCase() === 'datum' ? evtFormatDateLong(iso) : evtFormatDateShort(iso);
+	});
+}
 function evtFormatPrograms(act: Activity): string {
 	if (!act.programs.length) return '';
 	return act.programs.map(p => {
@@ -690,6 +707,7 @@ function evtFormatPrograms(act: Activity): string {
 function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): string {
 	// Handle {{formular_link}} and {{formular_link|Text}} → plain URL (strip custom label)
 	text = text.replace(/\{\{formular_link(?:\|[^}]*)?\}\}/gi, formUrl);
+	text = evtReplaceDateOffsets(text, act);
 	const vars: Record<string, string> = {
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
@@ -714,6 +732,7 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
 	const replacer = (m: string, key: string) => { const lk = key.toLowerCase(); return lk in vars ? vars[lk] : m; };
+	const applyVars = (s: string) => evtReplaceDateOffsets(s, act).replace(/\{\{(\w+)\}\}/gi, replacer);
 	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
 	const textNodes: Text[] = [];
 	while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
@@ -725,7 +744,7 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 			const parent = node.parentNode!;
 			for (let i = 0; i < parts.length; i++) {
 				if (i % 2 === 0) {
-					const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, replacer);
+					const partText = applyVars(parts[i]);
 					if (partText) parent.insertBefore(document.createTextNode(partText), node);
 				} else {
 					const a = document.createElement('a');
@@ -737,14 +756,13 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 			parent.removeChild(node);
 			continue;
 		}
-		const replaced = original.replace(/\{\{(\w+)\}\}/gi, replacer);
+		const replaced = applyVars(original);
 		if (replaced !== original) node.nodeValue = replaced;
 	}
 	// Handle {{formular_link}} in href attributes
 	for (const el of Array.from(container.querySelectorAll('[href]'))) {
 		const href = el.getAttribute('href') ?? '';
-		const replaced = href.replace(/\{\{formular_link(?:\|[^}]*)?\}\}/gi, formUrl)
-			.replace(/\{\{(\w+)\}\}/gi, replacer);
+		const replaced = applyVars(href.replace(/\{\{formular_link(?:\|[^}]*)?\}\}/gi, formUrl));
 		if (replaced !== href) el.setAttribute('href', replaced);
 	}
 	return container.innerHTML;

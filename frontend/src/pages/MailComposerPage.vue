@@ -226,6 +226,16 @@ function formatDateShort(d: string): string {
   })
 }
 
+// Shifts an ISO date (YYYY-MM-DD) by a number of days; negative moves earlier.
+function shiftIsoDate(iso: string, days: number): string {
+  const dt = new Date(iso + 'T00:00:00')
+  dt.setDate(dt.getDate() + days)
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const d = String(dt.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 function formatPrograms(act: Activity): string {
   if (!act.programs.length) return '—'
   return act.programs.map(p => {
@@ -260,8 +270,15 @@ function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: bo
     absender_email: senderEmail,
     absender_name: senderName,
   }
+	// Date variables with a day offset, e.g. {{datum|-2}} or {{datum_kurz|7}},
+	// used to express an Anmeldefrist relative to the activity date.
+	const replaceDateOffsets = (input: string) =>
+		input.replace(/\{\{(datum|datum_kurz)\|(-?\d+)\}\}/gi, (_m, name, num) => {
+			const iso = shiftIsoDate(act.date, parseInt(num, 10))
+			return name.toLowerCase() === 'datum' ? formatDateLong(iso) : formatDateShort(iso)
+		})
 	const replaceSimpleVars = (input: string) =>
-		input.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
+		replaceDateOffsets(input).replace(/\{\{(\w+)\}\}/gi, (m, key) => {
 			const lk = key.toLowerCase()
 			return lk in vars ? vars[lk] : m
 		})
@@ -452,7 +469,7 @@ function expandSelectionToVariables() {
   }
   let startOff = nodeOffset(range.startContainer, range.startOffset)
   let endOff = nodeOffset(range.endContainer, range.endOffset)
-  const varPattern = /\{\{\w+\}\}/g
+  const varPattern = /\{\{\w+(?:\|[^}]*)?\}\}/g
   let m: RegExpExecArray | null
   while ((m = varPattern.exec(fullText)) !== null) {
     const vs = m.index, ve = m.index + m[0].length

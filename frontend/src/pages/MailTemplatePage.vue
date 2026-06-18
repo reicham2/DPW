@@ -478,7 +478,7 @@ function expandSelectionToVariables() {
   }
   let startOff = nodeOffset(range.startContainer, range.startOffset)
   let endOff = nodeOffset(range.endContainer, range.endOffset)
-  const varPattern = /\{\{\w+\}\}/g
+  const varPattern = /\{\{\w+(?:\|[^}]*)?\}\}/g
   let m: RegExpExecArray | null
   while ((m = varPattern.exec(fullText)) !== null) {
     const vs = m.index, ve = m.index + m[0].length
