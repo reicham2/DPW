@@ -706,3 +706,238 @@ CREATE TRIGGER trg_ideenkiste_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE INDEX IF NOT EXISTS idx_ideenkiste_department ON ideenkiste (department);
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- Camp Planning (Lagerplanung)
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- ── Camps ───────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS camps (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title           TEXT NOT NULL,
+    short_title     TEXT NOT NULL DEFAULT '',
+    motto           TEXT NOT NULL DEFAULT '',
+    kind            TEXT NOT NULL DEFAULT '',          -- Zeltlager, Hauslager, Wanderlager …
+    organizer       TEXT NOT NULL DEFAULT '',
+    address_name    TEXT NOT NULL DEFAULT '',
+    address_street  TEXT NOT NULL DEFAULT '',
+    address_zipcode TEXT NOT NULL DEFAULT '',
+    address_city    TEXT NOT NULL DEFAULT '',
+    coach_name      TEXT NOT NULL DEFAULT '',
+    course_number   TEXT NOT NULL DEFAULT '',
+    color           TEXT NOT NULL DEFAULT '#0080ff',
+    department      TEXT REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL,
+    created_by      UUID,
+    is_prototype    BOOLEAN NOT NULL DEFAULT false,
+    deleted_at      TIMESTAMPTZ,
+    deleted_by      UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_camps_updated_at ON camps;
+CREATE TRIGGER trg_camps_updated_at
+    BEFORE UPDATE ON camps FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_camps_deleted_at ON camps (deleted_at);
+CREATE INDEX IF NOT EXISTS idx_camps_department ON camps (department);
+
+-- ── Collaborations (RF-Liste: people + function/role in the camp) ────────────
+CREATE TABLE IF NOT EXISTS camp_collaborations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    camp_id         UUID NOT NULL REFERENCES camps(id) ON DELETE CASCADE,
+    user_id         UUID,                              -- nullable: invited-by-name only
+    display_name    TEXT NOT NULL DEFAULT '',          -- free-text fallback / cached name
+    role            TEXT NOT NULL DEFAULT 'member',    -- member | manager | guest
+    camp_role       TEXT NOT NULL DEFAULT '',          -- "RF" function label, e.g. Küche, Material, Programm
+    abbreviation    TEXT NOT NULL DEFAULT '',          -- short code shown in calendar
+    color           TEXT NOT NULL DEFAULT '#6b7280',
+    status          TEXT NOT NULL DEFAULT 'established',-- invited | established | inactive
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_camp_collab_updated_at ON camp_collaborations;
+CREATE TRIGGER trg_camp_collab_updated_at
+    BEFORE UPDATE ON camp_collaborations FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_camp_collab_camp ON camp_collaborations (camp_id);
+
+-- ── Categories (program type: color + numbering) ─────────────────────────────
+CREATE TABLE IF NOT EXISTS camp_categories (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    camp_id         UUID NOT NULL REFERENCES camps(id) ON DELETE CASCADE,
+    short_name      TEXT NOT NULL DEFAULT '',          -- "LA", "LP", "SP" …
+    name            TEXT NOT NULL DEFAULT '',
+    color           TEXT NOT NULL DEFAULT '#0080ff',
+    numbering_style TEXT NOT NULL DEFAULT '1',         -- 1 | a | A | i | I
+    position        INTEGER NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_camp_cat_updated_at ON camp_categories;
+CREATE TRIGGER trg_camp_cat_updated_at
+    BEFORE UPDATE ON camp_categories FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_camp_cat_camp ON camp_categories (camp_id, position);
+
+-- ── Periods (time blocks within a camp; non-overlapping) ─────────────────────
+CREATE TABLE IF NOT EXISTS camp_periods (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    camp_id         UUID NOT NULL REFERENCES camps(id) ON DELETE CASCADE,
+    description     TEXT NOT NULL DEFAULT '',
+    start_date      DATE NOT NULL,
+    end_date        DATE NOT NULL,
+    position        INTEGER NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_camp_period_updated_at ON camp_periods;
+CREATE TRIGGER trg_camp_period_updated_at
+    BEFORE UPDATE ON camp_periods FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_camp_period_camp ON camp_periods (camp_id, start_date);
+
+-- ── Day responsibles (per calendar day of a period) ──────────────────────────
+CREATE TABLE IF NOT EXISTS camp_day_responsibles (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    period_id       UUID NOT NULL REFERENCES camp_periods(id) ON DELETE CASCADE,
+    day_offset      INTEGER NOT NULL DEFAULT 0,         -- 0 = start_date
+    -- user id or free-text name, same "Verantwortlich" model as activities
+    responsible     TEXT NOT NULL DEFAULT '',
+    UNIQUE (period_id, day_offset, responsible)
+);
+
+CREATE INDEX IF NOT EXISTS idx_camp_day_resp_period ON camp_day_responsibles (period_id, day_offset);
+
+-- ── Camp Activities (the program content container) ──────────────────────────
+CREATE TABLE IF NOT EXISTS camp_activities (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    camp_id         UUID NOT NULL REFERENCES camps(id) ON DELETE CASCADE,
+    category_id     UUID REFERENCES camp_categories(id) ON DELETE SET NULL,
+    title           TEXT NOT NULL DEFAULT '',
+    location        TEXT NOT NULL DEFAULT '',
+    -- Same "Verantwortlich" model as activities: user IDs or free-text names.
+    responsible     TEXT[] NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE camp_activities ADD COLUMN IF NOT EXISTS responsible TEXT[] NOT NULL DEFAULT '{}';
+
+DROP TRIGGER IF EXISTS trg_camp_act_updated_at ON camp_activities;
+CREATE TRIGGER trg_camp_act_updated_at
+    BEFORE UPDATE ON camp_activities FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_camp_act_camp ON camp_activities (camp_id);
+
+-- ── Schedule Entries (place an activity on the timeline; supports overlap) ────
+CREATE TABLE IF NOT EXISTS schedule_entries (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id     UUID NOT NULL REFERENCES camp_activities(id) ON DELETE CASCADE,
+    period_id       UUID NOT NULL REFERENCES camp_periods(id) ON DELETE CASCADE,
+    period_offset   INTEGER NOT NULL DEFAULT 0,         -- minutes from period start
+    length          INTEGER NOT NULL DEFAULT 60 CHECK (length >= 0),
+    left_fraction   NUMERIC NOT NULL DEFAULT 0,         -- 0..1 column position (overlap)
+    width_fraction  NUMERIC NOT NULL DEFAULT 1,         -- 0..1 column width (overlap)
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_sched_updated_at ON schedule_entries;
+CREATE TRIGGER trg_sched_updated_at
+    BEFORE UPDATE ON schedule_entries FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_sched_activity ON schedule_entries (activity_id);
+CREATE INDEX IF NOT EXISTS idx_sched_period ON schedule_entries (period_id, period_offset);
+
+-- ── Activity Responsibles (link collaboration ↔ activity) ────────────────────
+CREATE TABLE IF NOT EXISTS camp_activity_responsibles (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id      UUID NOT NULL REFERENCES camp_activities(id) ON DELETE CASCADE,
+    collaboration_id UUID NOT NULL REFERENCES camp_collaborations(id) ON DELETE CASCADE,
+    UNIQUE (activity_id, collaboration_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_camp_act_resp_act ON camp_activity_responsibles (activity_id);
+
+-- ── Camp Programmpunkte (same structure as activity programs) ────────────────
+CREATE TABLE IF NOT EXISTS camp_programs (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id      UUID NOT NULL REFERENCES camp_activities(id) ON DELETE CASCADE,
+    duration_minutes INTEGER NOT NULL DEFAULT 0 CHECK (duration_minutes >= 0),
+    title            TEXT NOT NULL DEFAULT '',
+    description      TEXT NOT NULL DEFAULT '',
+    responsible      TEXT[] NOT NULL DEFAULT '{}',
+    position         INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_camp_programs_activity ON camp_programs (activity_id, position);
+
+-- ── Content Nodes (recursive tree: layout + content widgets) ─────────────────
+--   content_type: ColumnLayout | Storyboard | MaterialNode | SingleText
+--                 | MultiSelect | Checklist
+--   data JSONB holds type-specific payload:
+--     ColumnLayout → {"columns":[{"slot":"1","width":6}, …]}
+--     SingleText   → {"html":"…"}
+--     Storyboard   → {"sections":[{"id","column1","column2","position"}]}
+--     MultiSelect  → {"options":[{"id","label","checked"}]}
+--     Checklist    → {"items":[{"id","text","checked","position"}]}
+--     MaterialNode → {} (items live in material_items.content_node_id)
+CREATE TABLE IF NOT EXISTS content_nodes (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id     UUID NOT NULL REFERENCES camp_activities(id) ON DELETE CASCADE,
+    parent_id       UUID REFERENCES content_nodes(id) ON DELETE CASCADE,
+    slot            TEXT NOT NULL DEFAULT '',           -- which parent slot this child sits in
+    position        INTEGER NOT NULL DEFAULT 0,
+    content_type    TEXT NOT NULL,
+    instance_name   TEXT NOT NULL DEFAULT '',           -- heading shown above the widget
+    is_root         BOOLEAN NOT NULL DEFAULT false,
+    data            JSONB NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_content_node_updated_at ON content_nodes;
+CREATE TRIGGER trg_content_node_updated_at
+    BEFORE UPDATE ON content_nodes FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_content_node_activity ON content_nodes (activity_id);
+CREATE INDEX IF NOT EXISTS idx_content_node_parent ON content_nodes (parent_id, position);
+
+-- ── Material Lists (per camp, optionally owned by a collaboration) ───────────
+CREATE TABLE IF NOT EXISTS camp_material_lists (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    camp_id          UUID NOT NULL REFERENCES camps(id) ON DELETE CASCADE,
+    collaboration_id UUID REFERENCES camp_collaborations(id) ON DELETE SET NULL,
+    name             TEXT NOT NULL DEFAULT '',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_mat_list_updated_at ON camp_material_lists;
+CREATE TRIGGER trg_mat_list_updated_at
+    BEFORE UPDATE ON camp_material_lists FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_mat_list_camp ON camp_material_lists (camp_id);
+
+-- ── Material Items ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS camp_material_items (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    material_list_id UUID NOT NULL REFERENCES camp_material_lists(id) ON DELETE CASCADE,
+    content_node_id  UUID REFERENCES content_nodes(id) ON DELETE CASCADE,
+    period_id        UUID REFERENCES camp_periods(id) ON DELETE SET NULL,
+    article_name     TEXT NOT NULL DEFAULT '',
+    quantity         NUMERIC,
+    unit             TEXT NOT NULL DEFAULT '',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_mat_item_updated_at ON camp_material_items;
+CREATE TRIGGER trg_mat_item_updated_at
+    BEFORE UPDATE ON camp_material_items FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_mat_item_list ON camp_material_items (material_list_id);
+CREATE INDEX IF NOT EXISTS idx_mat_item_node ON camp_material_items (content_node_id);

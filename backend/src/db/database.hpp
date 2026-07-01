@@ -293,6 +293,50 @@ public:
     bool delete_share_link(const std::string &activity_id);
     std::optional<Activity> get_activity_by_share_token(const std::string &token);
 
+    // ── Camp Planning ──────────────────────────────────────────────────────────
+    std::vector<Camp> list_camps();
+    std::optional<Camp> get_camp_by_id(const std::string &id);
+    std::optional<Camp> create_camp(const CampInput &input, const std::string &created_by);
+    std::optional<Camp> update_camp(const std::string &id, const CampInput &input);
+    bool soft_delete_camp(const std::string &id, const std::string &deleted_by_user_id);
+
+    std::vector<CampCollaboration> list_collaborations(const std::string &camp_id);
+    std::optional<CampCollaboration> create_collaboration(const std::string &camp_id, const CampCollaborationInput &input);
+    std::optional<CampCollaboration> update_collaboration(const std::string &id, const CampCollaborationInput &input);
+    bool delete_collaboration(const std::string &id);
+
+    std::vector<CampCategory> list_categories(const std::string &camp_id);
+    std::optional<CampCategory> create_category(const std::string &camp_id, const CampCategoryInput &input);
+    std::optional<CampCategory> update_category(const std::string &id, const CampCategoryInput &input);
+    bool delete_category(const std::string &id);
+
+    std::vector<CampPeriod> list_periods(const std::string &camp_id);
+    std::optional<CampPeriod> create_period(const std::string &camp_id, const CampPeriodInput &input);
+    std::optional<CampPeriod> update_period(const std::string &id, const CampPeriodInput &input);
+    bool delete_period(const std::string &id);
+
+    std::vector<CampDayResponsible> list_day_responsibles(const std::string &camp_id);
+    std::optional<CampDayResponsible> add_day_responsible(const std::string &period_id, int day_offset,
+                                                          const std::string &responsible);
+    bool delete_day_responsible(const std::string &id);
+
+    std::vector<CampActivity> list_camp_activities(const std::string &camp_id);
+    std::optional<CampActivity> get_camp_activity_by_id(const std::string &id);
+    std::optional<CampActivity> create_camp_activity(const std::string &camp_id, const CampActivityInput &input);
+    std::optional<CampActivity> update_camp_activity(const std::string &id, const CampActivityInput &input);
+    bool delete_camp_activity(const std::string &id);
+    // Lightweight reposition of a single schedule entry (drag/drop, resize).
+    std::optional<ScheduleEntry> update_schedule_entry(const std::string &id, const ScheduleEntryInput &input);
+
+    std::vector<CampMaterialList> list_material_lists(const std::string &camp_id);
+    std::optional<CampMaterialList> create_material_list(const std::string &camp_id,
+                                                         const std::optional<std::string> &collaboration_id,
+                                                         const std::string &name);
+    bool delete_material_list(const std::string &id);
+    std::optional<CampMaterialItem> create_material_item(const std::string &material_list_id, const CampMaterialItemInput &input);
+    std::optional<CampMaterialItem> update_material_item(const std::string &id, const CampMaterialItemInput &input);
+    bool delete_material_item(const std::string &id);
+
     // App settings (supports encrypted secret values)
     bool set_app_setting(const std::string &key,
                          bool is_secret,
@@ -342,4 +386,15 @@ private:
     FormTemplate row_to_form_template(PGresult *res, int row);
     void attach_questions(std::vector<SignupForm> &forms);
     void attach_questions_single(SignupForm &f);
+
+    // Camp planning row mappers
+    Camp row_to_camp(PGresult *res, int row);
+    CampCollaboration row_to_collaboration(PGresult *res, int row);
+    CampCategory row_to_category(PGresult *res, int row);
+    CampPeriod row_to_period(PGresult *res, int row);
+    ScheduleEntry row_to_schedule_entry(PGresult *res, int row);
+    ContentNode row_to_content_node(PGresult *res, int row);
+    CampMaterialItem row_to_material_item(PGresult *res, int row);
+    CampActivity row_to_camp_activity(PGresult *res, int row);
+    void hydrate_camp_activity(CampActivity &a);
 };

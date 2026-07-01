@@ -19,11 +19,60 @@
           <span class="burger-line" />
           <span class="burger-line" />
         </button>
-        <router-link to="/" class="global-nav-logo">
-          <img src="/logo.png" alt="DPWeb" class="global-nav-logo-img" />
-          <span class="global-nav-title">DPWeb</span>
-        </router-link>
-        <div v-if="user" class="global-nav-links">
+        <!-- Logo doubles as a camp switcher -->
+        <div class="global-nav-logo-wrap">
+          <button
+            v-if="user"
+            class="global-nav-logo global-nav-logo--btn"
+            :class="{ 'global-nav-logo--open': campMenuOpen }"
+            @click="toggleCampMenu"
+            :aria-expanded="campMenuOpen"
+            title="Lager wechseln"
+          >
+            <img src="/logo.png" alt="DPWeb" class="global-nav-logo-img" />
+            <span class="global-nav-title">{{ inCamp ? activeCampTitle || 'DPWeb' : 'DPWeb' }}</span>
+            <ChevronDown :size="15" class="global-nav-logo-caret" aria-hidden="true" />
+          </button>
+          <router-link v-else to="/" class="global-nav-logo">
+            <img src="/logo.png" alt="DPWeb" class="global-nav-logo-img" />
+            <span class="global-nav-title">DPWeb</span>
+          </router-link>
+
+          <!-- View switcher: Aktivitäten ↔ Lager -->
+          <div v-if="campMenuOpen" class="camp-menu-backdrop" @click="campMenuOpen = false" />
+          <div v-if="campMenuOpen" class="camp-menu">
+            <div class="camp-menu-label">Ansicht wechseln</div>
+            <button
+              class="camp-menu-item"
+              :class="{ 'camp-menu-item--active': !inCampSection }"
+              @click="switchView('activities')"
+            >
+              <ListTodo :size="16" class="camp-menu-ico" />
+              <span class="camp-menu-name">Aktivitätenansicht</span>
+            </button>
+            <button
+              class="camp-menu-item"
+              :class="{ 'camp-menu-item--active': inCampSection }"
+              @click="switchView('camps')"
+            >
+              <Tent :size="16" class="camp-menu-ico" />
+              <span class="camp-menu-name">Lageransicht</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- In-camp tabs replace the default nav when a camp is open -->
+        <div v-if="user && inCamp" class="global-nav-links">
+          <router-link
+            v-for="t in CAMP_TABS"
+            :key="t.key"
+            :to="`/camps/${activeCampId}?tab=${t.key}`"
+            class="global-nav-link global-nav-link--camp"
+            :class="{ 'global-nav-link--active': activeTab === t.key }"
+          ><component :is="t.icon" :size="15" aria-hidden="true" /> {{ t.label }}</router-link>
+        </div>
+        <!-- Default DPWeb nav -->
+        <div v-else-if="user" class="global-nav-links">
           <router-link to="/" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/' || route.path.startsWith('/activities') }">Aktivitäten</router-link>
           <router-link to="/stats" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/stats' }">Statistik</router-link>
           <router-link v-if="showIdeenkiste" to="/ideas" class="global-nav-link" :class="{ 'global-nav-link--active': route.path === '/ideas' }">Ideenkiste</router-link>
@@ -118,8 +167,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { CircleHelp } from 'lucide-vue-next'
-import { useRoute } from 'vue-router'
+import { CircleHelp, ChevronDown, Tent, ListTodo } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
+import { useCampContext, CAMP_TABS } from './composables/useCampContext'
 import UserAvatar from './components/UserAvatar.vue'
 import BugReportButton from './components/BugReportButton.vue'
 import MaintenanceBanner from './components/MaintenanceBanner.vue'
@@ -140,6 +190,29 @@ import {
 } from './composables/useMaintenance'
 
 const route = useRoute()
+const router = useRouter()
+const { activeCampId, activeCampTitle, inCamp } = useCampContext()
+const campMenuOpen = ref(false)
+const activeTab = computed(() => (route.query.tab as string) || 'dashboard')
+
+// Whether the user is currently in the camp section (camp list or a camp).
+const inCampSection = computed(() => route.path.startsWith('/camps'))
+
+function toggleCampMenu() {
+  campMenuOpen.value = !campMenuOpen.value
+}
+// Switch between the two top-level views. Camp view lands on the camp list
+// unless a camp is already active (then stay in it).
+function switchView(target: 'activities' | 'camps') {
+  campMenuOpen.value = false
+  if (target === 'activities') {
+    router.push('/')
+  } else {
+    router.push(activeCampId.value ? `/camps/${activeCampId.value}?tab=dashboard` : '/camps')
+  }
+}
+watch(() => route.fullPath, () => { campMenuOpen.value = false })
+
 const { myPermissions, fetchMyPermissions, resetMyPermissions } = usePermissions()
 const { startMidataAutoRefresh, stopMidataAutoRefresh, resetMidataCounts } = useMidataCounts()
 const { connected } = useWebSocket((event) => {
@@ -433,6 +506,88 @@ watch(
   color: var(--text-subtle);
 }
 
+.global-nav-logo-wrap { position: relative; }
+.global-nav-logo--btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font: inherit;
+  transition: background 0.15s;
+}
+.global-nav-logo--btn:hover { background: var(--bg-hover); }
+.global-nav-logo-caret {
+  color: var(--text-muted);
+  transition: transform 0.18s;
+}
+.global-nav-logo--open .global-nav-logo-caret { transform: rotate(180deg); }
+
+.camp-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+}
+.camp-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 120;
+  width: 260px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.camp-menu-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-subtle);
+  padding: 6px 10px 4px;
+}
+.camp-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: left;
+}
+.camp-menu-item:hover { background: var(--bg-hover); }
+.camp-menu-item--active { background: var(--accent-bg); color: var(--accent); }
+.camp-menu-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.camp-menu-ico { flex-shrink: 0; color: var(--text-muted); }
+.camp-menu-item--active .camp-menu-ico { color: var(--accent); }
+.camp-menu-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.camp-menu-empty { font-size: 0.85rem; color: var(--text-subtle); padding: 4px 10px; margin: 0; }
+.camp-menu-sep { height: 1px; background: var(--border); margin: 6px 4px; }
+.camp-menu-action {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.camp-menu-action:hover { background: var(--bg-hover); color: var(--accent); }
+
 .global-nav-links {
   display: flex;
   align-items: center;
@@ -456,6 +611,11 @@ watch(
 .global-nav-link--active {
   color: var(--accent);
   background: var(--nav-link-active-bg);
+}
+.global-nav-link--camp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .global-nav-right {
