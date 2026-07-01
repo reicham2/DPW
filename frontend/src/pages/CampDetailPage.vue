@@ -5,11 +5,13 @@ import { useCamps } from '../composables/useCamps'
 import { useCampContext, CAMP_TABS } from '../composables/useCampContext'
 import CampActivityEditor from '../components/CampActivityEditor.vue'
 import CampActivityView from '../components/CampActivityView.vue'
-import CampRfListe from '../components/CampRfListe.vue'
+import CampSidebar from '../components/CampSidebar.vue'
+import CampSidebarItem from '../components/CampSidebarItem.vue'
 import ResponsibleAvatars from '../components/ResponsibleAvatars.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import {
   CalendarDays, List, Plus, Users, Clock, MapPin, Lock, Unlock, BookOpen, Package, Tag, Printer,
+  Settings, Tent, CalendarRange, Trash2, X,
 } from 'lucide-vue-next'
 import { buildActivityNumbers } from '../utils/campNumbering'
 import { formatMinuteOfDay, formatDuration } from '../utils/campTime'
@@ -30,6 +32,10 @@ const {
   currentCamp, error, fetchCamp,
   createActivity, updateActivity, deleteActivity, updateScheduleEntry,
   addDayResponsible, deleteDayResponsible,
+  createCollaboration, deleteCollaboration,
+  createCategory, deleteCategory,
+  createPeriod, deletePeriod,
+  createMaterialList, deleteMaterialList, createMaterialItem, deleteMaterialItem,
 } = useCamps()
 const { setActiveCamp } = useCampContext()
 const { resolveResponsibleName } = useUserResolver()
@@ -42,7 +48,6 @@ const loading = ref(true)
 type ProgMode = 'calendar' | 'list'
 const progMode = ref<ProgMode>('calendar')
 const activePeriodId = ref<string>('')
-const showRf = ref(false)
 
 // Calendar lock: when locked, no time-shift / no drag-create. Details stay editable.
 const locked = ref(true)
@@ -63,6 +68,7 @@ async function reload() {
   if (c) {
     setActiveCamp(c.id, c.title)
     if (!activePeriodId.value && c.periods.length) activePeriodId.value = c.periods[0].id
+    if (!selectedListId.value && c.material_lists.length) selectedListId.value = c.material_lists[0].id
   }
 }
 
@@ -462,14 +468,101 @@ const activitiesWithStory = computed(() =>
   (camp.value?.activities ?? []).filter((a) => activityStory(a).length > 0),
 )
 
-function activityText(a: CampActivity): string {
-  const node = a.content_nodes.find((n) => n.content_type === 'SingleText')
-  return node ? String((node.data as { html?: string }).html ?? '') : ''
-}
-
 // PDF / Drucken — open print-optimized program document.
 function doPrint() {
   if (camp.value) printCamp(camp.value, resolveResponsibleName)
+}
+
+// ══ ADMIN section (eCamp-style sidebar menu + content panes) ═══════════════════
+type AdminSection = 'info' | 'rf' | 'categories' | 'periods' | 'material'
+const adminSection = ref<AdminSection>('info')
+const ADMIN_MENU: { key: AdminSection; label: string; subtitle?: string; icon: typeof Tent }[] = [
+  { key: 'info', label: 'Lagerinfos', icon: Tent },
+  { key: 'rf', label: 'Mitarbeitende', subtitle: 'RF-Liste', icon: Users },
+  { key: 'categories', label: 'Kategorien', icon: Tag },
+  { key: 'periods', label: 'Lagerabschnitte', icon: CalendarRange },
+  { key: 'material', label: 'Materiallisten', icon: Package },
+]
+const adminTitle = computed(() => ADMIN_MENU.find((m) => m.key === adminSection.value)?.label ?? 'Admin')
+
+// CRUD busy guard + helper (refresh graph after each mutation).
+const busy = ref(false)
+async function run(fn: () => Promise<unknown>) {
+  if (busy.value) return
+  busy.value = true
+  await fn()
+  busy.value = false
+  await reloadSilent()
+}
+
+// RF (collaborations)
+const rfName = ref(''); const rfRole = ref(''); const rfAbbr = ref('')
+const rfColor = ref('#0080ff'); const rfStufenRole = ref<'member' | 'manager' | 'guest'>('member')
+function addRf() {
+  if (!rfName.value.trim()) return
+  void run(async () => {
+    await createCollaboration(campId.value, {
+      display_name: rfName.value, camp_role: rfRole.value, abbreviation: rfAbbr.value,
+      color: rfColor.value, role: rfStufenRole.value,
+    })
+    rfName.value = ''; rfRole.value = ''; rfAbbr.value = ''
+  })
+}
+
+// Categories
+const catShort = ref(''); const catName = ref(''); const catColor = ref('#065f46')
+function addCat() {
+  if (!catShort.value.trim()) return
+  void run(async () => {
+    await createCategory(campId.value, { short_name: catShort.value, name: catName.value, color: catColor.value })
+    catShort.value = ''; catName.value = ''
+  })
+}
+
+// Periods
+const pDesc = ref(''); const pStart = ref(''); const pEnd = ref('')
+function addPeriod() {
+  if (!pStart.value || !pEnd.value) return
+  void run(async () => {
+    await createPeriod(campId.value, { description: pDesc.value, start_date: pStart.value, end_date: pEnd.value })
+    pDesc.value = ''; pStart.value = ''; pEnd.value = ''
+  })
+}
+
+// ══ MATERIAL (aside list selector + main detail) ══════════════════════════════
+const selectedListId = ref<string>('')
+const selectedList = computed(() =>
+  camp.value?.material_lists.find((l) => l.id === selectedListId.value) ?? null,
+)
+const listName = ref('')
+function addList() {
+  if (!listName.value.trim()) return
+  void run(async () => {
+    await createMaterialList(campId.value, { name: listName.value })
+    listName.value = ''
+  })
+}
+function removeList(id: string) {
+  if (!window.confirm('Materialliste löschen?')) return
+  void run(async () => {
+    await deleteMaterialList(campId.value, id)
+    if (selectedListId.value === id) selectedListId.value = ''
+  })
+}
+const newItem = ref<Record<string, { name: string; qty: string; unit: string }>>({})
+function itemDraft(listId: string) {
+  if (!newItem.value[listId]) newItem.value[listId] = { name: '', qty: '', unit: '' }
+  return newItem.value[listId]
+}
+function addItem(listId: string) {
+  const d = itemDraft(listId)
+  if (!d.name.trim()) return
+  void run(async () => {
+    await createMaterialItem(campId.value, listId, {
+      article_name: d.name, quantity: d.qty ? Number(d.qty) : null, unit: d.unit,
+    })
+    newItem.value[listId] = { name: '', qty: '', unit: '' }
+  })
 }
 </script>
 
@@ -487,8 +580,94 @@ function doPrint() {
           class="ct-tab"
           :class="{ 'ct-tab--active': tab === t.key }"
           @click="setTab(t.key)"
-        >{{ t.label }}</button>
+        ><component :is="t.icon" :size="15" /> {{ t.label }}</button>
       </div>
+
+      <!-- ══ eCamp shell: contextual aside (left) + main content ══════════════ -->
+      <div class="camp-shell">
+        <!-- ─── ASIDE (Programm) ─────────────────────────────────────────── -->
+        <CampSidebar
+          v-if="tab === 'programm' && !editorOpen"
+          title="Programm"
+          :icon="CalendarDays"
+        >
+          <div class="side-group-label">Lagerabschnitte</div>
+          <CampSidebarItem
+            v-for="p in periods"
+            :key="p.id"
+            :title="p.description || 'Periode'"
+            :subtitle="`${p.start_date} → ${p.end_date}`"
+            :dot="camp.color"
+            :active="p.id === activePeriodId"
+            hide-chevron
+            @click="activePeriodId = p.id"
+          />
+          <p v-if="periods.length === 0" class="side-hint">
+            Keine Perioden – lege im Admin-Tab einen Lagerabschnitt an.
+          </p>
+
+          <template v-if="camp.categories.length">
+            <div class="side-divider" />
+            <div class="side-group-label">Kategorien-Filter</div>
+            <button
+              v-for="c in camp.categories"
+              :key="c.id"
+              class="side-cat"
+              :class="{ 'side-cat--off': hiddenCats.has(c.id) }"
+              @click="toggleCat(c.id)"
+              :title="hiddenCats.has(c.id) ? 'Einblenden' : 'Ausblenden'"
+            >
+              <span class="side-cat-dot" :style="{ background: c.color }" />
+              <span class="side-cat-name">{{ c.short_name }} · {{ c.name }}</span>
+            </button>
+            <button v-if="anyCatHidden" class="side-cat-reset" @click="hiddenCats = new Set()">Alle anzeigen</button>
+          </template>
+        </CampSidebar>
+
+        <!-- ─── ASIDE (Material) ─────────────────────────────────────────── -->
+        <CampSidebar
+          v-else-if="tab === 'material'"
+          title="Materiallisten"
+          :icon="Package"
+        >
+          <CampSidebarItem
+            v-for="l in camp.material_lists"
+            :key="l.id"
+            :title="l.name"
+            :subtitle="`${l.items.length} Artikel`"
+            :icon="Package"
+            :active="l.id === selectedListId"
+            @click="selectedListId = l.id"
+          />
+          <p v-if="camp.material_lists.length === 0" class="side-hint">Noch keine Materiallisten.</p>
+          <div class="side-divider" />
+          <div class="side-add">
+            <input v-model="listName" class="fi" placeholder="Neue Liste…" @keyup.enter="addList" />
+            <button class="btn-add" :disabled="busy || !listName.trim()" @click="addList"><Plus :size="15" /></button>
+          </div>
+        </CampSidebar>
+
+        <!-- ─── ASIDE (Admin) ────────────────────────────────────────────── -->
+        <CampSidebar
+          v-else-if="tab === 'admin'"
+          title="Admin"
+          :icon="Settings"
+        >
+          <CampSidebarItem
+            v-for="m in ADMIN_MENU"
+            :key="m.key"
+            :title="m.label"
+            :subtitle="m.subtitle"
+            :icon="m.icon"
+            :active="adminSection === m.key"
+            @click="adminSection = m.key"
+          />
+          <div class="side-divider" />
+          <CampSidebarItem title="PDF / Drucken" :icon="Printer" hide-chevron @click="doPrint" />
+        </CampSidebar>
+
+        <!-- ─── MAIN CONTENT ─────────────────────────────────────────────── -->
+        <div class="camp-main">
 
       <!-- ══ DASHBOARD ══════════════════════════════════════════════════════ -->
       <section v-if="tab === 'dashboard'" class="dash">
@@ -525,20 +704,13 @@ function doPrint() {
           </button>
           <p v-if="!camp.activities.some(a => a.schedule_entries.some(s => s.period_id === p.id))" class="hint">Noch keine Aktivitäten.</p>
         </div>
-        <p v-if="camp.periods.length === 0" class="hint">Lege zuerst einen Lagerabschnitt an (Admin → Perioden).</p>
+        <p v-if="camp.periods.length === 0" class="hint">Lege zuerst einen Lagerabschnitt an (Admin → Lagerabschnitte).</p>
       </section>
 
       <!-- ══ PROGRAMM (calendar + list) ════════════════════════════════════ -->
       <section v-else-if="tab === 'programm'">
         <div class="toolbar">
-          <div class="period-tabs">
-            <button
-              v-for="p in periods" :key="p.id"
-              class="period-tab" :class="{ 'period-tab--active': p.id === activePeriodId }"
-              @click="activePeriodId = p.id"
-            >{{ p.description || p.start_date }}</button>
-            <span v-if="periods.length === 0" class="hint">Keine Perioden – lege im Admin-Tab eine Periode an.</span>
-          </div>
+          <h2 class="main-title">{{ activePeriod?.description || 'Programm' }}</h2>
           <div class="toolbar-right">
             <button class="lock-btn" :class="{ 'lock-btn--locked': locked }" @click="locked = !locked" :title="locked ? 'Kalender entsperren' : 'Kalender sperren'">
               <component :is="locked ? Lock : Unlock" :size="15" /> {{ locked ? 'Gesperrt' : 'Entsperrt' }}
@@ -552,23 +724,6 @@ function doPrint() {
           </div>
         </div>
         <p v-if="!locked" class="lock-hint">Entsperrt: Aktivitäten verschieben (Drag &amp; Drop) oder über leere Flächen aufziehen, um neue zu erstellen.</p>
-
-        <!-- Category filter (legend + toggle) -->
-        <div v-if="camp.categories.length" class="cat-filter">
-          <button
-            v-for="c in camp.categories"
-            :key="c.id"
-            class="cat-chip"
-            :class="{ 'cat-chip--off': hiddenCats.has(c.id) }"
-            :style="!hiddenCats.has(c.id) ? { background: c.color + '22', borderColor: c.color, color: c.color } : {}"
-            @click="toggleCat(c.id)"
-            :title="hiddenCats.has(c.id) ? 'Einblenden' : 'Ausblenden'"
-          >
-            <span class="cat-chip-dot" :style="{ background: c.color }" />
-            {{ c.short_name }} · {{ c.name }}
-          </button>
-          <button v-if="anyCatHidden" class="cat-reset" @click="hiddenCats = new Set()">Alle anzeigen</button>
-        </div>
 
         <!-- Split: calendar/list left, detail panel right when open -->
         <div class="prog-split" :class="{ 'prog-split--editing': editorOpen }">
@@ -756,39 +911,41 @@ function doPrint() {
         <p v-if="activitiesWithStory.length === 0" class="hint">Noch keine Geschichte erfasst. Füge einem Programmpunkt das Element «Geschichte» hinzu.</p>
       </section>
 
-      <!-- ══ MATERIAL ══════════════════════════════════════════════════════ -->
+      <!-- ══ MATERIAL (detail of selected list) ════════════════════════════ -->
       <section v-else-if="tab === 'material'" class="material-view">
-        <div class="mv-head">
-          <h1>Material</h1>
-          <button class="btn-ghost" @click="showRf = true"><Package :size="16" /> Materiallisten verwalten</button>
-        </div>
-        <div v-for="l in camp.material_lists" :key="l.id" class="mv-list">
-          <h3 class="mv-list-title"><Package :size="15" /> {{ l.name }}</h3>
-          <table v-if="l.items.length" class="mv-table">
-            <thead><tr><th>Anzahl</th><th>Einheit</th><th>Artikel</th></tr></thead>
+        <template v-if="selectedList">
+          <div class="mv-head">
+            <h1><Package :size="20" /> {{ selectedList.name }}</h1>
+            <button class="btn-danger-ghost" @click="removeList(selectedList.id)"><Trash2 :size="15" /> Liste löschen</button>
+          </div>
+          <table class="mv-table">
+            <thead><tr><th>Anzahl</th><th>Einheit</th><th>Artikel</th><th></th></tr></thead>
             <tbody>
-              <tr v-for="it in l.items" :key="it.id">
+              <tr v-for="it in selectedList.items" :key="it.id">
                 <td>{{ it.quantity ?? '' }}</td><td>{{ it.unit }}</td><td>{{ it.article_name }}</td>
+                <td class="mv-td-del">
+                  <button class="row-del" @click="run(() => deleteMaterialItem(campId, it.id))"><X :size="14" /></button>
+                </td>
               </tr>
+              <tr v-if="selectedList.items.length === 0"><td colspan="4" class="mv-empty">Noch keine Artikel.</td></tr>
             </tbody>
           </table>
-          <p v-else class="hint">Keine Artikel.</p>
-        </div>
-        <p v-if="camp.material_lists.length === 0" class="hint">Noch keine Materiallisten. Lege welche im Verwaltungs-Dialog an.</p>
+          <div class="add-form add-form--inline">
+            <input v-model="itemDraft(selectedList.id).qty" class="fi fi--xs" placeholder="Anz." />
+            <input v-model="itemDraft(selectedList.id).unit" class="fi fi--xs" placeholder="Einh." />
+            <input v-model="itemDraft(selectedList.id).name" class="fi" placeholder="Artikel hinzufügen…" @keyup.enter="addItem(selectedList.id)" />
+            <button class="btn-add" :disabled="busy" @click="addItem(selectedList.id)"><Plus :size="15" /></button>
+          </div>
+        </template>
+        <p v-else class="hint">Wähle links eine Materialliste oder lege eine neue an.</p>
       </section>
 
-      <!-- ══ ADMIN ═════════════════════════════════════════════════════════ -->
+      <!-- ══ ADMIN (content pane for selected sidebar section) ══════════════ -->
       <section v-else-if="tab === 'admin'" class="admin-view">
-        <h1>Admin</h1>
-        <div class="admin-grid">
-          <button class="admin-card" @click="showRf = true"><Users :size="22" /><span>Mitarbeitende (RF-Liste)</span></button>
-          <button class="admin-card" @click="showRf = true"><Tag :size="22" /><span>Kategorien</span></button>
-          <button class="admin-card" @click="showRf = true"><CalendarDays :size="22" /><span>Lagerabschnitte</span></button>
-          <button class="admin-card" @click="showRf = true"><Package :size="22" /><span>Materiallisten</span></button>
-          <button class="admin-card" @click="doPrint"><Printer :size="22" /><span>PDF / Drucken</span></button>
-        </div>
-        <div class="admin-info">
-          <h3>Lagerinfos</h3>
+        <h1>{{ adminTitle }}</h1>
+
+        <!-- Lagerinfos -->
+        <div v-if="adminSection === 'info'" class="admin-info">
           <dl>
             <div><dt>Titel</dt><dd>{{ camp.title }}</dd></div>
             <div><dt>Motto</dt><dd>{{ camp.motto || '–' }}</dd></div>
@@ -798,15 +955,104 @@ function doPrint() {
             <div><dt>Abteilung</dt><dd>{{ camp.department || '–' }}</dd></div>
           </dl>
         </div>
-      </section>
-    </template>
 
-    <CampRfListe
-      v-if="showRf && camp"
-      :camp="camp"
-      @close="showRf = false"
-      @changed="reload"
-    />
+        <!-- Mitarbeitende (RF-Liste) -->
+        <div v-else-if="adminSection === 'rf'">
+          <p class="hint admin-hint">Verantwortlichkeiten &amp; Funktionen (RF) im Lager.</p>
+          <div class="rf-list">
+            <div v-for="c in camp.collaborations" :key="c.id" class="rf-row">
+              <span class="rf-dot" :style="{ background: c.color }" />
+              <span class="rf-abbr">{{ c.abbreviation || '–' }}</span>
+              <span class="rf-name">{{ c.display_name }}</span>
+              <span class="rf-role">{{ c.camp_role }}</span>
+              <span class="rf-stufen">{{ c.role }}</span>
+              <button class="row-del" @click="run(() => deleteCollaboration(campId, c.id))"><Trash2 :size="14" /></button>
+            </div>
+            <p v-if="camp.collaborations.length === 0" class="hint">Noch keine Mitarbeitenden.</p>
+          </div>
+          <div class="add-form">
+            <input v-model="rfName" class="fi" placeholder="Name" />
+            <input v-model="rfRole" class="fi" placeholder="Funktion (z.B. Küche)" />
+            <input v-model="rfAbbr" class="fi fi--sm" placeholder="Kürzel" maxlength="4" />
+            <select v-model="rfStufenRole" class="fi fi--sm">
+              <option value="member">Mitglied</option>
+              <option value="manager">Leitung</option>
+              <option value="guest">Gast</option>
+            </select>
+            <input v-model="rfColor" type="color" class="fi-color" />
+            <button class="btn-add" :disabled="busy" @click="addRf"><Plus :size="15" /></button>
+          </div>
+        </div>
+
+        <!-- Kategorien -->
+        <div v-else-if="adminSection === 'categories'">
+          <p class="hint admin-hint">Programmtypen mit Farbe &amp; Kürzel.</p>
+          <div class="rf-list">
+            <div v-for="c in camp.categories" :key="c.id" class="rf-row">
+              <span class="rf-dot" :style="{ background: c.color }" />
+              <span class="rf-abbr">{{ c.short_name }}</span>
+              <span class="rf-name">{{ c.name }}</span>
+              <button class="row-del" @click="run(() => deleteCategory(campId, c.id))"><Trash2 :size="14" /></button>
+            </div>
+            <p v-if="camp.categories.length === 0" class="hint">Noch keine Kategorien.</p>
+          </div>
+          <div class="add-form">
+            <input v-model="catShort" class="fi fi--sm" placeholder="Kürzel" maxlength="4" />
+            <input v-model="catName" class="fi" placeholder="Name (z.B. Lagerprogramm)" />
+            <input v-model="catColor" type="color" class="fi-color" />
+            <button class="btn-add" :disabled="busy" @click="addCat"><Plus :size="15" /></button>
+          </div>
+        </div>
+
+        <!-- Lagerabschnitte (Perioden) -->
+        <div v-else-if="adminSection === 'periods'">
+          <p class="hint admin-hint">Zeitblöcke des Lagers (dürfen sich nicht überlappen).</p>
+          <div class="rf-list">
+            <div v-for="p in camp.periods" :key="p.id" class="rf-row">
+              <span class="rf-name">{{ p.description || 'Periode' }}</span>
+              <span class="rf-role">{{ p.start_date }} → {{ p.end_date }}</span>
+              <button class="row-del" @click="run(() => deletePeriod(campId, p.id))"><Trash2 :size="14" /></button>
+            </div>
+            <p v-if="camp.periods.length === 0" class="hint">Noch keine Lagerabschnitte.</p>
+          </div>
+          <div class="add-form">
+            <input v-model="pDesc" class="fi" placeholder="Beschreibung" />
+            <input v-model="pStart" type="date" class="fi fi--sm" />
+            <input v-model="pEnd" type="date" class="fi fi--sm" />
+            <button class="btn-add" :disabled="busy" @click="addPeriod"><Plus :size="15" /></button>
+          </div>
+        </div>
+
+        <!-- Materiallisten -->
+        <div v-else-if="adminSection === 'material'">
+          <p class="hint admin-hint">Materiallisten des Lagers.</p>
+          <div v-for="l in camp.material_lists" :key="l.id" class="mat-list">
+            <div class="mat-list-head">
+              <strong>{{ l.name }}</strong>
+              <button class="row-del" @click="run(() => deleteMaterialList(campId, l.id))"><Trash2 :size="14" /></button>
+            </div>
+            <div v-for="it in l.items" :key="it.id" class="mat-item">
+              <span class="mat-qty">{{ it.quantity ?? '' }} {{ it.unit }}</span>
+              <span class="mat-name">{{ it.article_name }}</span>
+              <button class="row-del" @click="run(() => deleteMaterialItem(campId, it.id))"><X :size="13" /></button>
+            </div>
+            <div class="add-form add-form--inline">
+              <input v-model="itemDraft(l.id).name" class="fi" placeholder="Artikel" />
+              <input v-model="itemDraft(l.id).qty" class="fi fi--xs" placeholder="Anz." />
+              <input v-model="itemDraft(l.id).unit" class="fi fi--xs" placeholder="Einh." />
+              <button class="btn-add" :disabled="busy" @click="addItem(l.id)"><Plus :size="14" /></button>
+            </div>
+          </div>
+          <div class="add-form">
+            <input v-model="listName" class="fi" placeholder="Neue Materialliste" />
+            <button class="btn-add" :disabled="busy" @click="addList"><Plus :size="15" /></button>
+          </div>
+        </div>
+      </section>
+
+        </div><!-- /camp-main -->
+      </div><!-- /camp-shell -->
+    </template>
   </main>
 </template>
 
@@ -814,8 +1060,9 @@ function doPrint() {
 .camp-detail { padding-top: 12px; }
 .hint { font-size: 0.82rem; color: var(--text-subtle); }
 h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0; }
+.main-title { font-size: 1.15rem; font-weight: 800; color: var(--text-primary); margin: 0; }
 
-/* Tab strip */
+/* Tab strip (mobile) */
 .camp-tabstrip {
   display: flex;
   gap: 4px;
@@ -828,7 +1075,10 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
   .camp-tabstrip--mobile { display: none; }
 }
 .ct-tab {
-  padding: 10px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 14px;
   border: none;
   background: transparent;
   font-size: 0.9rem;
@@ -840,6 +1090,29 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 }
 .ct-tab:hover { color: var(--accent); }
 .ct-tab--active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ══ eCamp shell: aside + main ═══════════════════════════════════════════════ */
+.camp-shell { display: flex; gap: 16px; align-items: flex-start; }
+.camp-main { flex: 1; min-width: 0; }
+
+/* Sidebar-embedded controls */
+.side-group-label {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-subtle); padding: 6px 10px 4px;
+}
+.side-hint { font-size: 0.78rem; color: var(--text-subtle); padding: 4px 10px; margin: 0; }
+.side-divider { height: 1px; background: var(--border); margin: 8px 6px; }
+.side-cat {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: transparent; border: none; border-radius: 8px; padding: 7px 10px;
+  cursor: pointer; color: var(--text-secondary); font-size: 0.82rem; font-weight: 600;
+}
+.side-cat:hover { background: var(--bg-hover); }
+.side-cat--off { opacity: 0.45; text-decoration: line-through; }
+.side-cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.side-cat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-cat-reset { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 0.8rem; cursor: pointer; padding: 6px 10px; text-align: left; }
+.side-add { display: flex; gap: 6px; padding: 4px 6px; }
 
 /* Dashboard */
 .dash-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -866,9 +1139,6 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 /* Toolbar */
 .toolbar { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .toolbar-right { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.period-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-.period-tab { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; cursor: pointer; }
-.period-tab--active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .lock-btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 7px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
@@ -876,17 +1146,6 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 }
 .lock-btn--locked { background: var(--warning-bg); color: var(--warning-color); border-color: var(--warning-color); }
 .lock-hint { font-size: 0.8rem; color: var(--accent); margin: 0 0 10px; }
-.cat-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-.cat-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 11px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--border-strong); background: var(--bg-surface);
-  font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
-  transition: opacity 0.12s, filter 0.12s;
-}
-.cat-chip--off { opacity: 0.45; text-decoration: line-through; }
-.cat-chip-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-.cat-reset { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 0.8rem; cursor: pointer; }
 .view-toggle { display: flex; gap: 4px; background: var(--bg-hover); padding: 3px; border-radius: 9px; }
 .vt-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: none; background: transparent; border-radius: 7px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; }
 .vt-btn--active { background: var(--bg-surface); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -967,8 +1226,7 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 
 /* List */
 .list-view { display: flex; flex-direction: column; gap: 18px; }
-.list-day-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
-.list-day-resp { font-weight: 600; font-size: 0.8rem; color: var(--accent); }
+.list-day-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--border); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .list-day-sum { font-weight: 500; font-size: 0.78rem; color: var(--text-muted); margin-left: 8px; }
 .list-empty { padding: 4px 0 8px; }
 .list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; background: var(--bg-surface); margin-bottom: 8px; cursor: pointer; }
@@ -998,25 +1256,62 @@ h1 { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin: 0;
 .story-text { color: var(--text-secondary); font-size: 0.9rem; }
 .btn-link { background: none; border: none; color: var(--accent); font-weight: 600; cursor: pointer; font-size: 0.82rem; }
 
-/* Material */
+/* Material detail */
 .mv-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
-.mv-list { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; background: var(--bg-surface); }
-.mv-list-title { display: flex; align-items: center; gap: 6px; font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0 0 10px; }
-.mv-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.mv-head h1 { display: inline-flex; align-items: center; gap: 8px; }
+.mv-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: 12px; }
 .mv-table th { text-align: left; font-size: 0.72rem; text-transform: uppercase; color: var(--text-subtle); padding: 4px 8px; border-bottom: 1px solid var(--border); }
 .mv-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.mv-td-del { text-align: right; width: 36px; }
+.mv-empty { color: var(--text-subtle); font-style: italic; }
 
 /* Admin */
-.admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 24px; }
-.admin-card { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-surface); color: var(--text-secondary); font-weight: 600; font-size: 0.88rem; cursor: pointer; text-align: center; }
-.admin-card:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+.admin-view h1 { margin-bottom: 16px; }
+.admin-hint { margin: 0 0 12px; }
 .admin-info { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--bg-surface); }
-.admin-info h3 { margin: 0 0 12px; font-size: 1rem; color: var(--text-primary); }
 .admin-info dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 0; }
 .admin-info dt { font-size: 0.72rem; text-transform: uppercase; color: var(--text-subtle); font-weight: 700; }
 .admin-info dd { margin: 2px 0 0; color: var(--text-primary); font-weight: 600; }
 
+/* Admin CRUD (RF / categories / periods / material) */
+.rf-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.rf-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated);
+}
+.rf-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.rf-abbr { font-weight: 800; font-size: 0.8rem; color: var(--text-secondary); min-width: 32px; }
+.rf-name { font-weight: 600; color: var(--text-primary); flex: 1; min-width: 0; }
+.rf-role { font-size: 0.82rem; color: var(--text-muted); }
+.rf-stufen { font-size: 0.72rem; color: var(--text-subtle); text-transform: uppercase; }
+.row-del { background: transparent; border: none; color: var(--text-subtle); cursor: pointer; padding: 4px; border-radius: 5px; display: inline-flex; }
+.row-del:hover { color: var(--btn-danger-color); background: var(--btn-danger-bg); }
+.add-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.add-form--inline { margin-top: 8px; }
+.fi {
+  flex: 1; min-width: 80px;
+  padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px;
+  font-size: 0.86rem; background: var(--input-bg, var(--bg-surface)); color: var(--text-primary);
+}
+.fi--sm { flex: 0 0 110px; }
+.fi--xs { flex: 0 0 60px; min-width: 50px; }
+.fi:focus { outline: none; border-color: var(--accent); }
+.fi-color { width: 40px; height: 36px; border: 1px solid var(--border-strong); border-radius: 8px; cursor: pointer; padding: 2px; }
+.btn-add {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; width: 38px; height: 36px; cursor: pointer;
+}
+.btn-add:disabled { opacity: 0.6; cursor: default; }
+.mat-list { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.mat-list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--text-primary); }
+.mat-item { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 0.86rem; }
+.mat-qty { color: var(--text-muted); min-width: 60px; font-variant-numeric: tabular-nums; }
+.mat-name { flex: 1; color: var(--text-primary); }
+
 /* Shared buttons */
 .btn-ghost { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--border-strong); color: var(--text-secondary); padding: 8px 14px; border-radius: 8px; font-weight: 600; font-size: 0.88rem; cursor: pointer; }
 .btn-ghost:hover { background: var(--bg-hover); }
+.btn-danger-ghost { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--border-strong); color: var(--btn-danger-color); padding: 7px 12px; border-radius: 8px; font-weight: 600; font-size: 0.84rem; cursor: pointer; }
+.btn-danger-ghost:hover { background: var(--btn-danger-bg); border-color: var(--btn-danger-color); }
 </style>

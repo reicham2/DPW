@@ -67,9 +67,9 @@
             v-for="t in CAMP_TABS"
             :key="t.key"
             :to="`/camps/${activeCampId}?tab=${t.key}`"
-            class="global-nav-link"
+            class="global-nav-link global-nav-link--camp"
             :class="{ 'global-nav-link--active': activeTab === t.key }"
-          >{{ t.label }}</router-link>
+          ><component :is="t.icon" :size="15" aria-hidden="true" /> {{ t.label }}</router-link>
         </div>
         <!-- Default DPWeb nav -->
         <div v-else-if="user" class="global-nav-links">
@@ -611,6 +611,11 @@ watch(
 .global-nav-link--active {
   color: var(--accent);
   background: var(--nav-link-active-bg);
+}
+.global-nav-link--camp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .global-nav-right {
