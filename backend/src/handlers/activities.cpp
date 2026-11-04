@@ -1083,7 +1083,6 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     std::string id{req->getParameter(0)};
     std::optional<std::string> current_department;
-    std::optional<Activity> previous_activity;
 
     // Permission check: user needs activity edit permission for this activity.
     auto current_user = resolve_user(db, claims);
@@ -1102,7 +1101,6 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         auto perm = db.get_role_permission(current_user->role);
         bool allowed = perm && can_edit_activity(*perm, *current_user, *activity, claims.email);
         current_department = activity->department;
-        previous_activity = *activity;
         if (!allowed)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -1112,7 +1110,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, id, &db, &wm, current_user, current_department, previous_activity](std::string_view chunk, bool last)
+    res->onData([res, buf, id, &db, &wm, current_user, current_department](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -1140,11 +1138,13 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         }
 
         try {
-            auto activity = db.update_activity(id, input);
-            if (!activity) {
+            auto updated = db.update_activity(id, input);
+            if (!updated) {
                 send_json(res, 404, R"({"error":"Nicht gefunden"})");
                 return;
             }
+            std::optional<Activity> previous_activity{std::move(updated->first)};
+            std::optional<Activity> activity{std::move(updated->second)};
 
             if (current_user) {
                 auto new_assigned = unique_names_from_material(activity->material);

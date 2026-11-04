@@ -562,7 +562,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
 
 // ---- update_activity --------------------------------------------------------
 
-std::optional<Activity> Database::update_activity(const std::string &id, const ActivityInput &input)
+std::optional<std::pair<Activity, Activity>> Database::update_activity(const std::string &id, const ActivityInput &input)
 {
     ensure_connected();
 
@@ -581,6 +581,29 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
 
     try
     {
+        const char *previous_params[1] = {id.c_str()};
+        PGresult *previous_result = PQexecParams(conn_,
+                                                  "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                                  "       department, material, tn_material, siko_text, "
+                                                  "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
+                                                  "FROM activities WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+                                                  1, nullptr, previous_params, nullptr, nullptr, 0);
+        if (PQresultStatus(previous_result) != PGRES_TUPLES_OK)
+        {
+            std::string err = PQresultErrorMessage(previous_result);
+            PQclear(previous_result);
+            throw std::runtime_error("update_activity previous state: " + err);
+        }
+        if (PQntuples(previous_result) == 0)
+        {
+            PQclear(previous_result);
+            PQexec(conn_, "ROLLBACK");
+            return std::nullopt;
+        }
+        Activity previous = row_to_activity(previous_result, 0);
+        PQclear(previous_result);
+        attach_programs_single(previous);
+
         const char *p[14] = {
             input.title.c_str(), input.date.c_str(),
             input.start_time.c_str(), input.end_time.c_str(),
@@ -622,9 +645,9 @@ std::optional<Activity> Database::update_activity(const std::string &id, const A
         PQclear(del);
 
         insert_programs(conn_, a.id, input.programs, Database::format_material_param);
-        exec_or_throw(conn_, "COMMIT", "update_activity COMMIT");
         attach_programs_single(a);
-        return a;
+        exec_or_throw(conn_, "COMMIT", "update_activity COMMIT");
+        return std::make_pair(std::move(previous), std::move(a));
     }
     catch (...)
     {

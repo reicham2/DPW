@@ -2,6 +2,7 @@
 #include <vector>
 #include <optional>
 #include <string>
+#include <utility>
 #include <libpq-fe.h>
 #include "core/models/all_models.hpp"
 #include "core/models/user.hpp"
@@ -23,7 +24,7 @@ public:
     std::vector<Activity> list_activities();
     std::optional<Activity> get_activity_by_id(const std::string &id);
     std::optional<Activity> create_activity(const ActivityInput &input);
-    std::optional<Activity> update_activity(const std::string &id, const ActivityInput &input);
+    std::optional<std::pair<Activity, Activity>> update_activity(const std::string &id, const ActivityInput &input);
     bool delete_activity(const std::string &id);
     bool soft_delete_activity(const std::string &id, const std::string &deleted_by_user_id);
     bool restore_activity(const std::string &id);
