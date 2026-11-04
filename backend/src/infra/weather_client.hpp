@@ -3,6 +3,7 @@
 #include <vector>
 #include <optional>
 #include <ctime>
+#include "json.hpp"
 #include "core/models/activity.hpp"
 
 struct WeatherResult
@@ -26,3 +27,9 @@ std::optional<WeatherResult> fetch_expected_weather_for_activity(const Activity 
                                                                  const std::string &location_input,
                                                                  std::string &error);
 bool should_use_frozen_values(const Activity &activity);
+
+std::optional<std::string> select_latest_weather_asset(const nlohmann::json &payload,
+                                                        const std::string &asset_suffix,
+                                                        std::string &error);
+std::optional<std::vector<std::pair<time_t, double>>> parse_weather_series(
+    const std::string &csv, int point_id, std::string &error);

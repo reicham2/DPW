@@ -147,8 +147,24 @@ Voraussetzungen:
 Hinweise:
 
 1. Ohne Gruppen-ID oder API-Key bleibt der MiData-Wert leer (`Nicht konfiguriert`).
-2. Als Kinder werden Personen gezählt, die in MiData keine Einträge in `links.roles` haben.
-3. Personen mit mindestens einer Rolle (`links.roles`) werden nicht mitgezählt.
+2. Teilnehmerrollen werden anhand der verknüpften MiData-Rollen erkannt: Biber, Wolf,
+   Leitwolf, Pfadi, Leitpfadi, Pio, Rover und Teilnehmer. Leitungs- und Verwaltungsrollen
+   allein werden nicht mitgezählt; Rollen anderer Gruppen werden ignoriert.
+3. Jede Person wird höchstens einmal gezählt. Explizit leere Rollenlisten werden wie
+   bisher mitgezählt. Fehlende Rollendetails werden als Fehler angezeigt, nicht als
+   scheinbar erfolgreiche Kinderanzahl von null.
+
+### Wettervorhersage
+
+Für Termine innerhalb der nächsten acht Tage lädt DPW den neuesten verfügbaren
+MeteoSwiss-Vorhersagelauf mit stündlichen Temperatur- und Niederschlagsdaten.
+Noch leere Tagesdateien werden übersprungen; Downloads werden zehn Minuten
+zwischengespeichert. Die Detailansicht wartet bis zu 30 Sekunden auf die erste Abfrage.
+Bei hinterlegtem Wetterort werden Quellen- oder Zuordnungsfehler angezeigt,
+statt einen saisonalen Durchschnitt als vermeintliche Vorhersage auszugeben.
+Ohne gespeicherten Wetterort wird kein Wetterfehler angezeigt; vorhandene
+Wetter-Snapshots vergangener Aktivitäten bleiben sichtbar. Saisonale
+Durchschnittswerte werden nur für Termine ausserhalb des Vorhersagehorizonts verwendet.
 
 ### Runtime-Konfiguration (Admin)
 

@@ -82,7 +82,7 @@ const weatherLocationEditing = ref(true);
 const weatherLocationSaving = ref(false);
 let expectedWeatherRequestController: AbortController | null = null;
 let expectedWeatherRequestSeq = 0;
-const WEATHER_EXPECTED_TIMEOUT_MS = 2500;
+const WEATHER_EXPECTED_TIMEOUT_MS = 30000;
 const WEATHER_EXPECTED_CACHE_TTL_MS = 10 * 60 * 1000;
 const mode = ref<'view' | 'edit'>('view');
 const isStatsDrawerOpen = ref(false);
@@ -994,28 +994,30 @@ async function refreshActivityMidataChildren() {
 		return;
 	}
 	midataLoading.value = true;
+	midataError.value = null;
 	try {
 		const res = await apiFetch(`/api/activities/${id}/midata/children-count`);
-		if (!res.ok) {
-			midataConfigured.value = false;
-			midataChildrenCount.value = null;
-			midataError.value = null;
-			return;
-		}
+		if (!res.ok) throw new Error(`MiData: HTTP ${res.status}`);
 		const data = (await res.json()) as { configured?: boolean; children_count?: number | null; error?: string };
 		midataConfigured.value = !!data.configured;
 		midataChildrenCount.value = typeof data.children_count === 'number' ? data.children_count : null;
 		midataError.value = data.error ?? null;
-	} catch {
-		midataConfigured.value = false;
+	} catch (e) {
 		midataChildrenCount.value = null;
-		midataError.value = null;
+		midataError.value = String(e);
 	} finally {
 		midataLoading.value = false;
 	}
 }
 
 async function refreshExpectedWeather() {
+	expectedWeatherRequestSeq += 1;
+	const requestSeq = expectedWeatherRequestSeq;
+	if (expectedWeatherRequestController) {
+		expectedWeatherRequestController.abort();
+		expectedWeatherRequestController = null;
+	}
+
 	let location = weatherLocationInput.value.trim();
 	if (!location && weatherLocationSaved.value) {
 		location = weatherLocationSaved.value.trim();
@@ -1028,14 +1030,14 @@ async function refreshExpectedWeather() {
 	}
 
 	const locationKey = location.toLowerCase();
-	const cacheKey = `dpw.weatherExpected:${id}:${pastActivity ? 'past' : 'future'}:${locationKey}`;
+	const cacheKey = `dpw.weatherExpected:${id}:${activity.value?.date}:${activity.value?.start_time}:${activity.value?.end_time}:${pastActivity ? 'past' : 'future'}:${locationKey}`;
 	try {
 		const raw = sessionStorage.getItem(cacheKey);
 		if (raw) {
 			const parsed = JSON.parse(raw) as { ts?: number; data?: ActivityExpectedWeather };
 			if (
 				typeof parsed?.ts === 'number' &&
-				parsed.data &&
+				parsed.data?.available &&
 				Date.now() - parsed.ts < WEATHER_EXPECTED_CACHE_TTL_MS
 			) {
 				expectedWeather.value = parsed.data;
@@ -1047,11 +1049,6 @@ async function refreshExpectedWeather() {
 		/* ignore cache issues */
 	}
 
-	expectedWeatherRequestSeq += 1;
-	const requestSeq = expectedWeatherRequestSeq;
-	if (expectedWeatherRequestController) {
-		expectedWeatherRequestController.abort();
-	}
 	const controller = new AbortController();
 	expectedWeatherRequestController = controller;
 	const timeout = setTimeout(() => controller.abort(), WEATHER_EXPECTED_TIMEOUT_MS);
@@ -1062,21 +1059,28 @@ async function refreshExpectedWeather() {
 			signal: controller.signal,
 		});
 		if (requestSeq !== expectedWeatherRequestSeq) return;
-		if (!res.ok) return;
+		if (!res.ok) throw new Error(`Wetter: HTTP ${res.status}`);
 		const data = (await res.json()) as ActivityExpectedWeather;
+		if (requestSeq !== expectedWeatherRequestSeq) return;
 		expectedWeather.value = data;
 		try {
-			sessionStorage.setItem(
-				cacheKey,
-				JSON.stringify({ ts: Date.now(), data }),
-			);
+			if (data.available) {
+				sessionStorage.setItem(
+					cacheKey,
+					JSON.stringify({ ts: Date.now(), data }),
+				);
+			}
 		} catch {
 			/* ignore cache issues */
 		}
 	} catch (e) {
-		if (!(e instanceof Error) || e.name !== 'AbortError') {
-			throw e;
-		}
+		if (requestSeq !== expectedWeatherRequestSeq) return;
+		expectedWeather.value = {
+			available: false,
+			error: e instanceof Error && e.name === 'AbortError'
+				? 'Zeitueberschreitung beim Laden der Wetterdaten.'
+				: String(e),
+		};
 	} finally {
 		clearTimeout(timeout);
 		if (expectedWeatherRequestController === controller) {
@@ -1123,6 +1127,9 @@ async function saveWeatherLocation() {
 			body: JSON.stringify({ location }),
 		});
 		if (!res.ok) return;
+		if (location !== weatherLocationSaved.value) {
+			expectedWeather.value = null;
+		}
 		weatherLocationSaved.value = location;
 		weatherLocationEditing.value = false;
 		void refreshExpectedWeather();
@@ -1551,6 +1558,10 @@ watch(activityActionsMenuOpen, async (open) => {
 	}
 	await nextTick();
 	updateActivityActionsMenuPosition();
+});
+
+watch(() => config.MIDATA_ENABLED, () => {
+	if (activity.value) void refreshActivityMidataChildren();
 });
 
 onUnmounted(() => {
@@ -3182,7 +3193,7 @@ function copyShareLink() {
 					<div class="detail-stats-card">
 						<p class="detail-stats-card-title">Erwartete Teilnehmende</p>
 						<div class="detail-stats-list">
-							<div class="detail-stats-row">
+							<div class="detail-stats-row detail-stats-row--estimate">
 								<span class="detail-label">Schätzwert ähnliche Aktivitäten</span>
 								<span class="detail-value">{{ estimatedParticipantsDisplay }}</span>
 							</div>
@@ -3297,6 +3308,10 @@ function copyShareLink() {
 							<div class="detail-stats-row" v-if="expectedWeather?.source">
 								<span class="detail-label">Quelle</span>
 								<span class="detail-value">{{ expectedWeather.source }}</span>
+							</div>
+							<div class="detail-stats-row" v-if="weatherLocationSaved && expectedWeather?.error">
+								<span class="detail-label">Wetterfehler</span>
+								<span class="detail-value">{{ expectedWeather.error }}</span>
 							</div>
 						</div>
 					</div>
@@ -3937,7 +3952,7 @@ function copyShareLink() {
 				<div class="detail-stats-card">
 					<p class="detail-stats-card-title">Erwartete Teilnehmende</p>
 					<div class="detail-stats-list">
-						<div class="detail-stats-row">
+						<div class="detail-stats-row detail-stats-row--estimate">
 							<span class="detail-label">Schätzwert ähnliche Aktivitäten</span>
 							<span class="detail-value">{{ estimatedParticipantsDisplay }}</span>
 						</div>
@@ -4065,6 +4080,10 @@ function copyShareLink() {
 						<div class="detail-stats-row" v-if="expectedWeather?.source">
 							<span class="detail-label">Quelle</span>
 							<span class="detail-value">{{ expectedWeather.source }}</span>
+						</div>
+						<div class="detail-stats-row" v-if="weatherLocationSaved && expectedWeather?.error">
+							<span class="detail-label">Wetterfehler</span>
+							<span class="detail-value">{{ expectedWeather.error }}</span>
 						</div>
 					</div>
 				</div>

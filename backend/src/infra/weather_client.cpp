@@ -13,6 +13,9 @@
 #include <cctype>
 #include <cstdlib>
 #include <ctime>
+#include <memory>
+#include <unordered_map>
+#include <cmath>
 #include <curl/curl.h>
 
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
@@ -80,16 +83,37 @@ namespace
     std::mutex meteo_cache_mutex;
     std::vector<MeteoPointMeta> meteo_point_cache;
     std::chrono::steady_clock::time_point meteo_point_cache_expires;
-    // Keep Meteo upstream calls short to avoid blocking the single API event loop.
-    constexpr long kMeteoHttpTimeoutMs = 500;
+    constexpr long kMeteoHttpTimeoutMs = 5000;
 
-    std::optional<std::string> http_get_text(const std::string &url, long timeout_ms, std::string &error)
+    struct WeatherHttpCacheEntry
     {
+        std::shared_ptr<const std::string> body;
+        std::chrono::steady_clock::time_point expires_at;
+    };
+    std::mutex weather_http_cache_mutex;
+    std::unordered_map<std::string, WeatherHttpCacheEntry> weather_http_cache;
+
+    std::shared_ptr<const std::string> http_get_text(const std::string &url, long timeout_ms, std::string &error)
+    {
+        {
+            std::lock_guard<std::mutex> lock(weather_http_cache_mutex);
+            auto now = std::chrono::steady_clock::now();
+            for (auto it = weather_http_cache.begin(); it != weather_http_cache.end();)
+            {
+                if (it->second.expires_at <= now)
+                    it = weather_http_cache.erase(it);
+                else
+                    ++it;
+            }
+            auto it = weather_http_cache.find(url);
+            if (it != weather_http_cache.end())
+                return it->second.body;
+        }
         CURL *curl = curl_easy_init();
         if (!curl)
         {
             error = "curl-init-failed";
-            return std::nullopt;
+            return nullptr;
         }
         std::string body;
         struct curl_slist *headers = nullptr;
@@ -101,6 +125,7 @@ namespace
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms);
+        curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
@@ -112,20 +137,25 @@ namespace
 
         if (rc != CURLE_OK)
         {
-            error = "request-failed";
-            return std::nullopt;
+            error = std::string("request-failed: ") + curl_easy_strerror(rc);
+            return nullptr;
         }
         if (status < 200 || status >= 300)
         {
             error = "http-status-" + std::to_string(status);
-            return std::nullopt;
+            return nullptr;
         }
-        return body;
+        auto result = std::make_shared<const std::string>(std::move(body));
+        {
+            std::lock_guard<std::mutex> lock(weather_http_cache_mutex);
+            weather_http_cache[url] = {result, std::chrono::steady_clock::now() + std::chrono::minutes(10)};
+        }
+        return result;
     }
 
     time_t parse_compact_utc(const std::string &s)
     {
-        if (s.size() != 12)
+        if (s.size() != 12 || !std::all_of(s.begin(), s.end(), [](unsigned char c) { return std::isdigit(c); }))
             return -1;
         std::tm tm{};
         tm.tm_year = std::stoi(s.substr(0, 4)) - 1900;
@@ -134,7 +164,12 @@ namespace
         tm.tm_hour = std::stoi(s.substr(8, 2));
         tm.tm_min = std::stoi(s.substr(10, 2));
         tm.tm_sec = 0;
-        return timegm(&tm);
+        const auto parsed = tm;
+        auto timestamp = timegm(&tm);
+        if (tm.tm_year != parsed.tm_year || tm.tm_mon != parsed.tm_mon ||
+            tm.tm_mday != parsed.tm_mday || tm.tm_hour != parsed.tm_hour || tm.tm_min != parsed.tm_min)
+            return -1;
+        return timestamp;
     }
 
     int days_in_month(int year, int month)
@@ -477,31 +512,12 @@ namespace
 
     std::optional<std::string> get_latest_asset_url(const std::string &asset_suffix, std::string &error)
     {
-        auto body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting/items?limit=1", kMeteoHttpTimeoutMs, error);
+        // The next day's item can exist before any assets have been published.
+        auto body = http_get_text("https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-local-forecasting/items?limit=3&sortby=-id", kMeteoHttpTimeoutMs, error);
         if (!body)
             return std::nullopt;
         auto payload = nlohmann::json::parse(*body, nullptr, false);
-        if (payload.is_discarded() || !payload.contains("features") || !payload["features"].is_array() || payload["features"].empty())
-        {
-            error = "meteo-items-invalid";
-            return std::nullopt;
-        }
-        const auto &feature = payload["features"][0];
-        if (!feature.contains("assets") || !feature["assets"].is_object())
-        {
-            error = "meteo-assets-missing";
-            return std::nullopt;
-        }
-        for (auto it = feature["assets"].begin(); it != feature["assets"].end(); ++it)
-        {
-            if (!it.value().is_object() || !it.value().contains("href") || !it.value()["href"].is_string())
-                continue;
-            std::string href = it.value()["href"].get<std::string>();
-            if (href.find(asset_suffix) != std::string::npos)
-                return href;
-        }
-        error = "meteo-asset-missing-" + asset_suffix;
-        return std::nullopt;
+        return select_latest_weather_asset(payload, asset_suffix, error);
     }
 
     std::optional<std::string> get_latest_tre200h0_url(std::string &error)
@@ -523,52 +539,13 @@ namespace
         if (!csv_body)
             return std::nullopt;
 
-        std::istringstream iss(*csv_body);
-        std::string line;
-        bool first = true;
+        auto series = parse_weather_series(*csv_body, point_id, error);
+        if (!series)
+            return std::nullopt;
         long long best_diff = std::numeric_limits<long long>::max();
         std::optional<double> best_temp = std::nullopt;
-        while (std::getline(iss, line))
+        for (const auto &[row_ts, temp] : *series)
         {
-            if (!line.empty() && line.back() == '\r')
-                line.pop_back();
-            if (line.empty())
-                continue;
-            if (first)
-            {
-                first = false;
-                continue;
-            }
-            std::vector<std::string> cols;
-            std::stringstream ls(line);
-            std::string col;
-            while (std::getline(ls, col, ';'))
-                cols.push_back(col);
-            if (cols.size() < 4)
-                continue;
-            int row_point_id = 0;
-            try
-            {
-                row_point_id = std::stoi(cols[0]);
-            }
-            catch (...)
-            {
-                continue;
-            }
-            if (row_point_id != point_id)
-                continue;
-            time_t row_ts = parse_compact_utc(cols[2]);
-            if (row_ts <= 0)
-                continue;
-            double temp = 0.0;
-            try
-            {
-                temp = std::stod(cols[3]);
-            }
-            catch (...)
-            {
-                continue;
-            }
             long long diff = std::llabs(static_cast<long long>(row_ts) - static_cast<long long>(target_ts));
             if (diff < best_diff)
             {
@@ -576,7 +553,7 @@ namespace
                 best_temp = temp;
             }
         }
-        if (!best_temp)
+        if (!best_temp || best_diff > 3600)
         {
             error = "meteo-temp-point-missing";
             return std::nullopt;
@@ -620,59 +597,12 @@ namespace
         if (!csv_body)
             return std::nullopt;
 
-        std::istringstream iss(*csv_body);
-        std::string line;
-        bool first = true;
+        auto series = parse_weather_series(*csv_body, point_id, error);
+        if (!series)
+            return std::nullopt;
         std::vector<std::pair<time_t, double>> points;
-
-        while (std::getline(iss, line))
-        {
-            if (!line.empty() && line.back() == '\r')
-                line.pop_back();
-            if (line.empty())
-                continue;
-            if (first)
-            {
-                first = false;
-                continue;
-            }
-
-            std::vector<std::string> cols;
-            std::stringstream ls(line);
-            std::string col;
-            while (std::getline(ls, col, ';'))
-                cols.push_back(col);
-            if (cols.size() < 4)
-                continue;
-
-            int row_point_id = 0;
-            try
-            {
-                row_point_id = std::stoi(cols[0]);
-            }
-            catch (...)
-            {
-                continue;
-            }
-            if (row_point_id != point_id)
-                continue;
-
-            time_t row_ts = parse_compact_utc(cols[2]);
-            if (row_ts <= 0 || row_ts < start_ts || row_ts > end_ts)
-                continue;
-
-            double temp = 0.0;
-            try
-            {
-                temp = std::stod(cols[3]);
-            }
-            catch (...)
-            {
-                continue;
-            }
-
-            points.push_back({row_ts, temp});
-        }
+        std::copy_if(series->begin(), series->end(), std::back_inserter(points),
+                     [start_ts, end_ts](const auto &p) { return p.first >= start_ts && p.first <= end_ts; });
 
         if (points.empty())
         {
@@ -698,10 +628,87 @@ namespace
 
 } // namespace
 
+std::optional<std::string> select_latest_weather_asset(const nlohmann::json &payload,
+                                                        const std::string &asset_suffix,
+                                                        std::string &error)
+{
+    error.clear();
+    if (!payload.is_object() || !payload.contains("features") || !payload["features"].is_array())
+    {
+        error = "meteo-items-invalid";
+        return std::nullopt;
+    }
+    std::string latest_key;
+    std::optional<std::string> url;
+    for (const auto &feature : payload["features"])
+    {
+        if (!feature.is_object() || !feature.contains("assets") || !feature["assets"].is_object())
+            continue;
+        for (auto it = feature["assets"].begin(); it != feature["assets"].end(); ++it)
+        {
+            if (it.key().ends_with(asset_suffix) && it.value().is_object() &&
+                it.value().contains("href") && it.value()["href"].is_string() &&
+                !it.value()["href"].get_ref<const std::string &>().empty() &&
+                (!url || it.key() > latest_key))
+            {
+                latest_key = it.key();
+                url = it.value()["href"].get<std::string>();
+            }
+        }
+    }
+    if (!url)
+        error = "meteo-asset-missing-" + asset_suffix;
+    return url;
+}
+
+std::optional<std::vector<std::pair<time_t, double>>> parse_weather_series(
+    const std::string &csv, int point_id, std::string &error)
+{
+    error.clear();
+    std::istringstream input(csv);
+    std::string line;
+    std::getline(input, line);
+    std::vector<std::pair<time_t, double>> points;
+    const auto prefix = std::to_string(point_id) + ";";
+    while (std::getline(input, line))
+    {
+        if (!line.starts_with(prefix))
+            continue;
+        auto type_end = line.find(';', prefix.size());
+        auto date_end = type_end == std::string::npos ? std::string::npos : line.find(';', type_end + 1);
+        if (date_end == std::string::npos)
+        {
+            error = "meteo-csv-row-invalid";
+            return std::nullopt;
+        }
+        auto timestamp = parse_compact_utc(line.substr(type_end + 1, date_end - type_end - 1));
+        char *end = nullptr;
+        const char *value_start = line.c_str() + date_end + 1;
+        double value = std::strtod(value_start, &end);
+        const bool has_value = end != value_start;
+        while (std::isspace(static_cast<unsigned char>(*end)))
+            ++end;
+        if (timestamp <= 0 || !has_value || !std::isfinite(value) || (*end != '\0' && *end != ';'))
+        {
+            error = "meteo-csv-row-invalid";
+            return std::nullopt;
+        }
+        points.emplace_back(timestamp, value);
+    }
+    if (points.empty())
+    {
+        error = "meteo-temp-point-missing";
+        return std::nullopt;
+    }
+    std::sort(points.begin(), points.end());
+    return points;
+}
+
 std::optional<WeatherResult> fetch_expected_weather_for_activity(const Activity &activity,
                                                                  const std::string &location_input,
                                                                  std::string &error)
 {
+    error.clear();
     time_t activity_ts = parse_activity_start_utc(activity.date, activity.start_time);
     if (activity_ts <= 0)
     {
@@ -716,7 +723,7 @@ std::optional<WeatherResult> fetch_expected_weather_for_activity(const Activity 
     }
 
     time_t now = time(nullptr);
-    constexpr time_t kForecastHorizonSeconds = 9 * 24 * 3600;
+    constexpr time_t kForecastHorizonSeconds = 8 * 24 * 3600;
     if (activity_ts > now + kForecastHorizonSeconds)
     {
         return seasonal_average_weather(activity_ts, "Termin liegt ausserhalb des MeteoSwiss-Vorhersagehorizonts.");
@@ -730,20 +737,21 @@ std::optional<WeatherResult> fetch_expected_weather_for_activity(const Activity 
 
     auto points = load_meteoswiss_points(error);
     if (!points)
-        return seasonal_average_weather(activity_ts, "MeteoSwiss-Datenquelle derzeit nicht erreichbar; saisonaler Durchschnitt verwendet.");
+        return std::nullopt;
     auto point = find_point_for_location(location_input, *points);
     if (!point)
     {
-        return seasonal_average_weather(activity_ts, "Ort konnte nicht auf MeteoSwiss-Punkt gemappt werden.");
+        error = "meteo-location-not-found";
+        return std::nullopt;
     }
 
     auto tre_url = get_latest_tre200h0_url(error);
     if (!tre_url)
-        return seasonal_average_weather(activity_ts, "MeteoSwiss-Vorhersagedaten momentan nicht verfuegbar; saisonaler Durchschnitt verwendet.");
+        return std::nullopt;
     auto temp = lookup_forecast_temp_for_point(*tre_url, point->point_id, activity_ts, error);
     if (!temp)
     {
-        return seasonal_average_weather(activity_ts, "Keine punktgenaue Vorhersage verfuegbar; saisonaler Durchschnitt verwendet.");
+        return std::nullopt;
     }
 
     std::string range_error;
