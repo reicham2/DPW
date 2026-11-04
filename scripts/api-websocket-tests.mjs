@@ -10,7 +10,6 @@ const missingUserToken = 'debug:00000000-0000-0000-0000-000000000000';
 const sockets = [];
 
 let activityId;
-let shareToken;
 let originalMailTemplate;
 let originalEventTemplate;
 
@@ -116,14 +115,10 @@ before(async () => {
 	originalMailTemplate = mail.json;
 	originalEventTemplate = event.json;
 
-	const created = await request('POST', '/activities', adminToken, activityBody('Authorization test'));
-	expectStatus(created, 201, 'create test activity');
+	const created = await request('POST', '/activities', adminToken, activityBody('WebSocket authorization test'));
+	expectStatus(created, 201, 'create WebSocket test activity');
 	activityId = created.json.id;
 	assert.ok(activityId, 'Test activity has an ID');
-	const share = await request('GET', `/activities/${activityId}/share`, adminToken);
-	expectStatus(share, 200, 'get test share link');
-	shareToken = share.json.share_token;
-	assert.ok(shareToken, 'Test activity has a share token');
 });
 
 after(async () => {
@@ -142,103 +137,6 @@ after(async () => {
 		const deleted = await request('DELETE', `/activities/${activityId}`, adminToken);
 		assert.ok([200, 204, 404].includes(deleted.status), `delete test activity: ${deleted.text}`);
 	}
-});
-
-for (const [label, token] of [
-	['a valid token without a local user', missingUserToken],
-	['a user without a role-permission record', missingPermissionsToken],
-]) {
-	test(`${label} cannot bypass protected activity and template checks`, async () => {
-		const routes = [
-			['GET', '/activities'],
-			['GET', `/activities/${activityId}`],
-			['GET', `/activities/${activityId}/attachments`],
-			['GET', `/activities/${activityId}/midata/children-count`],
-			['GET', `/activities/${activityId}/weather-location`],
-			['GET', `/activities/${activityId}/weather-expected`],
-			['GET', `/activities/${activityId}/share`],
-			['POST', `/activities/${activityId}/share`],
-			['DELETE', `/activities/${activityId}/share`],
-			['POST', '/activities', activityBody('Unauthorized activity', null)],
-			['PUT', '/mail-templates/Pfadi', { subject: 'Unauthorized', body: 'Unauthorized' }],
-			['PUT', '/event-templates/Pfadi', { title: 'Unauthorized', body: 'Unauthorized' }],
-		];
-		for (const [method, path, body] of routes) {
-			expectStatus(await request(method, path, token, body), 403, `${label}: ${method} ${path}`);
-		}
-	});
-}
-
-test('role and department permissions apply to activities and share management', async () => {
-	const list = await request('GET', '/activities', outsiderToken);
-	expectStatus(list, 200, 'outsider activity list');
-	assert.ok(!list.json.some((activity) => activity.id === activityId), 'Other department is filtered');
-
-	for (const [method, path] of [
-		['GET', `/activities/${activityId}`],
-		['GET', `/activities/${activityId}/attachments`],
-		['GET', `/activities/${activityId}/midata/children-count`],
-		['GET', `/activities/${activityId}/weather-location`],
-		['GET', `/activities/${activityId}/weather-expected`],
-		['GET', `/activities/${activityId}/share`],
-		['POST', `/activities/${activityId}/share`],
-		['DELETE', `/activities/${activityId}/share`],
-	]) {
-		expectStatus(await request(method, path, outsiderToken), 403, `${method} ${path}`);
-	}
-	expectStatus(await request('POST', '/activities', outsiderToken, activityBody('No department', null)), 403,
-		'Role without create permission cannot omit a department');
-	expectStatus(await request('GET', `/activities/${activityId}`, leaderToken), 200, 'same-department activity');
-	expectStatus(await request('GET', `/activities/${activityId}/share`, leaderToken), 200, 'same-department share link');
-});
-
-test('cached activity responses follow changes to role permissions', async () => {
-	const permissions = await request('GET', '/admin/role-permissions', adminToken);
-	expectStatus(permissions, 200, 'list role permissions');
-	const original = permissions.json.find((permission) => permission.role === 'Pio');
-	assert.ok(original, 'Pio role permissions exist');
-	try {
-		expectStatus(await request('PUT', '/admin/role-permissions', adminToken, {
-			...original,
-			activity_read_scope: 'all',
-		}), 200, 'grant activity read');
-		const cachedList = await request('GET', '/activities', outsiderToken);
-		expectStatus(cachedList, 200, 'cache unrestricted activity list');
-		assert.ok(cachedList.json.some((activity) => activity.id === activityId));
-		expectStatus(await request('GET', `/activities/${activityId}`, outsiderToken), 200, 'cache unrestricted activity');
-
-		expectStatus(await request('PUT', '/admin/role-permissions', adminToken, original), 200, 'restore activity read');
-		const restrictedList = await request('GET', '/activities', outsiderToken);
-		expectStatus(restrictedList, 200, 'read restricted activity list');
-		assert.ok(!restrictedList.json.some((activity) => activity.id === activityId));
-		expectStatus(await request('GET', `/activities/${activityId}`, outsiderToken), 403, 'cached activity is no longer readable');
-	} finally {
-		expectStatus(await request('PUT', '/admin/role-permissions', adminToken, original), 200, 'restore original role permissions');
-	}
-});
-
-test('external viewers can open the shared activity without signing in', async () => {
-	const shared = await request('GET', `/shared/${shareToken}`);
-	expectStatus(shared, 200, 'public activity share');
-	assert.equal(shared.json.id, activityId);
-	expectStatus(await request('GET', '/shared/not-a-valid-share-token'), 404, 'invalid share token');
-});
-
-test('template writes respect existing department scopes', async () => {
-	for (const [path, body] of [
-		['/mail-templates/Pfadi', { subject: 'Forbidden', body: 'Forbidden' }],
-		['/event-templates/Pfadi', { title: 'Forbidden', body: 'Forbidden' }],
-	]) {
-		expectStatus(await request('PUT', path, outsiderToken, body), 403, `outsider ${path}`);
-	}
-	expectStatus(await request('PUT', '/mail-templates/W%C3%B6lfe', leaderToken, { subject: 'Forbidden', body: '' }),
-		403, 'other-department mail template');
-	expectStatus(await request('PUT', '/event-templates/W%C3%B6lfe', leaderToken, { title: 'Forbidden', body: '' }),
-		403, 'other-department event template');
-	expectStatus(await request('PUT', '/mail-templates/Pfadi', leaderToken, { subject: 'Allowed', body: '' }),
-		200, 'same-department mail template');
-	expectStatus(await request('PUT', '/event-templates/Pfadi', leaderToken, { title: 'Allowed', body: '' }),
-		200, 'same-department event template');
 });
 
 test('a token without a local user cannot open a WebSocket', async () => {
@@ -333,9 +231,4 @@ test('live activity and template updates follow the same permissions', async () 
 		assert.ok(!client.messages.slice(start).some((message) =>
 			message.template?.subject === 'Live mail test' || message.template?.title === 'Live event test'));
 	}
-});
-
-test('revoking a share link disables public access', async () => {
-	expectStatus(await request('DELETE', `/activities/${activityId}/share`, adminToken), 200, 'revoke share link');
-	expectStatus(await request('GET', `/shared/${shareToken}`), 404, 'revoked share link');
 });

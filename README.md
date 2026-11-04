@@ -79,6 +79,10 @@ Wichtig fuer zukuenftige Schema-Aenderungen:
 der Datenbank-Volumes zurück. Sie sollten daher nur mit entbehrlichen Testdaten
 ausgeführt werden.
 
+Die API-HTTP- und Berechtigungsregressionstests laufen gemeinsam über die
+Postman-Collection. Echtzeitberechtigungen über WebSockets werden ergänzend mit
+einem separaten Node-Test geprüft.
+
 ### Web Push / PWA Benachrichtigungen
 
 ```bash
