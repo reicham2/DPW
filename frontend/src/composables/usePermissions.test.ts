@@ -135,6 +135,59 @@ describe('usePermissions', () => {
 		expect(b?.role).toBe('Mitglied');
 	});
 
+	it('ignores a permission response after the session is reset', async () => {
+		const p = usePermissions();
+		let resolveOld!: (value: Response) => void;
+		apiFetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => {
+			resolveOld = resolve;
+		}));
+
+		const oldRequest = p.fetchMyPermissions();
+		p.resetMyPermissions();
+		resolveOld(response(makePermissions({ role: 'admin' })));
+
+		expect(await oldRequest).toBeNull();
+		expect(p.myPermissions.value).toBeNull();
+	});
+
+	it('keeps the new session request when an older request completes first', async () => {
+		const p = usePermissions();
+		let resolveOld!: (value: Response) => void;
+		let resolveNew!: (value: Response) => void;
+		apiFetchMock
+			.mockReturnValueOnce(new Promise<Response>((resolve) => { resolveOld = resolve; }))
+			.mockReturnValueOnce(new Promise<Response>((resolve) => { resolveNew = resolve; }));
+
+		const oldRequest = p.fetchMyPermissions();
+		p.resetMyPermissions();
+		const newRequest = p.fetchMyPermissions();
+		resolveOld(response(makePermissions({ role: 'admin' })));
+		expect(await oldRequest).toBeNull();
+		expect(p.myPermissions.value).toBeNull();
+
+		const sharedRequest = p.fetchMyPermissions();
+		expect(apiFetchMock).toHaveBeenCalledTimes(2);
+		resolveNew(response(makePermissions({ role: 'Mitglied' })));
+		expect((await newRequest)?.role).toBe('Mitglied');
+		expect((await sharedRequest)?.role).toBe('Mitglied');
+		expect(p.myPermissions.value?.role).toBe('Mitglied');
+	});
+
+	it('keeps a forced refresh when an earlier request resolves later', async () => {
+		const p = usePermissions();
+		let resolveOld!: (value: Response) => void;
+		apiFetchMock
+			.mockReturnValueOnce(new Promise<Response>((resolve) => { resolveOld = resolve; }))
+			.mockResolvedValueOnce(response(makePermissions({ role: 'Mitglied' })));
+
+		const oldRequest = p.fetchMyPermissions();
+		const refreshed = await p.fetchMyPermissions(true);
+		expect(refreshed?.role).toBe('Mitglied');
+		resolveOld(response(makePermissions({ role: 'admin' })));
+		expect(await oldRequest).toBeNull();
+		expect(p.myPermissions.value?.role).toBe('Mitglied');
+	});
+
 	it('fetchMyPermissions stores null when backend returns payload without role', async () => {
 		const p = usePermissions();
 		apiFetchMock.mockResolvedValueOnce(response({ dept_access: [] }));

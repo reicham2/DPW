@@ -1,6 +1,6 @@
 import { ref, onUnmounted } from 'vue';
 import type { WsEvent } from '../types';
-import { getIdToken } from './useAuth';
+import { getIdToken, user } from './useAuth';
 
 // --- Singleton state (module-scoped, one WS connection for the whole app) ---
 let ws: WebSocket | null = null;
@@ -14,9 +14,10 @@ let wsLastError: string | null = null;
 let wsMessageCount = 0;
 let wsLastMessageAt: string | null = null;
 let connecting = false;
+let connectionVersion = 0;
 
 function scheduleReconnect() {
-	if (reconnectTimer) return;
+	if (!user.value || reconnectTimer) return;
 	reconnectTimer = setTimeout(() => {
 		reconnectTimer = null;
 		void connect();
@@ -24,22 +25,28 @@ function scheduleReconnect() {
 }
 
 async function connect() {
-	if (ws || connecting) return;
+	if (!user.value || ws || connecting) return;
 	connecting = true;
+	const version = connectionVersion;
 	const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+	let socket: WebSocket;
 	try {
-		const token = await getIdToken();
-		ws = new WebSocket(
+		const token = await getIdToken({ allowInteraction: false });
+		if (version !== connectionVersion) return;
+		socket = new WebSocket(
 			`${protocol}://${location.host}/ws?token=${encodeURIComponent(token)}`,
 		);
+		ws = socket;
 	} catch {
+		if (version !== connectionVersion) return;
 		connecting = false;
 		wsLastError = new Date().toISOString();
 		scheduleReconnect();
 		return;
 	}
 
-	ws.onopen = () => {
+	socket.onopen = () => {
+		if (version !== connectionVersion || ws !== socket) return;
 		connecting = false;
 		connected.value = true;
 		wsConnectCount++;
@@ -48,7 +55,8 @@ async function connect() {
 		}
 	};
 
-	ws.onmessage = (e: MessageEvent) => {
+	socket.onmessage = (e: MessageEvent) => {
+		if (version !== connectionVersion || ws !== socket) return;
 		wsMessageCount++;
 		wsLastMessageAt = new Date().toISOString();
 		try {
@@ -59,7 +67,8 @@ async function connect() {
 		}
 	};
 
-	ws.onclose = () => {
+	socket.onclose = () => {
+		if (version !== connectionVersion || ws !== socket) return;
 		connecting = false;
 		connected.value = false;
 		wsDisconnectCount++;
@@ -67,9 +76,10 @@ async function connect() {
 		scheduleReconnect();
 	};
 
-	ws.onerror = () => {
+	socket.onerror = () => {
+		if (version !== connectionVersion || ws !== socket) return;
 		wsLastError = new Date().toISOString();
-		ws?.close();
+		socket.close();
 	};
 }
 
@@ -82,7 +92,7 @@ export function wsSend(data: Record<string, unknown>) {
 
 /** Register the current user identity with the WS server */
 export function wsRegister(_display_name: string, _oid: string) {
-	if (!ws && !connecting) {
+	if (user.value && !ws && !connecting) {
 		void connect();
 	}
 }
@@ -117,6 +127,7 @@ export function getWsDebugState() {
 
 /** Forcefully close the WebSocket and stop reconnection. */
 export function wsDisconnect() {
+	connectionVersion++;
 	if (reconnectTimer) {
 		clearTimeout(reconnectTimer);
 		reconnectTimer = null;
@@ -134,7 +145,7 @@ export function wsDisconnect() {
 // --- Composable: register / deregister a message handler -------------------
 export function useWebSocket(onMessage: (e: WsEvent) => void) {
 	// Start the singleton connection on first use
-	if (!ws && !reconnectTimer && !connecting) void connect();
+	if (user.value && !ws && !reconnectTimer && !connecting) void connect();
 
 	handlers.add(onMessage);
 

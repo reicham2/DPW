@@ -212,6 +212,38 @@ TEST(can_create_dept_via_dept_access_write)
     ASSERT_TRUE(can_create_dept(p, u, access, "Pfadi"));
 }
 
+TEST(can_create_activity_requires_a_matching_scope)
+{
+    auto user = make_user("Mitglied", "Pfadi");
+    auto own_dept = make_perm("none", "own_dept");
+    std::vector<RoleDeptAccess> access = {{"Mitglied", "Wölfe", true, true}};
+    ASSERT_TRUE(can_create_activity(own_dept, user, access, "Pfadi"));
+    ASSERT_TRUE(can_create_activity(own_dept, user, access, "Wölfe"));
+    ASSERT_FALSE(can_create_activity(own_dept, user, access, "Pio"));
+    ASSERT_FALSE(can_create_activity(own_dept, user, access, std::nullopt));
+    ASSERT_FALSE(can_create_activity(own_dept, user, access, ""));
+}
+
+TEST(can_create_activity_without_department_requires_global_scope)
+{
+    auto user = make_user();
+    ASSERT_FALSE(can_create_activity(make_perm("none", "none"), user, {}, std::nullopt));
+    ASSERT_TRUE(can_create_activity(make_perm("none", "all"), user, {}, std::nullopt));
+    ASSERT_TRUE(can_create_activity(make_perm("none", "none"), make_user("admin"), {}, std::nullopt));
+}
+
+TEST(can_manage_department_scope_enforces_role_and_department)
+{
+    auto user = make_user("Mitglied", "Pfadi");
+    ASSERT_FALSE(can_manage_department_scope(user, "none", "Pfadi"));
+    ASSERT_FALSE(can_manage_department_scope(user, "own_dept", "Wölfe"));
+    ASSERT_TRUE(can_manage_department_scope(user, "own_dept", "Pfadi"));
+    ASSERT_TRUE(can_manage_department_scope(user, "all", "Wölfe"));
+    ASSERT_TRUE(can_manage_department_scope(make_user("admin"), "none", "Wölfe"));
+    user.department = std::nullopt;
+    ASSERT_FALSE(can_manage_department_scope(user, "own_dept", "Pfadi"));
+}
+
 TEST(can_publish_event_own_only_denied)
 {
     auto u = make_user("Mitglied", "Pfadi");

@@ -1668,7 +1668,10 @@ watch(lastUpdatedActivity, (updated) => {
 import { useWebSocket } from '../composables/useWebSocket';
 
 useWebSocket((e) => {
-	if (e.event === 'lock' && e.activity_id === id) {
+	if (e.event === 'deleted' && e.id === id) {
+		activity.value = null;
+		void router.replace('/');
+	} else if (e.event === 'lock' && e.activity_id === id) {
 		sectionLocks.value.set(e.section, e.user);
 		sectionLocks.value = new Map(sectionLocks.value); // trigger reactivity
 	} else if (e.event === 'unlock' && e.activity_id === id) {

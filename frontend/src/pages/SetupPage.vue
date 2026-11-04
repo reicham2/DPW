@@ -10,7 +10,14 @@
         </p>
       </div>
 
-      <form class="setup-form" @submit.prevent="onSubmit">
+      <div v-if="setupRequired === null" class="setup-form">
+        <p v-if="setupError" class="setup-error">{{ setupError }}</p>
+        <button class="setup-submit" type="button" :disabled="setupLoading" @click="checkSetup">
+          {{ setupLoading ? 'Prüfe...' : 'Erneut versuchen' }}
+        </button>
+      </div>
+
+      <form v-else class="setup-form" @submit.prevent="onSubmit">
         <label class="setup-field">
           <span>
             Azure Tenant ID
@@ -71,7 +78,7 @@
           />
         </label>
 
-        <button class="setup-submit" :disabled="setupSubmitting || !canSubmit" type="submit">
+        <button class="setup-submit" :disabled="setupLoading || setupSubmitting || !canSubmit" type="submit">
           {{ setupSubmitting ? 'Speichere...' : 'Speichern und anmelden' }}
         </button>
 
@@ -84,12 +91,13 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { login } from '../composables/useAuth'
+import { initAuth, login } from '../composables/useAuth'
 import {
   ensureSetupStatus,
   setupError,
   setupFieldConfigured,
   setupForm,
+  setupLoading,
   setupRequired,
   setupSubmitting,
   submitSetupConfig,
@@ -106,17 +114,28 @@ const canSubmit = computed(() => {
 })
 
 async function onSubmit() {
-  await submitSetupConfig()
-  await login()
+  try {
+    await submitSetupConfig()
+  } catch {
+    return
+  }
+  try {
+    await login()
+  } catch {
+    // loginError is displayed on the main page.
+  }
   await router.replace('/')
 }
 
-onMounted(async () => {
+async function checkSetup() {
   await ensureSetupStatus(true)
-  if (!setupRequired.value) {
+  if (setupRequired.value === false) {
+    await initAuth()
     await router.replace('/')
   }
-})
+}
+
+onMounted(checkSetup)
 </script>
 
 <style scoped>

@@ -20,15 +20,32 @@ export const setupForm = ref({
 	contact_email: '',
 });
 
+let pendingSetupStatus: Promise<boolean> | null = null;
+
 export async function ensureSetupStatus(force = false): Promise<boolean> {
+	if (pendingSetupStatus) return pendingSetupStatus;
 	// If already determined and not forced, return cached result
 	if (setupRequired.value !== null && !force) return setupRequired.value;
 
 	setupLoading.value = true;
 	setupError.value = null;
+	const promise = loadSetupStatus();
+	pendingSetupStatus = promise;
+	try {
+		return await promise;
+	} finally {
+		if (pendingSetupStatus === promise) pendingSetupStatus = null;
+		setupLoading.value = false;
+	}
+}
+
+async function loadSetupStatus(): Promise<boolean> {
 	try {
 		const res = await fetch('/api/setup/auth-config');
-		if (!res.ok) throw new Error(await res.text());
+		if (!res.ok) {
+			const body = (await res.text()).trim();
+			throw new Error(body || `Setup-Status konnte nicht geladen werden (HTTP ${res.status}).`);
+		}
 		const data = (await res.json()) as {
 			configured?: boolean;
 			tenant_id?: string;
@@ -51,6 +68,16 @@ export async function ensureSetupStatus(force = false): Promise<boolean> {
 			maintenance_scheduled_start?: string;
 			maintenance_scheduled_end?: string;
 		};
+		if (
+			!data || typeof data !== 'object' || Array.isArray(data) ||
+			typeof data.configured !== 'boolean' ||
+			(data.tenant_id !== undefined && typeof data.tenant_id !== 'string') ||
+			(data.client_id !== undefined && typeof data.client_id !== 'string') ||
+			(data.contact_email !== undefined && typeof data.contact_email !== 'string') ||
+			(data.configured && (!data.tenant_id?.trim() || !data.client_id?.trim()))
+		) {
+			throw new Error('Ungültige Setup-Antwort des Servers.');
+		}
 
 		applyRuntimeConfig({
 			autosaveIntervalMs: data.autosave_interval_ms,
@@ -85,9 +112,10 @@ export async function ensureSetupStatus(force = false): Promise<boolean> {
 		}
 		return setupRequired.value;
 	} catch (error) {
-		setupError.value = error instanceof Error ? error.message : String(error);
-		// On error, assume setup is required (safer default)
-		setupRequired.value = true;
+		setupError.value = (error instanceof Error ? error.message : String(error)) ||
+			'Setup-Status konnte nicht geladen werden.';
+		// Fail closed for navigation, but retry the status on the next request.
+		setupRequired.value = null;
 		setupFieldConfigured.value = {
 			tenant_id: false,
 			client_id: false,
@@ -95,8 +123,6 @@ export async function ensureSetupStatus(force = false): Promise<boolean> {
 			contact_email: false,
 		};
 		return true;
-	} finally {
-		setupLoading.value = false;
 	}
 }
 
@@ -104,16 +130,21 @@ export async function submitSetupConfig(): Promise<void> {
 	setupSubmitting.value = true;
 	setupError.value = null;
 	try {
+		if (pendingSetupStatus) await pendingSetupStatus;
 		const res = await fetch('/api/setup/auth-config', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(setupForm.value),
 		});
-		if (!res.ok) throw new Error(await res.text());
+		if (!res.ok) {
+			const body = (await res.text()).trim();
+			throw new Error(body || `Setup konnte nicht gespeichert werden (HTTP ${res.status}).`);
+		}
 		setRuntimeAuthConfig(setupForm.value.tenant_id, setupForm.value.client_id);
 		setupRequired.value = false;
 	} catch (error) {
-		setupError.value = error instanceof Error ? error.message : String(error);
+		setupError.value = (error instanceof Error ? error.message : String(error)) ||
+			'Setup konnte nicht gespeichert werden.';
 		throw error;
 	} finally {
 		setupSubmitting.value = false;

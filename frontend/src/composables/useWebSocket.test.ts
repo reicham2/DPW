@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WsEvent } from '../types';
 
-const { getIdTokenMock, onUnmountedCallbacks } = vi.hoisted(() => ({
+const { getIdTokenMock, onUnmountedCallbacks, currentUser } = vi.hoisted(() => ({
 	getIdTokenMock: vi.fn(),
 	onUnmountedCallbacks: [] as Array<() => void>,
+	currentUser: { value: { id: 'user-1' } as { id: string } | null },
 }));
 
 vi.mock('./useAuth', () => ({
 	getIdToken: getIdTokenMock,
+	user: currentUser,
 }));
 
 vi.mock('vue', async () => {
@@ -82,6 +84,7 @@ describe('useWebSocket', () => {
 		onUnmountedCallbacks.length = 0;
 		getIdTokenMock.mockReset();
 		getIdTokenMock.mockResolvedValue('token-1');
+		currentUser.value = { id: 'user-1' };
 
 		Object.defineProperty(globalThis, 'location', {
 			value: { protocol: 'http:', host: 'localhost:5173' },
@@ -111,6 +114,7 @@ describe('useWebSocket', () => {
 		expect(MockWebSocket.instances).toHaveLength(1);
 		const sock = MockWebSocket.instances[0];
 		expect(sock.url).toContain('ws://localhost:5173/ws?token=token-1');
+		expect(getIdTokenMock).toHaveBeenCalledWith({ allowInteraction: false });
 
 		sock.emitOpen();
 		expect(state.connected.value).toBe(true);
@@ -118,6 +122,19 @@ describe('useWebSocket', () => {
 		sock.emitMessage({ event: 'deleted', id: 'a1' } as WsEvent);
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(globalHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not connect until a user is authenticated', async () => {
+		currentUser.value = null;
+		useWebSocket(vi.fn());
+		wsRegister('A', 'B');
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(getIdTokenMock).not.toHaveBeenCalled();
+
+		currentUser.value = { id: 'user-1' };
+		wsRegister('A', 'B');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(MockWebSocket.instances).toHaveLength(1);
 	});
 
 	it('ignores malformed websocket frames', async () => {
@@ -208,6 +225,39 @@ describe('useWebSocket', () => {
 		await vi.advanceTimersByTimeAsync(3000);
 		const debug = getWsDebugState();
 		expect(debug.connected).toBe(false);
+	});
+
+	it('does not open a socket when a pending token resolves after disconnect', async () => {
+		let resolveToken!: (token: string) => void;
+		getIdTokenMock.mockReturnValueOnce(new Promise<string>((resolve) => {
+			resolveToken = resolve;
+		}));
+		useWebSocket(vi.fn());
+		wsDisconnect();
+		resolveToken('old-token');
+
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(MockWebSocket.instances).toHaveLength(0);
+		expect(getIdTokenMock).toHaveBeenCalledTimes(1);
+
+		wsRegister('New user', 'new-user');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(MockWebSocket.instances).toHaveLength(1);
+		expect(MockWebSocket.instances[0].url).toContain('token=token-1');
+	});
+
+	it('does not schedule a reconnect when a pending token fails after disconnect', async () => {
+		let rejectToken!: (error: Error) => void;
+		getIdTokenMock.mockReturnValueOnce(new Promise<string>((_, reject) => {
+			rejectToken = reject;
+		}));
+		useWebSocket(vi.fn());
+		wsDisconnect();
+		rejectToken(new Error('signed out'));
+
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(getIdTokenMock).toHaveBeenCalledTimes(1);
+		expect(MockWebSocket.instances).toHaveLength(0);
 	});
 
 	it('removes handler on unmount callback', async () => {

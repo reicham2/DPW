@@ -1,6 +1,8 @@
 #include "infra/ws_manager.hpp"
 #include "infra/auth.hpp"
 #include "db/database.hpp"
+#include "core/models/serializers.hpp"
+#include "utils/permissions.hpp"
 #include "json.hpp"
 #include <cstdio>
 
@@ -123,6 +125,87 @@ void WebSocketManager::broadcast(const std::string &message)
     }
 }
 
+void WebSocketManager::broadcast_activity_created(const Activity &activity)
+{
+    broadcast_activity_change(nullptr, &activity);
+}
+
+void WebSocketManager::broadcast_activity_updated(const Activity &previous, const Activity &current)
+{
+    broadcast_activity_change(&previous, &current);
+}
+
+void WebSocketManager::broadcast_activity_deleted(const Activity &activity)
+{
+    broadcast_activity_change(&activity, nullptr);
+}
+
+void WebSocketManager::broadcast_activity_change(const Activity *previous, const Activity *current)
+{
+    const std::string created = current ? json{{"event", "created"}, {"activity", to_json(*current)}}.dump() : "";
+    const std::string updated = current ? json{{"event", "updated"}, {"activity", to_json(*current)}}.dump() : "";
+    const std::string removed = previous ? json{{"event", "deleted"}, {"id", previous->id}}.dump() : "";
+
+    for (auto *ws : clients_)
+    {
+        auto *data = ws->getUserData();
+        if (!data->authenticated || data->user_id.empty())
+            continue;
+        try
+        {
+            auto user = db_.get_user_by_id(data->user_id);
+            if (!user)
+                continue;
+            auto permission = db_.get_role_permission(user->role);
+            if (!permission)
+                continue;
+            auto dept_access = db_.list_role_dept_access(user->role);
+            const bool could_read = previous && can_read_activity(*permission, *user, dept_access, *previous);
+            const bool can_read = current && can_read_activity(*permission, *user, dept_access, *current);
+            if (can_read)
+                ws->send(could_read ? updated : created, uWS::OpCode::TEXT);
+            else if (could_read)
+            {
+                ws->send(removed, uWS::OpCode::TEXT);
+                if (data->viewing_activity == previous->id)
+                    handle_leave(ws);
+            }
+        }
+        catch (const std::exception &e)
+        {
+            fprintf(stderr, "[WS] activity broadcast authorization failed: %s\n", e.what());
+        }
+    }
+}
+
+void WebSocketManager::broadcast_template_update(TemplateKind kind, const std::string &department,
+                                                  const std::string &message)
+{
+    for (auto *ws : clients_)
+    {
+        auto *data = ws->getUserData();
+        if (!data->authenticated || data->user_id.empty())
+            continue;
+        try
+        {
+            auto user = db_.get_user_by_id(data->user_id);
+            if (!user)
+                continue;
+            auto permission = db_.get_role_permission(user->role);
+            const std::string scope = permission
+                                          ? (kind == TemplateKind::Mail ? permission->mail_templates_scope
+                                                                        : permission->event_templates_scope)
+                                          : "none";
+            if (can_manage_department_scope(*user, scope, department))
+                ws->send(message, uWS::OpCode::TEXT);
+        }
+        catch (const std::exception &e)
+        {
+            fprintf(stderr, "[WS] template broadcast authorization failed: %s\n", e.what());
+        }
+    }
+}
+
 void WebSocketManager::send_to_user_ids(const std::vector<std::string> &user_ids, const std::string &message)
 {
     if (user_ids.empty())
@@ -140,6 +223,40 @@ void WebSocketManager::send_to_user_ids(const std::vector<std::string> &user_ids
 }
 
 // ---- Private helpers --------------------------------------------------------
+
+bool WebSocketManager::can_access_room(WsHandle ws, const std::string &room, bool write) const
+{
+    auto *data = ws->getUserData();
+    if (!data->authenticated || data->user_id.empty())
+        return false;
+    try
+    {
+        auto user = db_.get_user_by_id(data->user_id);
+        if (!user)
+            return false;
+        auto permission = db_.get_role_permission(user->role);
+
+        if (room.rfind("evt_tpl_", 0) == 0)
+            return can_manage_department_scope(*user, permission ? permission->event_templates_scope : "none", room.substr(8));
+        if (room.rfind("tpl_", 0) == 0)
+            return can_manage_department_scope(*user, permission ? permission->mail_templates_scope : "none", room.substr(4));
+        if (!permission)
+            return false;
+
+        auto activity = db_.get_activity_by_id(room);
+        if (!activity)
+            return false;
+        auto dept_access = db_.list_role_dept_access(user->role);
+        if (!can_read_activity(*permission, *user, dept_access, *activity))
+            return false;
+        return !write || can_edit_activity(*permission, *user, *activity, user->email);
+    }
+    catch (const std::exception &e)
+    {
+        fprintf(stderr, "[WS] room authorization failed: %s\n", e.what());
+        return false;
+    }
+}
 
 void WebSocketManager::handle_register(WsHandle ws, const std::string &token)
 {
@@ -170,6 +287,8 @@ void WebSocketManager::handle_join(WsHandle ws, const std::string &activity_id)
         return;
     // Leave previous activity first
     handle_leave(ws);
+    if (!can_access_room(ws, activity_id, false))
+        return;
     data->viewing_activity = activity_id;
     activity_viewers_[activity_id].insert(ws);
     printf("[WS] %s joined %s (viewers: %zu)\n", data->display_name.c_str(), activity_id.c_str(), activity_viewers_[activity_id].size());
@@ -222,13 +341,18 @@ void WebSocketManager::handle_lock(WsHandle ws, const std::string &activity_id, 
     auto *data = ws->getUserData();
     if (!data->authenticated || data->display_name.empty())
         return;
+    if (data->viewing_activity != activity_id || !can_access_room(ws, activity_id, true))
+        return;
 
     auto &locks = activity_locks_[activity_id];
     auto it = locks.find(section);
     if (it != locks.end() && it->second.holder != ws)
     {
-        // Already locked by someone else — deny
-        return;
+        if (can_access_room(it->second.holder, activity_id, true))
+            return;
+        locks.erase(it);
+        json msg = {{"event", "unlock"}, {"activity_id", activity_id}, {"section", section}};
+        broadcast_to_activity(activity_id, msg.dump(), ws);
     }
     locks[section] = {section, data->display_name, ws};
     printf("[WS] %s locked %s in %s\n", data->display_name.c_str(), section.c_str(), activity_id.c_str());
@@ -262,7 +386,7 @@ void WebSocketManager::broadcast_to_activity(const std::string &activity_id, con
     std::string_view sv(message);
     for (auto *ws : it->second)
     {
-        if (ws != exclude)
+        if (ws != exclude && can_access_room(ws, activity_id, false))
             ws->send(sv, uWS::OpCode::TEXT);
     }
 }
@@ -276,7 +400,7 @@ void WebSocketManager::send_editors_list(const std::string &activity_id)
     for (auto *ws : it->second)
     {
         auto *data = ws->getUserData();
-        if (!data->display_name.empty())
+        if (!data->display_name.empty() && can_access_room(ws, activity_id, false))
         {
             users.push_back(data->display_name);
         }
@@ -286,7 +410,8 @@ void WebSocketManager::send_editors_list(const std::string &activity_id)
     std::string_view sv(s);
     for (auto *ws : it->second)
     {
-        ws->send(sv, uWS::OpCode::TEXT);
+        if (can_access_room(ws, activity_id, false))
+            ws->send(sv, uWS::OpCode::TEXT);
     }
 }
 
@@ -298,7 +423,8 @@ void WebSocketManager::send_locks_state(WsHandle ws, const std::string &activity
     {
         for (auto &[section, lock] : it->second)
         {
-            locks.push_back({{"section", lock.section}, {"user", lock.user_name}});
+            if (can_access_room(lock.holder, activity_id, true))
+                locks.push_back({{"section", lock.section}, {"user", lock.user_name}});
         }
     }
     json msg = {{"event", "locks_state"}, {"activity_id", activity_id}, {"locks", locks}};

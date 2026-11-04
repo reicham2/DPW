@@ -75,6 +75,10 @@ Wichtig fuer zukuenftige Schema-Aenderungen:
 | `make ps`                  | Container-Status anzeigen                  |
 | `make clean`               | Alles entfernen (inkl. Volumes und Images) |
 
+`make test` und `make test-api` setzen die Entwicklungsumgebung einschließlich
+der Datenbank-Volumes zurück. Sie sollten daher nur mit entbehrlichen Testdaten
+ausgeführt werden.
+
 ### Web Push / PWA Benachrichtigungen
 
 ```bash
@@ -119,6 +123,9 @@ Jede Rolle hat folgende Berechtigungen, jeweils mit einem Scope-Level (`none`, `
 | `ideenkiste_delete_scope` | Ideen loeschen | none / own_dept / all |
 
 Zusaetzlich gibt es Cross-Department-Zugriff (`role_dept_access`) um Rollen Lese-/Schreibzugriff auf andere Abteilungen zu geben.
+Aktivitäten ohne Stufe können nur mit dem Erstellungs-Scope `all` angelegt
+werden; für `own_dept` oder einen stufenübergreifenden Schreibzugriff muss die
+Zielstufe angegeben werden.
 
 ## MiData Integration
 
@@ -162,6 +169,29 @@ Falls Azure-Werte nicht in `.env` gesetzt sind, steht ein Initial-Setup ohne Log
 
 - `GET /api/setup/auth-config` (Status)
 - `POST /api/setup/auth-config` (tenant_id, client_id, client_secret, contact_email)
+
+### Anmeldung und Wiederherstellung
+
+- Eine bestehende Microsoft-Anmeldung wird beim Start ohne Popup wiederhergestellt.
+  Falls eine erneute Interaktion erforderlich ist, erscheint ein Hinweis zur Anmeldung.
+- Die Abmeldung beendet die lokale DPW-Sitzung, nicht die Microsoft-Sitzung im Browser.
+  Nach dem Abmelden ist eine ausdrückliche erneute Anmeldung erforderlich.
+- Ist der Setup-Status vorübergehend nicht erreichbar, kann die Prüfung auf der
+  Setup-Seite erneut gestartet werden, ohne eine neue Konfiguration zu speichern.
+- Das Backend prüft unter anderem die Gültigkeitsdauer und die Signatur der
+  Microsoft-ID-Tokens. Signaturschlüssel werden pro Tenant zwischengespeichert;
+  fehlgeschlagene oder ungültige Antworten werden nicht übernommen.
+- Interne Aktivitätszugriffe und Echtzeitmeldungen berücksichtigen den lokalen
+  Benutzer und seine Rollen- und Stufenberechtigungen.
+
+### Aktivitäten extern teilen
+
+Ein Freigabelink `/shared/<token>` öffnet genau die geteilte Aktivität ohne
+Anmeldung in einer öffentlichen Leseansicht. Der Link sollte nur an die
+vorgesehenen Empfänger weitergegeben werden. Interne Freigabelinks können nur
+für lesbare Aktivitäten abgerufen, erstellt oder widerrufen werden; nach dem
+Widerruf ist der bisherige öffentliche Link nicht mehr gültig. Öffentliche
+Anmeldeformulare bleiben unabhängig davon ohne Anmeldung erreichbar.
 
 ## Redis Cache (optional)
 

@@ -99,6 +99,9 @@ describe('apiFetch', () => {
 	});
 
 	it('retries once and clears token cache on 401', async () => {
+		getIdTokenMock
+			.mockResolvedValueOnce('expired-token')
+			.mockResolvedValueOnce('refreshed-token');
 		fetchSpy
 			.mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))
 			.mockResolvedValueOnce(new Response('ok', { status: 200 }));
@@ -107,6 +110,8 @@ describe('apiFetch', () => {
 
 		expect(clearTokenCacheMock).toHaveBeenCalledTimes(1);
 		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		expect(getIdTokenMock).toHaveBeenNthCalledWith(2, { forceRefresh: true });
+		expect(fetchSpy.mock.calls[1][1].headers.Authorization).toBe('Bearer refreshed-token');
 		expect(response.status).toBe(200);
 	});
 

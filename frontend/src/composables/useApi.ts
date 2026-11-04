@@ -68,7 +68,7 @@ export async function apiFetch(
 	options: RequestInit = {},
 	_retry = false,
 ): Promise<Response> {
-	const token = await getIdToken();
+	const token = await getIdToken(_retry ? { forceRefresh: true } : undefined);
 	try {
 		const response = await fetch(url, {
 			...options,

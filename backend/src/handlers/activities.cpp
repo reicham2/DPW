@@ -1,5 +1,20 @@
 #include "handlers/handler_deps.hpp"
 
+static std::string activity_read_cache_scope(const TokenClaims &claims, const ActivityAccess &access)
+{
+    std::string scope = cache_user_scope(claims, access.user) + ":read:" + access.permission.activity_read_scope;
+    std::vector<std::string> readable_departments;
+    for (const auto &entry : access.dept_access)
+    {
+        if (entry.can_read)
+            readable_departments.push_back(entry.department);
+    }
+    std::sort(readable_departments.begin(), readable_departments.end());
+    for (const auto &department : readable_departments)
+        scope += ":" + std::to_string(department.size()) + ":" + department;
+    return scope;
+}
+
 // ---- GET /departments -------------------------------------------------------
 
 void handle_get_departments(HttpRes *res, HttpReq *req, Database &db)
@@ -41,8 +56,11 @@ void handle_get_activities(HttpRes *res, HttpReq *req, Database &db)
         return;
     try
     {
-        auto current_user = resolve_user(db, claims);
-        const std::string ckey = cache_key(db, "activities", cache_user_scope(claims, current_user));
+        auto access = require_activity_access(res, db, claims);
+        if (!access)
+            return;
+
+        const std::string ckey = cache_key(db, "activities", activity_read_cache_scope(claims, *access));
         if (auto cached = redis_cache().get(ckey))
         {
             send_json(res, 200, *cached);
@@ -51,22 +69,11 @@ void handle_get_activities(HttpRes *res, HttpReq *req, Database &db)
 
         auto activities = db.list_activities();
 
-        std::optional<RolePermission> perm;
-        std::vector<RoleDeptAccess> dept_access;
-        if (current_user)
-        {
-            perm = db.get_role_permission(current_user->role);
-            dept_access = db.list_role_dept_access(current_user->role);
-        }
-
         nlohmann::json arr = nlohmann::json::array();
         for (auto &a : activities)
         {
-            if (current_user && perm)
-            {
-                if (!can_read_activity(*perm, *current_user, dept_access, a))
-                    continue;
-            }
+            if (!can_read_activity(access->permission, access->user, access->dept_access, a))
+                continue;
             arr.push_back(to_json(a));
         }
         std::string body = arr.dump();
@@ -89,8 +96,11 @@ void handle_get_activity(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     try
     {
-        auto current_user = resolve_user(db, claims);
-        const std::string ckey = cache_key(db, "activity", cache_user_scope(claims, current_user) + ":" + id);
+        auto access = require_activity_access(res, db, claims);
+        if (!access)
+            return;
+
+        const std::string ckey = cache_key(db, "activity", activity_read_cache_scope(claims, *access) + ":" + id);
         if (auto cached = redis_cache().get(ckey))
         {
             send_json(res, 200, *cached);
@@ -104,15 +114,10 @@ void handle_get_activity(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
 
-        if (current_user)
+        if (!can_read_activity(access->permission, access->user, access->dept_access, *activity))
         {
-            auto perm = db.get_role_permission(current_user->role);
-            auto dept_access = db.list_role_dept_access(current_user->role);
-            if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity))
-            {
-                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-                return;
-            }
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
         }
 
         std::string body = to_json(*activity).dump();
@@ -134,7 +139,9 @@ void handle_get_activity_midata_children_count(HttpRes *res, HttpReq *req, Datab
     std::string id{req->getParameter(0)};
     try
     {
-        auto current_user = resolve_user(db, claims);
+        auto access = require_activity_access(res, db, claims);
+        if (!access)
+            return;
         auto activity = db.get_activity_by_id(id);
         if (!activity)
         {
@@ -142,15 +149,10 @@ void handle_get_activity_midata_children_count(HttpRes *res, HttpReq *req, Datab
             return;
         }
 
-        if (current_user)
+        if (!can_read_activity(access->permission, access->user, access->dept_access, *activity))
         {
-            auto perm = db.get_role_permission(current_user->role);
-            auto dept_access = db.list_role_dept_access(current_user->role);
-            if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity))
-            {
-                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-                return;
-            }
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
         }
 
         if (should_use_frozen_values(*activity))
@@ -272,7 +274,9 @@ void handle_get_activity_weather_location(HttpRes *res, HttpReq *req, Database &
     std::string id{req->getParameter(0)};
     try
     {
-        auto current_user = resolve_user(db, claims);
+        auto access = require_activity_access(res, db, claims);
+        if (!access)
+            return;
         auto activity = db.get_activity_by_id(id);
         if (!activity)
         {
@@ -280,15 +284,10 @@ void handle_get_activity_weather_location(HttpRes *res, HttpReq *req, Database &
             return;
         }
 
-        if (current_user)
+        if (!can_read_activity(access->permission, access->user, access->dept_access, *activity))
         {
-            auto perm = db.get_role_permission(current_user->role);
-            auto dept_access = db.list_role_dept_access(current_user->role);
-            if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity))
-            {
-                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-                return;
-            }
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
         }
 
         auto location = db.get_activity_weather_location(id);
@@ -364,7 +363,9 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
     std::string id{req->getParameter(0)};
     try
     {
-        auto current_user = resolve_user(db, claims);
+        auto access = require_activity_access(res, db, claims);
+        if (!access)
+            return;
         auto activity = db.get_activity_by_id(id);
         if (!activity)
         {
@@ -372,15 +373,10 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
             return;
         }
 
-        if (current_user)
+        if (!can_read_activity(access->permission, access->user, access->dept_access, *activity))
         {
-            auto perm = db.get_role_permission(current_user->role);
-            auto dept_access = db.list_role_dept_access(current_user->role);
-            if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity))
-            {
-                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-                return;
-            }
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
         }
 
         bool frozen_snapshot_missing = false;
@@ -635,17 +631,14 @@ void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     try
     {
-        auto current_user = resolve_user(db, claims);
-        if (current_user)
+        auto access = require_activity_access(res, db, claims);
+        if (!access)
+            return;
+        auto activity = db.get_activity_by_id(id);
+        if (!activity || !can_read_activity(access->permission, access->user, access->dept_access, *activity))
         {
-            auto activity = db.get_activity_by_id(id);
-            auto perm = db.get_role_permission(current_user->role);
-            auto dept_access = db.list_role_dept_access(current_user->role);
-            if (!activity || !perm || !can_read_activity(*perm, *current_user, dept_access, *activity))
-            {
-                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-                return;
-            }
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
         }
 
         auto atts = db.list_attachments(id);
@@ -845,12 +838,14 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
         return;
     }
 
-    // All authenticated users can create (Pio restricted to own dept — enforced in onData)
-    auto current_user = resolve_user(db, claims);
+    auto access = require_activity_access(res, db, claims);
+    if (!access)
+        return;
+    auto current_user = std::optional<UserRecord>(access->user);
 
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, &db, &wm, current_user](std::string_view chunk, bool last)
+    res->onData([res, buf, &db, &wm, current_user, access](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -869,13 +864,9 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
         }
 
         // Check create permission for the target department.
-        if (current_user && input.department) {
-            auto perm = db.get_role_permission(current_user->role);
-            auto dept_access = db.list_role_dept_access(current_user->role);
-            if (!perm || !can_create_dept(*perm, *current_user, dept_access, *input.department)) {
-                send_json(res, 403, R"({"error":"Keine Schreibberechtigung für diese Stufe"})");
-                return;
-            }
+        if (!can_create_activity(access->permission, access->user, access->dept_access, input.department)) {
+            send_json(res, 403, R"({"error":"Keine Schreibberechtigung für diese Stufe"})");
+            return;
         }
 
         try {
@@ -1054,8 +1045,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
                 }
             }
 
-            nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
-            wm.broadcast(msg.dump());
+            wm.broadcast_activity_created(*activity);
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             std::string share_created_by = current_user ? current_user->id : "";
@@ -1364,8 +1354,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
                 }
             }
 
-            nlohmann::json msg = {{"event", "updated"}, {"activity", to_json(*activity)}};
-            wm.broadcast(msg.dump());
+            wm.broadcast_activity_updated(*previous_activity, *activity);
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             send_json(res, 200, to_json(*activity).dump());
@@ -1390,6 +1379,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
         send_json(res, 403, R"({"error":"Keine Berechtigung"})");
         return;
     }
+    try
     {
         auto activity = db.get_activity_by_id(id);
         if (!activity)
@@ -1398,24 +1388,18 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
-        bool allowed = perm && can_edit_activity(*perm, *current_user, *activity, claims.email);
-        if (!allowed)
+        if (!perm || !can_edit_activity(*perm, *current_user, *activity, claims.email))
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-    }
-
-    try
-    {
         bool ok = db.soft_delete_activity(id, current_user->id);
         if (!ok)
         {
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
-        nlohmann::json msg = {{"event", "deleted"}, {"id", id}};
-        wm.broadcast(msg.dump());
+        wm.broadcast_activity_deleted(*activity);
         cache_bump_version(db, "activities");
         cache_bump_version(db, "activity");
         set_cors(res);

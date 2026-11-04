@@ -6,6 +6,7 @@
 #include <string>
 #include <stdexcept>
 #include <cstdio>
+#include <utility>
 
 #if !defined(DPW_ENABLE_DEBUG_AUTH)
 #define DPW_ENABLE_DEBUG_AUTH 0
@@ -67,6 +68,34 @@ std::optional<UserRecord> resolve_user(Database &db, const TokenClaims &claims)
     if (claims.oid.rfind("debug:", 0) == 0)
         return db.get_user_by_id(claims.oid.substr(6));
     return db.get_user_by_oid(claims.oid);
+}
+
+std::optional<ActivityAccess> require_activity_access(HttpRes *res, Database &db, const TokenClaims &claims)
+{
+    try
+    {
+        auto user = resolve_user(db, claims);
+        if (!user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return std::nullopt;
+        }
+
+        auto permission = db.get_role_permission(user->role);
+        if (!permission)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return std::nullopt;
+        }
+
+        auto dept_access = db.list_role_dept_access(user->role);
+        return ActivityAccess{std::move(*user), std::move(*permission), std::move(dept_access)};
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "activity access", e);
+        return std::nullopt;
+    }
 }
 
 void send_internal_error(HttpRes *res, const char *context, const std::exception &e)

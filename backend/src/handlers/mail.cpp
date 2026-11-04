@@ -193,45 +193,31 @@ void handle_get_mail_composer_context(HttpRes *res, HttpReq *req, Database &db)
 
 void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
-    std::string auth_header{req->getHeader("authorization")};
-    std::string token = extract_bearer_token(auth_header);
-    if (token.empty())
-    {
-        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
-        return;
-    }
     TokenClaims claims;
-    try
-    {
-        claims = validate_token(token);
-    }
-    catch (std::exception &e)
-    {
-        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+    if (!require_auth(res, req, claims))
         return;
-    }
 
     std::string department = url_decode(std::string{req->getParameter(0)});
 
-    // Permission check: mail_templates_scope controls access
-    auto current_user = resolve_user(db, claims);
-    if (current_user)
+    try
     {
-        auto perm = db.get_role_permission(current_user->role);
-        if (!is_admin(*current_user) && (!perm || perm->mail_templates_scope == "none"))
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-        if (!is_admin(*current_user) && perm->mail_templates_scope == "own_dept")
+        auto perm = db.get_role_permission(current_user->role);
+        if (!can_manage_department_scope(*current_user, perm ? perm->mail_templates_scope : "none", department))
         {
-            if (!current_user->department || *current_user->department != department)
-            {
-                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-                return;
-            }
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
         }
-        // 'all' → no restriction
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "mail template access", e);
+        return;
     }
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
@@ -271,7 +257,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
                 return;
             }
             nlohmann::json msg = {{"event", "template_updated"}, {"template", template_to_json(*tpl)}};
-            wm.broadcast(msg.dump());
+            wm.broadcast_template_update(TemplateKind::Mail, department, msg.dump());
             cache_bump_version(db, "mail_templates");
             send_json(res, 200, template_to_json(*tpl).dump());
         } catch (std::exception& e) {
@@ -413,43 +399,31 @@ void handle_get_event_template(HttpRes *res, HttpReq *req, Database &db)
 
 void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
-    std::string auth_header{req->getHeader("authorization")};
-    std::string token = extract_bearer_token(auth_header);
-    if (token.empty())
-    {
-        send_json(res, 401, R"({"error":"Nicht autorisiert"})");
-        return;
-    }
     TokenClaims claims;
-    try
-    {
-        claims = validate_token(token);
-    }
-    catch (std::exception &e)
-    {
-        send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+    if (!require_auth(res, req, claims))
         return;
-    }
 
     std::string department = url_decode(std::string{req->getParameter(0)});
 
-    auto current_user = resolve_user(db, claims);
-    if (current_user)
+    try
     {
-        auto perm = db.get_role_permission(current_user->role);
-        if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-        if (!is_admin(*current_user) && perm->event_templates_scope == "own_dept")
+        auto perm = db.get_role_permission(current_user->role);
+        if (!can_manage_department_scope(*current_user, perm ? perm->event_templates_scope : "none", department))
         {
-            if (!current_user->department || *current_user->department != department)
-            {
-                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-                return;
-            }
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
         }
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "event template access", e);
+        return;
     }
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
@@ -474,7 +448,7 @@ void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSock
                 return;
             }
             nlohmann::json msg = {{"event", "event_template_updated"}, {"template", event_template_to_json(*tpl)}};
-            wm.broadcast(msg.dump());
+            wm.broadcast_template_update(TemplateKind::Event, department, msg.dump());
             send_json(res, 200, event_template_to_json(*tpl).dump());
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);

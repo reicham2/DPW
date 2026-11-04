@@ -41,9 +41,12 @@ test-api:
 	$(DC) down -v --remove-orphans
 	BACKEND_BUILD_TYPE=Debug ENABLE_DEBUG_AUTH=1 FRONTEND_ENABLE_DEBUG_AUTH=1 $(DC) up -d --build --wait db redis backend frontend
 	$(DC) exec -T db psql -U activities_user -d activities < db/seed.sql
+	$(DC) exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < scripts/api-auth-fixtures.sql
 	docker run --rm --network host -v "$(CURDIR):/etc/newman" postman/newman:alpine \
 		run /etc/newman/scripts/api-tests.postman_collection.json \
 		--env-var baseUrl=http://127.0.0.1:8000/api --reporters cli
+	docker run --rm --network host -v "$(CURDIR):/tests:ro" -w /tests node:22-alpine \
+		node --test scripts/api-auth-tests.mjs
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:
