@@ -131,8 +131,11 @@ und im Event-Titel.
   Publizieren bearbeitet werden.
 - Der Name einer Formularvorlage wird beim Erstellen als Formular-Titel
   uebernommen. Ein selbst eingegebener Titel bleibt beim Vorlagenwechsel
-  erhalten. Im Editor und in Entwuerfen bleiben die Variablen stehen; das
-  oeffentliche Formular ersetzt sie mit den aktuellen Aktivitaetsdaten.
+  erhalten. In Vorlagen und Entwuerfen bleiben die Variablen stehen.
+  Beim Erstellen wird der Titel mit den aktuellen Aktivitaetsdaten
+  aufgeloest und gespeichert, sodass auch Verwaltung und Editor sofort
+  den fertigen Titel anzeigen. Variablen in den Fragen werden weiterhin
+  erst im oeffentlichen Formular ersetzt.
 - Unbekannte Variablen bleiben unveraendert. Rich-Text-Inhalte behalten
   ihre bisherige Formatierung und Linkdarstellung.
 

@@ -36,7 +36,7 @@
 				<span v-if="savedFields['title']" class="field-saved-icon" :key="savedFields['title']"><Save :size="12" aria-hidden="true" /></span>
 			</div>
 			<p v-if="titleError" class="validation-hint">{{ titleError }}</p>
-			<p class="template-hint">Variablen im Titel werden im öffentlichen Formular ersetzt.</p>
+			<p class="template-hint">Variablen im Titel werden beim Erstellen des Formulars ersetzt.</p>
 			<label class="field-label mt-3">Modus</label>
 			<div class="mode-toggle">
 				<button
