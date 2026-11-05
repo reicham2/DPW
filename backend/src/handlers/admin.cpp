@@ -1,4 +1,5 @@
 #include "handlers/handler_deps.hpp"
+#include "infra/cron_scheduler.hpp"
 
 #include <sys/wait.h>
 #include <unistd.h>
@@ -116,6 +117,55 @@ static std::optional<UserRecord> require_admin(HttpRes *res, HttpReq *req, Datab
         return std::nullopt;
     }
     return user;
+}
+
+void handle_get_admin_cron_jobs(HttpRes *res, HttpReq *req, Database &db, CronScheduler &cron)
+{
+    try
+    {
+        if (!require_admin(res, req, db))
+            return;
+        send_json(res, 200, cron.status().dump());
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "cron", e);
+    }
+}
+
+void handle_put_admin_cron_job(HttpRes *res, HttpReq *req, Database &db, CronScheduler &cron)
+{
+    try
+    {
+        if (!require_admin(res, req, db))
+            return;
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "cron", e);
+        return;
+    }
+    const std::string id{req->getParameter(0)};
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, id, &cron](std::string_view chunk, bool last)
+    {
+        buf->append(chunk.data(), chunk.size());
+        if (!last)
+            return;
+        auto body = nlohmann::json::parse(*buf, nullptr, false);
+        if (!body.is_object() || !body.contains("enabled") || !body["enabled"].is_boolean())
+        {
+            send_json(res, 400, R"({"error":"enabled muss ein Boolean sein"})");
+            return;
+        }
+        if (!cron.set_enabled(id, body["enabled"].get<bool>()))
+        {
+            send_json(res, 404, R"({"error":"Job nicht gefunden"})");
+            return;
+        }
+        send_json(res, 200, cron.status().dump());
+    });
 }
 
 static nlohmann::json deleted_activity_to_json(const DeletedActivityRecord &r)

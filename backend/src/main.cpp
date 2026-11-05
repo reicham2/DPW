@@ -2,6 +2,7 @@
 #include "infra/app_config.hpp"
 #include "db/database.hpp"
 #include "infra/ws_manager.hpp"
+#include "infra/cron_scheduler.hpp"
 #include "handlers/handlers.hpp"
 #include "utils/strings.hpp"
 #include <cstdlib>
@@ -85,6 +86,21 @@ int main()
           setenv("AZURE_CLIENT_SECRET", azure_secret->c_str(), 1);
 
      WebSocketManager wm(db);
+     CronScheduler cron;
+     const std::string job_conn_str = conn_str +
+         " connect_timeout=5 options='-c statement_timeout=30000 -c lock_timeout=5000'";
+     cron.add("expired-notifications", "Abgelaufene Aktivitaetsbenachrichtigungen", 1, [job_conn_str]
+     {
+          Database job_db(job_conn_str, false);
+          job_db.purge_expired_activity_notifications();
+     });
+     cron.add("activity-trash", "Aktivitaeten-Papierkorb (90 Tage)", 1440, [job_conn_str]
+     {
+          Database job_db(job_conn_str, false);
+          const int deleted = job_db.purge_deleted_activities_older_than_days(90);
+          if (deleted > 0)
+               std::printf("[cron] activity-trash: deleted %d activities\n", deleted);
+     });
 
      uWS::App()
          // CORS preflight
@@ -114,6 +130,10 @@ int main()
                { handle_post_setup_auth_config(res, req, db); })
 
          // Maintenance mode (public status + admin management)
+         .get("/admin/cron-jobs", [&](auto *res, auto *req)
+              { handle_get_admin_cron_jobs(res, req, db, cron); })
+         .put("/admin/cron-jobs/:id", [&](auto *res, auto *req)
+              { handle_put_admin_cron_job(res, req, db, cron); })
          .get("/maintenance", [&](auto *res, auto *req)
               { handle_get_maintenance(res, req, db); })
          .get("/admin/maintenance", [&](auto *res, auto *req)
@@ -407,9 +427,12 @@ int main()
                                  .close = [&](auto *ws, int, std::string_view)
                                  { wm.on_close(ws); }})
 
-         .listen(8080, [](auto *token)
+         .listen(8080, [&](auto *token)
                  {
-            if (token) printf("[server] listening on :8080\n");
+            if (token) {
+                 cron.start();
+                 printf("[server] listening on :8080\n");
+            }
             else       printf("[server] FAILED to listen on :8080\n"); })
          .run();
 }

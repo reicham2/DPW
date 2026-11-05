@@ -15,6 +15,7 @@ endif()
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(CURL REQUIRED)
+find_package(Threads REQUIRED)
 
 # Local cached deps
 set(UWEBSOCKETS_DIR ${CMAKE_SOURCE_DIR}/deps/uWebSockets)
@@ -50,6 +51,7 @@ set(CORE_SOURCES
 )
 
 set(INFRA_SOURCES
+    src/infra/cron_scheduler.cpp
     src/infra/auth.cpp
     src/infra/cache.cpp
     src/infra/app_config.cpp
@@ -127,6 +129,7 @@ target_link_libraries(server PRIVATE
     OpenSSL::Crypto
     ZLIB::ZLIB
     CURL::libcurl
+    Threads::Threads
 )
 
 target_compile_options(server PRIVATE -O2 -Wall -Wextra -Wno-nonnull)
@@ -154,6 +157,8 @@ if (BUILD_TESTS)
         tests/test_models.cpp
         tests/test_integrations.cpp
         tests/test_stubs.cpp
+        tests/test_cron_scheduler.cpp
+        src/infra/cron_scheduler.cpp
         src/utils/strings.cpp
         src/utils/permissions.cpp
         src/utils/templates.cpp
@@ -170,7 +175,7 @@ if (BUILD_TESTS)
     )
 
     target_link_libraries(run_tests PRIVATE
-        OpenSSL::SSL OpenSSL::Crypto CURL::libcurl
+        OpenSSL::SSL OpenSSL::Crypto CURL::libcurl Threads::Threads
     )
 
     target_compile_options(run_tests PRIVATE -O2 -Wall -Wextra)

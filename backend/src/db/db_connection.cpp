@@ -199,7 +199,7 @@ namespace
 
 // ---- Constructor / Destructor -----------------------------------------------
 
-Database::Database(const std::string &conn_str)
+Database::Database(const std::string &conn_str, bool sync_schema)
 {
     conn_ = PQconnectdb(conn_str.c_str());
     if (PQstatus(conn_) != CONNECTION_OK)
@@ -210,7 +210,8 @@ Database::Database(const std::string &conn_str)
         throw std::runtime_error("DB connect failed: " + err);
     }
 
-    run_schema_sync();
+    if (sync_schema)
+        run_schema_sync();
 }
 
 Database::~Database()

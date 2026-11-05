@@ -426,12 +426,11 @@ std::optional<NotificationRecord> Database::get_latest_unread_notification_for_p
                                                                                     const std::string &auth)
 {
     ensure_connected();
-    purge_expired_activity_notifications();
     const char *params[2] = {endpoint.c_str(), auth.c_str()};
     PGresult *res = PQexecParams(conn_,
                                  "SELECT n.id, n.user_id, n.category, n.title, n.message, n.link, n.payload, n.is_read, n.created_at "
                                  "FROM push_subscriptions ps "
-                                 "JOIN notifications n ON n.user_id = ps.user_id "
+                                 "JOIN active_notifications n ON n.user_id = ps.user_id "
                                  "WHERE ps.endpoint = $1 AND ps.auth = $2 AND n.is_read = false "
                                  "ORDER BY n.created_at DESC LIMIT 1",
                                  2, nullptr, params, nullptr, nullptr, 0);

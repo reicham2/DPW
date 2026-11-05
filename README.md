@@ -157,6 +157,50 @@ und im Event-Titel.
 - Unbekannte Variablen bleiben unveraendert. Rich-Text-Inhalte behalten
   ihre bisherige Formatierung und Linkdarstellung.
 
+## Zentrale Cron-Jobs
+
+Das Backend registriert wiederkehrende Serveraufgaben in `CronScheduler` und startet
+den Scheduler erst nach erfolgreichem HTTP-Listen. Unter **System > Cron-Jobs** koennen
+Systemadministratoren (`admin` oder `user_role_scope = all`) Jobs einsehen, pausieren
+und fortsetzen. Die API ist `GET /admin/cron-jobs` und
+`PUT /admin/cron-jobs/:id` mit `{"enabled":false}` bzw. `{"enabled":true}`.
+
+Aktuell registriert: abgelaufene Aktivitaetsbenachrichtigungen (jede Minute) und
+permanentes Loeschen von seit mehr als 90 Tagen im Papierkorb liegenden Aktivitaeten
+(taeglich). Die DB-View `active_notifications` filtert abgelaufene Eintraege bei
+Lesen, Gelesen-Markierung und Push-Abfragen sofort aus; physisches Loeschen erfolgt
+nur noch im zentralen Job. Browser-Autosave, Wartungsstatus-Polling und bedarfsabhaengige
+MiData-/Wetterabfragen bleiben unveraendert; sie sind keine serverweiten Cron-Jobs.
+
+Neue Jobs werden zentral in `backend/src/main.cpp` mit einem eindeutigen Namen,
+Callback und einem Intervall von **1, 5, 15, 30, 60 oder 1440 Minuten** registriert.
+Es gibt keine leeren Platzhalterjobs fuer ungenutzte Intervalle. Jeder Job laeuft
+einmal beim Start und danach mit festem monotonem Intervall (taeglich = 24 Stunden,
+nicht lokale Mitternacht). Bei Verspaetungen wird nur einmal nachgeholt; ausgelassene
+Intervalle werden gezaehlt. Jobs laufen seriell in einem separaten Worker, nicht
+auf dem HTTP-/WebSocket-Thread. Fehler eines Jobs stoppen andere Jobs nicht.
+Eigene DB-Verbindungen ohne Schema-Sync nutzen 5 Sekunden Verbindungs-/Lock-Timeout
+und 30 Sekunden Statement-Timeout.
+
+Das Panel aktualisiert alle 10 Sekunden und zeigt naechsten Lauf, letzten Start,
+Ende, Erfolg, Dauer, Fehler und verpasste Intervalle. Nach 5 Sekunden Verspaetung
+wird ein Job als ueberfaellig markiert, auch wenn ein vorheriger Lauf noch laeuft.
+Fehlerdetails werden im Backend als `[cron]` geloggt, nicht als rohe DB-Fehler an
+den Browser geliefert. Pausieren bricht einen laufenden Job nicht ab; Fortsetzen
+plant einen sofortigen Lauf ohne Wiederholung der pausierten Intervalle.
+
+Scheduler, Pausen und Statistiken sind **pro Backend-Prozess** und werden beim
+Neustart zurueckgesetzt; die Startzeit wird im Panel angezeigt. Es gibt keine
+persistente Run-Historie oder verteilte Leader-Wahl. Die aktuellen Loeschjobs sind
+idempotent, aber neue nicht-idempotente Jobs benoetigen bei mehreren Backend-Replikas
+zusaetzliche DB-seitige Koordination. Beim Ende des HTTP-Loops wird der Worker
+gestoppt und ein laufender Callback vor dem Zerstoeren seiner Abhaengigkeiten beendet.
+
+Regressionstests fuer die sofortige Benachrichtigungsfilterung:
+`psql -v ON_ERROR_STOP=1 -f backend/tests/test_cron_notifications.sql`
+gegen eine mit `db/init.sql` initialisierte Testdatenbank ausfuehren.
+Die Testdaten werden innerhalb einer Transaktion vollstaendig zurueckgerollt.
+
 ## Role Permissions
 
 Jede Rolle hat folgende Berechtigungen, jeweils mit einem Scope-Level (`none`, `own`, `own_dept`, `same_dept`, `all`):

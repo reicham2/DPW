@@ -40,12 +40,19 @@ NotificationRecord Database::row_to_notification(PGresult *res, int row)
 
 void Database::purge_expired_activity_notifications()
 {
+    ensure_connected();
     PGresult *res = PQexec(conn_,
                            "DELETE FROM notifications n "
                            "USING activities a "
                            "WHERE n.payload ? 'activity_id' "
                            "  AND (n.payload->>'activity_id') = a.id::text "
                            "  AND NOW() >= ((a.date::timestamp) + INTERVAL '1 day')");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("purge_expired_activity_notifications: " + error);
+    }
     PQclear(res);
 }
 
@@ -57,7 +64,6 @@ std::optional<NotificationRecord> Database::create_notification(const std::strin
                                                                 const nlohmann::json &payload)
 {
     ensure_connected();
-    purge_expired_activity_notifications();
     std::string payload_str = payload.dump();
     std::string link_str = link ? *link : "";
     const char *params[6] = {user_id.c_str(), category.c_str(), title.c_str(), message.c_str(), link_str.c_str(), payload_str.c_str()};
@@ -79,7 +85,6 @@ std::optional<NotificationRecord> Database::create_notification(const std::strin
 std::vector<NotificationRecord> Database::list_notifications_for_user(const std::string &user_id, int limit)
 {
     ensure_connected();
-    purge_expired_activity_notifications();
     PGresult *res = nullptr;
     if (limit > 0)
     {
@@ -87,7 +92,7 @@ std::vector<NotificationRecord> Database::list_notifications_for_user(const std:
         const char *params[2] = {user_id.c_str(), limit_str.c_str()};
         res = PQexecParams(conn_,
                            "SELECT id, user_id, category, title, message, link, payload, is_read, created_at "
-                           "FROM notifications WHERE user_id = $1 "
+                           "FROM active_notifications WHERE user_id = $1 "
                            "ORDER BY created_at DESC LIMIT $2::int",
                            2, nullptr, params, nullptr, nullptr, 0);
     }
@@ -96,7 +101,7 @@ std::vector<NotificationRecord> Database::list_notifications_for_user(const std:
         const char *params[1] = {user_id.c_str()};
         res = PQexecParams(conn_,
                            "SELECT id, user_id, category, title, message, link, payload, is_read, created_at "
-                           "FROM notifications WHERE user_id = $1 "
+                           "FROM active_notifications WHERE user_id = $1 "
                            "ORDER BY created_at DESC",
                            1, nullptr, params, nullptr, nullptr, 0);
     }
@@ -117,10 +122,9 @@ std::vector<NotificationRecord> Database::list_notifications_for_user(const std:
 bool Database::mark_notification_read(const std::string &user_id, const std::string &notification_id)
 {
     ensure_connected();
-    purge_expired_activity_notifications();
     const char *params[2] = {user_id.c_str(), notification_id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "UPDATE notifications SET is_read = true "
+                                 "UPDATE active_notifications SET is_read = true "
                                  "WHERE user_id = $1 AND id = $2",
                                  2, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
@@ -131,10 +135,9 @@ bool Database::mark_notification_read(const std::string &user_id, const std::str
 bool Database::mark_all_notifications_read(const std::string &user_id)
 {
     ensure_connected();
-    purge_expired_activity_notifications();
     const char *params[1] = {user_id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false",
+                                 "UPDATE active_notifications SET is_read = true WHERE user_id = $1 AND is_read = false",
                                  1, nullptr, params, nullptr, nullptr, 0);
     bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
     PQclear(res);
