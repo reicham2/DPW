@@ -13,6 +13,8 @@ static nlohmann::json user_to_json(const UserRecord &u)
     j["time_display_mode"] = u.time_display_mode;
     j["notify_material_assigned"] = u.notify_material_assigned;
     j["notify_activity_assigned"] = u.notify_activity_assigned;
+    j["notify_activity_reminder"] = u.notify_activity_reminder;
+    j["activity_reminder_hours"] = u.activity_reminder_hours;
     j["notify_program_assigned"] = u.notify_program_assigned;
     j["notify_mail_own_activity"] = u.notify_mail_own_activity;
     j["notify_mail_department"] = u.notify_mail_department;
@@ -550,6 +552,24 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
         }
 
         std::optional<bool> notify_program_assigned;
+        std::optional<bool> notify_activity_reminder;
+        std::optional<int> activity_reminder_hours;
+        if (j.contains("activity_reminder_hours")) {
+            const auto &hours = j["activity_reminder_hours"];
+            if (!hours.is_number_integer() || (hours != 2 && hours != 24 && hours != 48)) {
+                send_json(res, 400, R"({"error":"activity_reminder_hours muss 2, 24 oder 48 sein"})");
+                return;
+            }
+            activity_reminder_hours = hours.get<int>();
+        }
+        if (j.contains("notify_activity_reminder")) {
+            if (!j["notify_activity_reminder"].is_boolean()) {
+                send_json(res, 400, R"({"error":"notify_activity_reminder muss ein Boolean sein"})");
+                return;
+            }
+            notify_activity_reminder = j["notify_activity_reminder"].get<bool>();
+        }
+
         if (j.contains("notify_program_assigned") && j["notify_program_assigned"].is_boolean()) {
             notify_program_assigned = j["notify_program_assigned"].get<bool>();
         }
@@ -595,7 +615,9 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
                 notify_mail_department,
                 notify_channel_websocket,
                 notify_channel_email,
-                avatar_color
+                avatar_color,
+                notify_activity_reminder,
+                activity_reminder_hours
             );
             if (!user) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");

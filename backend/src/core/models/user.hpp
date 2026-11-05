@@ -13,6 +13,8 @@ struct UserRecord
     std::string time_display_mode{"minutes"};
     bool notify_material_assigned{true};
     bool notify_activity_assigned{true};
+    bool notify_activity_reminder{true};
+    int activity_reminder_hours{24};
     bool notify_program_assigned{true};
     bool notify_mail_own_activity{true};
     bool notify_mail_department{true};

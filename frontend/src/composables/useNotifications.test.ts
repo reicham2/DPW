@@ -57,6 +57,7 @@ describe('useNotifications', () => {
 			id: 'u1',
 			notify_material_assigned: true,
 			notify_activity_assigned: true,
+			notify_activity_reminder: true,
 			notify_program_assigned: true,
 			notify_mail_own_activity: true,
 			notify_mail_department: false,
@@ -128,6 +129,21 @@ describe('useNotifications', () => {
 
 		expect(n.notifications.value).toHaveLength(1);
 		expect(n.notifications.value[0].title).toBe('New');
+	});
+
+	it('activity reminders respect their own preference without affecting assigned activities', async () => {
+		const n = useNotifications();
+		n.notifications.value = [
+			note({ id: 'reminder', category: 'activity_reminder' }),
+			note({ id: 'assigned', category: 'activity_assigned' }),
+		];
+		expect(n.unreadCount.value).toBe(2);
+		userRef.value.notify_activity_reminder = false;
+		n.notifications.value = [...n.notifications.value];
+		expect(n.unreadCount.value).toBe(1);
+		apiFetchMock.mockResolvedValueOnce(response({}));
+		await n.markAllRead();
+		expect(n.unreadCount.value).toBe(0);
 	});
 
 	it('websocket notification prepends new item and keeps sorting', () => {

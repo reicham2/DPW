@@ -61,6 +61,7 @@ set(INFRA_SOURCES
     src/infra/graph.cpp
     src/infra/wp_client.cpp
     src/infra/web_push.cpp
+    src/infra/activity_reminders.cpp
     src/infra/midata_client.cpp
     src/infra/weather_client.cpp
 )

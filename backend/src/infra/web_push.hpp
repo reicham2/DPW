@@ -5,4 +5,4 @@
 
 class Database;
 
-void deliver_web_push_for_user(Database &db, const UserRecord &user, const NotificationRecord &notification);
+bool deliver_web_push_for_user(Database &db, const UserRecord &user, const NotificationRecord &notification);

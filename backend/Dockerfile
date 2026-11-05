@@ -22,7 +22,7 @@ COPY backend/deps/ deps/
 RUN mkdir -p src/core/models src/infra src/db src/utils src/handlers \
   && echo "// stub" > src/main.cpp \
   && for f in http request_helpers; do echo "// stub" > src/core/$f.cpp; done \
-  && for f in auth audit audit_actions cache app_config ws_manager graph wp_client web_push midata_client weather_client cron_scheduler; do \
+  && for f in auth audit audit_actions cache app_config ws_manager graph wp_client web_push activity_reminders midata_client weather_client cron_scheduler; do \
        echo "// stub" > src/infra/$f.cpp; done \
   && for f in db_connection db_activities db_users db_notifications db_forms db_mail db_admin db_audit; do \
        echo "// stub" > src/db/$f.cpp; done \

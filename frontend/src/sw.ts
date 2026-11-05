@@ -20,13 +20,15 @@ async function resolvePushPayload() {
 		body: JSON.stringify({ endpoint: json.endpoint, auth: json.keys.auth }),
 	});
 	if (res.status === 204 || !res.ok) return null;
-	return (await res.json()) as { title?: string; body?: string; url?: string };
+	return (await res.json()) as { id?: string; title?: string; body?: string; url?: string };
 }
 
 self.addEventListener('push', (event) => {
 	let title = 'Neue Benachrichtigung';
 	let body = 'Es gibt neue Meldungen in DPWeb.';
 	let url = '/profile';
+	let id: string | undefined;
+	let isReminder = false;
 
 	if (event.data) {
 		try {
@@ -34,7 +36,11 @@ self.addEventListener('push', (event) => {
 				title?: string;
 				body?: string;
 				url?: string;
+				id?: string;
+				category?: string;
 			};
+			if (typeof payload.id === 'string') id = payload.id;
+			isReminder = payload.category === 'activity_reminder';
 			if (typeof payload.title === 'string' && payload.title.trim())
 				title = payload.title;
 			if (typeof payload.body === 'string' && payload.body.trim())
@@ -48,7 +54,9 @@ self.addEventListener('push', (event) => {
 
 	event.waitUntil(
 		(async () => {
-			const dynamic = await resolvePushPayload().catch(() => null);
+			// A retry must display the original reminder, not a newer unrelated unread note.
+			const dynamic = isReminder ? null : await resolvePushPayload().catch(() => null);
+			if (dynamic?.id) id = dynamic.id;
 			if (dynamic?.title?.trim()) title = dynamic.title;
 			if (dynamic?.body?.trim()) body = dynamic.body;
 			if (dynamic?.url?.trim()) url = dynamic.url;
@@ -57,6 +65,7 @@ self.addEventListener('push', (event) => {
 				body,
 				icon: '/logo.svg',
 				badge: '/logo.svg',
+				tag: id ? `dpw-note-${id}` : undefined,
 				data: { url },
 			});
 		})(),

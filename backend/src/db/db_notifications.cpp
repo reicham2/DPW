@@ -5,8 +5,58 @@
 #include <sstream>
 #include <cstdlib>
 #include "json.hpp"
+#include "infra/app_config.hpp"
+#include "utils/strings.hpp"
 
 // ---- Notification helpers ---------------------------------------------------
+
+void Database::create_due_activity_reminders()
+{
+    ensure_connected();
+    const std::string base = trim_ascii(app_config::get_or(*this, app_config::kPublicBaseUrl, ""));
+    if (base.empty())
+        throw std::runtime_error("activity-reminders: public base URL is not configured");
+    const char *params[] = {base.c_str()};
+    PGresult *res = PQexecParams(conn_, "SELECT create_due_activity_reminders(NOW(), $1)",
+                                1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        const std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("create_due_activity_reminders: " + error);
+    }
+    PQclear(res);
+}
+
+std::vector<NotificationRecord> Database::claim_activity_reminder_deliveries()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_, "SELECT * FROM claim_activity_reminder_deliveries()");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        const std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("claim_activity_reminder_deliveries: " + error);
+    }
+    std::vector<NotificationRecord> notes;
+    for (int i = 0; i < PQntuples(res); ++i)
+        notes.push_back(row_to_notification(res, i));
+    PQclear(res);
+    return notes;
+}
+
+void Database::finish_activity_reminder_delivery(const std::string &notification_id, bool delivered)
+{
+    ensure_connected();
+    const char *params[] = {notification_id.c_str(), delivered ? "true" : "false"};
+    PGresult *res = PQexecParams(conn_,
+        "UPDATE activity_reminders SET browser_delivered = $2::boolean "
+        "WHERE notification_id = $1::uuid", 2, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        const std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("finish_activity_reminder_delivery: " + error);
+    }
+    PQclear(res);
+}
 
 NotificationRecord Database::row_to_notification(PGresult *res, int row)
 {

@@ -270,6 +270,9 @@ jobs:
       - name: API - Add authorization fixtures
         run: docker compose -f docker-compose-dev.yml exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < scripts/api-auth-fixtures.sql
 
+      - name: API - Activity reminder SQL regressions
+        run: docker compose -f docker-compose-dev.yml exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < backend/tests/test_activity_reminders.sql
+
       - name: API - Run integration tests
         run: |
           docker compose -f docker-compose-dev.yml exec -T db \
