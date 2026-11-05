@@ -2,6 +2,7 @@
 #include "infra/app_config.hpp"
 #include "db/database.hpp"
 #include "json.hpp"
+#include <algorithm>
 #include <string>
 #include <mutex>
 #include <unordered_map>
@@ -107,7 +108,7 @@ std::optional<int> fetch_midata_children_count(Database &db,
 
     if (rc != CURLE_OK)
     {
-        error = "request-failed";
+        error = std::string("request-failed: ") + curl_easy_strerror(rc);
         return std::nullopt;
     }
     if (status < 200 || status >= 300)
@@ -123,27 +124,7 @@ std::optional<int> fetch_midata_children_count(Database &db,
         return std::nullopt;
     }
 
-    const nlohmann::json *people = find_people_array(payload);
-    if (!people)
-    {
-        error = "people-array-missing";
-        return std::nullopt;
-    }
-
-    int count = 0;
-    for (const auto &entry : *people)
-    {
-        if (!entry.is_object())
-            continue;
-        bool has_roles = entry.contains("links") &&
-                         entry["links"].is_object() &&
-                         entry["links"].contains("roles") &&
-                         entry["links"]["roles"].is_array() &&
-                         !entry["links"]["roles"].empty();
-        if (!has_roles)
-            ++count;
-    }
-    return count;
+    return count_midata_children(payload, group_id, error);
 }
 
 struct MidataCountCacheEntry
@@ -193,10 +174,125 @@ void store_cached_midata_children_count(const std::string &group_id,
 
 } // namespace
 
+std::optional<int> count_midata_children(const nlohmann::json &payload,
+                                         const std::string &group_id,
+                                         std::string &error)
+{
+    error.clear();
+    const auto *people = find_people_array(payload);
+    if (!people)
+    {
+        error = "people-array-missing";
+        return std::nullopt;
+    }
+
+    auto id_string = [](const nlohmann::json &id) -> std::string
+    {
+        if (id.is_string())
+            return id.get<std::string>();
+        if (id.is_number_integer())
+            return id.dump();
+        return "";
+    };
+    std::unordered_map<std::string, nlohmann::json> roles;
+    if (payload.is_object() && payload.contains("linked") &&
+        payload["linked"].is_object() && payload["linked"].contains("roles") &&
+        payload["linked"]["roles"].is_array())
+    {
+        for (const auto &role : payload["linked"]["roles"])
+            if (role.is_object() && role.contains("id"))
+                roles[id_string(role["id"])] = role;
+    }
+    if (payload.is_object() && payload.contains("included") && payload["included"].is_array())
+    {
+        for (const auto &role : payload["included"])
+            if (role.is_object() && role.value("type", "") == "roles" && role.contains("id"))
+                roles[id_string(role["id"])] = role;
+    }
+
+    int count = 0;
+    for (const auto &person : *people)
+    {
+        if (!person.is_object())
+        {
+            error = "person-invalid";
+            return std::nullopt;
+        }
+        const nlohmann::json *person_roles = nullptr;
+        if (person.contains("links") && person["links"].is_object() &&
+            person["links"].contains("roles") && person["links"]["roles"].is_array())
+            person_roles = &person["links"]["roles"];
+        else if (person.contains("relationships") && person["relationships"].is_object() &&
+                 person["relationships"].contains("roles") &&
+                 person["relationships"]["roles"].is_object() &&
+                 person["relationships"]["roles"].contains("data") &&
+                 person["relationships"]["roles"]["data"].is_array())
+            person_roles = &person["relationships"]["roles"]["data"];
+        else if (person.contains("roles") && person["roles"].is_array())
+            person_roles = &person["roles"];
+
+        if (!person_roles)
+        {
+            error = "person-roles-missing";
+            return std::nullopt;
+        }
+        bool participant = person_roles->empty();
+        for (const auto &reference : *person_roles)
+        {
+            const auto id = reference.is_object() && reference.contains("id")
+                                ? id_string(reference["id"]) : id_string(reference);
+            auto it = roles.find(id);
+            const auto *role = it != roles.end() ? &it->second :
+                               reference.is_object() ? &reference : nullptr;
+            if (!role)
+            {
+                error = "role-details-missing";
+                return std::nullopt;
+            }
+            const bool json_api_role = role->contains("attributes") && (*role)["attributes"].is_object();
+            const auto &attrs = json_api_role ? (*role)["attributes"] : *role;
+            if (!attrs.contains("role_class") && !attrs.contains("role_type") &&
+                !(json_api_role && attrs.contains("type")))
+            {
+                error = "role-details-missing";
+                return std::nullopt;
+            }
+            if (attrs.contains("group_id") && id_string(attrs["group_id"]) != group_id)
+                continue;
+            if (role->contains("links") && (*role)["links"].is_object() &&
+                (*role)["links"].contains("group") &&
+                id_string((*role)["links"]["group"]) != group_id)
+                continue;
+            if (role->contains("relationships") && (*role)["relationships"].is_object() &&
+                (*role)["relationships"].contains("group"))
+            {
+                const auto &group = (*role)["relationships"]["group"];
+                if (group.is_object() && group.contains("data") && group["data"].is_object() &&
+                    group["data"].contains("id") && id_string(group["data"]["id"]) != group_id)
+                    continue;
+            }
+
+            std::string role_class = attrs.value("role_class", json_api_role ? attrs.value("type", "") : "");
+            auto separator = role_class.rfind("::");
+            std::string name = separator == std::string::npos ? role_class : role_class.substr(separator + 2);
+            static const std::string child_roles[] = {
+                "Biber", "Wolf", "Leitwolf", "Pfadi", "Leitpfadi", "Pio", "Rover", "Teilnehmer"};
+            const auto label = attrs.value("role_type", "");
+            if (std::find(std::begin(child_roles), std::end(child_roles), name) != std::end(child_roles) ||
+                (role_class.empty() && (label == "Teilnehmer" || label == "Teilnehmer/-in")))
+                participant = true;
+        }
+        if (participant)
+            ++count;
+    }
+    return count;
+}
+
 std::optional<int> fetch_midata_children_count_cached(Database &db,
                                                       const std::string &group_id,
                                                       std::string &error)
 {
+    error.clear();
     bool configured = false;
     auto cached = get_cached_midata_children_count(group_id, error, configured);
     if (cached || configured || !error.empty())

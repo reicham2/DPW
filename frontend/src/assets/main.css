@@ -1162,6 +1162,16 @@ video {
 	border-bottom: 1px solid var(--border);
 }
 
+.detail-stats-row--estimate .detail-label {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.detail-stats-row--estimate .detail-value {
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+
 .detail-stats-row--weather-input {
 	align-items: stretch;
 	flex-direction: column;

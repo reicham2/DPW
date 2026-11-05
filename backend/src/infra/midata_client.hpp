@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <optional>
+#include "json.hpp"
 
 class Database;
 
@@ -8,3 +9,7 @@ std::optional<int> fetch_midata_children_count_cached(Database &db,
                                                       const std::string &group_id,
                                                       std::string &error);
 void clear_cached_midata_children_counts();
+
+std::optional<int> count_midata_children(const nlohmann::json &payload,
+                                         const std::string &group_id,
+                                         std::string &error);
