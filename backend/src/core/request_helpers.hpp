@@ -1,9 +1,11 @@
 #pragma once
 #include <string>
 #include <optional>
+#include <vector>
 #include "core/http.hpp"
 #include "infra/auth.hpp"
 #include "core/models/user.hpp"
+#include "core/models/admin.hpp"
 #include "json.hpp"
 
 class Database;
@@ -14,6 +16,15 @@ std::string auth_token_from_header(HttpRes *res, const std::string &auth_header)
 TokenClaims validate_token(const std::string &token);
 std::optional<UserRecord> resolve_user(Database &db, const TokenClaims &claims);
 void send_internal_error(HttpRes *res, const char *context, const std::exception &e);
+
+struct ActivityAccess
+{
+    UserRecord user;
+    RolePermission permission;
+    std::vector<RoleDeptAccess> dept_access;
+};
+
+std::optional<ActivityAccess> require_activity_access(HttpRes *res, Database &db, const TokenClaims &claims);
 
 struct MaintenanceState
 {

@@ -132,15 +132,19 @@ describe('useSetupAuthConfig', () => {
 		);
 	});
 
-	it('uses safe defaults when loading setup status fails', async () => {
-		vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
-			new Error('network down'),
-		);
+	it('fails closed without caching a failed setup status and can recover', async () => {
+		const fetchSpy = vi.spyOn(globalThis, 'fetch')
+			.mockRejectedValueOnce(new Error('network down'))
+			.mockResolvedValueOnce(jsonResponse({
+				configured: true,
+				tenant_id: 'tenant',
+				client_id: 'client',
+			}));
 
 		const result = await ensureSetupStatus(true);
 
 		expect(result).toBe(true);
-		expect(setupRequired.value).toBe(true);
+		expect(setupRequired.value).toBeNull();
 		expect(setupError.value).toBe('network down');
 		expect(setupFieldConfigured.value).toEqual({
 			tenant_id: false,
@@ -149,6 +153,50 @@ describe('useSetupAuthConfig', () => {
 			contact_email: false,
 		});
 		expect(setupLoading.value).toBe(false);
+		expect(await ensureSetupStatus()).toBe(false);
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		expect(setupError.value).toBeNull();
+	});
+
+	it('shares a pending status request between concurrent callers', async () => {
+		let resolveFetch!: (response: Response) => void;
+		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(
+			new Promise<Response>((resolve) => { resolveFetch = resolve; }),
+		);
+
+		const first = ensureSetupStatus();
+		const second = ensureSetupStatus(true);
+		expect(setupLoading.value).toBe(true);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+		resolveFetch(jsonResponse({ configured: false }));
+		expect(await Promise.all([first, second])).toEqual([true, true]);
+		expect(setupLoading.value).toBe(false);
+	});
+
+	it('rejects malformed or incomplete configured status responses', async () => {
+		vi.spyOn(globalThis, 'fetch')
+			.mockResolvedValueOnce(jsonResponse({}))
+			.mockResolvedValueOnce(jsonResponse({ configured: true, client_id: 'client' }))
+			.mockResolvedValueOnce(jsonResponse({ configured: false, tenant_id: 123 }));
+
+		expect(await ensureSetupStatus()).toBe(true);
+		expect(setupRequired.value).toBeNull();
+		expect(setupError.value).toBe('Ungültige Setup-Antwort des Servers.');
+		expect(await ensureSetupStatus()).toBe(true);
+		expect(await ensureSetupStatus()).toBe(true);
+		expect(setupRequired.value).toBeNull();
+		expect(setRuntimeAuthConfigMock).not.toHaveBeenCalled();
+	});
+
+	it('shows an explicit error for a setup failure with an empty response body', async () => {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+			new Response('', { status: 502 }),
+		);
+
+		expect(await ensureSetupStatus()).toBe(true);
+		expect(setupRequired.value).toBeNull();
+		expect(setupError.value).toBe('Setup-Status konnte nicht geladen werden (HTTP 502).');
 	});
 
 	it('submitSetupConfig posts setup form and finalizes setup state', async () => {

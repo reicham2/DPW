@@ -109,6 +109,26 @@ namespace
 
         return false;
     }
+
+    std::optional<UserRecord> require_share_access(HttpRes *res, Database &db,
+                                                   const TokenClaims &claims, const std::string &activity_id)
+    {
+        auto access = require_activity_access(res, db, claims);
+        if (!access)
+            return std::nullopt;
+        auto activity = db.get_activity_by_id(activity_id);
+        if (!activity)
+        {
+            send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+            return std::nullopt;
+        }
+        if (!can_read_activity(access->permission, access->user, access->dept_access, *activity))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return std::nullopt;
+        }
+        return std::move(access->user);
+    }
 }
 
 void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db)
@@ -119,6 +139,10 @@ void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db)
     std::string activity_id{req->getParameter(0)};
     try
     {
+        auto current_user = require_share_access(res, db, claims, activity_id);
+        if (!current_user)
+            return;
+
         auto base_url = configured_public_base_url(db);
         if (!base_url)
         {
@@ -126,25 +150,6 @@ void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db)
             return;
         }
 
-        auto current_user = resolve_user_local(db, claims);
-        if (!current_user)
-        {
-            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-            return;
-        }
-        auto activity = db.get_activity_by_id(activity_id);
-        if (!activity)
-        {
-            send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
-            return;
-        }
-        auto perm = db.get_role_permission(current_user->role);
-        auto dept_access = db.list_role_dept_access(current_user->role);
-        if (!perm || !can_read_activity(*perm, *current_user, dept_access, *activity))
-        {
-            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-            return;
-        }
         auto link = db.create_share_link(activity_id, current_user->id);
         if (!link)
         {
@@ -173,6 +178,9 @@ void handle_get_share_link(HttpRes *res, HttpReq *req, Database &db)
     std::string activity_id{req->getParameter(0)};
     try
     {
+        if (!require_share_access(res, db, claims, activity_id))
+            return;
+
         auto base_url = configured_public_base_url(db);
         if (!base_url)
         {
@@ -208,12 +216,8 @@ void handle_delete_share_link(HttpRes *res, HttpReq *req, Database &db)
     std::string activity_id{req->getParameter(0)};
     try
     {
-        auto current_user = resolve_user_local(db, claims);
-        if (!current_user)
-        {
-            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        if (!require_share_access(res, db, claims, activity_id))
             return;
-        }
         bool ok = db.delete_share_link(activity_id);
         if (!ok)
         {

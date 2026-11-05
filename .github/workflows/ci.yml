@@ -250,11 +250,19 @@ jobs:
       - name: API - Seed database
         run: docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities < db/seed.sql
 
+      - name: API - Add authorization fixtures
+        run: docker compose -f docker-compose-dev.yml exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < scripts/api-auth-fixtures.sql
+
       - name: API - Run integration tests
         run: |
           docker run --rm --network host -v "$PWD:/etc/newman" postman/newman:alpine \
             run /etc/newman/scripts/api-tests.postman_collection.json \
             --env-var baseUrl=http://127.0.0.1:8000/api --reporters cli
+
+      - name: API - Run WebSocket authorization tests
+        run: |
+          docker run --rm --network host -v "$PWD:/tests:ro" -w /tests node:22-alpine \
+            node --test scripts/api-websocket-tests.mjs
 
       - name: Smoke - Verify snapshot rollback on sync failure
         run: |

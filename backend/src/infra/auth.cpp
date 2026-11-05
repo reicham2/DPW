@@ -1,13 +1,17 @@
 #include "infra/auth.hpp"
+#include "infra/jwks_cache.hpp"
 #include "json.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include <mutex>
 #include <ctime>
 #include <cstdlib>
+#include <limits>
+#include <memory>
 #include <string_view>
+#include <utility>
 
 #include <openssl/evp.h>
 #include <openssl/core_names.h>
@@ -59,10 +63,15 @@ static std::string fetch_url(const std::string& url) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
 
     CURLcode rc = curl_easy_perform(curl);
+    long http_status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
     curl_easy_cleanup(curl);
 
+    if (rc == CURLE_HTTP_RETURNED_ERROR)
+        throw std::runtime_error("JWKS fetch failed: HTTP " + std::to_string(http_status));
     if (rc != CURLE_OK)
         throw std::runtime_error(std::string("JWKS fetch failed: ") + curl_easy_strerror(rc));
     return response;
@@ -70,21 +79,57 @@ static std::string fetch_url(const std::string& url) {
 
 // ---- JWKS in-memory cache (1 hour TTL) --------------------------------------
 
-static std::mutex  g_jwks_mutex;
-static std::string g_jwks_cache;
-static time_t      g_jwks_fetched_at = 0;
-static const int   JWKS_TTL          = 3600;
+static bool is_rsa_signing_key(const nlohmann::json& key) {
+    if (!key.is_object()) return false;
+    const auto has_string = [&key](const char* name) {
+        auto it = key.find(name);
+        return it != key.end() && it->is_string() && !it->get_ref<const std::string&>().empty();
+    };
+    return has_string("kty") && key["kty"] == "RSA" &&
+           has_string("kid") && has_string("n") && has_string("e");
+}
+
+std::string JwksCache::get(const std::string& tenant_id,
+                           const std::function<std::string()>& fetch) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto now = std::chrono::steady_clock::now();
+    if (document_.empty() || tenant_id_ != tenant_id ||
+        fetched_at_ == std::chrono::steady_clock::time_point{} ||
+        now - fetched_at_ >= std::chrono::hours(1)) {
+        std::string response = fetch();
+        auto jwks = nlohmann::json::parse(response);
+        if (!jwks.is_object() || !jwks.contains("keys") ||
+            !jwks["keys"].is_array() ||
+            !std::any_of(jwks["keys"].begin(), jwks["keys"].end(), is_rsa_signing_key))
+            throw std::runtime_error("JWKS response contains no signing keys");
+        document_ = std::move(response);
+        tenant_id_ = tenant_id;
+        fetched_at_ = std::chrono::steady_clock::now();
+    }
+    return document_;
+}
+
+void JwksCache::invalidate(const std::string& tenant_id, const std::string& previous_document) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (tenant_id_ == tenant_id && document_ == previous_document)
+        fetched_at_ = {};
+}
+
+static JwksCache g_jwks_cache;
 
 static std::string get_jwks(const std::string& tenant_id) {
-    std::lock_guard<std::mutex> lock(g_jwks_mutex);
-    time_t now = time(nullptr);
-    if (g_jwks_cache.empty() || (now - g_jwks_fetched_at) > JWKS_TTL) {
-        std::string url = "https://login.microsoftonline.com/" + tenant_id
-                        + "/discovery/v2.0/keys";
-        g_jwks_cache      = fetch_url(url);
-        g_jwks_fetched_at = now;
+    return g_jwks_cache.get(tenant_id, [&tenant_id] {
+        const std::string url = "https://login.microsoftonline.com/" + tenant_id
+                              + "/discovery/v2.0/keys";
+        return fetch_url(url);
+    });
+}
+
+static nlohmann::json find_jwks_key(const nlohmann::json& jwks, const std::string& kid) {
+    for (const auto& key : jwks.at("keys")) {
+        if (is_rsa_signing_key(key) && key["kid"] == kid) return key;
     }
-    return g_jwks_cache;
+    return nullptr;
 }
 
 // ---- RSA public key from JWK ------------------------------------------------
@@ -145,6 +190,18 @@ std::string extract_bearer_token(std::string_view auth_header) {
     return std::string(auth_header.substr(prefix.size()));
 }
 
+static long long jwt_numeric_date(const nlohmann::json& value, const char* claim) {
+    if (!value.is_number_integer())
+        throw std::runtime_error(std::string("JWT invalid ") + claim + " claim");
+    if (value.is_number_unsigned()) {
+        auto number = value.get<unsigned long long>();
+        if (number > static_cast<unsigned long long>(std::numeric_limits<long long>::max()))
+            throw std::runtime_error(std::string("JWT invalid ") + claim + " claim");
+        return static_cast<long long>(number);
+    }
+    return value.get<long long>();
+}
+
 TokenClaims validate_microsoft_token(const std::string& jwt_token) {
     // 1. Split JWT into header.payload.signature
     auto dot1 = jwt_token.find('.');
@@ -185,8 +242,15 @@ TokenClaims validate_microsoft_token(const std::string& jwt_token) {
 
     // 5. Validate standard claims
     time_t now = time(nullptr);
-    if (payload.contains("exp") && payload["exp"].get<long long>() < static_cast<long long>(now))
+    if (!payload.contains("exp"))
+        throw std::runtime_error("JWT missing exp claim");
+    if (jwt_numeric_date(payload["exp"], "exp") <= static_cast<long long>(now))
         throw std::runtime_error("JWT expired");
+
+    constexpr long long clock_skew_seconds = 300;
+    if (payload.contains("nbf") &&
+        jwt_numeric_date(payload["nbf"], "nbf") > static_cast<long long>(now) + clock_skew_seconds)
+        throw std::runtime_error("JWT not yet valid");
 
     std::string expected_iss = "https://login.microsoftonline.com/" + tenant_id + "/v2.0";
     if (payload.value("iss", "") != expected_iss)
@@ -211,34 +275,22 @@ TokenClaims validate_microsoft_token(const std::string& jwt_token) {
     std::string jwks_str = get_jwks(tenant_id);
     auto jwks = nlohmann::json::parse(jwks_str);
 
-    nlohmann::json matching_key;
-    if (jwks.contains("keys")) {
-        for (auto& key : jwks["keys"]) {
-            if (key.value("kid", "") == kid) { matching_key = key; break; }
-        }
-    }
+    nlohmann::json matching_key = find_jwks_key(jwks, kid);
     if (matching_key.is_null()) {
         // Kid not found — invalidate cache and retry once
-        {
-            std::lock_guard<std::mutex> lock(g_jwks_mutex);
-            g_jwks_fetched_at = 0;
-        }
+        g_jwks_cache.invalidate(tenant_id, jwks_str);
         jwks_str = get_jwks(tenant_id);
         jwks = nlohmann::json::parse(jwks_str);
-        if (jwks.contains("keys")) {
-            for (auto& key : jwks["keys"]) {
-                if (key.value("kid", "") == kid) { matching_key = key; break; }
-            }
-        }
+        matching_key = find_jwks_key(jwks, kid);
         if (matching_key.is_null())
             throw std::runtime_error("JWT kid not found in JWKS: " + kid);
     }
 
     // 7. Verify signature
-    EVP_PKEY* pkey      = jwk_to_evp_pkey(matching_key);
+    std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> pkey(
+        jwk_to_evp_pkey(matching_key), EVP_PKEY_free);
     auto      sig_bytes = base64url_decode(sig_b64);
-    bool      valid     = verify_rs256(pkey, signed_part, sig_bytes);
-    EVP_PKEY_free(pkey);
+    bool      valid     = verify_rs256(pkey.get(), signed_part, sig_bytes);
 
     if (!valid) throw std::runtime_error("JWT signature verification failed");
 

@@ -124,7 +124,11 @@ const initials = computed(() => {
 
 async function handleLogout() {
 	open.value = false;
-	await logout();
+	try {
+		await logout();
+	} catch {
+		// loginError is displayed on the main page.
+	}
 }
 
 async function openNotification(id: string, link: string | null) {

@@ -127,7 +127,7 @@ import { user, authLoading, loginError, initAuth, login, isDebug, debugLogin } f
 import { usePermissions } from './composables/usePermissions'
 import { statsDisplayMode } from './composables/useUserPrefs'
 import { useMidataCounts } from './composables/useMidataCounts'
-import { useWebSocket } from './composables/useWebSocket'
+import { useWebSocket, wsDisconnect, wsRegister } from './composables/useWebSocket'
 import { useApiConnectionStatus } from './composables/useApi'
 import { config } from './config'
 import { ensureSetupStatus, setupLoading } from './composables/useSetupAuthConfig'
@@ -235,13 +235,13 @@ async function fetchDebugUsers() {
 
 async function handleLogin() {
   loggingIn.value = true
-  try { await login() } finally { loggingIn.value = false }
+  try { await login() } catch { /* loginError is displayed above. */ } finally { loggingIn.value = false }
 }
 
 async function handleDebugLogin() {
   if (!debugSelectedUser.value) return
   loggingIn.value = true
-  try { await debugLogin(debugSelectedUser.value) } finally { loggingIn.value = false }
+  try { await debugLogin(debugSelectedUser.value) } catch { /* loginError is displayed above. */ } finally { loggingIn.value = false }
 }
 
 async function enforceMaintenanceRedirect() {
@@ -252,9 +252,11 @@ async function enforceMaintenanceRedirect() {
 }
 
 onMounted(() => {
-  ensureSetupStatus().finally(() => {
-    initAuth()
-  })
+  void (async () => {
+    const needsSetup = await ensureSetupStatus()
+    if (needsSetup) authLoading.value = false
+    else await initAuth()
+  })()
   if (isDebug) fetchDebugUsers()
   startMaintenancePoll(30_000)
   maintenanceRedirectTimer = setInterval(() => {
@@ -275,6 +277,7 @@ onUnmounted(() => {
 watch(user, (u) => {
   resetMyPermissions()
   if (u) {
+    wsRegister(u.display_name, u.microsoft_oid)
     fetchMyPermissions().catch(() => {})
     if (config.MIDATA_ENABLED) {
       startMidataAutoRefresh(config.MIDATA_WEATHER_REFRESH_INTERVAL, 5000)
@@ -283,6 +286,7 @@ watch(user, (u) => {
       resetMidataCounts()
     }
   } else {
+    wsDisconnect()
     stopMidataAutoRefresh()
     resetMidataCounts()
   }

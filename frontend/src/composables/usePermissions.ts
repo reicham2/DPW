@@ -20,6 +20,7 @@ const myPermissions = ref<MyPermissions | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 let myPermissionsRequest: Promise<MyPermissions | null> | null = null;
+let myPermissionsVersion = 0;
 
 // ── Live updates via WebSocket ──────────────────────────────────────────────
 
@@ -166,6 +167,7 @@ async function updateRoleDeptAccess(access: RoleDeptAccess) {
 // ── Current user permissions ────────────────────────────────────────────────
 
 function resetMyPermissions() {
+	myPermissionsVersion++;
 	myPermissions.value = null;
 	myPermissionsRequest = null;
 }
@@ -174,18 +176,21 @@ async function fetchMyPermissions(force = false) {
 	if (!force && myPermissions.value) return myPermissions.value;
 	if (!force && myPermissionsRequest) return myPermissionsRequest;
 
-	myPermissionsRequest = (async () => {
+	const version = ++myPermissionsVersion;
+	const request = (async () => {
 		const res = await apiFetch('/api/my-permissions');
 		if (!res.ok) throw new Error(await res.text());
 		const data = await res.json();
+		if (version !== myPermissionsVersion) return null;
 		myPermissions.value = data.role ? data : null;
 		return myPermissions.value;
 	})();
+	myPermissionsRequest = request;
 
 	try {
-		return await myPermissionsRequest;
+		return await request;
 	} finally {
-		myPermissionsRequest = null;
+		if (myPermissionsRequest === request) myPermissionsRequest = null;
 	}
 }
 

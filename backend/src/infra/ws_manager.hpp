@@ -6,6 +6,13 @@
 #include "App.h"
 
 class Database;
+struct Activity;
+
+enum class TemplateKind
+{
+    Mail,
+    Event
+};
 
 struct WsUserData
 {
@@ -36,10 +43,16 @@ public:
     void on_close(WsHandle ws);
     void on_message(WsHandle ws, std::string_view message);
     void broadcast(const std::string &message);
+    void broadcast_activity_created(const Activity &activity);
+    void broadcast_activity_updated(const Activity &previous, const Activity &current);
+    void broadcast_activity_deleted(const Activity &activity);
+    void broadcast_template_update(TemplateKind kind, const std::string &department, const std::string &message);
     void send_to_user_ids(const std::vector<std::string> &user_ids, const std::string &message);
     size_t connection_count() const { return clients_.size(); }
 
 private:
+    bool can_access_room(WsHandle ws, const std::string &room, bool write) const;
+    void broadcast_activity_change(const Activity *previous, const Activity *current);
     void handle_register(WsHandle ws, const std::string &token);
     void handle_join(WsHandle ws, const std::string &activity_id);
     void handle_leave(WsHandle ws);

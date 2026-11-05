@@ -421,8 +421,7 @@ void handle_post_admin_activity_restore(HttpRes *res, HttpReq *req, Database &db
             return;
         }
 
-        nlohmann::json msg = {{"event", "created"}, {"activity", to_json(*activity)}};
-        wm.broadcast(msg.dump());
+        wm.broadcast_activity_created(*activity);
         cache_bump_version(db, "activities");
         cache_bump_version(db, "activity");
         send_json(res, 200, to_json(*activity).dump());

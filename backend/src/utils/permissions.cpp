@@ -29,6 +29,15 @@ bool can_create_dept(const RolePermission &perm, const UserRecord &user,
     return has_dept_access(dept_access, dept, true);
 }
 
+bool can_create_activity(const RolePermission &perm, const UserRecord &user,
+                         const std::vector<RoleDeptAccess> &dept_access,
+                         const std::optional<std::string> &department)
+{
+    if (!department || department->empty())
+        return is_admin(user) || perm.activity_create_scope == "all";
+    return can_create_dept(perm, user, dept_access, *department);
+}
+
 bool can_read_dept(const RolePermission &perm, const UserRecord &user,
                    const std::vector<RoleDeptAccess> &dept_access,
                    const std::string &dept)
@@ -40,6 +49,13 @@ bool can_read_dept(const RolePermission &perm, const UserRecord &user,
     if (perm.activity_read_scope == "same_dept" && user.department && *user.department == dept)
         return true;
     return has_dept_access(dept_access, dept, false);
+}
+
+bool can_manage_department_scope(const UserRecord &user, const std::string &scope,
+                                 const std::string &department)
+{
+    return is_admin(user) || scope == "all" ||
+           (scope == "own_dept" && user.department && *user.department == department);
 }
 
 bool is_activity_responsible(const Activity &activity, const UserRecord &user,
