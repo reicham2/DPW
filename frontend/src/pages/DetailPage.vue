@@ -20,6 +20,7 @@ import DepartmentBadge from '../components/DepartmentBadge.vue';
 import BadgeSelect from '../components/BadgeSelect.vue';
 import ResponsibleAvatars from '../components/ResponsibleAvatars.vue';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
+import { replaceTemplateVarsPlain } from '../utils/templateVars';
 import { addMinutesToClock, formatDuration } from '../utils/time';
 import { defaultRichTextToolbarState, readRichTextToolbarState } from '../utils/richTextToolbar';
 import type { RichTextToolbarState } from '../utils/richTextToolbar';
@@ -709,8 +710,6 @@ function evtFormatPrograms(act: Activity): string {
 }
 
 function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): string {
-	// Handle {{formular_link}} and {{formular_link|Text}} → plain URL (strip custom label)
-	text = text.replace(/\{\{formular_link(?:\|[^}]*)?\}\}/gi, formUrl);
 	const vars: Record<string, string> = {
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
@@ -718,10 +717,7 @@ function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): stri
 		ziel: act.goal, roter_faden: act.guiding_thread ?? '', tn_material: act.tn_material.join(', ') || '',
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
-	return text.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
-		const lk = key.toLowerCase();
-		return lk in vars ? vars[lk] : m;
-	});
+	return replaceTemplateVarsPlain(text, vars, formUrl);
 }
 
 function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): string {

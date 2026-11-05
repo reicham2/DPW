@@ -14,6 +14,7 @@ import { useAutosave } from '../composables/useAutosave';
 import { config } from '../config';
 import { useUserResolver } from '../composables/useUserResolver';
 import { replaceGuidingThreadPlaceholder } from '../utils/templateText';
+import { replaceTemplateVarsPlain } from '../utils/templateVars';
 
 const route = useRoute()
 const router = useRouter()
@@ -239,10 +240,6 @@ function formatPrograms(act: Activity): string {
 
 function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: boolean } = {}): string {
 	const htmlLists = opts.htmlLists ?? true
-  // Use a temporary DOM element to do replacements while preserving formatting.
-  // Walking text nodes means <font face="Arial">{{titel}}</font> keeps its font.
-  const container = document.createElement('div')
-  container.innerHTML = text
   const senderEmail = user.value?.email ?? ''
   const senderName = user.value?.display_name ?? ''
   const vars: Record<string, string> = {
@@ -262,6 +259,10 @@ function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: bo
     absender_email: senderEmail,
     absender_name: senderName,
   }
+	if (!htmlLists) return replaceTemplateVarsPlain(text, vars, formUrl.value || '#')
+  // Walking text nodes preserves the body template's formatting.
+  const container = document.createElement('div')
+  container.innerHTML = text
 	const replaceSimpleVars = (input: string) =>
 		input.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
 			const lk = key.toLowerCase()

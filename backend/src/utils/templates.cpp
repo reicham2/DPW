@@ -78,6 +78,7 @@ std::string replace_template_vars(const std::string &text, const Activity &act,
         vars["programm"] = p.empty() ? "\xe2\x80\x94" : p;
     }
 
+    const std::string guiding_thread_text = act.guiding_thread.value_or("");
     const auto replace_other_vars = [&vars](std::string segment)
     {
         for (const auto &[key, val] : vars)
@@ -99,8 +100,19 @@ std::string replace_template_vars(const std::string &text, const Activity &act,
     std::string result;
     size_t cursor = 0;
     size_t pos;
-    while ((pos = text.find(placeholder, cursor)) != std::string::npos)
+    while (true)
     {
+        pos = text.find(placeholder, cursor);
+        const size_t story_pos = guiding_thread_text.empty() ? std::string::npos : text.find(guiding_thread_text, cursor);
+        if (story_pos != std::string::npos && (pos == std::string::npos || story_pos < pos))
+        {
+            result += replace_other_vars(text.substr(cursor, story_pos - cursor));
+            result += guiding_thread_text;
+            cursor = story_pos + guiding_thread_text.size();
+            continue;
+        }
+        if (pos == std::string::npos)
+            break;
         result += replace_other_vars(text.substr(cursor, pos - cursor));
         result += guiding_thread;
         cursor = pos + placeholder.size();

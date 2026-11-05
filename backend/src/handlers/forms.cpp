@@ -206,6 +206,9 @@ void handle_post_activity_form(HttpRes *res, HttpReq *req, Database &db)
         if (title.empty()) { send_json(res, 400, R"({"error":"Titel erforderlich"})"); return; }
         auto questions = parse_questions(j.value("questions", nlohmann::json::array()));
         try {
+            auto act = db.get_activity_by_id(activity_id);
+            if (!act) { send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})"); return; }
+            title = replace_template_vars(title, *act, db.list_users());
             auto form = db.create_form(activity_id, form_type, title, user_id, questions);
             if (!form) { send_json(res, 500, R"({"error":"Datenbankfehler"})"); return; }
             send_json(res, 201, signup_form_to_json(*form).dump());

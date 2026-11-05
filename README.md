@@ -119,6 +119,26 @@ Zusätzlich fuer oeffentliche Links (z. B. in Benachrichtigungen/Mails):
 
 - `DPW_PUBLIC_URL` (z. B. `https://dpw.example.org`)
 
+## Vorlagenvariablen
+
+Die vorhandenen Variablen (z. B. `{{titel}}`, `{{datum_kurz}}`, `{{ort}}`
+und `{{abteilung}}`) funktionieren auch im Mail-Betreff, im Formular-Titel
+und im Event-Titel.
+
+- Mail-Betreff und Event-Titel werden beim Laden der Vorlage als Klartext
+  aufgeloest; `{{formular_link}}` und `{{formular_link|Anmelden}}` ergeben
+  dort die Formular-URL statt HTML. Die Vorschau kann vor dem Versand bzw.
+  Publizieren bearbeitet werden.
+- Der Name einer Formularvorlage wird beim Erstellen als Formular-Titel
+  uebernommen. Ein selbst eingegebener Titel bleibt beim Vorlagenwechsel
+  erhalten. In Vorlagen und Entwuerfen bleiben die Variablen stehen.
+  Beim Erstellen wird der Titel mit den aktuellen Aktivitaetsdaten
+  aufgeloest und gespeichert, sodass auch Verwaltung und Editor sofort
+  den fertigen Titel anzeigen. Variablen in den Fragen werden weiterhin
+  erst im oeffentlichen Formular ersetzt.
+- Unbekannte Variablen bleiben unveraendert. Rich-Text-Inhalte behalten
+  ihre bisherige Formatierung und Linkdarstellung.
+
 ## Role Permissions
 
 Jede Rolle hat folgende Berechtigungen, jeweils mit einem Scope-Level (`none`, `own`, `own_dept`, `same_dept`, `all`):

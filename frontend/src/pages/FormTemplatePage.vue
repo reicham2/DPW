@@ -294,7 +294,7 @@ function typeLabel(t: string): string {
 				@cancel="closeBuilder"
 			/>
 			<div style="margin-top: 24px">
-				<TemplateVarsDropdown />
+				<TemplateVarsDropdown hint="Der Name wird als Formular-Titel übernommen und seine Variablen beim Erstellen ersetzt. Variablen in den Fragen werden im öffentlichen Formular ersetzt." />
 			</div>
 		</template>
 
