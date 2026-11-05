@@ -14,7 +14,7 @@
 class Database
 {
 public:
-    explicit Database(const std::string &conn_str);
+    explicit Database(const std::string &conn_str, bool sync_schema = true);
     ~Database();
 
     Database(const Database &) = delete;
@@ -30,6 +30,7 @@ public:
     bool restore_activity(const std::string &id);
     bool permanently_delete_activity(const std::string &id);
     int purge_deleted_activities_older_than_days(int days);
+    void purge_expired_activity_notifications();
     std::vector<DeletedActivityRecord> list_deleted_activities();
     std::optional<int> get_activity_midata_children_value(const std::string &activity_id);
     bool set_activity_midata_children_value(const std::string &activity_id, int value);
@@ -322,7 +323,6 @@ private:
     SentMail row_to_sent_mail(PGresult *res, int row);
     NotificationRecord row_to_notification(PGresult *res, int row);
     PushSubscriptionRecord row_to_push_subscription(PGresult *res, int row);
-    void purge_expired_activity_notifications();
     MailDraft row_to_mail_draft(PGresult *res, int row);
     FormDraft row_to_form_draft(PGresult *res, int row);
     DepartmentRecord row_to_department(PGresult *res, int row);

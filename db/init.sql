@@ -365,6 +365,16 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);
 
+-- Expiry is enforced on reads even between scheduled physical cleanup runs.
+CREATE OR REPLACE VIEW active_notifications AS
+SELECT n.* FROM notifications n
+WHERE NOT EXISTS (
+    SELECT 1 FROM activities a
+    WHERE n.payload ? 'activity_id'
+      AND (n.payload->>'activity_id') = a.id::text
+      AND NOW() >= ((a.date::timestamp) + INTERVAL '1 day')
+);
+
 -- Web push subscriptions (browser/app devices per user)
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
