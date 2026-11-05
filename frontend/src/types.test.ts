@@ -24,10 +24,12 @@ function makeActivity(): Activity {
 		start_time: '09:00',
 		end_time: '17:00',
 		goal: 'Spass haben',
+		guiding_thread: 'Eine gemeinsame Geschichte',
 		location: 'Wald',
 		responsible: ['user-1', 'user-2'],
 		department: 'Pfadi',
 		material: [{ name: 'Seil', responsible: ['user-1'] }],
+		tn_material: [],
 		siko_text: 'Alles sicher',
 		bad_weather_info: 'Drinnen',
 		planned_participants_estimate: 24,
@@ -55,6 +57,7 @@ describe('Type structures', () => {
 		expect(act).toHaveProperty('start_time');
 		expect(act).toHaveProperty('end_time');
 		expect(act).toHaveProperty('goal');
+		expect(act).toHaveProperty('guiding_thread');
 		expect(act).toHaveProperty('location');
 		expect(act).toHaveProperty('responsible');
 		expect(act).toHaveProperty('department');
@@ -90,10 +93,12 @@ describe('Type structures', () => {
 			location: 'Ort',
 			responsible: [],
 			material: [],
+			tn_material: [],
 			programs: [],
 		};
 		// Optional fields should be omittable
 		expect(input.department).toBeUndefined();
+		expect(input.guiding_thread).toBeUndefined();
 		expect(input.siko_text).toBeUndefined();
 		expect(input.bad_weather_info).toBeUndefined();
 	});
@@ -108,6 +113,7 @@ describe('Type structures', () => {
 			location: 'Ort',
 			responsible: [],
 			department: null,
+			guiding_thread: null,
 			siko_text: null,
 			bad_weather_info: null,
 			planned_participants_estimate: null,
@@ -116,6 +122,7 @@ describe('Type structures', () => {
 			programs: [],
 		};
 		expect(input.department).toBeNull();
+		expect(input.guiding_thread).toBeNull();
 		expect(input.siko_text).toBeNull();
 		expect(input.bad_weather_info).toBeNull();
 		expect(input.planned_participants_estimate).toBeNull();

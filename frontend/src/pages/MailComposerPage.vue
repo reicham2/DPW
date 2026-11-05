@@ -13,6 +13,7 @@ import type { Activity, SentMail } from '../types';
 import { useAutosave } from '../composables/useAutosave';
 import { config } from '../config';
 import { useUserResolver } from '../composables/useUserResolver';
+import { replaceGuidingThreadPlaceholder } from '../utils/templateText';
 
 const route = useRoute()
 const router = useRouter()
@@ -254,6 +255,7 @@ function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: bo
     verantwortlich: act.responsible.map(r => resolveResponsibleName(r)).join(', '),
     abteilung: act.department ?? '—',
     ziel: act.goal,
+    roter_faden: act.guiding_thread ?? '—',
 		tn_material: act.tn_material.join(', ') || '—',
     schlechtwetter: act.bad_weather_info ?? '—',
     programm: formatPrograms(act),
@@ -263,6 +265,7 @@ function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: bo
 	const replaceSimpleVars = (input: string) =>
 		input.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
 			const lk = key.toLowerCase()
+			if (htmlLists && lk === 'roter_faden') return m
 			return lk in vars ? vars[lk] : m
 		})
 
@@ -317,6 +320,7 @@ function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: bo
 		const replaced = replaceSimpleVars(original)
     if (replaced !== original) node.nodeValue = replaced
   }
+	if (htmlLists) replaceGuidingThreadPlaceholder(container, vars.roter_faden)
   return container.innerHTML
 }
 

@@ -2,6 +2,7 @@
 #include "utils/strings.hpp"
 #include "utils/activity_helpers.hpp"
 #include <map>
+#include <utility>
 
 // ── Template variable substitution ──────────────────────────────────────────
 
@@ -77,17 +78,34 @@ std::string replace_template_vars(const std::string &text, const Activity &act,
         vars["programm"] = p.empty() ? "\xe2\x80\x94" : p;
     }
 
-    std::string result = text;
-    for (auto &[key, val] : vars)
+    const auto replace_other_vars = [&vars](std::string segment)
     {
-        std::string placeholder = "{{" + key + "}}";
-        size_t pos = 0;
-        while ((pos = result.find(placeholder, pos)) != std::string::npos)
+        for (const auto &[key, val] : vars)
         {
-            result.replace(pos, placeholder.size(), val);
-            pos += val.size();
+            std::string placeholder = "{{" + key + "}}";
+            size_t pos = 0;
+            while ((pos = segment.find(placeholder, pos)) != std::string::npos)
+            {
+                segment.replace(pos, placeholder.size(), val);
+                pos += val.size();
+            }
         }
+        return segment;
+    };
+
+    // Keep placeholder-like text inside the story literal.
+    const std::string placeholder = "{{roter_faden}}";
+    const std::string guiding_thread = act.guiding_thread.value_or("\xe2\x80\x94");
+    std::string result;
+    size_t cursor = 0;
+    size_t pos;
+    while ((pos = text.find(placeholder, cursor)) != std::string::npos)
+    {
+        result += replace_other_vars(text.substr(cursor, pos - cursor));
+        result += guiding_thread;
+        cursor = pos + placeholder.size();
     }
+    result += replace_other_vars(text.substr(cursor));
     return result;
 }
 
@@ -108,6 +126,13 @@ ActivityInput parse_activity_input(const nlohmann::json &j)
     input.start_time = str_field(j, "start_time");
     input.end_time = str_field(j, "end_time");
     input.goal = str_field(j, "goal");
+    input.guiding_thread_present = j.contains("guiding_thread");
+    if (input.guiding_thread_present && j["guiding_thread"].is_string())
+    {
+        std::string guiding_thread = j["guiding_thread"].get<std::string>();
+        if (!guiding_thread.empty())
+            input.guiding_thread = std::move(guiding_thread);
+    }
     input.location = str_field(j, "location");
     if (j.contains("responsible") && j["responsible"].is_array())
     {

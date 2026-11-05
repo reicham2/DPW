@@ -35,6 +35,7 @@ struct Activity
     std::string start_time;
     std::string end_time;
     std::string goal;
+    std::optional<std::string> guiding_thread;
     std::string location;
     std::vector<std::string> responsible;
     std::optional<std::string> department;
@@ -55,6 +56,8 @@ struct ActivityInput
     std::string start_time;
     std::string end_time;
     std::string goal;
+    std::optional<std::string> guiding_thread;
+    bool guiding_thread_present{false}; // Older clients omit the field; preserve its stored value.
     std::string location;
     std::vector<std::string> responsible;
     std::optional<std::string> department;

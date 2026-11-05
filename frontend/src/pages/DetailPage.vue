@@ -13,7 +13,7 @@ import { useIdeaBox } from '../composables/useIdeaBox';
 import { useActivityExport } from '../composables/useActivityExport';
 import { useUserResolver } from '../composables/useUserResolver';
 import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText } from 'lucide-vue-next';
-import type { Activity, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
+import type { Activity, ActivityInput, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
@@ -23,6 +23,7 @@ import { sanitizeHtml } from '../utils/sanitizeHtml';
 import { addMinutesToClock, formatDuration } from '../utils/time';
 import { defaultRichTextToolbarState, readRichTextToolbarState } from '../utils/richTextToolbar';
 import type { RichTextToolbarState } from '../utils/richTextToolbar';
+import { replaceGuidingThreadPlaceholder } from '../utils/templateText';
 
 
 const route = useRoute();
@@ -43,6 +44,7 @@ const {
 	deleteAttachment,
 	getAttachmentBlobUrl,
 	error,
+	connected,
 	lastUpdatedActivity,
 	departments,
 	predefinedLocations,
@@ -231,6 +233,11 @@ let applyingRemote = false; // plain boolean — set while WS update patches edi
 // echoed back over WebSocket (which would otherwise reset focused editors).
 // Normalized to content fields only, since the echo carries extra id/activity_id.
 let lastSavedProgramsJson: string | null = null;
+const expectedGuidingThreadEchoes = new Set<{ value: string | null }>();
+
+watch(connected, (isConnected) => {
+	if (!isConnected) expectedGuidingThreadEchoes.clear();
+});
 
 function programsSignature(
 	progs: ReadonlyArray<{ duration_minutes: number; title: string; description: string; responsible: readonly string[] }>,
@@ -322,6 +329,7 @@ const editDate = ref('');
 const editStartTime = ref('');
 const editEndTime = ref('');
 const editGoal = ref('');
+const editGuidingThread = ref('');
 const editLocation = ref('');
 const editResponsible = ref<string[]>([]);
 const editDepartment = ref<Department | ''>('');
@@ -337,6 +345,7 @@ interface EditSnapshot {
 	startTime: string;
 	endTime: string;
 	goal: string;
+	guidingThread: string;
 	location: string;
 	responsible: string[];
 	department: Department | '';
@@ -359,6 +368,7 @@ const pendingLocalDraft = ref<LocalEditDraft | null>(null);
 const localDraftRestoredAt = ref<number | null>(null);
 const LOCAL_DRAFT_WRITE_DEBOUNCE_MS = 350;
 let localDraftWriteTimer: ReturnType<typeof setTimeout> | null = null;
+let detailUnmounted = false;
 
 function cloneSnapshotMaterial(material: MaterialItem[]): MaterialItem[] {
 	return material.map((m) => ({ name: m.name, responsible: m.responsible ? [...m.responsible] : [] }));
@@ -383,6 +393,7 @@ function applyEditSnapshot(snapshot: EditSnapshot) {
 	editStartTime.value = snapshot.startTime;
 	editEndTime.value = snapshot.endTime;
 	editGoal.value = snapshot.goal;
+	editGuidingThread.value = snapshot.guidingThread;
 	editLocation.value = snapshot.location;
 	editResponsible.value = [...snapshot.responsible];
 	editDepartment.value = snapshot.department;
@@ -400,6 +411,7 @@ function buildCurrentEditSnapshot(): EditSnapshot {
 		startTime: editStartTime.value,
 		endTime: editEndTime.value,
 		goal: editGoal.value,
+		guidingThread: editGuidingThread.value,
 		location: editLocation.value,
 		responsible: [...editResponsible.value],
 		department: editDepartment.value,
@@ -423,11 +435,13 @@ function readLocalDraft(): LocalEditDraft | null {
 		if (parsed.version !== 1) return null;
 		if (parsed.activityId !== id) return null;
 		if (!parsed.data || typeof parsed.savedAt !== 'number') return null;
+		const draftData: Partial<EditSnapshot> = parsed.data;
 		return {
 			...parsed,
 			data: {
-				...(parsed.data as EditSnapshot),
-				tnMaterial: Array.isArray((parsed.data as Partial<EditSnapshot>).tnMaterial) ? (parsed.data as Partial<EditSnapshot>).tnMaterial! : [],
+				...parsed.data,
+				tnMaterial: Array.isArray(draftData.tnMaterial) ? draftData.tnMaterial : [],
+				guidingThread: typeof draftData.guidingThread === 'string' ? draftData.guidingThread : editGuidingThread.value,
 			},
 		} as LocalEditDraft;
 	} catch {
@@ -447,8 +461,8 @@ function clearLocalDraft() {
 	}
 }
 
-function writeLocalDraftNow() {
-	if (mode.value !== 'edit') return;
+function writeLocalDraftNow(): boolean {
+	if (mode.value !== 'edit' || pendingLocalDraft.value) return false;
 	const draft: LocalEditDraft = {
 		version: 1,
 		activityId: id,
@@ -457,9 +471,15 @@ function writeLocalDraftNow() {
 	};
 	try {
 		window.localStorage.setItem(localDraftStorageKey(), JSON.stringify(draft));
+		return true;
 	} catch {
-		/* ignore unavailable storage */
+		return false;
 	}
+}
+
+function retainCurrentGuidingThreadDraft(): boolean {
+	if (mode.value === 'edit') return writeLocalDraftNow();
+	return readLocalDraft()?.data.guidingThread === editGuidingThread.value;
 }
 
 function scheduleLocalDraftWrite() {
@@ -476,8 +496,9 @@ function loadPendingLocalDraft() {
 		pendingLocalDraft.value = null;
 		return;
 	}
-	const currentSnapshot = JSON.stringify(buildCurrentEditSnapshot());
-	const draftSnapshot = JSON.stringify(draft.data);
+	const currentData = buildCurrentEditSnapshot();
+	const currentSnapshot = JSON.stringify(currentData);
+	const draftSnapshot = JSON.stringify({ ...currentData, ...draft.data });
 	if (currentSnapshot === draftSnapshot) {
 		clearLocalDraft();
 		pendingLocalDraft.value = null;
@@ -694,7 +715,7 @@ function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): stri
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
 		verantwortlich: act.responsible.map(r => resolveResponsibleName(r)).join(', '), abteilung: act.department ?? '',
-		ziel: act.goal, tn_material: act.tn_material.join(', ') || '',
+		ziel: act.goal, roter_faden: act.guiding_thread ?? '', tn_material: act.tn_material.join(', ') || '',
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
 	return text.replace(/\{\{(\w+)\}\}/gi, (m, key) => {
@@ -710,10 +731,11 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 		titel: act.title, datum: evtFormatDateLong(act.date), datum_kurz: evtFormatDateShort(act.date),
 		startzeit: act.start_time, endzeit: act.end_time, ort: act.location,
 		verantwortlich: act.responsible.map(r => resolveResponsibleName(r)).join(', '), abteilung: act.department ?? '',
-		ziel: act.goal, tn_material: act.tn_material.join(', ') || '',
+		ziel: act.goal, roter_faden: act.guiding_thread ?? '', tn_material: act.tn_material.join(', ') || '',
 		schlechtwetter: act.bad_weather_info ?? '', programm: evtFormatPrograms(act),
 	};
 	const replacer = (m: string, key: string) => { const lk = key.toLowerCase(); return lk in vars ? vars[lk] : m; };
+	const textReplacer = (m: string, key: string) => key.toLowerCase() === 'roter_faden' ? m : replacer(m, key);
 	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
 	const textNodes: Text[] = [];
 	while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
@@ -725,7 +747,7 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 			const parent = node.parentNode!;
 			for (let i = 0; i < parts.length; i++) {
 				if (i % 2 === 0) {
-					const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, replacer);
+					const partText = parts[i].replace(/\{\{(\w+)\}\}/gi, textReplacer);
 					if (partText) parent.insertBefore(document.createTextNode(partText), node);
 				} else {
 					const a = document.createElement('a');
@@ -737,9 +759,10 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 			parent.removeChild(node);
 			continue;
 		}
-		const replaced = original.replace(/\{\{(\w+)\}\}/gi, replacer);
+		const replaced = original.replace(/\{\{(\w+)\}\}/gi, textReplacer);
 		if (replaced !== original) node.nodeValue = replaced;
 	}
+	replaceGuidingThreadPlaceholder(container, vars.roter_faden);
 	// Handle {{formular_link}} in href attributes
 	for (const el of Array.from(container.querySelectorAll('[href]'))) {
 		const href = el.getAttribute('href') ?? '';
@@ -1571,7 +1594,9 @@ onUnmounted(() => {
 		expectedWeatherRequestController = null;
 	}
 	similarActivityEstimateRequestId += 1;
-	if (mode.value === 'edit') writeLocalDraftNow();
+	if (mode.value === 'edit' && !pendingLocalDraft.value) writeLocalDraftNow();
+	detailUnmounted = true;
+	expectedGuidingThreadEchoes.clear();
 	if (localDraftWriteTimer) {
 		clearTimeout(localDraftWriteTimer);
 		localDraftWriteTimer = null;
@@ -1606,6 +1631,7 @@ function syncEditFields(a: typeof activity.value) {
 	editStartTime.value = a.start_time;
 	editEndTime.value = a.end_time;
 	editGoal.value = a.goal;
+	editGuidingThread.value = a.guiding_thread ?? '';
 	editLocation.value = a.location;
 	editResponsible.value = [...a.responsible];
 	editDepartment.value = a.department ?? '';
@@ -1628,8 +1654,15 @@ function syncEditFields(a: typeof activity.value) {
 watch(lastUpdatedActivity, (updated) => {
 	if (!updated || updated.id !== id) return;
 
+	const ownGuidingThreadEcho = updated.guiding_thread === undefined
+		? undefined
+		: [...expectedGuidingThreadEchoes].find((echo) => echo.value === updated.guiding_thread);
+	if (ownGuidingThreadEcho) expectedGuidingThreadEchoes.delete(ownGuidingThreadEcho);
+
 	const prev = activity.value; // last known saved snapshot
-	activity.value = updated; // always advance source-of-truth
+	activity.value = prev && updated.guiding_thread === undefined
+		? { ...updated, guiding_thread: prev.guiding_thread }
+		: updated;
 
 	if (mode.value === 'edit' && prev) {
 		applyingRemote = true; // prevent the field watchers from triggering auto-save
@@ -1640,6 +1673,10 @@ watch(lastUpdatedActivity, (updated) => {
 		if (updated.end_time !== prev.end_time)
 			editEndTime.value = updated.end_time;
 		if (updated.goal !== prev.goal) editGoal.value = updated.goal;
+		if (updated.guiding_thread !== undefined && updated.guiding_thread !== prev.guiding_thread) {
+			if (!ownGuidingThreadEcho)
+				editGuidingThread.value = updated.guiding_thread ?? '';
+		}
 		if (updated.location !== prev.location)
 			editLocation.value = updated.location;
 		if (JSON.stringify(updated.responsible) !== JSON.stringify(prev.responsible))
@@ -1728,6 +1765,11 @@ function enterEdit() {
 		dirtyFields.clear();
 		savedFields.value = {};
 	});
+}
+
+function leaveEdit() {
+	void flushAutoSave({ skipFuzzyCheck: true });
+	mode.value = 'view';
 }
 
 async function cancelEdit() {
@@ -2546,6 +2588,7 @@ const autosaveDebounce = () => config.AUTOSAVE_DEBOUNCE;
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let autoSaveInterval: ReturnType<typeof setInterval> | null = null;
 let hasPendingChanges = false;
+let queuedActivityUpdate: Promise<boolean> | null = null;
 
 function scheduleAutoSave() {
 	if (mode.value !== 'edit') return;
@@ -2556,7 +2599,10 @@ function scheduleAutoSave() {
 	if (autosaveDebounce()) {
 		// Debounce: restart timer on every change, save after idle
 		if (autoSaveTimer) clearTimeout(autoSaveTimer);
-		autoSaveTimer = setTimeout(() => doSave({ skipFuzzyCheck: true }), autosaveInterval());
+		autoSaveTimer = setTimeout(() => {
+			autoSaveTimer = null;
+			void doSave({ skipFuzzyCheck: true });
+		}, autosaveInterval());
 	} else {
 		// Interval: just mark dirty, the interval will pick it up
 		hasPendingChanges = true;
@@ -2582,16 +2628,16 @@ function stopAutoSaveInterval() {
 	hasPendingChanges = false;
 }
 
-function flushAutoSave(): Promise<void> {
+function flushAutoSave(opts: { skipFuzzyCheck?: boolean } = {}): Promise<void> {
 	const saveTasks: Promise<void>[] = [];
 	if (autoSaveTimer) {
 		clearTimeout(autoSaveTimer);
 		autoSaveTimer = null;
-		saveTasks.push(doSave());
+		saveTasks.push(doSave(opts));
 	}
 	if (hasPendingChanges) {
 		hasPendingChanges = false;
-		saveTasks.push(doSave());
+		saveTasks.push(doSave(opts));
 	}
 	if (saveTasks.length === 0) {
 		return Promise.resolve();
@@ -2616,6 +2662,7 @@ watch(
 		editStartTime,
 		editEndTime,
 		editGoal,
+		editGuidingThread,
 		editLocation,
 		editResponsible,
 		editDepartment,
@@ -2640,6 +2687,7 @@ watch([editDepartment], () => markDirty('department'));
 watch([editTnMaterial], () => markDirty('tn_material'), { deep: true });
 watch([editSikoText], () => markDirty('siko_text'));
 watch([editGoal], () => markDirty('goal'));
+watch([editGuidingThread], () => markDirty('guiding_thread'));
 watch([editBadWeather], () => markDirty('bad_weather'));
 
 // ---- Fuzzy location overlap confirmation dialog ----------------------------
@@ -2672,28 +2720,58 @@ async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 	}
 	pendingFuzzyAcknowledged = false;
 
-	// Remember what we're sending so the echoed-back save is recognized as ours.
-	lastSavedProgramsJson = programsSignature(editPrograms.value);
-
-	await updateActivity(id, {
+	const guidingThreadText = editGuidingThread.value;
+	const guidingThread = guidingThreadText.trim() || null;
+	const input: ActivityInput = {
 		title: editTitle.value.trim(),
 		date: editDate.value,
 		start_time: editStartTime.value,
 		end_time: editEndTime.value,
 		goal: editGoal.value.trim(),
+		...(activity.value.guiding_thread !== undefined
+			? { guiding_thread: guidingThread }
+			: {}),
 		location: editLocation.value.trim(),
-		responsible: editResponsible.value,
+		responsible: [...editResponsible.value],
 		department: editDepartment.value || null,
-		material: editMaterial.value.filter((m) => m.name.trim()).map(m => ({ name: m.name.trim(), ...(m.responsible?.length ? { responsible: m.responsible } : {}) })),
+		material: editMaterial.value.filter((m) => m.name.trim()).map(m => ({ name: m.name.trim(), ...(m.responsible?.length ? { responsible: [...m.responsible] } : {}) })),
 		tn_material: editTnMaterial.value.map((value) => value.trim()).filter(Boolean),
 		siko_text: editSikoText.value.trim() || null,
 		bad_weather_info: editBadWeather.value.trim() || null,
-		programs: editPrograms.value,
-	});
+		programs: cloneSnapshotPrograms(editPrograms.value),
+	};
+	// Serialize writes so a slower request cannot overwrite a newer edit.
+	const previousUpdate = queuedActivityUpdate;
+	const update = (async () => {
+		if (previousUpdate) await previousUpdate;
+		lastSavedProgramsJson = programsSignature(input.programs);
+		const expectedEcho = !detailUnmounted && input.guiding_thread !== undefined && connected.value
+			? { value: input.guiding_thread }
+			: null;
+		if (expectedEcho) expectedGuidingThreadEchoes.add(expectedEcho);
+		const saved = await updateActivity(id, input);
+		if (!saved && expectedEcho) expectedGuidingThreadEchoes.delete(expectedEcho);
+		return saved;
+	})();
+	queuedActivityUpdate = update;
+	const saved = await update;
+	if (queuedActivityUpdate === update) queuedActivityUpdate = null;
 
-	if (!error.value) {
-		showSavedIndicator();
-		clearLocalDraft();
+	if (detailUnmounted) return;
+	if (saved) {
+		if (pendingLocalDraft.value) return;
+		if (editGuidingThread.value !== guidingThreadText) {
+			if (!retainCurrentGuidingThreadDraft()) {
+				error.value = 'Neuere Änderungen am roten Faden konnten nicht lokal gesichert werden. Bitte den Text kopieren, bis er gespeichert ist.';
+			}
+		} else if (activity.value.guiding_thread === undefined && editGuidingThread.value.trim()) {
+			if (!retainCurrentGuidingThreadDraft()) {
+				error.value = 'Die übrigen Änderungen wurden gespeichert, aber der rote Faden konnte nicht lokal gesichert werden. Bitte den Text kopieren und nach dem Backend-Update ergänzen.';
+			}
+		} else {
+			showSavedIndicator();
+			clearLocalDraft();
+		}
 		pendingLocalDraft.value = null;
 		localDraftRestoredAt.value = null;
 	}
@@ -2932,7 +3010,7 @@ function copyShareLink() {
 				:class="'btn-primary'"
 				:disabled="!canEdit"
 				:title="canEdit ? 'Aktivität bearbeiten' : 'Keine Berechtigung zum Bearbeiten'"
-				@click="mode === 'view' ? enterEdit() : (mode = 'view')"
+				@click="enterEdit"
 			>
 				<Pencil class="btn-icon" :size="16" aria-hidden="true" />
 				Bearbeiten
@@ -2940,7 +3018,7 @@ function copyShareLink() {
 			<button
 				v-else-if="activity && mode === 'edit'"
 				class="btn-toggle btn-mail"
-				@click="mode = 'view'"
+				@click="leaveEdit"
 			>
 				<Eye class="btn-icon" :size="16" aria-hidden="true" />
 				Ansicht
@@ -2968,6 +3046,7 @@ function copyShareLink() {
 
 		<!-- ================================================================ VIEW -->
 		<div v-else-if="mode === 'view'" class="detail-view">
+			<ErrorAlert v-if="error" :error="error" />
 			<div class="detail-view-layout">
 				<div class="detail-view-main">
 					<!-- Hero: Titel + Datum + Stufe -->
@@ -3030,6 +3109,11 @@ function copyShareLink() {
 								</span>
 							</div>
 						</div>
+					</div>
+
+					<div class="detail-section">
+						<p class="detail-section-title">Roter Faden</p>
+						<p class="detail-value detail-value--multiline">{{ activity.guiding_thread || '—' }}</p>
 					</div>
 
 					<!-- Programmpunkte -->
@@ -3205,7 +3289,7 @@ function copyShareLink() {
 									v-for="source in estimateSourceActivities"
 									:key="source.id"
 									:href="`/activities/${source.id}`"
-									@click="flushAutoSave"
+									@click="flushAutoSave()"
 									class="detail-stats-sources__link"
 								>
 									{{ source.title }}
@@ -3480,6 +3564,27 @@ function copyShareLink() {
 					/>
 					<span v-if="savedFields['department']" class="field-saved-icon field-saved-icon--inline" :key="savedFields['department']"><Save :size="12" aria-hidden="true" /></span>
 				</div>
+			</div>
+
+			<div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('guiding_thread') }"
+				@focusin="lockSection('guiding_thread')" @focusout="unlockSection('guiding_thread', $event)">
+				<div v-if="lockedBy('guiding_thread')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('guiding_thread') }}</div>
+				<label for="edit-guiding-thread">Roter Faden</label>
+				<div class="input-save-wrap">
+					<textarea
+						id="edit-guiding-thread"
+						v-model="editGuidingThread"
+						rows="4"
+						placeholder="Geschichte oder thematischer Rahmen der Aktivität (optional)"
+						:disabled="isLockedByOther('guiding_thread') || (activity.guiding_thread === undefined && !editGuidingThread)"
+						:readonly="activity.guiding_thread === undefined"
+					/>
+					<span v-if="savedFields['guiding_thread']" class="field-saved-icon field-saved-icon--textarea" :key="savedFields['guiding_thread']"><Save :size="12" aria-hidden="true" /></span>
+				</div>
+				<p v-if="activity.guiding_thread === undefined" class="field-hint">
+					Der rote Faden ist nach dem Backend-Update verfügbar.
+					<span v-if="editGuidingThread.trim() && !error">Der Entwurf bleibt bis dahin lokal gespeichert.</span>
+				</p>
 			</div>
 
 			<!-- Programmpunkte -->
@@ -3910,7 +4015,7 @@ function copyShareLink() {
 				<button type="button" class="btn-secondary" @click="cancelEdit">
 					Abbrechen
 				</button>
-				<button type="button" class="btn-secondary" @click="mode = 'view'">
+				<button type="button" class="btn-secondary" @click="leaveEdit">
 					Schliessen
 				</button>
 			</div>
@@ -3964,7 +4069,7 @@ function copyShareLink() {
 								v-for="source in estimateSourceActivities"
 								:key="source.id"
 								:href="`/activities/${source.id}`"
-								@click="flushAutoSave"
+								@click="flushAutoSave()"
 								class="detail-stats-sources__link"
 							>
 								{{ source.title }}

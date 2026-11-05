@@ -20,6 +20,11 @@ const departments = ref<Department[]>([]);
 const predefinedLocations = ref<string[]>([]);
 const predefinedMaterials = ref<string[]>([]);
 
+interface CreatedActivity {
+	id: string;
+	guiding_thread: unknown;
+}
+
 export function useActivities() {
 	const loading = ref(false);
 	const error = ref<string | null>(null);
@@ -110,7 +115,7 @@ export function useActivities() {
 		}
 	}
 
-	async function createActivity(input: ActivityInput): Promise<string | null> {
+	async function createActivity(input: ActivityInput): Promise<CreatedActivity | null> {
 		error.value = null;
 		try {
 			let notificationAccessToken = '';
@@ -127,8 +132,13 @@ export function useActivities() {
 				}),
 			});
 			if (!res.ok) throw new Error(await res.text());
-			const created = await res.json();
-			return created.id ?? null;
+			const created: unknown = await res.json();
+			if (!created || typeof created !== 'object' || !('id' in created) ||
+				typeof created.id !== 'string' || !created.id) {
+				throw new Error('Die Antwort auf das Erstellen der Aktivität enthält keine ID.');
+			}
+			const guidingThread = 'guiding_thread' in created ? created.guiding_thread : undefined;
+			return { id: created.id, guiding_thread: guidingThread };
 		} catch (e) {
 			error.value = formatApiError(e);
 			return null;
@@ -138,7 +148,7 @@ export function useActivities() {
 	async function updateActivity(
 		id: string,
 		input: ActivityInput,
-	): Promise<void> {
+	): Promise<boolean> {
 		error.value = null;
 		try {
 			let notificationAccessToken = '';
@@ -155,8 +165,18 @@ export function useActivities() {
 				}),
 			});
 			if (!res.ok) throw new Error(await res.text());
+			if (input.guiding_thread !== undefined) {
+				const updated: unknown = await res.json();
+				const expectedGuidingThread = input.guiding_thread === '' ? null : input.guiding_thread;
+				if (!updated || typeof updated !== 'object' ||
+					!('guiding_thread' in updated) || updated.guiding_thread !== expectedGuidingThread) {
+					throw new Error('Das Backend hat den roten Faden nicht bestätigt. Bitte den Text kopieren und nach dem Backend-Update erneut speichern.');
+				}
+			}
+			return true;
 		} catch (e) {
 			error.value = formatApiError(e);
+			return false;
 		}
 	}
 

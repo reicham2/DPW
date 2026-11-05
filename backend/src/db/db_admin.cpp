@@ -757,6 +757,27 @@ std::vector<RoleDeptAccess> Database::list_role_dept_access(const std::string &r
     return out;
 }
 
+std::vector<RoleDeptAccess> Database::list_all_role_dept_access()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+                           "SELECT role, department, can_read, can_write "
+                           "FROM role_dept_access ORDER BY role, department");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_all_role_dept_access: " + err);
+    }
+    std::vector<RoleDeptAccess> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_role_dept_access(res, i));
+    PQclear(res);
+    return out;
+}
+
 bool Database::set_role_dept_access(const std::string &role, const std::string &department,
                                     bool can_read, bool can_write)
 {
@@ -858,7 +879,7 @@ std::optional<Activity> Database::get_activity_by_share_token(const std::string 
     ensure_connected();
     const char *params[1] = {token.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, "
+                                 "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, a.guiding_thread, "
                                  "       a.location, a.responsible, a.department, a.material, a.siko_text, "
                                  "       a.bad_weather_info, a.planned_participants_estimate, a.created_at, a.updated_at "
                                  "FROM activities a "

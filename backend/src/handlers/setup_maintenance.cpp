@@ -96,6 +96,7 @@ void handle_get_setup_auth_config(HttpRes *res, HttpReq *req, Database &db)
             {"contact_email_configured", contact_email_configured},
             {"autosave_interval_ms", autosave_interval_ms},
             {"autosave_debounce", autosave_debounce},
+            {"activity_guiding_thread_supported", true},
             {"midata_weather_refresh_interval_ms", midata_weather_refresh_interval_ms},
             {"wp_url", wp_url},
             {"public_base_url", public_base_url_value},

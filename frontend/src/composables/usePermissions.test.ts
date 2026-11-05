@@ -65,6 +65,7 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
 		start_time: '10:00',
 		end_time: '12:00',
 		goal: 'Ziel',
+		guiding_thread: null,
 		location: 'Ort',
 		responsible: ['user-anna-id'],
 		department: 'Pfadi',

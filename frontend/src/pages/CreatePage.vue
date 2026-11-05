@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useActivities } from '../composables/useActivities'
 import { usePermissions } from '../composables/usePermissions'
+import { activityGuidingThreadSupported } from '../composables/useSetupAuthConfig'
 import ErrorAlert from '../components/ErrorAlert.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import { ArrowLeft } from 'lucide-vue-next'
@@ -19,6 +20,8 @@ const date       = ref('')
 const start_time = ref('')
 const end_time   = ref('')
 const department = ref<Department | ''>('')
+const guiding_thread = ref('')
+const createdActivityId = ref<string | null>(null)
 const submitting = ref(false)
 const loaded     = ref(false)
 
@@ -45,26 +48,46 @@ onMounted(async () => {
 
 // ---- Submit ----------------------------------------------------------------
 async function submit() {
-  if (!department.value) return
+  if (!department.value || createdActivityId.value) return
+  const guidingThread = guiding_thread.value.trim()
+  if (guidingThread && !activityGuidingThreadSupported.value) {
+    error.value = 'Der rote Faden kann erst nach dem Backend-Update gespeichert werden. Bitte den Text bis dahin kopieren.'
+    return
+  }
   submitting.value = true
   error.value = null
 
-  const id = await createActivity({
+  const created = await createActivity({
     title:           title.value.trim(),
     date:            date.value,
     start_time:      start_time.value,
     end_time:        end_time.value,
     goal:            '',
+    guiding_thread:  guidingThread || null,
     location:        '',
     responsible:     user.value ? [user.value.id] : [],
     department:      department.value,
     material:        [],
+    tn_material:     [],
     bad_weather_info: null,
     programs:        []
   })
 
   submitting.value = false
-  if (!error.value && id) router.push(`/activities/${id}`)
+  if (!error.value && created) {
+    if (created.guiding_thread !== undefined && created.guiding_thread !== null && typeof created.guiding_thread !== 'string') {
+      createdActivityId.value = created.id
+      error.value = 'Die Aktivität wurde erstellt, aber die Serverantwort zum roten Faden ist ungültig. Bitte die Aktivität überprüfen.' +
+        (guidingThread ? ' Den Text bitte kopieren, bis er gespeichert ist.' : '')
+      return
+    }
+    if (guidingThread && created.guiding_thread !== guidingThread) {
+      createdActivityId.value = created.id
+      error.value = 'Die Aktivität wurde erstellt, aber der rote Faden wurde nicht gespeichert. Bitte den Text kopieren und nach dem Backend-Update in der Aktivität ergänzen.'
+      return
+    }
+    router.push(`/activities/${created.id}`)
+  }
 }
 </script>
 
@@ -114,13 +137,27 @@ async function submit() {
         />
       </div>
 
+      <div class="form-group">
+        <label for="guiding-thread">Roter Faden</label>
+        <textarea id="guiding-thread" v-model="guiding_thread" rows="4"
+          :disabled="!activityGuidingThreadSupported && !guiding_thread && !createdActivityId"
+          :readonly="!activityGuidingThreadSupported || !!createdActivityId"
+          placeholder="Geschichte oder thematischer Rahmen der Aktivität (optional)" />
+        <p v-if="!activityGuidingThreadSupported && !createdActivityId" class="field-hint">
+          Der rote Faden ist nach dem Backend-Update verfügbar. Bitte danach die Seite neu laden.
+        </p>
+      </div>
+
       <!-- Error -->
       <ErrorAlert :error="error" />
 
       <!-- Actions -->
       <div class="form-actions">
         <button type="button" class="btn-secondary" @click="router.push('/')">Abbrechen</button>
-        <button type="submit" class="btn-primary" :disabled="submitting">
+        <button v-if="createdActivityId" type="button" class="btn-primary" @click="router.push(`/activities/${createdActivityId}`)">
+          Zur erstellten Aktivität
+        </button>
+        <button v-else type="submit" class="btn-primary" :disabled="submitting">
           {{ submitting ? 'Wird erstellt…' : 'Erstellen' }}
         </button>
       </div>

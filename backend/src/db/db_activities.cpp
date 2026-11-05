@@ -27,6 +27,9 @@ Activity Database::row_to_activity(PGresult *res, int row)
     a.start_time = col("start_time") ? col("start_time") : "";
     a.end_time = col("end_time") ? col("end_time") : "";
     a.goal = col("goal") ? col("goal") : "";
+    const char *guiding_thread = col("guiding_thread");
+    if (guiding_thread)
+        a.guiding_thread = guiding_thread;
     a.location = col("location") ? col("location") : "";
     {
         const char *resp = col("responsible");
@@ -279,7 +282,7 @@ std::vector<Activity> Database::list_activities()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
+                           "SELECT id, title, date::text, start_time, end_time, goal, guiding_thread, location, responsible, "
                            "       department, material, tn_material, siko_text, "
                            "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
                            "FROM activities WHERE deleted_at IS NULL ORDER BY date DESC, start_time");
@@ -307,7 +310,7 @@ std::optional<Activity> Database::get_activity_by_id(const std::string &id)
     ensure_connected();
     const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                 "SELECT id, title, date::text, start_time, end_time, goal, guiding_thread, location, responsible, "
                                  "       department, material, tn_material, siko_text, "
                                  "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
                                  "FROM activities WHERE id = $1 AND deleted_at IS NULL",
@@ -519,7 +522,7 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
 
     try
     {
-        const char *p2[13] = {
+        const char *p2[14] = {
             input.title.c_str(), input.date.c_str(),
             input.start_time.c_str(), input.end_time.c_str(),
             input.goal.c_str(), input.location.c_str(),
@@ -529,16 +532,17 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
             tn_mat_json.c_str(),
             siko_param,
             bwi_str.c_str(),
-            ppe_param};
+            ppe_param,
+            input.guiding_thread ? input.guiding_thread->c_str() : nullptr};
         PGresult *r = PQexecParams(conn_,
                                    "INSERT INTO activities "
-                                   "(title, date, start_time, end_time, goal, location, responsible, department, material, tn_material, siko_text, bad_weather_info, planned_participants_estimate) "
+                                   "(title, date, start_time, end_time, goal, location, responsible, department, material, tn_material, siko_text, bad_weather_info, planned_participants_estimate, guiding_thread) "
                                    "VALUES ($1, $2::date, $3, $4, $5, $6, array(select jsonb_array_elements_text($7::jsonb)), "
-                                   "$8, $9::jsonb, $10::jsonb, $11, $12, $13::int) "
-                                   "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                   "$8, $9::jsonb, $10::jsonb, $11, $12, $13::int, $14) "
+                                   "RETURNING id, title, date::text, start_time, end_time, goal, guiding_thread, location, responsible, "
                                    "department, material, tn_material, siko_text, "
                                    "bad_weather_info, planned_participants_estimate, created_at, updated_at",
-                                   13, nullptr, p2, nullptr, nullptr, 0);
+                                   14, nullptr, p2, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
             std::string err = PQresultErrorMessage(r);
@@ -583,7 +587,7 @@ std::optional<std::pair<Activity, Activity>> Database::update_activity(const std
     {
         const char *previous_params[1] = {id.c_str()};
         PGresult *previous_result = PQexecParams(conn_,
-                                                  "SELECT id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                                  "SELECT id, title, date::text, start_time, end_time, goal, guiding_thread, location, responsible, "
                                                   "       department, material, tn_material, siko_text, "
                                                   "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
                                                   "FROM activities WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
@@ -604,7 +608,8 @@ std::optional<std::pair<Activity, Activity>> Database::update_activity(const std
         PQclear(previous_result);
         attach_programs_single(previous);
 
-        const char *p[14] = {
+        const auto &guiding_thread = input.guiding_thread_present ? input.guiding_thread : previous.guiding_thread;
+        const char *p[15] = {
             input.title.c_str(), input.date.c_str(),
             input.start_time.c_str(), input.end_time.c_str(),
             input.goal.c_str(), input.location.c_str(),
@@ -615,18 +620,19 @@ std::optional<std::pair<Activity, Activity>> Database::update_activity(const std
             siko_param,
             bwi_str.c_str(),
             ppe_param,
-            id.c_str()};
+            id.c_str(),
+            guiding_thread ? guiding_thread->c_str() : nullptr};
         PGresult *r = PQexecParams(conn_,
                                    "UPDATE activities SET "
                                    "title=$1, date=$2::date, start_time=$3, end_time=$4, "
                                    "goal=$5, location=$6, responsible=array(select jsonb_array_elements_text($7::jsonb)), "
                                    "department=$8, material=$9::jsonb, tn_material=$10::jsonb, "
-                                   "siko_text=$11, bad_weather_info=$12, planned_participants_estimate=$13 "
+                                   "siko_text=$11, bad_weather_info=$12, planned_participants_estimate=$13, guiding_thread=$15 "
                                    "WHERE id=$14 "
-                                   "RETURNING id, title, date::text, start_time, end_time, goal, location, responsible, "
+                                   "RETURNING id, title, date::text, start_time, end_time, goal, guiding_thread, location, responsible, "
                                    "department, material, tn_material, siko_text, "
                                    "bad_weather_info, planned_participants_estimate, created_at, updated_at",
-                                   14, nullptr, p, nullptr, nullptr, 0);
+                                   15, nullptr, p, nullptr, nullptr, 0);
         if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) == 0)
         {
             std::string err = PQresultErrorMessage(r);
@@ -735,7 +741,7 @@ std::vector<DeletedActivityRecord> Database::list_deleted_activities()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, a.location, a.responsible, "
+                           "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, a.guiding_thread, a.location, a.responsible, "
                            "       a.department, a.material, a.siko_text, a.bad_weather_info, a.planned_participants_estimate, "
                            "       a.created_at, a.updated_at, a.deleted_at, a.deleted_by::text, "
                            "       u.display_name AS deleted_by_display_name, u.email AS deleted_by_email "

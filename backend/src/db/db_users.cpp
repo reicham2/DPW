@@ -186,6 +186,57 @@ std::optional<UserRecord> Database::get_user_by_id(const std::string &id)
     return u;
 }
 
+// ---- get_users_by_ids -------------------------------------------------------
+
+std::vector<UserRecord> Database::get_users_by_ids(const std::vector<std::string> &ids)
+{
+    std::string array_literal = "{";
+    bool first = true;
+    for (const auto &id : ids)
+    {
+        if (id.empty())
+            continue;
+        if (!first)
+            array_literal += ',';
+        first = false;
+        array_literal += '"';
+        for (char c : id)
+        {
+            if (c == '"' || c == '\\')
+                array_literal += '\\';
+            array_literal += c;
+        }
+        array_literal += '"';
+    }
+    array_literal += '}';
+    if (first)
+        return {};
+
+    ensure_connected();
+    const char *params[1] = {array_literal.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
+                                 "       notify_material_assigned, notify_activity_assigned, notify_program_assigned, notify_mail_own_activity, notify_mail_department, "
+                                 "       notify_channel_websocket, notify_channel_email, avatar_color, "
+                                 "       created_at, updated_at "
+                                 "FROM users WHERE id::text = ANY($1::text[])",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("get_users_by_ids: " + err);
+    }
+    std::vector<UserRecord> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_user(res, i));
+    PQclear(res);
+    return out;
+}
+
 // ---- update_user ------------------------------------------------------------
 
 std::optional<UserRecord> Database::update_user(const std::string &oid,

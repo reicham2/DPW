@@ -136,6 +136,22 @@ TEST(template_vars_no_department)
     ASSERT_STR_EQ(replace_template_vars("{{abteilung}}", a), "\xe2\x80\x94");
 }
 
+TEST(template_vars_guiding_thread)
+{
+    Activity a = make_activity();
+    a.guiding_thread = "Erster Teil\nZweiter Teil";
+    ASSERT_STR_EQ(replace_template_vars("{{roter_faden}}", a), "Erster Teil\nZweiter Teil");
+    a.goal = "Ziel mit {{roter_faden}}";
+    a.guiding_thread = "Geschichte mit {{titel}}\n{{ziel}} und {{roter_faden}}";
+    ASSERT_STR_EQ(replace_template_vars("{{titel}}: {{roter_faden}} | {{ziel}} / {{roter_faden}}", a),
+                  "Pfadilager: Geschichte mit {{titel}}\n{{ziel}} und {{roter_faden}} | "
+                  "Ziel mit {{roter_faden}} / Geschichte mit {{titel}}\n{{ziel}} und {{roter_faden}}");
+    a.location = "{{titel}}";
+    ASSERT_STR_EQ(replace_template_vars("{{ort}}", a), "Pfadilager");
+    a.guiding_thread = std::nullopt;
+    ASSERT_STR_EQ(replace_template_vars("{{roter_faden}}", a), "\xe2\x80\x94");
+}
+
 TEST(template_vars_tn_material)
 {
     Activity a = make_activity();
@@ -266,7 +282,25 @@ TEST(parse_activity_input_minimal)
     nlohmann::json j = {{"title", "Test"}, {"date", "2026-06-01"}, {"start_time", "10:00"}, {"end_time", "12:00"}, {"goal", "Ziel"}, {"location", "Ort"}};
     auto input = parse_activity_input(j);
     ASSERT_STR_EQ(input.title, "Test");
+    ASSERT_FALSE(input.guiding_thread_present);
+    ASSERT_FALSE(input.guiding_thread.has_value());
     ASSERT_TRUE(input.programs.empty());
+}
+
+TEST(parse_activity_input_guiding_thread_presence)
+{
+    auto text = parse_activity_input({{"guiding_thread", "Erster Teil\nZweiter Teil"}});
+    ASSERT_TRUE(text.guiding_thread_present);
+    ASSERT_TRUE(text.guiding_thread.has_value());
+    ASSERT_STR_EQ(*text.guiding_thread, "Erster Teil\nZweiter Teil");
+
+    auto empty = parse_activity_input({{"guiding_thread", ""}});
+    ASSERT_TRUE(empty.guiding_thread_present);
+    ASSERT_FALSE(empty.guiding_thread.has_value());
+
+    auto cleared = parse_activity_input({{"guiding_thread", nullptr}});
+    ASSERT_TRUE(cleared.guiding_thread_present);
+    ASSERT_FALSE(cleared.guiding_thread.has_value());
 }
 
 TEST(parse_activity_input_material_responsible_as_string)

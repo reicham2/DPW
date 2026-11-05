@@ -191,8 +191,8 @@ namespace
         tm.tm_mday = day;
         tm.tm_hour = 12;
         time_t ts = timegm(&tm);
-        std::tm *utc = gmtime(&ts);
-        return utc ? utc->tm_wday : 0;
+        std::tm utc{};
+        return gmtime_r(&ts, &utc) ? utc.tm_wday : 0;
     }
 
     int last_sunday_of_month(int year, int month)
@@ -288,7 +288,8 @@ namespace
 
     WeatherResult seasonal_average_weather(time_t activity_ts, const std::string &note)
     {
-        std::tm *ptm = gmtime(&activity_ts);
+        std::tm tm_buf{};
+        std::tm *ptm = gmtime_r(&activity_ts, &tm_buf);
         int month = ptm ? (ptm->tm_mon + 1) : 1;
         WeatherResult out;
         out.mode = "seasonal-average";
@@ -618,7 +619,8 @@ namespace
     std::string utc_today_ymd()
     {
         time_t now = time(nullptr);
-        std::tm *tm = gmtime(&now);
+        std::tm tm_buf{};
+        std::tm *tm = gmtime_r(&now, &tm_buf);
         char buf[11] = {0};
         if (!tm)
             return "";

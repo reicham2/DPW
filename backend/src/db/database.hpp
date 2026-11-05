@@ -72,6 +72,7 @@ public:
                                           bool force_role = false);
     std::optional<UserRecord> get_user_by_oid(const std::string &oid);
     std::optional<UserRecord> get_user_by_id(const std::string &id);
+    std::vector<UserRecord> get_users_by_ids(const std::vector<std::string> &ids);
     // Update own profile (display_name only; department blocked by role on handler level).
     std::optional<UserRecord> update_user(const std::string &oid,
                                           const std::string &display_name,
@@ -231,6 +232,7 @@ public:
 
     // Role department access
     std::vector<RoleDeptAccess> list_role_dept_access(const std::string &role);
+    std::vector<RoleDeptAccess> list_all_role_dept_access();
     bool set_role_dept_access(const std::string &role, const std::string &department,
                               bool can_read, bool can_write);
 

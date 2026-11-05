@@ -7,6 +7,7 @@ export const setupLoading = ref(false);
 export const setupSubmitting = ref(false);
 export const setupRequired = ref<boolean | null>(null); // null = not determined yet
 export const setupError = ref<string | null>(null);
+export const activityGuidingThreadSupported = ref(false);
 export const setupFieldConfigured = ref({
 	tenant_id: false,
 	client_id: false,
@@ -57,6 +58,7 @@ async function loadSetupStatus(): Promise<boolean> {
 			contact_email_configured?: boolean;
 			autosave_interval_ms?: number;
 			autosave_debounce?: boolean;
+			activity_guiding_thread_supported?: boolean;
 			midata_weather_refresh_interval_ms?: number;
 			midata_configured?: boolean;
 			wp_configured?: boolean;
@@ -74,6 +76,7 @@ async function loadSetupStatus(): Promise<boolean> {
 			(data.tenant_id !== undefined && typeof data.tenant_id !== 'string') ||
 			(data.client_id !== undefined && typeof data.client_id !== 'string') ||
 			(data.contact_email !== undefined && typeof data.contact_email !== 'string') ||
+			(data.activity_guiding_thread_supported !== undefined && typeof data.activity_guiding_thread_supported !== 'boolean') ||
 			(data.configured && (!data.tenant_id?.trim() || !data.client_id?.trim()))
 		) {
 			throw new Error('Ungültige Setup-Antwort des Servers.');
@@ -97,6 +100,7 @@ async function loadSetupStatus(): Promise<boolean> {
 			maintenance_scheduled_end: data.maintenance_scheduled_end,
 		});
 
+		activityGuidingThreadSupported.value = data.activity_guiding_thread_supported === true;
 		setupRequired.value = !data.configured;
 		setupFieldConfigured.value = {
 			tenant_id: !!data.tenant_id_configured,
@@ -116,6 +120,7 @@ async function loadSetupStatus(): Promise<boolean> {
 			'Setup-Status konnte nicht geladen werden.';
 		// Fail closed for navigation, but retry the status on the next request.
 		setupRequired.value = null;
+		activityGuidingThreadSupported.value = false;
 		setupFieldConfigured.value = {
 			tenant_id: false,
 			client_id: false,

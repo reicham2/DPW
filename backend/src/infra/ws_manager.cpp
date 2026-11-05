@@ -5,6 +5,7 @@
 #include "utils/permissions.hpp"
 #include "json.hpp"
 #include <cstdio>
+#include <unordered_map>
 
 #if !defined(DPW_ENABLE_DEBUG_AUTH)
 #define DPW_ENABLE_DEBUG_AUTH 0
@@ -38,6 +39,43 @@ namespace
         if (claims.oid.rfind("debug:", 0) == 0)
             return db.get_user_by_id(claims.oid.substr(6));
         return db.get_user_by_oid(claims.oid);
+    }
+
+    // Authorization data loaded once per broadcast instead of once per socket.
+    struct BroadcastAuthContext
+    {
+        std::unordered_map<std::string, UserRecord> users;
+        std::unordered_map<std::string, RolePermission> permissions;
+        std::unordered_map<std::string, std::vector<RoleDeptAccess>> dept_access;
+    };
+
+    template <typename Clients>
+    std::optional<BroadcastAuthContext> load_broadcast_auth(Database &db, const Clients &clients, bool with_dept_access)
+    {
+        std::vector<std::string> user_ids;
+        std::unordered_set<std::string> seen;
+        for (auto *ws : clients)
+        {
+            auto *data = ws->getUserData();
+            if (data->authenticated && !data->user_id.empty() && seen.insert(data->user_id).second)
+                user_ids.push_back(data->user_id);
+        }
+        if (user_ids.empty())
+            return std::nullopt;
+
+        BroadcastAuthContext ctx;
+        for (auto &user : db.get_users_by_ids(user_ids))
+            ctx.users.emplace(user.id, std::move(user));
+        if (ctx.users.empty())
+            return std::nullopt;
+        for (auto &permission : db.list_role_permissions())
+            ctx.permissions.emplace(permission.role, std::move(permission));
+        if (with_dept_access)
+        {
+            for (auto &entry : db.list_all_role_dept_access())
+                ctx.dept_access[entry.role].push_back(std::move(entry));
+        }
+        return ctx;
     }
 
 } // namespace
@@ -146,6 +184,20 @@ void WebSocketManager::broadcast_activity_change(const Activity *previous, const
     const std::string updated = current ? json{{"event", "updated"}, {"activity", to_json(*current)}}.dump() : "";
     const std::string removed = previous ? json{{"event", "deleted"}, {"id", previous->id}}.dump() : "";
 
+    std::optional<BroadcastAuthContext> auth;
+    try
+    {
+        auth = load_broadcast_auth(db_, clients_, true);
+    }
+    catch (const std::exception &e)
+    {
+        fprintf(stderr, "[WS] activity broadcast authorization failed: %s\n", e.what());
+        return;
+    }
+    if (!auth)
+        return;
+
+    static const std::vector<RoleDeptAccess> kNoDeptAccess;
     for (auto *ws : clients_)
     {
         auto *data = ws->getUserData();
@@ -153,15 +205,18 @@ void WebSocketManager::broadcast_activity_change(const Activity *previous, const
             continue;
         try
         {
-            auto user = db_.get_user_by_id(data->user_id);
-            if (!user)
+            auto user_it = auth->users.find(data->user_id);
+            if (user_it == auth->users.end())
                 continue;
-            auto permission = db_.get_role_permission(user->role);
-            if (!permission)
+            const auto &user = user_it->second;
+            auto permission_it = auth->permissions.find(user.role);
+            if (permission_it == auth->permissions.end())
                 continue;
-            auto dept_access = db_.list_role_dept_access(user->role);
-            const bool could_read = previous && can_read_activity(*permission, *user, dept_access, *previous);
-            const bool can_read = current && can_read_activity(*permission, *user, dept_access, *current);
+            const auto &permission = permission_it->second;
+            auto dept_it = auth->dept_access.find(user.role);
+            const auto &dept_access = dept_it != auth->dept_access.end() ? dept_it->second : kNoDeptAccess;
+            const bool could_read = previous && can_read_activity(permission, user, dept_access, *previous);
+            const bool can_read = current && can_read_activity(permission, user, dept_access, *current);
             if (can_read)
                 ws->send(could_read ? updated : created, uWS::OpCode::TEXT);
             else if (could_read)
@@ -181,6 +236,19 @@ void WebSocketManager::broadcast_activity_change(const Activity *previous, const
 void WebSocketManager::broadcast_template_update(TemplateKind kind, const std::string &department,
                                                   const std::string &message)
 {
+    std::optional<BroadcastAuthContext> auth;
+    try
+    {
+        auth = load_broadcast_auth(db_, clients_, false);
+    }
+    catch (const std::exception &e)
+    {
+        fprintf(stderr, "[WS] template broadcast authorization failed: %s\n", e.what());
+        return;
+    }
+    if (!auth)
+        return;
+
     for (auto *ws : clients_)
     {
         auto *data = ws->getUserData();
@@ -188,15 +256,16 @@ void WebSocketManager::broadcast_template_update(TemplateKind kind, const std::s
             continue;
         try
         {
-            auto user = db_.get_user_by_id(data->user_id);
-            if (!user)
+            auto user_it = auth->users.find(data->user_id);
+            if (user_it == auth->users.end())
                 continue;
-            auto permission = db_.get_role_permission(user->role);
-            const std::string scope = permission
-                                          ? (kind == TemplateKind::Mail ? permission->mail_templates_scope
-                                                                        : permission->event_templates_scope)
+            const auto &user = user_it->second;
+            auto permission_it = auth->permissions.find(user.role);
+            const std::string scope = permission_it != auth->permissions.end()
+                                          ? (kind == TemplateKind::Mail ? permission_it->second.mail_templates_scope
+                                                                        : permission_it->second.event_templates_scope)
                                           : "none";
-            if (can_manage_department_scope(*user, scope, department))
+            if (can_manage_department_scope(user, scope, department))
                 ws->send(message, uWS::OpCode::TEXT);
         }
         catch (const std::exception &e)
