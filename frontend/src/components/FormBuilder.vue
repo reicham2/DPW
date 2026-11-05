@@ -16,6 +16,7 @@
 			</select>
 			<p class="template-hint">
 				Übernimmt Fragen &amp; Modus aus der gewählten Stufenvorlage.
+				Beim Erstellen wird auch der Titel übernommen, sofern er nicht selbst eingegeben wurde.
 			</p>
 		</div>
 
@@ -35,6 +36,7 @@
 				<span v-if="savedFields['title']" class="field-saved-icon" :key="savedFields['title']"><Save :size="12" aria-hidden="true" /></span>
 			</div>
 			<p v-if="titleError" class="validation-hint">{{ titleError }}</p>
+			<p class="template-hint">Variablen im Titel werden im öffentlichen Formular ersetzt.</p>
 			<label class="field-label mt-3">Modus</label>
 			<div class="mode-toggle">
 				<button
@@ -405,6 +407,11 @@ function applyTemplate(id: string, hadPriorTemplate: boolean) {
 
 	const tpl = availableTemplates.value.find((t) => t.id === id);
 	if (!tpl) return;
+
+	if (!props.isEdit && !dirtyFieldSet.has('title') &&
+		(!localTitle.value || availableTemplates.value.some((t) => t.name === localTitle.value))) {
+		localTitle.value = tpl.name;
+	}
 
 	const templateQuestions: TrackedQuestion[] = (tpl.template_config ?? []).map((q, i) => ({
 		question_text: q.question_text,

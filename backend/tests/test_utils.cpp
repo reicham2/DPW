@@ -129,6 +129,17 @@ TEST(template_vars_multiple)
     ASSERT_STR_EQ(replace_template_vars("{{titel}} am {{datum_kurz}} in {{ort}}", a), "Pfadilager am 15.07.2026 in Waldhaus");
 }
 
+TEST(template_vars_form_title_plain_and_current)
+{
+    Activity a = make_activity();
+    a.title = "Spiel & Spass <2026>";
+    const std::string title = "Anmeldung {{titel}} am {{datum_kurz}} / {{unknown}}";
+    ASSERT_STR_EQ(replace_template_vars(title, a), "Anmeldung Spiel & Spass <2026> am 15.07.2026 / {{unknown}}");
+    a.date = "2026-07-16";
+    ASSERT_STR_EQ(replace_template_vars(title, a), "Anmeldung Spiel & Spass <2026> am 16.07.2026 / {{unknown}}");
+    ASSERT_STR_EQ(title, "Anmeldung {{titel}} am {{datum_kurz}} / {{unknown}}");
+}
+
 TEST(template_vars_no_department)
 {
     Activity a = make_activity();

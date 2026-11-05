@@ -878,7 +878,7 @@ function onCcKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Variable reference -->
-      <TemplateVarsDropdown :extra-vars="MAIL_EXTRA_VARS" />
+      <TemplateVarsDropdown :extra-vars="MAIL_EXTRA_VARS" hint="Variablen können im Betreff und im Inhalt verwendet werden. Im Betreff werden Links als URL eingefügt." />
 
       <ErrorAlert :error="error" />
     </div>

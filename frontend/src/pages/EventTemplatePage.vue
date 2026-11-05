@@ -584,7 +584,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Variable reference -->
-				<TemplateVarsDropdown :extra-vars="[
+				<TemplateVarsDropdown hint="Variablen können im Titel und im Inhalt verwendet werden. Im Titel werden Links als URL eingefügt." :extra-vars="[
 				{ var: '{{formular_link}}', desc: 'Link zum Anmeldeformular (klickbar, Text: «Zum Formular»)' },
 				{ var: '{{formular_link|Anmelden}}', desc: 'Link zum Formular mit eigenem Linktext' },
 			]" />
