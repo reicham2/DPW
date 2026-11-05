@@ -757,6 +757,27 @@ std::vector<RoleDeptAccess> Database::list_role_dept_access(const std::string &r
     return out;
 }
 
+std::vector<RoleDeptAccess> Database::list_all_role_dept_access()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_,
+                           "SELECT role, department, can_read, can_write "
+                           "FROM role_dept_access ORDER BY role, department");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_all_role_dept_access: " + err);
+    }
+    std::vector<RoleDeptAccess> out;
+    int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_role_dept_access(res, i));
+    PQclear(res);
+    return out;
+}
+
 bool Database::set_role_dept_access(const std::string &role, const std::string &department,
                                     bool can_read, bool can_write)
 {

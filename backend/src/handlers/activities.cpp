@@ -1,4 +1,7 @@
 #include "handlers/handler_deps.hpp"
+#include <atomic>
+#include <memory>
+#include <thread>
 
 static std::string activity_read_cache_scope(const TokenClaims &claims, const ActivityAccess &access)
 {
@@ -366,6 +369,51 @@ void handle_put_activity_weather_location(HttpRes *res, HttpReq *req, Database &
     }
 }
 
+static std::atomic<int> weather_fetches_in_flight{0};
+constexpr int kMaxWeatherFetchesInFlight = 8;
+
+static void finish_expected_weather_response(HttpRes *res, Database &db, const std::string &id,
+                                             std::optional<WeatherResult> &weather,
+                                             const std::string &weather_error,
+                                             bool frozen_snapshot_missing)
+{
+    if (!weather)
+    {
+        send_json(res, 200, nlohmann::json{{"available", false}, {"error", weather_error}}.dump());
+        return;
+    }
+
+    if (frozen_snapshot_missing)
+    {
+        if (weather->note.empty())
+            weather->note = "Kein gespeicherter Ist-Wert vorhanden; Ersatzwert berechnet.";
+        else
+            weather->note += " Kein gespeicherter Ist-Wert vorhanden; Ersatzwert berechnet.";
+    }
+
+    nlohmann::json payload = {
+        {"available", true},
+        {"mode", weather->mode},
+        {"temperature_c", weather->temperature_c},
+        {"temperature_min_c", weather->temperature_min_c ? nlohmann::json(*weather->temperature_min_c) : nlohmann::json(nullptr)},
+        {"temperature_max_c", weather->temperature_max_c ? nlohmann::json(*weather->temperature_max_c) : nlohmann::json(nullptr)},
+        {"hourly_temps", nlohmann::json::array()},
+        {"hourly_rain_probability", nlohmann::json::array()},
+        {"rain_probability_percent", weather->rain_probability_percent ? nlohmann::json(*weather->rain_probability_percent) : nlohmann::json(nullptr)},
+        {"weather_symbol", weather->weather_symbol.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->weather_symbol)},
+        {"season", weather->season.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->season)},
+        {"point_name", weather->point_name.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->point_name)},
+        {"postal_code", weather->postal_code.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->postal_code)},
+        {"source", weather->source},
+        {"note", weather->note.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->note)}};
+    for (const auto &p : weather->hourly_temps)
+        payload["hourly_temps"].push_back(nlohmann::json{{"ts_unix", p.first}, {"temperature_c", p.second}});
+    for (const auto &p : weather->hourly_rain_probability)
+        payload["hourly_rain_probability"].push_back(nlohmann::json{{"ts_unix", p.first}, {"probability_percent", p.second}});
+    db.set_activity_weather_snapshot(id, payload);
+    send_json(res, 200, payload.dump());
+}
+
 void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &db)
 {
     TokenClaims claims;
@@ -424,43 +472,60 @@ void handle_get_activity_expected_weather(HttpRes *res, HttpReq *req, Database &
             return;
         }
 
-        std::string weather_error;
-        auto weather = fetch_expected_weather_for_activity(*activity, location_input, weather_error);
-        if (!weather)
+        if (weather_fetches_in_flight.fetch_add(1) >= kMaxWeatherFetchesInFlight)
         {
-            send_json(res, 200, nlohmann::json{{"available", false}, {"error", weather_error}}.dump());
+            weather_fetches_in_flight.fetch_sub(1);
+            send_json(res, 200, nlohmann::json{{"available", false}, {"error", "weather-busy"}}.dump());
             return;
         }
 
-        if (frozen_snapshot_missing)
+        // Upstream MeteoSwiss downloads can take seconds; run them off the event loop and
+        // deliver the response back on the loop thread, where the DB and response live.
+        auto aborted = std::make_shared<bool>(false);
+        res->onAborted([aborted]() { *aborted = true; });
+        uWS::Loop *loop = uWS::Loop::get();
+        Activity activity_copy = *activity;
+        try
         {
-            if (weather->note.empty())
-                weather->note = "Kein gespeicherter Ist-Wert vorhanden; Ersatzwert berechnet.";
-            else
-                weather->note += " Kein gespeicherter Ist-Wert vorhanden; Ersatzwert berechnet.";
+            std::thread([loop, res, aborted, &db, id, activity_copy = std::move(activity_copy),
+                         location_input, frozen_snapshot_missing]() mutable {
+                std::string weather_error;
+                std::optional<WeatherResult> weather;
+                try
+                {
+                    weather = fetch_expected_weather_for_activity(activity_copy, location_input, weather_error);
+                }
+                catch (const std::exception &e)
+                {
+                    weather_error = std::string("weather-fetch-failed: ") + e.what();
+                }
+                catch (...)
+                {
+                    weather_error = "weather-fetch-failed";
+                }
+                weather_fetches_in_flight.fetch_sub(1);
+                loop->defer([res, aborted, &db, id = std::move(id), weather = std::move(weather),
+                             weather_error = std::move(weather_error), frozen_snapshot_missing]() mutable {
+                    if (*aborted)
+                        return;
+                    res->cork([&]() {
+                        try
+                        {
+                            finish_expected_weather_response(res, db, id, weather, weather_error, frozen_snapshot_missing);
+                        }
+                        catch (std::exception &e)
+                        {
+                            send_internal_error(res, "handler", e);
+                        }
+                    });
+                });
+            }).detach();
         }
-
-        nlohmann::json payload = {
-            {"available", true},
-            {"mode", weather->mode},
-            {"temperature_c", weather->temperature_c},
-            {"temperature_min_c", weather->temperature_min_c ? nlohmann::json(*weather->temperature_min_c) : nlohmann::json(nullptr)},
-            {"temperature_max_c", weather->temperature_max_c ? nlohmann::json(*weather->temperature_max_c) : nlohmann::json(nullptr)},
-            {"hourly_temps", nlohmann::json::array()},
-            {"hourly_rain_probability", nlohmann::json::array()},
-            {"rain_probability_percent", weather->rain_probability_percent ? nlohmann::json(*weather->rain_probability_percent) : nlohmann::json(nullptr)},
-            {"weather_symbol", weather->weather_symbol.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->weather_symbol)},
-            {"season", weather->season.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->season)},
-            {"point_name", weather->point_name.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->point_name)},
-            {"postal_code", weather->postal_code.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->postal_code)},
-            {"source", weather->source},
-            {"note", weather->note.empty() ? nlohmann::json(nullptr) : nlohmann::json(weather->note)}};
-        for (const auto &p : weather->hourly_temps)
-            payload["hourly_temps"].push_back(nlohmann::json{{"ts_unix", p.first}, {"temperature_c", p.second}});
-        for (const auto &p : weather->hourly_rain_probability)
-            payload["hourly_rain_probability"].push_back(nlohmann::json{{"ts_unix", p.first}, {"probability_percent", p.second}});
-        db.set_activity_weather_snapshot(id, payload);
-        send_json(res, 200, payload.dump());
+        catch (...)
+        {
+            weather_fetches_in_flight.fetch_sub(1);
+            throw;
+        }
     }
     catch (std::exception &e)
     {
