@@ -26,6 +26,7 @@ TEST(activity_to_json_fields)
     ASSERT_STR_EQ(j["id"].get<std::string>(), "act-1");
     ASSERT_STR_EQ(j["title"].get<std::string>(), "Pfadilager");
     ASSERT_STR_EQ(j["date"].get<std::string>(), "2026-07-15");
+    ASSERT_STR_EQ(j["guiding_thread"].get<std::string>(), "Eine gemeinsame Geschichte");
     ASSERT_STR_EQ(j["department"].get<std::string>(), "Pfadi");
     ASSERT_EQ((int)j["responsible"].size(), 2);
     ASSERT_EQ((int)j["programs"].size(), 1);
@@ -44,10 +45,12 @@ TEST(activity_to_json_null_optionals)
 {
     Activity a = make_activity();
     a.department = std::nullopt;
+    a.guiding_thread = std::nullopt;
     a.siko_text = std::nullopt;
     a.bad_weather_info = std::nullopt;
     auto j = to_json(a);
     ASSERT_TRUE(j["department"].is_null());
+    ASSERT_TRUE(j["guiding_thread"].is_null());
     ASSERT_TRUE(j["siko_text"].is_null());
     ASSERT_TRUE(j["bad_weather_info"].is_null());
 }

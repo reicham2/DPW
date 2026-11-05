@@ -858,7 +858,7 @@ std::optional<Activity> Database::get_activity_by_share_token(const std::string 
     ensure_connected();
     const char *params[1] = {token.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, "
+                                 "SELECT a.id, a.title, a.date::text, a.start_time, a.end_time, a.goal, a.guiding_thread, "
                                  "       a.location, a.responsible, a.department, a.material, a.siko_text, "
                                  "       a.bad_weather_info, a.planned_participants_estimate, a.created_at, a.updated_at "
                                  "FROM activities a "

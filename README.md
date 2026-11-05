@@ -56,6 +56,21 @@ Wichtig fuer zukuenftige Schema-Aenderungen:
 2. Statements idempotent halten (`IF NOT EXISTS`, `ON CONFLICT`, additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`).
 3. Keine implizit destruktiven Aenderungen ohne explizite, beabsichtigte SQL-Logik.
 
+Das optionale Aktivitätsfeld «Roter Faden» wird beim Schema-Sync automatisch
+hinzugefügt. Bestehende Aktivitäten bleiben unverändert und haben zunächst
+keinen roten Faden. Ältere Clients können weiterhin speichern, ohne dieses
+Feld zu überschreiben. Bei getrennten Rollouts sollte das Backend vor dem
+Frontend aktualisiert werden. Ist noch ein älteres Backend aktiv, wird das
+Eingabefeld beim Erstellen und Bearbeiten bis zum Backend-Update deaktiviert;
+bereits vorhandene lokale Entwürfe bleiben erhalten.
+
+Der rote Faden kann in der Aktivität erfasst und bearbeitet werden; er erscheint
+auch in der geteilten Ansicht und im Word-Export. In Formular-, Mail- und
+Eventvorlagen steht er als `{{roter_faden}}` zur Verfügung. Beim Wechsel zur
+Ansicht werden ausstehende Änderungen sofort zum Speichern angestossen. Bestätigt
+das Backend den roten Faden nicht, wird ein Fehler angezeigt und der lokale
+Entwurf bleibt erhalten, sofern der Browserspeicher verfügbar ist.
+
 ### Nützliche Befehle
 
 | Befehl                     | Beschreibung                               |
@@ -69,7 +84,8 @@ Wichtig fuer zukuenftige Schema-Aenderungen:
 | `make generate-vapid-keys` | VAPID-Schluessel fuer Web-Push erzeugen    |
 | `make logs`                | Alle Logs anzeigen                         |
 | `make logs-backend`        | Nur Backend-Logs                           |
-| `make test`                | Alle Tests (Frontend + Backend + API)      |
+| `make test`                | Alle Tests (Frontend + Backend + Schema + API) |
+| `make test-schema`         | Schema-Upgrade in isolierter Testdatenbank prüfen |
 | `make db-seed`             | DB zurücksetzen und Testdaten laden        |
 | `make db-shell`            | PostgreSQL Shell öffnen                    |
 | `make ps`                  | Container-Status anzeigen                  |

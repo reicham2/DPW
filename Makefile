@@ -9,7 +9,7 @@ DC := docker compose -f docker-compose-dev.yml
        restart restart-backend restart-frontend restart-db \
 	db-reset db-seed ps clean full-rebuild update-deps \
 	build-prod rebuild-prod rebuild-backend-prod rebuild-frontend-prod \
-	new-branch fresh test test-frontend test-backend test-api test-watch \
+	new-branch fresh test test-frontend test-backend test-schema test-api test-watch \
 	generate-vapid-keys
 
 # ── Shortcut-Targets ─────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ fresh:
 	@echo "✅ Frische Umgebung aufgebaut und Testdaten geladen"
 
 # ── Tests (laufen im Container) ──────────────────────────────────────────────
-test: test-frontend test-backend test-api
+test: test-frontend test-backend test-schema test-api
 
 generate-vapid-keys:
 	@node -e "const crypto=require('crypto'); const ecdh=crypto.createECDH('prime256v1'); ecdh.generateKeys(); const b64u=b=>b.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$$/,''); console.log('DPW_VAPID_PUBLIC_KEY=' + b64u(ecdh.getPublicKey())); console.log('DPW_VAPID_PRIVATE_KEY=' + b64u(ecdh.getPrivateKey())); console.log('DPW_VAPID_SUBJECT=mailto:admin@example.com');"
@@ -35,6 +35,10 @@ test-backend:
 	@echo "── Backend Unit Tests ───────────────────────────────────────────"
 	docker build -f backend/Dockerfile.test backend/ -t dpw-test-backend -q && \
 	docker run --rm dpw-test-backend
+
+test-schema:
+	@echo "── Schema-Upgrade Tests ─────────────────────────────────────────"
+	sh scripts/schema-upgrade-tests.sh
 
 test-api:
 	@echo "── Backend API Integration Tests ───────────────────────────────"

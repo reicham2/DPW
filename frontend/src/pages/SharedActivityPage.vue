@@ -51,6 +51,11 @@
 						</div>
 					</div>
 
+					<div class="detail-section">
+						<p class="detail-section-title">Roter Faden</p>
+						<p class="detail-value detail-value--multiline">{{ activity.guiding_thread || '—' }}</p>
+					</div>
+
 					<!-- Programmpunkte -->
 					<div class="detail-section">
 						<p class="detail-section-title">Programmpunkte</p>

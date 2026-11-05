@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS activities (
     start_time       TEXT        NOT NULL,
     end_time         TEXT        NOT NULL,
     goal             TEXT        NOT NULL,
+    guiding_thread   TEXT,
     location         TEXT        NOT NULL,
     responsible      TEXT[]      NOT NULL DEFAULT '{}',
     department       TEXT        REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL,
@@ -663,6 +664,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_channel_websocket BOOLEAN NOT 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_channel_email BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS material JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS guiding_thread TEXT;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS siko_text TEXT;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS bad_weather_info TEXT;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS planned_participants_estimate INTEGER;

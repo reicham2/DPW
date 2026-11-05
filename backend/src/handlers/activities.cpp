@@ -3,6 +3,8 @@
 static std::string activity_read_cache_scope(const TokenClaims &claims, const ActivityAccess &access)
 {
     std::string scope = cache_user_scope(claims, access.user) + ":read:" + access.permission.activity_read_scope;
+    // Older cache entries do not contain all fields in the current activity JSON.
+    scope += ":activity-json-v2";
     std::vector<std::string> readable_departments;
     for (const auto &entry : access.dept_access)
     {
@@ -13,6 +15,16 @@ static std::string activity_read_cache_scope(const TokenClaims &claims, const Ac
     for (const auto &department : readable_departments)
         scope += ":" + std::to_string(department.size()) + ":" + department;
     return scope;
+}
+
+static bool validate_guiding_thread(HttpRes *res, const nlohmann::json &j)
+{
+    if (j.contains("guiding_thread") && !j["guiding_thread"].is_string() && !j["guiding_thread"].is_null())
+    {
+        send_json(res, 400, R"({"error":"Roter Faden muss Text oder null sein"})");
+        return false;
+    }
+    return true;
 }
 
 // ---- GET /departments -------------------------------------------------------
@@ -856,6 +868,7 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
             return;
         }
 
+        if (!validate_guiding_thread(res, j)) return;
         ActivityInput input = parse_activity_input(j);
         std::string notification_graph_token = j.value("notification_access_token", "");
         if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {
@@ -1121,6 +1134,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
             return;
         }
 
+        if (!validate_guiding_thread(res, j)) return;
         ActivityInput input = parse_activity_input(j);
         std::string notification_graph_token = j.value("notification_access_token", "");
         if (input.title.empty() || input.date.empty() || input.start_time.empty() || input.end_time.empty()) {

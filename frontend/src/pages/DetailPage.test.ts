@@ -5,6 +5,13 @@ import type { Activity, User, WsEvent } from '../types';
 const mocks = vi.hoisted(() => ({
 	replace: vi.fn(),
 	fetchActivity: vi.fn(),
+	updateActivity: vi.fn(),
+	fetchForm: vi.fn(),
+	fetchEventTemplate: vi.fn(),
+	fetchPublication: vi.fn(),
+	setLastUpdated: undefined as ((activity: Activity | null) => void) | undefined,
+	setActivityError: undefined as ((message: string | null) => void) | undefined,
+	setConnected: undefined as ((connected: boolean) => void) | undefined,
 	onMessage: undefined as ((event: WsEvent) => void) | undefined,
 	editable: false,
 	activities: [] as Activity[],
@@ -18,6 +25,12 @@ vi.mock('vue-router', () => ({
 vi.mock('../composables/useActivities', async () => {
 	const { ref } = await vi.importActual<typeof import('vue')>('vue');
 	const noop = vi.fn().mockResolvedValue(undefined);
+	const lastUpdatedActivity = ref<Activity | null>(null);
+	const error = ref<string | null>(null);
+	const connected = ref(true);
+	mocks.setLastUpdated = (activity) => { lastUpdatedActivity.value = activity; };
+	mocks.setActivityError = (message) => { error.value = message; };
+	mocks.setConnected = (value) => { connected.value = value; };
 	return {
 		useActivities: () => ({
 			activities: ref(mocks.activities),
@@ -26,14 +39,15 @@ vi.mock('../composables/useActivities', async () => {
 			fetchDepartments: noop,
 			fetchLocations: noop,
 			fetchMaterials: noop,
-			updateActivity: noop,
+			updateActivity: mocks.updateActivity,
 			deleteActivity: noop,
 			fetchAttachments: vi.fn().mockResolvedValue([]),
 			uploadAttachment: noop,
 			deleteAttachment: noop,
 			getAttachmentBlobUrl: noop,
-			error: ref(null),
-			lastUpdatedActivity: ref(null),
+			error,
+			connected,
+			lastUpdatedActivity,
 			departments: ref([]),
 			predefinedLocations: ref([]),
 			predefinedMaterials: ref([]),
@@ -50,7 +64,7 @@ vi.mock('../composables/usePermissions', async () => {
 	const { ref } = await vi.importActual<typeof import('vue')>('vue');
 	return {
 		usePermissions: () => ({
-			myPermissions: ref(mocks.editable ? { activity_edit_scope: 'all' } : null),
+			myPermissions: ref(mocks.editable ? { activity_edit_scope: 'all', event_publish_scope: 'all' } : null),
 			fetchMyPermissions: vi.fn().mockResolvedValue(null),
 			writableDepts: () => [],
 			canReadActivity: () => true,
@@ -77,11 +91,11 @@ vi.mock('../composables/useWebSocket', () => ({
 	},
 }));
 
-vi.mock('../composables/useForms', () => ({ useForms: () => ({ fetchForm: vi.fn() }) }));
+vi.mock('../composables/useForms', () => ({ useForms: () => ({ fetchForm: mocks.fetchForm }) }));
 vi.mock('../composables/useEventTemplates', () => ({
 	useEventTemplates: () => ({
-		fetchTemplate: vi.fn(),
-		fetchPublication: vi.fn(),
+		fetchTemplate: mocks.fetchEventTemplate,
+		fetchPublication: mocks.fetchPublication,
 		publishEvent: vi.fn(),
 		unpublishEvent: vi.fn(),
 	}),
@@ -104,9 +118,12 @@ vi.mock('../composables/useActivityExport', () => ({ useActivityExport: () => ({
 vi.mock('../composables/useUserResolver', () => ({ useUserResolver: () => ({ resolveResponsibleName: vi.fn() }) }));
 
 import DetailPage from './DetailPage.vue';
+import ErrorAlert from '../components/ErrorAlert.vue';
 import { apiFetch } from '../composables/useApi';
 import { user } from '../composables/useAuth';
 import { config } from '../config';
+
+const initialAutosaveDebounce = config.AUTOSAVE_DEBOUNCE;
 
 function makeActivity(overrides: Partial<Activity> = {}): Activity {
 	return {
@@ -116,6 +133,7 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
 		start_time: '10:00',
 		end_time: '11:00',
 		goal: '',
+		guiding_thread: null,
 		location: '',
 		responsible: [],
 		department: null,
@@ -158,6 +176,8 @@ function allowEditing() {
 describe('DetailPage activity access', () => {
 	beforeEach(() => {
 		config.MIDATA_ENABLED = false;
+		config.WP_PUBLISHING_ENABLED = false;
+		config.PUBLIC_BASE_URL = '';
 		mocks.editable = false;
 		mocks.activities = [];
 		user.value = null;
@@ -166,12 +186,23 @@ describe('DetailPage activity access', () => {
 		mocks.replace.mockReset().mockResolvedValue(undefined);
 		mocks.onMessage = undefined;
 		mocks.fetchActivity.mockReset().mockResolvedValue(makeActivity());
+		mocks.updateActivity.mockReset().mockResolvedValue(true);
+		mocks.fetchForm.mockReset().mockResolvedValue(null);
+		mocks.fetchEventTemplate.mockReset().mockResolvedValue(null);
+		mocks.fetchPublication.mockReset().mockResolvedValue(null);
+		mocks.setLastUpdated?.(null);
+		mocks.setActivityError?.(null);
+		mocks.setConnected?.(true);
 	});
 
 	afterEach(() => {
 		vi.clearAllMocks();
+		vi.restoreAllMocks();
 		vi.useRealTimers();
 		config.MIDATA_ENABLED = false;
+		config.WP_PUBLISHING_ENABLED = false;
+		config.PUBLIC_BASE_URL = '';
+		config.AUTOSAVE_DEBOUNCE = initialAutosaveDebounce;
 		user.value = null;
 		localStorage.removeItem('dpw:activity-edit-draft:activity-1');
 	});
@@ -189,6 +220,534 @@ describe('DetailPage activity access', () => {
 		await flushPromises();
 		expect(mocks.replace).toHaveBeenCalledWith('/');
 		expect(wrapper.text()).not.toContain('Test activity');
+		wrapper.unmount();
+	});
+
+	it('shows the guiding thread as escaped multiline text', async () => {
+		const story = 'Erste Zeile\n<b>Zweite Zeile</b>';
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ guiding_thread: story }));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		const section = wrapper.findAll('.detail-section').find((item) => item.text().includes('Roter Faden'));
+		expect(section).toBeDefined();
+		expect(section!.get('.detail-value').element.textContent).toBe(story);
+		expect(section!.find('b').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('autosaves and clears the guiding thread without affecting other fields', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ goal: 'Ziel', guiding_thread: 'Bisher' }));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const field = wrapper.get('#edit-guiding-thread');
+		expect((field.element as HTMLTextAreaElement).value).toBe('Bisher');
+		await field.setValue('  Anfang\nEnde  ');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			goal: 'Ziel',
+			guiding_thread: 'Anfang\nEnde',
+		}));
+		await field.setValue('  ');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			guiding_thread: null,
+		}));
+		wrapper.unmount();
+	});
+
+	it('restores legacy drafts without clearing a guiding thread saved after the draft was made', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ guiding_thread: 'Bereits gespeichert' }));
+		localStorage.setItem('dpw:activity-edit-draft:activity-1', JSON.stringify({
+			version: 1,
+			activityId: 'activity-1',
+			savedAt: Date.now(),
+			data: {
+				title: 'Entwurf', date: '2026-07-01', startTime: '10:00', endTime: '11:00',
+				goal: '', location: '', responsible: [], department: '',
+				material: [{ name: '', responsible: [] }], tnMaterial: [''],
+				sikoText: '', badWeather: '', programs: [],
+			},
+		}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const restoreButton = wrapper.findAll('button').find((button) => button.text() === 'Wiederherstellen');
+		expect(restoreButton).toBeDefined();
+		await restoreButton!.trigger('click');
+		expect((wrapper.get('#edit-title').element as HTMLInputElement).value).toBe('Entwurf');
+		expect((wrapper.get('#edit-guiding-thread').element as HTMLTextAreaElement).value).toBe('Bereits gespeichert');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			title: 'Entwurf',
+			guiding_thread: 'Bereits gespeichert',
+		}));
+		wrapper.unmount();
+	});
+
+	it('keeps unsaved guiding thread text in local drafts across reloads', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const first = shallowMount(DetailPage);
+		await flushPromises();
+		await first.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await first.get('#edit-guiding-thread').setValue('Noch nicht gespeichert');
+		await vi.advanceTimersByTimeAsync(350);
+		const draft = JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!);
+		expect(draft.data.guidingThread).toBe('Noch nicht gespeichert');
+		first.unmount();
+
+		const second = shallowMount(DetailPage);
+		await flushPromises();
+		await second.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const restoreButton = second.findAll('button').find((button) => button.text() === 'Wiederherstellen');
+		expect(restoreButton).toBeDefined();
+		await restoreButton!.trigger('click');
+		expect((second.get('#edit-guiding-thread').element as HTMLTextAreaElement).value).toBe('Noch nicht gespeichert');
+		second.unmount();
+	});
+
+	it('keeps a newer story draft when an earlier save finishes', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		let resolveFirstSave: (() => void) | undefined;
+		mocks.updateActivity.mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+			resolveFirstSave = () => resolve(true);
+		}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const field = wrapper.get('#edit-guiding-thread');
+		await field.setValue('Version 1');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(resolveFirstSave).toBeDefined();
+		await field.setValue('Version 2');
+		await vi.advanceTimersByTimeAsync(350);
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Version 2');
+
+		resolveFirstSave!();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Version 2');
+
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			guiding_thread: 'Version 2',
+		}));
+		expect(localStorage.getItem('dpw:activity-edit-draft:activity-1')).toBeNull();
+		wrapper.unmount();
+	});
+
+	it('keeps an unresolved story draft when an earlier save finishes and the page closes', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const resolveSaves: Array<() => void> = [];
+		mocks.updateActivity.mockImplementation(() => new Promise<boolean>((resolve) => {
+			resolveSaves.push(() => resolve(true));
+		}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('#edit-guiding-thread').setValue('Version 1');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		await wrapper.get('#edit-guiding-thread').setValue('Version 2');
+		await vi.advanceTimersByTimeAsync(350);
+		await wrapper.get('button.btn-toggle.btn-mail').trigger('click');
+		expect(resolveSaves).toHaveLength(1);
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		expect(wrapper.text()).toContain('Ungespeicherter Entwurf gefunden');
+		resolveSaves[0]!();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(resolveSaves).toHaveLength(2);
+		expect(wrapper.text()).toContain('Ungespeicherter Entwurf gefunden');
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Version 2');
+		wrapper.unmount();
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Version 2');
+	});
+
+	it('does not let a completed save from a closed page delete a newer page draft', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		let resolveFirstSave: (() => void) | undefined;
+		mocks.updateActivity.mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+			resolveFirstSave = () => resolve(true);
+		}));
+		const first = shallowMount(DetailPage);
+		await flushPromises();
+		await first.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await first.get('#edit-guiding-thread').setValue('Version 1');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		first.unmount();
+
+		const second = shallowMount(DetailPage);
+		await flushPromises();
+		await second.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const discard = second.findAll('button').find((button) => button.text() === 'Verwerfen');
+		expect(discard).toBeDefined();
+		await discard!.trigger('click');
+		await second.get('#edit-guiding-thread').setValue('Version 2');
+		await vi.advanceTimersByTimeAsync(350);
+		resolveFirstSave!();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Version 2');
+		second.unmount();
+	});
+
+	it.each([true, false])('flushes a pending story when switching to view (debounce: %s)', async (debounce) => {
+		allowEditing();
+		vi.useFakeTimers();
+		config.AUTOSAVE_DEBOUNCE = debounce;
+		mocks.updateActivity.mockImplementation(() => new Promise<boolean>(() => {}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('#edit-guiding-thread').setValue('Sofort zur Ansicht');
+		await wrapper.get('button.btn-toggle.btn-mail').trigger('click');
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			guiding_thread: 'Sofort zur Ansicht',
+		}));
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Sofort zur Ansicht');
+		wrapper.unmount();
+	});
+
+	it('does not repeat an already completed autosave when switching to view', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('#edit-guiding-thread').setValue('Bereits gespeichert');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenCalledTimes(1);
+		await wrapper.get('button.btn-toggle.btn-mail').trigger('click');
+		expect(mocks.updateActivity).toHaveBeenCalledTimes(1);
+		wrapper.unmount();
+	});
+
+	it('shows an unconfirmed update when the user has switched to view', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		mocks.updateActivity.mockImplementation(async () => {
+			mocks.setActivityError?.('Das Backend hat den roten Faden nicht bestätigt.');
+			return false;
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('#edit-guiding-thread').setValue('Noch nicht gespeichert');
+		await wrapper.get('button.btn-toggle.btn-mail').trigger('click');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(wrapper.getComponent(ErrorAlert).props('error')).toContain('den roten Faden nicht bestätigt');
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Noch nicht gespeichert');
+		wrapper.unmount();
+	});
+
+	it('honors guiding thread locks and merges remote changes without clobbering newer typing', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ guiding_thread: 'Ausgang' }));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const field = wrapper.get('#edit-guiding-thread');
+		mocks.onMessage?.({ event: 'lock', activity_id: 'activity-1', section: 'guiding_thread', user: 'Andere Person' });
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).disabled).toBe(true);
+		mocks.onMessage?.({ event: 'unlock', activity_id: 'activity-1', section: 'guiding_thread' });
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).disabled).toBe(false);
+
+		await field.setValue('Version 1');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		await field.setValue('Version 2');
+		mocks.setLastUpdated?.(makeActivity({ guiding_thread: 'Version 1' }));
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).value).toBe('Version 2');
+		mocks.setLastUpdated?.(makeActivity({ guiding_thread: 'Von anderer Person' }));
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).value).toBe('Von anderer Person');
+		wrapper.unmount();
+	});
+
+	it('keeps newer story text when multiple save echoes arrive late', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const resolveSaves: Array<() => void> = [];
+		mocks.updateActivity.mockImplementation(() => new Promise<boolean>((resolve) => {
+			resolveSaves.push(() => resolve(true));
+		}));
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ guiding_thread: 'Ausgang' }));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const field = wrapper.get('#edit-guiding-thread');
+		await field.setValue('Version 1');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		await field.setValue('Version 2');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenCalledTimes(1);
+		await field.setValue('Version 3');
+		resolveSaves[0]!();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mocks.updateActivity).toHaveBeenCalledTimes(2);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			guiding_thread: 'Version 2',
+		}));
+		mocks.setLastUpdated?.(makeActivity({ guiding_thread: 'Version 1' }));
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).value).toBe('Version 3');
+		mocks.setLastUpdated?.(makeActivity({ guiding_thread: 'Version 2' }));
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).value).toBe('Version 3');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenCalledTimes(2);
+		resolveSaves[1]!();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			guiding_thread: 'Version 3',
+		}));
+		wrapper.unmount();
+	});
+
+	it('continues queued saves after an earlier update fails', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		let rejectFirstSave: (() => void) | undefined;
+		mocks.updateActivity.mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+			rejectFirstSave = () => {
+				mocks.setActivityError?.('Speichern fehlgeschlagen');
+				resolve(false);
+			};
+		}));
+		mocks.updateActivity.mockImplementationOnce(async () => {
+			mocks.setActivityError?.(null);
+			return true;
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const field = wrapper.get('#edit-guiding-thread');
+		await field.setValue('Version 1');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		await field.setValue('Version 2');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenCalledTimes(1);
+		rejectFirstSave!();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			guiding_thread: 'Version 2',
+		}));
+		expect(localStorage.getItem('dpw:activity-edit-draft:activity-1')).toBeNull();
+		wrapper.unmount();
+	});
+
+	it('does not mistake remote updates for failed or disconnected save echoes', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ guiding_thread: 'Ausgang' }));
+		mocks.updateActivity.mockImplementationOnce(async () => {
+			mocks.setActivityError?.('Speichern fehlgeschlagen');
+			return false;
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const field = wrapper.get('#edit-guiding-thread');
+		await field.setValue('Fehlgeschlagene Version');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		await field.setValue('Anderer lokaler Text');
+		mocks.setLastUpdated?.(makeActivity({ guiding_thread: 'Fehlgeschlagene Version' }));
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).value).toBe('Fehlgeschlagene Version');
+
+		await field.setValue('Gesendete Version');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		await field.setValue('Neuer lokaler Text');
+		mocks.setConnected?.(false);
+		await flushPromises();
+		mocks.setConnected?.(true);
+		await flushPromises();
+		mocks.setLastUpdated?.(makeActivity({ guiding_thread: 'Gesendete Version' }));
+		await flushPromises();
+		expect((field.element as HTMLTextAreaElement).value).toBe('Gesendete Version');
+		wrapper.unmount();
+	});
+
+	it('does not send a guiding thread when connected to an older backend', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const { guiding_thread: _guidingThread, ...legacyActivity } = makeActivity();
+		mocks.fetchActivity.mockResolvedValue(legacyActivity);
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		expect((wrapper.get('#edit-guiding-thread').element as HTMLTextAreaElement).disabled).toBe(true);
+		expect(wrapper.text()).toContain('nach dem Backend-Update verfügbar');
+		await wrapper.get('#edit-title').setValue('Geänderter Titel');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenCalled();
+		expect(mocks.updateActivity.mock.lastCall?.[1]).not.toHaveProperty('guiding_thread');
+		wrapper.unmount();
+	});
+
+	it('keeps the story draft when an older backend does not confirm the update', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		mocks.updateActivity.mockImplementation(async () => {
+			mocks.setActivityError?.('Das Backend hat den roten Faden nicht bestätigt.');
+			return false;
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('#edit-guiding-thread').setValue('Noch nicht gespeichert');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(wrapper.getComponent(ErrorAlert).props('error')).toContain('den roten Faden nicht bestätigt');
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Noch nicht gespeichert');
+		wrapper.unmount();
+	});
+
+	it('retains a restored legacy-backend story when switching to view', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const { guiding_thread: _guidingThread, ...legacyActivity } = makeActivity();
+		mocks.fetchActivity.mockResolvedValue(legacyActivity);
+		localStorage.setItem('dpw:activity-edit-draft:activity-1', JSON.stringify({
+			version: 1,
+			activityId: 'activity-1',
+			savedAt: Date.now(),
+			data: {
+				title: 'Entwurf', date: '2026-07-01', startTime: '10:00', endTime: '11:00',
+				goal: '', guidingThread: 'Lokal erhaltene Geschichte', location: '', responsible: [], department: '',
+				material: [{ name: '', responsible: [] }], tnMaterial: [''],
+				sikoText: '', badWeather: '', programs: [],
+			},
+		}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const restoreButton = wrapper.findAll('button').find((button) => button.text() === 'Wiederherstellen');
+		expect(restoreButton).toBeDefined();
+		await restoreButton!.trigger('click');
+		await wrapper.get('button.btn-toggle.btn-mail').trigger('click');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(wrapper.findComponent(ErrorAlert).exists()).toBe(false);
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Lokal erhaltene Geschichte');
+		wrapper.unmount();
+	});
+
+	it('retains a restored story locally until an older backend has been upgraded', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const { guiding_thread: _guidingThread, ...legacyActivity } = makeActivity();
+		mocks.fetchActivity.mockResolvedValue(legacyActivity);
+		localStorage.setItem('dpw:activity-edit-draft:activity-1', JSON.stringify({
+			version: 1,
+			activityId: 'activity-1',
+			savedAt: Date.now(),
+			data: {
+				title: 'Entwurf', date: '2026-07-01', startTime: '10:00', endTime: '11:00',
+				goal: '', guidingThread: 'Lokal erhaltene Geschichte', location: '', responsible: [], department: '',
+				material: [{ name: '', responsible: [] }], tnMaterial: [''],
+				sikoText: '', badWeather: '', programs: [],
+			},
+		}));
+		const oldBackendPage = shallowMount(DetailPage);
+		await flushPromises();
+		await oldBackendPage.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const restoreOld = oldBackendPage.findAll('button').find((button) => button.text() === 'Wiederherstellen');
+		expect(restoreOld).toBeDefined();
+		await restoreOld!.trigger('click');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity.mock.lastCall?.[1]).not.toHaveProperty('guiding_thread');
+		expect(JSON.parse(localStorage.getItem('dpw:activity-edit-draft:activity-1')!).data.guidingThread)
+			.toBe('Lokal erhaltene Geschichte');
+		expect(oldBackendPage.text()).toContain('Der Entwurf bleibt bis dahin lokal gespeichert');
+		const oldField = oldBackendPage.get('#edit-guiding-thread').element as HTMLTextAreaElement;
+		expect(oldField.readOnly).toBe(true);
+		expect(oldField.disabled).toBe(false);
+		oldBackendPage.unmount();
+
+		mocks.fetchActivity.mockResolvedValue(makeActivity());
+		const upgradedBackendPage = shallowMount(DetailPage);
+		await flushPromises();
+		await upgradedBackendPage.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const restoreAfterUpgrade = upgradedBackendPage.findAll('button').find((button) => button.text() === 'Wiederherstellen');
+		expect(restoreAfterUpgrade).toBeDefined();
+		await restoreAfterUpgrade!.trigger('click');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			guiding_thread: 'Lokal erhaltene Geschichte',
+		}));
+		expect(localStorage.getItem('dpw:activity-edit-draft:activity-1')).toBeNull();
+		upgradedBackendPage.unmount();
+	});
+
+	it('reports when an old backend cannot persist a story and local storage fails', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const { guiding_thread: _guidingThread, ...legacyActivity } = makeActivity();
+		mocks.fetchActivity.mockResolvedValue(legacyActivity);
+		localStorage.setItem('dpw:activity-edit-draft:activity-1', JSON.stringify({
+			version: 1,
+			activityId: 'activity-1',
+			savedAt: Date.now(),
+			data: {
+				title: 'Entwurf', date: '2026-07-01', startTime: '10:00', endTime: '11:00',
+				goal: '', guidingThread: 'Bitte kopieren', location: '', responsible: [], department: '',
+				material: [{ name: '', responsible: [] }], tnMaterial: [''],
+				sikoText: '', badWeather: '', programs: [],
+			},
+		}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const restoreButton = wrapper.findAll('button').find((button) => button.text() === 'Wiederherstellen');
+		expect(restoreButton).toBeDefined();
+		await restoreButton!.trigger('click');
+		const setItem = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(setItem).toHaveBeenCalled();
+		expect(wrapper.getComponent(ErrorAlert).props('error')).toContain('der rote Faden konnte nicht lokal gesichert werden');
+		expect(wrapper.text()).not.toContain('Der Entwurf bleibt bis dahin lokal gespeichert');
+		expect((wrapper.get('#edit-guiding-thread').element as HTMLTextAreaElement).disabled).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('substitutes the guiding thread safely in event templates', async () => {
+		allowEditing();
+		config.WP_PUBLISHING_ENABLED = true;
+		config.PUBLIC_BASE_URL = 'https://example.test';
+		const story = 'Erste Zeile\n<script>Beispiel</script>';
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ department: 'Pfadi', guiding_thread: story }));
+		mocks.fetchForm.mockResolvedValue({ public_slug: 'form-1' });
+		mocks.fetchEventTemplate.mockResolvedValue({
+			title: 'Motto: {{roter_faden}}',
+			body: '<p>{{roter_faden}} / {{formular_link|Anmelden}}</p>',
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Als Event veröffentlichen"]').trigger('click');
+		await flushPromises();
+		expect((wrapper.get('.event-preview-input').element as HTMLInputElement).value).toContain('Erste Zeile');
+		expect((wrapper.get('.event-preview-input').element as HTMLInputElement).value).not.toContain('{{roter_faden}}');
+		const editor = wrapper.get('.event-preview-form .rich-editor');
+		expect(editor.element.textContent).toContain(story.replace('\n', ''));
+		expect(editor.find('br').exists()).toBe(true);
+		expect(editor.find('script').exists()).toBe(false);
+		expect(editor.get('a').attributes('href')).toBe('https://example.test/forms/form-1');
 		wrapper.unmount();
 	});
 

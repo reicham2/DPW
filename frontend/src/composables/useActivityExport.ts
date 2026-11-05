@@ -38,6 +38,15 @@ function value(text: string): Paragraph {
 	});
 }
 
+function multilineValue(text: string): Paragraph {
+	return new Paragraph({
+		children: text.split(/\r\n|\r|\n/).map((line, index) =>
+			new TextRun({ text: line, size: 20, break: index > 0 ? 1 : 0 }),
+		),
+		spacing: { after: 80 },
+	});
+}
+
 function heading2(text: string): Paragraph {
 	return new Paragraph({
 		text,
@@ -92,7 +101,7 @@ function metaTable(rows: [string, string][]): Table {
 	});
 }
 
-function programsTable(activity: Activity): Table {
+function programsTable(activity: Activity, resolveResponsibleName: (id: string) => string): Table {
 	const headerRow = new TableRow({
 		tableHeader: true,
 		children: ['Dauer', 'Titel', 'Beschreibung', 'Verantwortlich'].map(
@@ -204,10 +213,15 @@ export function useActivityExport() {
 			children.push(value(activity.goal));
 		}
 
+		if (activity.guiding_thread) {
+			children.push(heading2('Roter Faden'));
+			children.push(multilineValue(activity.guiding_thread));
+		}
+
 		// Programs
 		if (activity.programs.length > 0) {
 			children.push(heading2('Programm'));
-			children.push(programsTable(activity));
+			children.push(programsTable(activity, resolveResponsibleName));
 		}
 
 		// Material

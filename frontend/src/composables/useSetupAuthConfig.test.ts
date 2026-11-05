@@ -23,6 +23,7 @@ vi.mock('./useMaintenance', () => ({
 }));
 
 import {
+	activityGuidingThreadSupported,
 	ensureSetupStatus,
 	setupError,
 	setupFieldConfigured,
@@ -52,6 +53,7 @@ describe('useSetupAuthConfig', () => {
 		setupSubmitting.value = false;
 		setupRequired.value = null;
 		setupError.value = null;
+		activityGuidingThreadSupported.value = false;
 		setupFieldConfigured.value = {
 			tenant_id: false,
 			client_id: false,
@@ -130,6 +132,25 @@ describe('useSetupAuthConfig', () => {
 			'tenant-x',
 			'client-x',
 		);
+	});
+
+	it('enables the guiding thread only when the backend explicitly supports it', async () => {
+		const configured = { configured: true, tenant_id: 'tenant', client_id: 'client' };
+		vi.spyOn(globalThis, 'fetch')
+			.mockResolvedValueOnce(jsonResponse({ ...configured, activity_guiding_thread_supported: true }))
+			.mockResolvedValueOnce(jsonResponse(configured))
+			.mockResolvedValueOnce(jsonResponse({ ...configured, activity_guiding_thread_supported: true }))
+			.mockResolvedValueOnce(jsonResponse({ ...configured, activity_guiding_thread_supported: 'yes' }));
+
+		expect(await ensureSetupStatus(true)).toBe(false);
+		expect(activityGuidingThreadSupported.value).toBe(true);
+		expect(await ensureSetupStatus(true)).toBe(false);
+		expect(activityGuidingThreadSupported.value).toBe(false);
+		expect(await ensureSetupStatus(true)).toBe(false);
+		expect(activityGuidingThreadSupported.value).toBe(true);
+		expect(await ensureSetupStatus(true)).toBe(true);
+		expect(activityGuidingThreadSupported.value).toBe(false);
+		expect(setupError.value).toBe('Ungültige Setup-Antwort des Servers.');
 	});
 
 	it('fails closed without caching a failed setup status and can recover', async () => {

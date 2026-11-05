@@ -15,6 +15,7 @@ inline Activity make_activity()
     a.start_time = "09:00";
     a.end_time = "17:00";
     a.goal = "Spass haben";
+    a.guiding_thread = "Eine gemeinsame Geschichte";
     a.location = "Waldhaus";
     a.responsible = {"Anna", "Ben"};
     a.department = "Pfadi";

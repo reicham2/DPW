@@ -29,6 +29,7 @@ export interface Activity {
 	start_time: string; // "HH:MM"
 	end_time: string; // "HH:MM"
 	goal: string;
+	guiding_thread: string | null;
 	location: string;
 	responsible: string[];
 	department: Department | null;
@@ -58,6 +59,7 @@ export interface ActivityInput {
 	start_time: string;
 	end_time: string;
 	goal: string;
+	guiding_thread?: string | null;
 	location: string;
 	responsible: string[];
 	department?: Department | null;
@@ -76,6 +78,7 @@ export type EditSection =
 	| `program_${number}`
 	| `material_${number}`
 	| `tn_material_${number}`
+	| 'guiding_thread'
 	| 'siko'
 	| 'goal_weather'
 	| 'tpl_recipients'

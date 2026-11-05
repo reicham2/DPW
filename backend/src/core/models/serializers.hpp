@@ -126,6 +126,7 @@ inline nlohmann::json to_json(const Activity &a)
         {"created_at", a.created_at},
         {"updated_at", a.updated_at}};
     j["department"] = a.department ? nlohmann::json(*a.department) : nlohmann::json(nullptr);
+    j["guiding_thread"] = a.guiding_thread ? nlohmann::json(*a.guiding_thread) : nlohmann::json(nullptr);
     j["tn_material"] = a.tn_material;
     j["siko_text"] = a.siko_text ? nlohmann::json(*a.siko_text) : nlohmann::json(nullptr);
     j["bad_weather_info"] = a.bad_weather_info ? nlohmann::json(*a.bad_weather_info) : nlohmann::json(nullptr);
