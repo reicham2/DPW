@@ -108,6 +108,8 @@ const testUser: User = {
 	time_display_mode: 'minutes',
 	notify_material_assigned: true,
 	notify_activity_assigned: true,
+	notify_activity_reminder: true,
+	activity_reminder_hours: 24,
 	notify_program_assigned: true,
 	notify_mail_own_activity: true,
 	notify_mail_department: true,

@@ -309,7 +309,8 @@ bei parallelen Prozessen, Neustarts und geloeschten/gelesenen Meldungen. Datum, 
 Stufe und Loeschen/Wiederherstellen erzeugen eine neue Terminrevision und entfernen alte
 In-App-Erinnerungen; reine Titel-/Programmaenderungen loesen keinen erneuten Versand aus.
 
-In-App-Meldungen werden dauerhaft gespeichert. Browser/App/Web-Push respektieren den
+In-App-Meldungen werden bis zur bestehenden Aktivitaetsbenachrichtigungs-Ablaufgrenze
+(Folgetag um Mitternacht) gespeichert. Browser/App/Web-Push respektieren den
 Kanal-Schalter; fehlgeschlagene Push-Zustellungen werden mit persistenter Fuenf-Minuten-Lease
 bis zum Beginn erneut versucht (maximal 20 Empfaenger pro Durchlauf). Externe Zustellung
 ist mindestens einmal: ein Absturz nach dem Senden kann eine Wiederholung verursachen,
@@ -318,9 +319,11 @@ Meldungen koennen bei spaeterer Absage nicht zurueckgezogen werden. Automatische
 werden nicht versendet: der bestehende Mail-Pfad benoetigt ein delegiertes Benutzer-Token.
 `DPW_PUBLIC_URL` muss fuer Aktivitaetslinks konfiguriert sein.
 
-Die Reminder-Funktionen sind fuer den zentralen CronScheduler vorbereitet. Die Registrierung
-des Minuten-Jobs wartet auf die geschuetzte Zusammenfuehrung von #206; es wird kein zweiter
-Scheduler eingefuehrt.
+Der zentrale CronScheduler fuehrt `activity-reminders` beim Serverstart und jede Minute aus;
+er ist im System-Bereich sichtbar und pausierbar. Der Job verwendet eine eigene DB-Verbindung
+mit begrenzten Verbindungs-, Statement- und Lock-Timeouts. Push laeuft im Worker; WebSocket-
+Zustellung wird auf den HTTP-Loop verschoben und prueft dort erneut Terminrevision, aktuellen
+Stufenzugriff und Einstellungen. Es gibt keinen zweiten Scheduler.
 
 SQL-Regressionen (in einer Testdatenbank; alle Fixtures werden zurueckgerollt):
 

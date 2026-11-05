@@ -53,6 +53,8 @@ test-api:
 		--env-var baseUrl=http://127.0.0.1:8000/api --reporters cli
 	docker run --rm --network host -v "$(CURDIR):/tests:ro" -w /tests node:22-alpine \
 		node --test scripts/api-websocket-tests.mjs
+	docker run --rm --network host -v "$(CURDIR):/tests:ro" -w /tests node:22-alpine \
+		node --test scripts/api-reminder-tests.mjs
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:

@@ -9,6 +9,8 @@ void run_activity_reminders(Database &db,
     db.create_due_activity_reminders();
     bool failed = false;
     for (const auto &note : db.claim_activity_reminder_deliveries()) {
+        if (!db.get_current_activity_reminder(note.id))
+            continue;
         const auto recipient = db.get_user_by_id(note.user_id);
         if (!recipient || !recipient->notify_activity_reminder || !recipient->notify_channel_websocket ||
             !recipient->department || *recipient->department != note.payload.at("department").get<std::string>())

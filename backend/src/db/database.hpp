@@ -105,6 +105,7 @@ public:
                                           const std::optional<int> &activity_reminder_hours = std::nullopt);
     void create_due_activity_reminders();
     std::vector<NotificationRecord> claim_activity_reminder_deliveries();
+    std::optional<NotificationRecord> get_current_activity_reminder(const std::string &notification_id);
     void finish_activity_reminder_delivery(const std::string &notification_id, bool delivered);
 
     // Admin: update any user's display_name, department and role.

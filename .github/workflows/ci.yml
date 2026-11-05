@@ -287,6 +287,11 @@ jobs:
           docker run --rm --network host -v "$PWD:/tests:ro" -w /tests node:22-alpine \
             node --test scripts/api-websocket-tests.mjs
 
+      - name: API - Run scheduled activity reminder tests
+        run: |
+          docker run --rm --network host -v "$PWD:/tests:ro" -w /tests node:22-alpine \
+            node --test scripts/api-reminder-tests.mjs
+
       - name: Smoke - Verify snapshot rollback on sync failure
         run: |
           set -e

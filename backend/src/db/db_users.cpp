@@ -219,7 +219,7 @@ std::vector<UserRecord> Database::get_users_by_ids(const std::vector<std::string
     PGresult *res = PQexecParams(conn_,
                                  "SELECT id, microsoft_oid, email, display_name, department, role, time_display_mode, "
                                  "       notify_material_assigned, notify_activity_assigned, notify_program_assigned, notify_mail_own_activity, notify_mail_department, "
-                                 "       notify_channel_websocket, notify_channel_email, avatar_color, "
+                                 "       notify_activity_reminder, activity_reminder_hours, notify_channel_websocket, notify_channel_email, avatar_color, "
                                  "       created_at, updated_at "
                                  "FROM users WHERE id::text = ANY($1::text[])",
                                  1, nullptr, params, nullptr, nullptr, 0);
