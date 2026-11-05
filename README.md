@@ -34,6 +34,24 @@ make up
 make db-seed
 ```
 
+## Relative Datumsvariablen in Vorlagen
+
+Formular-, Mail- und Event-Vorlagen unterstützen `{{datum|-7}}` (langes deutsches
+Datum) und `{{datum_kurz|-7}}` (`DD.MM.YYYY`), z.B. `Anmeldung bis {{datum_kurz|-7}}`.
+Bei einer Aktivität am 15.07.2026 ergibt das `Anmeldung bis 08.07.2026`.
+Die Zahl nach `|` ist frei wählbar: negative ganze Zahlen ziehen Kalendertage ab,
+positive ganze Zahlen addieren sie, `0` lässt das Datum unverändert. Ein führendes
+`+`, Leerzeichen oder Dezimalzahlen sind nicht zulässig. Ohne Versatz bleiben
+`{{datum}}` und `{{datum_kurz}}` unverändert unterstützt.
+
+Monats-/Jahreswechsel, Schaltjahre und Sommerzeit werden als Kalendertage behandelt,
+nicht als lokale Zeitdauer. Ungültige Versätze, ungültige Aktivitätsdaten oder
+Ergebnisse außerhalb von `0001-01-01` bis `9999-12-31` lassen die Variable sichtbar
+unverändert. Formularvariablen werden beim öffentlichen Abruf anhand der verknüpften Aktivität
+ersetzt (Titel, Fragen, Untertitel und Auswahlbeschriftungen); Mail-/Event-Vorlagen
+werden beim Anwenden expandiert. Dies berechnet einen Datumstext und schließt ein
+Formular nicht automatisch. Beispiele stehen im Menü „Verfügbare Variablen“.
+
 ## Datenbank-Schema-Sync (init.sql)
 
 Es gibt bewusst keine separaten Migrationsdateien. `db/init.sql` ist die einzige Quelle fuer das gesamte Schema.

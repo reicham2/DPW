@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <string_view>
+#include <optional>
 
 // ── URL helpers ─────────────────────────────────────────────────────────────
 
@@ -19,3 +20,5 @@ const char *status_text(int code);
 
 std::string format_date_long_de(const std::string &iso_date);
 std::string format_date_short_de(const std::string &iso_date);
+// Invalid dates or results outside 0001-01-01..9999-12-31 have no value.
+std::optional<std::string> shift_iso_date(const std::string &iso_date, int days);

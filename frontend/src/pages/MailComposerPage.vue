@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { replaceDateOffsets } from '../utils/templateDateVars';
 import { useActivities } from '../composables/useActivities';
 import { useMailTemplates } from '../composables/useMailTemplates';
 import { useContactSearch } from '../composables/useContactSearch';
@@ -239,6 +240,7 @@ function formatPrograms(act: Activity): string {
 }
 
 function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: boolean } = {}): string {
+	text = replaceDateOffsets(text, act.date)
 	const htmlLists = opts.htmlLists ?? true
   const senderEmail = user.value?.email ?? ''
   const senderName = user.value?.display_name ?? ''
@@ -457,7 +459,7 @@ function expandSelectionToVariables() {
   }
   let startOff = nodeOffset(range.startContainer, range.startOffset)
   let endOff = nodeOffset(range.endContainer, range.endOffset)
-  const varPattern = /\{\{\w+\}\}/g
+  const varPattern = /\{\{\w+(?:\|[^}]*)?\}\}/g
   let m: RegExpExecArray | null
   while ((m = varPattern.exec(fullText)) !== null) {
     const vs = m.index, ve = m.index + m[0].length

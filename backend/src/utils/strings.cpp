@@ -2,6 +2,8 @@
 #include <ctime>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstdio>
 
 std::string to_lower_ascii(std::string s)
 {
@@ -83,28 +85,63 @@ std::string url_decode(const std::string &src)
 
 // ── Date formatting (German) ────────────────────────────────────────────────
 
+namespace
+{
+    std::optional<std::chrono::year_month_day> parse_iso_date(const std::string &iso)
+    {
+        if (iso.size() != 10 || iso[4] != '-' || iso[7] != '-')
+            return std::nullopt;
+        for (size_t i = 0; i < iso.size(); ++i)
+            if (i != 4 && i != 7 && (iso[i] < '0' || iso[i] > '9'))
+                return std::nullopt;
+        const int y = std::stoi(iso.substr(0, 4));
+        const auto date = std::chrono::year{y} /
+            std::chrono::month{static_cast<unsigned>(std::stoi(iso.substr(5, 2)))} /
+            std::chrono::day{static_cast<unsigned>(std::stoi(iso.substr(8, 2)))};
+        if (y < 1 || !date.ok())
+            return std::nullopt;
+        return date;
+    }
+}
+
 std::string format_date_long_de(const std::string &iso_date)
 {
-    if (iso_date.size() < 10)
+    const auto date = parse_iso_date(iso_date);
+    if (!date)
         return iso_date;
-    struct tm t{};
-    t.tm_year = std::stoi(iso_date.substr(0, 4)) - 1900;
-    t.tm_mon = std::stoi(iso_date.substr(5, 2)) - 1;
-    t.tm_mday = std::stoi(iso_date.substr(8, 2));
-    std::mktime(&t);
     static const char *wdays[] = {"Sonntag", "Montag", "Dienstag", "Mittwoch",
                                   "Donnerstag", "Freitag", "Samstag"};
     static const char *months[] = {"Januar", "Februar", "März", "April", "Mai",
                                    "Juni", "Juli", "August", "September",
                                    "Oktober", "November", "Dezember"};
-    std::string r = wdays[t.tm_wday];
+    std::string r = wdays[std::chrono::weekday{std::chrono::sys_days{*date}}.c_encoding()];
     r += ", ";
-    r += std::to_string(t.tm_mday);
+    r += std::to_string(static_cast<unsigned>(date->day()));
     r += ". ";
-    r += months[t.tm_mon];
+    r += months[static_cast<unsigned>(date->month()) - 1];
     r += " ";
     r += iso_date.substr(0, 4);
     return r;
+}
+
+std::optional<std::string> shift_iso_date(const std::string &iso_date, int days)
+{
+    using namespace std::chrono;
+    const auto date = parse_iso_date(iso_date);
+    if (!date)
+        return std::nullopt;
+    const sys_days start{*date};
+    const sys_days first{year{1} / January / 1};
+    const sys_days last{year{9999} / December / 31};
+    if (days < (first - start).count() || days > (last - start).count())
+        return std::nullopt;
+    const year_month_day shifted{start + std::chrono::days{days}};
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%04d-%02u-%02u",
+                  static_cast<int>(shifted.year()),
+                  static_cast<unsigned>(shifted.month()),
+                  static_cast<unsigned>(shifted.day()));
+    return std::string(buf);
 }
 
 std::string format_date_short_de(const std::string &iso_date)
