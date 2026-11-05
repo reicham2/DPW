@@ -157,6 +157,8 @@ TEST(template_vars_guiding_thread)
     ASSERT_STR_EQ(replace_template_vars("{{titel}}: {{roter_faden}} | {{ziel}} / {{roter_faden}}", a),
                   "Pfadilager: Geschichte mit {{titel}}\n{{ziel}} und {{roter_faden}} | "
                   "Ziel mit {{roter_faden}} / Geschichte mit {{titel}}\n{{ziel}} und {{roter_faden}}");
+    ASSERT_STR_EQ(replace_template_vars("API Form {{titel}}: " + *a.guiding_thread, a),
+                  "API Form Pfadilager: Geschichte mit {{titel}}\n{{ziel}} und {{roter_faden}}");
     a.location = "{{titel}}";
     ASSERT_STR_EQ(replace_template_vars("{{ort}}", a), "Pfadilager");
     a.guiding_thread = std::nullopt;
