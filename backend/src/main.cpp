@@ -1,5 +1,6 @@
 #include "App.h"
 #include "infra/app_config.hpp"
+#include "infra/audit.hpp"
 #include "db/database.hpp"
 #include "infra/ws_manager.hpp"
 #include "infra/cron_scheduler.hpp"
@@ -102,7 +103,7 @@ int main()
                std::printf("[cron] activity-trash: deleted %d activities\n", deleted);
      });
 
-     uWS::App()
+     AuditApp(db)
          // CORS preflight
          .options("/*", [](auto *res, auto * /*req*/)
                   { res->writeHeader("Access-Control-Allow-Origin", "*")
@@ -172,6 +173,8 @@ int main()
                { handle_post_push_payload(res, req, db); })
 
          // Admin endpoints
+         .get("/admin/audit-log", [&](auto *res, auto *req)
+              { handle_get_admin_audit_log(res, req, db); })
          .patch("/admin/users/:id", [&](auto *res, auto *req)
                 { handle_patch_admin_user(res, req, db); })
          .del("/admin/users/:id", [&](auto *res, auto *req)

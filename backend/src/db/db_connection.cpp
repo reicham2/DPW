@@ -130,6 +130,7 @@ namespace
             "users",
             "notifications",
             "role_permissions",
+            "audit_events",
         };
 
         for (const char *table : required_tables)

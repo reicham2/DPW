@@ -34,6 +34,60 @@ make up
 make db-seed
 ```
 
+## Audit Log
+
+Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein dauerhaftes,
+serverseitiges Journal wichtiger Aktionen. Der API-Endpunkt `GET /admin/audit-log`
+prueft diese Berechtigung unabhaengig von der UI. Filter: `actor` (Name/ID),
+`outcome` (`completed`, `rejected`, `unknown`, `pending`), `limit` (1–100, Standard 50)
+und `before` (ID-Cursor). IDs werden als Strings geliefert; Seiten sind absteigend
+nach Journal-ID geordnet und enthalten `next_cursor`.
+
+Erfasst werden Anmeldung/Profil, Aktivitaeten inklusive Programmen und Material
+(auch indirekte/bulk Aenderungen innerhalb einer Anfrage), Anhaenge, Freigabelinks,
+Wetterort, Benutzer/Rollen/Abteilungen/Berechtigungen, Orte/Materialverantwortliche,
+Systemeinstellungen/Wartung/Ersteinrichtung, Mailversand und Entwuerfe,
+Eventveroeffentlichungen, Vorlagen, Formularverwaltung/Antwortloeschung,
+Ideenkiste und Fehlermeldungen. Eine Anfrage ergibt einen Journal-Eintrag, nicht
+einen Eintrag pro betroffenem Datensatz. Automatische Hintergrundjobs, Lesezugriffe,
+Polling, Push-Abonnements, Benachrichtigungs-Lesestatus und oeffentliche
+Formularantworten werden nicht erfasst.
+
+Das Journal speichert verifizierte Benutzer-ID und Anzeigenamen als Momentaufnahme,
+Zeitpunkt, lesbare Aktion, Ressourcentyp, UUIDs, bekannte Einstellungsschluessel
+und HTTP-Ergebnis; keine Request-
+oder Response-Inhalte, IP-Adressen, Tokens, Freigabe-Slugs, Konfigurationswerte
+oder Formularantworten. Freie Rollen-/Abteilungsnamen und Vorlageninhalte werden
+nicht gespeichert; fuer Aktionen ohne UUID wird nur die Ressourcenkategorie gezeigt.
+Mailversand uebernimmt die optionale Aktivitaets-UUID, aber keine Empfaenger/Betreff/Inhalte.
+Ohne verifizierte Anmeldung bleibt der Akteur leer.
+Erstregistrierung verwendet bis zur Anlage des Benutzers die verifizierte Microsoft-ID.
+Historie bleibt nach Benutzer-/Ressourcenloeschung erhalten; es gibt keine automatische
+Loeschung, Exportfunktion oder konfigurierbare Aufbewahrungsfrist.
+
+Vor Ausfuehrung wird ein `pending`-Eintrag dauerhaft geschrieben; ist dies nicht
+moeglich, wird die Aktion mit HTTP 503 blockiert. Erst nach der Handler-Antwort
+wird `completed` (2xx), `rejected` (4xx) oder `unknown` (andere Ergebnisse/Abbruch)
+gespeichert. Dies beschreibt den **Anfrageausgang**, nicht einen atomaren Rollback
+aller DB-/externen Effekte: bei Fehlern koennen Teilaktionen bereits erfolgt sein.
+Ein Crash kann `pending` hinterlassen. Scheitert das abschliessende Schreiben,
+wird explizit HTTP 500 mit Hinweis auf moeglicherweise ausgefuehrte Aktionen
+zurueckgegeben und ein Betriebsfehler protokolliert; vor einem erneuten Versuch
+den Zustand pruefen. Audit-Schreiboperationen werfen bei DB-Fehlern, statt Erfolg
+vorzutaeuschen. `audit_events` wird additiv durch den bestehenden Schema-Sync angelegt.
+Bekannte Fehler der WordPress-Synchronisierung markieren auch bei unveraendertem
+HTTP-2xx-Verhalten den Audit-Ausgang als `unknown`.
+
+Audit-Regression: Frontend `npm test -- src/components/AuditLogPanel.test.ts`,
+Backend ueber `backend/Dockerfile.test`; zusaetzlich
+`AUDIT_BASE_URL=http://127.0.0.1:<frontend-port>/api AUDIT_BACKEND_URL=http://127.0.0.1:<backend-port> AUDIT_DB_CONTAINER=<name> node scripts/test-audit.mjs`
+gegen einen **wegwerfbaren, mit `db/seed.sql` vorbereiteten Debug-Backend/DB-Stack**.
+Die Ports liefert `docker compose -f docker-compose-dev.yml port frontend 80`
+und `docker compose -f docker-compose-dev.yml port backend 8080`.
+Bei abweichendem DB-Benutzer `AUDIT_DB_USER` setzen. Der Integrationstest injiziert
+gezielt DB-Schreibfehler und veraendert Testdaten; niemals gegen Produktion ausfuehren.
+CI fuehrt ihn vor der bestehenden API-Suite im isolierten Teststack aus.
+
 ## Relative Datumsvariablen in Vorlagen
 
 Formular-, Mail- und Event-Vorlagen unterstützen `{{datum|-7}}` (langes deutsches

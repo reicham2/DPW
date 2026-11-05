@@ -1,4 +1,5 @@
 #include "handlers/handler_deps.hpp"
+#include "infra/audit.hpp"
 
 static nlohmann::json user_to_json(const UserRecord &u)
 {
@@ -124,6 +125,8 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 500, R"({"error":"Datenbankfehler"})");
             return;
         }
+
+        audit_attribute(res, claims);
 
         // Block non-admins when maintenance mode is active.
         if (!is_admin(*user))

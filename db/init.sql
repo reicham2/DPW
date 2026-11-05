@@ -1,5 +1,22 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Audit journal has no user/resource foreign keys: deletion must preserve history.
+CREATE TABLE IF NOT EXISTS audit_events (
+    id BIGSERIAL PRIMARY KEY,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    finished_at TIMESTAMPTZ,
+    actor_id TEXT,
+    actor_name TEXT,
+    action TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT NOT NULL DEFAULT '',
+    outcome TEXT NOT NULL DEFAULT 'pending'
+        CHECK (outcome IN ('pending', 'completed', 'rejected', 'unknown')),
+    http_status INTEGER CHECK (http_status BETWEEN 0 AND 599)
+);
+CREATE INDEX IF NOT EXISTS audit_events_actor_id_idx ON audit_events(actor_id, id DESC);
+CREATE INDEX IF NOT EXISTS audit_events_outcome_idx ON audit_events(outcome, id DESC);
+
 -- Runtime app configuration values (stored from admin UI)
 CREATE TABLE IF NOT EXISTS app_settings (
     key         TEXT PRIMARY KEY,

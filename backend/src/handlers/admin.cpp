@@ -3,6 +3,7 @@
 
 #include <sys/wait.h>
 #include <unistd.h>
+#include <charconv>
 
 // ── Permission management (admin only) ──────────────────────────────────────
 
@@ -192,6 +193,40 @@ static std::optional<UserRecord> require_strict_admin(HttpRes *res, HttpReq *req
         return std::nullopt;
     }
     return user;
+}
+
+void handle_get_admin_audit_log(HttpRes *res, HttpReq *req, Database &db)
+{
+    if (!require_strict_admin(res, req, db))
+        return;
+
+    std::string limit_query{req->getQuery("limit")};
+    std::string before{req->getQuery("before")};
+    std::string actor = url_decode(std::string{req->getQuery("actor")});
+    std::string outcome{req->getQuery("outcome")};
+    auto positive = [](const std::string &s, long long &value)
+    {
+        auto parsed = std::from_chars(s.data(), s.data() + s.size(), value);
+        return parsed.ec == std::errc() && parsed.ptr == s.data() + s.size() && value > 0;
+    };
+    long long limit = 50, cursor = 0;
+    if ((!limit_query.empty() && (!positive(limit_query, limit) || limit > 100)) ||
+        (!before.empty() && !positive(before, cursor)) || actor.size() > 200 ||
+        (!outcome.empty() && outcome != "completed" && outcome != "rejected" &&
+         outcome != "unknown" && outcome != "pending"))
+    {
+        send_json(res, 400, R"({"error":"Ungültiger Audit-Log-Filter"})");
+        return;
+    }
+    try
+    {
+        send_json(res, 200, db.list_audit_events(static_cast<int>(limit), before,
+                                               actor, outcome).dump());
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "audit log", e);
+    }
 }
 
 // Validates that a string only contains characters safe for Docker labels and

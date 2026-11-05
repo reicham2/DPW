@@ -253,6 +253,20 @@ jobs:
       - name: API - Seed database
         run: docker compose -f docker-compose-dev.yml exec -T db psql -U activities_user -d activities < db/seed.sql
 
+      - name: Setup Node.js for audit regressions
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: API - Audit journal regression tests
+        env:
+          AUDIT_BASE_URL: http://127.0.0.1:8000/api
+          AUDIT_DB_USER: activities_user
+        run: |
+          AUDIT_BACKEND_URL="http://$(docker compose -f docker-compose-dev.yml port backend 8080)" \
+          AUDIT_DB_CONTAINER="$(docker compose -f docker-compose-dev.yml ps -q db)" \
+            node scripts/test-audit.mjs
+
       - name: API - Add authorization fixtures
         run: docker compose -f docker-compose-dev.yml exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < scripts/api-auth-fixtures.sql
 

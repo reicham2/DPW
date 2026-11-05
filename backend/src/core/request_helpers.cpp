@@ -1,6 +1,7 @@
 #include "core/request_helpers.hpp"
 #include "core/http.hpp"
 #include "infra/auth.hpp"
+#include "infra/audit.hpp"
 #include "db/database.hpp"
 #include "json.hpp"
 #include <string>
@@ -44,11 +45,20 @@ bool require_auth(HttpRes *res, HttpReq *req, TokenClaims &out_claims)
     try
     {
         out_claims = validate_token(token);
-        return true;
     }
     catch (std::exception &e)
     {
         send_json(res, 401, nlohmann::json{{"error", e.what()}}.dump());
+        return false;
+    }
+    try
+    {
+        audit_attribute(res, out_claims);
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "audit attribution; operation blocked", e);
         return false;
     }
 }

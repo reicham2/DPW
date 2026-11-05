@@ -1481,9 +1481,7 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
         wm.broadcast_activity_deleted(*activity);
         cache_bump_version(db, "activities");
         cache_bump_version(db, "activity");
-        set_cors(res);
-        res->writeStatus("204 No Content");
-        res->end();
+        send_json(res, 204, "");
     }
     catch (std::exception &e)
     {
@@ -1630,9 +1628,7 @@ void handle_delete_material(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
-        set_cors(res);
-        res->writeStatus("204 No Content");
-        res->end();
+        send_json(res, 204, "");
     }
     catch (std::exception &e)
     {

@@ -9,6 +9,7 @@ import RoleManager from '../components/RoleManager.vue'
 import LocationManager from '../components/LocationManager.vue'
 import MaterialManager from '../components/MaterialManager.vue'
 import SystemConfigManager from '../components/SystemConfigManager.vue'
+import AuditLogPanel from '../components/AuditLogPanel.vue'
 import CronJobsPanel from '../components/CronJobsPanel.vue'
 import RoleBadge from '../components/RoleBadge.vue'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
@@ -49,6 +50,7 @@ const resourcesTabLabel = computed(() => {
 const systemTabLabel = computed(() => {
   if (activeTab.value !== 'system') return 'System'
   if (systemTab.value === 'logs') return 'System: Container Logs'
+  if (systemTab.value === 'audit') return 'System: Audit Log'
   if (systemTab.value === 'maintenance') return 'System: Wartungsfenster'
   if (systemTab.value === 'jobs') return 'System: Cron-Jobs'
   return 'System: Einstellungen'
@@ -58,7 +60,7 @@ const systemTabLabel = computed(() => {
 const activeTab = ref<'users' | 'permissions' | 'resources' | 'trash' | 'system'>('users')
 const resourcesTab = ref<'locations' | 'materials'>('locations')
 const resourcesMenuOpen = ref(false)
-const systemTab = ref<'settings' | 'maintenance' | 'logs' | 'jobs'>('settings')
+const systemTab = ref<'settings' | 'maintenance' | 'logs' | 'audit' | 'jobs'>('settings')
 const systemMenuOpen = ref(false)
 const menuPos = ref({ top: 0, left: 0 })
 const MENU_WIDTH = 190
@@ -259,7 +261,7 @@ function toggleSystemMenu(event: MouseEvent) {
   }
 }
 
-function selectSystemTab(tab: 'settings' | 'maintenance' | 'logs' | 'jobs') {
+function selectSystemTab(tab: 'settings' | 'maintenance' | 'logs' | 'audit' | 'jobs') {
   systemTab.value = tab
   activeTab.value = 'system'
   systemMenuOpen.value = false
@@ -577,6 +579,15 @@ onMounted(() => {
         >
           Container Logs
         </button>
+        <button
+          v-if="canSeeLogsTab"
+          type="button"
+          class="system-tab-dropdown-item"
+          :class="{ 'system-tab-dropdown-item--active': activeTab === 'system' && systemTab === 'audit' }"
+          @click="selectSystemTab('audit')"
+        >
+          Audit Log
+        </button>
       </div>
     </div>
   </nav>
@@ -733,6 +744,8 @@ onMounted(() => {
 
     <SystemConfigManager v-else-if="systemTab === 'maintenance'" mode="maintenance" />
     <CronJobsPanel v-else-if="systemTab === 'jobs'" />
+
+    <AuditLogPanel v-else-if="systemTab === 'audit' && canSeeLogsTab" />
 
     <section v-else-if="systemTab === 'logs' && canSeeLogsTab">
       <div class="tab-header">
