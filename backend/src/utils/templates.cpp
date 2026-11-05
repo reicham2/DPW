@@ -3,6 +3,8 @@
 #include "utils/activity_helpers.hpp"
 #include <map>
 #include <utility>
+#include <charconv>
+#include <regex>
 
 // ── Template variable substitution ──────────────────────────────────────────
 
@@ -79,19 +81,40 @@ std::string replace_template_vars(const std::string &text, const Activity &act,
     }
 
     const std::string guiding_thread_text = act.guiding_thread.value_or("");
-    const auto replace_other_vars = [&vars](std::string segment)
+    static const std::regex offset_date(R"(\{\{(datum|datum_kurz)\|(-?[0-9]+)\}\})",
+                                        std::regex::icase);
+    const auto replace_other_vars = [&vars, &act](std::string segment)
     {
+        std::string expanded;
+        size_t consumed = 0;
+        for (std::sregex_iterator it(segment.begin(), segment.end(), offset_date), end; it != end; ++it)
+        {
+            const auto &match = *it;
+            const std::string number = match[2].str();
+            int days = 0;
+            const auto parsed = std::from_chars(number.data(), number.data() + number.size(), days);
+            const auto shifted = parsed.ec == std::errc{} && parsed.ptr == number.data() + number.size()
+                ? shift_iso_date(act.date, days) : std::nullopt;
+            const size_t pos = static_cast<size_t>(match.position());
+            expanded.append(segment, consumed, pos - consumed);
+            expanded += shifted
+                ? (to_lower_ascii(match[1].str()) == "datum"
+                    ? format_date_long_de(*shifted) : format_date_short_de(*shifted))
+                : match.str();
+            consumed = pos + static_cast<size_t>(match.length());
+        }
+        expanded.append(segment, consumed, std::string::npos);
         for (const auto &[key, val] : vars)
         {
             std::string placeholder = "{{" + key + "}}";
             size_t pos = 0;
-            while ((pos = segment.find(placeholder, pos)) != std::string::npos)
+            while ((pos = expanded.find(placeholder, pos)) != std::string::npos)
             {
-                segment.replace(pos, placeholder.size(), val);
+                expanded.replace(pos, placeholder.size(), val);
                 pos += val.size();
             }
         }
-        return segment;
+        return expanded;
     };
 
     // Keep placeholder-like text inside the story literal.

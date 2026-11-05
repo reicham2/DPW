@@ -22,6 +22,7 @@ import ResponsibleAvatars from '../components/ResponsibleAvatars.vue';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 import { replaceTemplateVarsPlain } from '../utils/templateVars';
 import { addMinutesToClock, formatDuration } from '../utils/time';
+import { replaceDateOffsets } from '../utils/templateDateVars';
 import { defaultRichTextToolbarState, readRichTextToolbarState } from '../utils/richTextToolbar';
 import type { RichTextToolbarState } from '../utils/richTextToolbar';
 import { replaceGuidingThreadPlaceholder } from '../utils/templateText';
@@ -721,6 +722,7 @@ function evtSubstituteVarsPlain(text: string, act: Activity, formUrl = ''): stri
 }
 
 function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): string {
+	text = replaceDateOffsets(text, act.date);
 	const container = document.createElement('div');
 	container.innerHTML = text;
 	const vars: Record<string, string> = {
@@ -796,7 +798,8 @@ async function openEventPreviewModal() {
 	}
 
 	if (tpl && (tpl.title || tpl.body) && activity.value) {
-		eventPreviewTitle.value = evtSubstituteVarsPlain(tpl.title, activity.value, eventFormUrl.value);
+		const title = replaceDateOffsets(tpl.title, activity.value.date);
+		eventPreviewTitle.value = evtSubstituteVarsPlain(title, activity.value, eventFormUrl.value);
 		setEvtPreviewEditorHtml(evtSubstituteVarsHtml(tpl.body, activity.value, eventFormUrl.value));
 	}
 }

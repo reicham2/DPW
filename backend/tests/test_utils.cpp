@@ -159,6 +159,9 @@ TEST(template_vars_guiding_thread)
                   "Ziel mit {{roter_faden}} / Geschichte mit {{titel}}\n{{ziel}} und {{roter_faden}}");
     ASSERT_STR_EQ(replace_template_vars("API Form {{titel}}: " + *a.guiding_thread, a),
                   "API Form Pfadilager: Geschichte mit {{titel}}\n{{ziel}} und {{roter_faden}}");
+    a.guiding_thread = "Frist {{datum_kurz|-7}}";
+    ASSERT_STR_EQ(replace_template_vars("Vorlage {{datum_kurz|-7}} / {{roter_faden}}", a),
+                  "Vorlage 08.07.2026 / Frist {{datum_kurz|-7}}");
     a.location = "{{titel}}";
     ASSERT_STR_EQ(replace_template_vars("{{ort}}", a), "Pfadilager");
     a.guiding_thread = std::nullopt;
@@ -178,6 +181,62 @@ TEST(template_vars_programm_placeholder)
     std::string out = replace_template_vars("{{programm}}", a);
     ASSERT_TRUE(out.find("60 min") != std::string::npos);
     ASSERT_TRUE(out.find("Einstieg") != std::string::npos);
+}
+
+TEST(shift_iso_date_calendar_days)
+{
+    const struct { const char *date; int days; const char *expected; } cases[] = {
+        {"2026-07-15", -7, "2026-07-08"}, {"2026-07-15", 7, "2026-07-22"},
+        {"2026-07-15", 0, "2026-07-15"}, {"2026-07-01", -1, "2026-06-30"},
+        {"2026-01-01", -1, "2025-12-31"}, {"2024-03-01", -1, "2024-02-29"},
+        {"2026-03-01", -1, "2026-02-28"}, {"2026-03-30", -2, "2026-03-28"},
+        {"2026-10-26", -2, "2026-10-24"}, {"0001-01-01", 0, "0001-01-01"},
+        {"9999-12-31", 0, "9999-12-31"},
+    };
+    for (const auto &c : cases)
+    {
+        const auto shifted = shift_iso_date(c.date, c.days);
+        ASSERT_TRUE(shifted.has_value());
+        ASSERT_STR_EQ(*shifted, c.expected);
+    }
+}
+
+TEST(shift_iso_date_invalid)
+{
+    for (const auto &date : {"", "invalid", "2026-02-30", "2026-13-01", "0000-01-01",
+                             "2026-7-15", "2026-07-15T12:00:00"})
+        ASSERT_FALSE(shift_iso_date(date, -7).has_value());
+    ASSERT_FALSE(shift_iso_date("0001-01-01", -1).has_value());
+    ASSERT_FALSE(shift_iso_date("9999-12-31", 1).has_value());
+    ASSERT_FALSE(shift_iso_date("2026-07-15", 2147483647).has_value());
+    ASSERT_FALSE(shift_iso_date("2026-07-15", -2147483647).has_value());
+}
+
+TEST(template_vars_date_offsets)
+{
+    const Activity a = make_activity();
+    ASSERT_STR_EQ(replace_template_vars(
+        "Anmeldung bis {{datum|-7}} / {{datum_kurz|-7}} / {{datum_kurz|-7}} / {{datum_kurz|0}} / {{datum_kurz|7}} / {{datum_kurz}} / {{titel}}", a),
+        "Anmeldung bis Mittwoch, 8. Juli 2026 / 08.07.2026 / 08.07.2026 / 15.07.2026 / 22.07.2026 / 15.07.2026 / Pfadilager");
+    ASSERT_STR_EQ(replace_template_vars("{{DATUM_KURZ|-7}}", a), "08.07.2026");
+}
+
+TEST(template_vars_date_offsets_invalid)
+{
+    Activity a = make_activity();
+    for (const auto &offset : {"abc", "", "-1.5", "+7", " 7", "7 ", "--7", "99999999999999999999"})
+    {
+        const std::string token = "{{datum_kurz|" + std::string(offset) + "}}";
+        ASSERT_STR_EQ(replace_template_vars(token + " {{datum_kurz|-7}}", a), token + " 08.07.2026");
+    }
+    a.date = "2026-02-30";
+    ASSERT_STR_EQ(replace_template_vars("{{datum|-7}} {{datum_kurz|-7}}", a),
+                  "{{datum|-7}} {{datum_kurz|-7}}");
+    a.date = "invalid";
+    ASSERT_STR_EQ(replace_template_vars("{{datum|-7}}", a), "{{datum|-7}}");
+    a.date = "0001-01-01";
+    ASSERT_STR_EQ(replace_template_vars("{{datum|0}} / {{datum_kurz|-1}}", a),
+                  "Montag, 1. Januar 0001 / {{datum_kurz|-1}}");
 }
 
 TEST(is_admin_true)
