@@ -111,29 +111,31 @@ onMounted(() => load())
     <ErrorAlert v-if="error" :error="error" />
     <p v-if="loading" role="status">Audit Log wird geladen…</p>
     <p v-else-if="!entries.length && !error">Keine Audit-Einträge gefunden.</p>
-    <div v-if="entries.length" class="audit-table">
+    <div v-if="entries.length" class="audit-table" role="region" aria-label="Audit-Einträge" tabindex="0">
       <table>
         <thead><tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Ressource</th><th>Kurzinfo</th><th>Ergebnis</th></tr></thead>
         <tbody>
           <template v-for="entry in entries" :key="entry.id">
             <tr class="audit-entry" :class="{ 'audit-entry--expanded': expandedId === entry.id }" @click="toggle(entry)">
-              <td>{{ new Date(entry.occurred_at).toLocaleString('de-DE') }}</td>
-              <td>{{ entry.actor_name || 'Ohne verifizierte Anmeldung' }}</td>
+              <td class="audit-time" :title="new Date(entry.occurred_at).toLocaleString('de-DE')">{{ new Date(entry.occurred_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) }}</td>
+              <td><span class="audit-compact-text" :title="entry.actor_name || 'Ohne verifizierte Anmeldung'">{{ entry.actor_name || 'Ohne verifizierte Anmeldung' }}</span></td>
               <td>
-                <button class="audit-toggle" :aria-expanded="expandedId === entry.id" :aria-controls="`audit-details-${entry.id}`" @click.stop="toggle(entry)">
-                  {{ entry.action }}
-                  <small>{{ expandedId === entry.id ? 'Details schließen' : 'Details öffnen' }}</small>
+                <button class="audit-toggle" :aria-label="`${entry.action}: ${expandedId === entry.id ? 'Details schließen' : 'Details öffnen'}`" :aria-expanded="expandedId === entry.id" :aria-controls="`audit-details-${entry.id}`" @click.stop="toggle(entry)">
+                  <span aria-hidden="true">{{ expandedId === entry.id ? '▾' : '▸' }}</span>
+                  <span class="audit-compact-text" :title="entry.action">{{ entry.action }}</span>
                 </button>
               </td>
-              <td>{{ resources[entry.resource_type] || entry.resource_type }}<span v-if="entry.details?.resource_name">: {{ entry.details.resource_name }}</span></td>
-              <td>{{ summary(entry) }}</td>
-              <td>{{ labels[entry.outcome] }}</td>
+              <td><span class="audit-compact-text" :title="[resources[entry.resource_type] || entry.resource_type, entry.details?.resource_name].filter(Boolean).join(': ')">{{ resources[entry.resource_type] || entry.resource_type }}<template v-if="entry.details?.resource_name">: {{ entry.details.resource_name }}</template></span></td>
+              <td><span class="audit-compact-text" :title="summary(entry)">{{ summary(entry) }}</span></td>
+              <td class="audit-outcome">{{ labels[entry.outcome] }}</td>
             </tr>
             <tr v-if="expandedId === entry.id" :id="`audit-details-${entry.id}`" class="audit-expanded">
               <td colspan="6">
                 <div class="audit-detail-meta">
                   <span><strong>Eintrag:</strong> {{ entry.id }}</span>
+                  <span><strong>Benutzer:</strong> {{ entry.actor_name || 'Ohne verifizierte Anmeldung' }}</span>
                   <span v-if="entry.actor_id"><strong>Benutzer-ID:</strong> {{ entry.actor_id }}</span>
+                  <span v-if="entry.details?.resource_name"><strong>Ziel:</strong> {{ entry.details.resource_name }}</span>
                   <span v-if="entry.resource_id"><strong>Ressourcen-ID:</strong> {{ entry.resource_id }}</span>
                   <span v-if="entry.http_status"><strong>HTTP:</strong> {{ entry.http_status }}</span>
                 </div>
@@ -161,19 +163,22 @@ onMounted(() => load())
 </template>
 
 <style scoped>
-.audit-log { display: grid; gap: 1rem; }
-.audit-note, small { color: var(--text-muted, #64748b); }
+.audit-log { display: grid; gap: .75rem; min-width: 0; }
+.audit-note { color: var(--text-muted, #64748b); }
 .audit-filters { display: flex; gap: 1rem; flex-wrap: wrap; align-items: end; }
 label { display: grid; gap: .4rem; }
 input, select { padding: .5rem; border: 1px solid var(--border, #cbd5e1); border-radius: .4rem; background: var(--bg-card, white); color: inherit; }
-.audit-table { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: .75rem; border-bottom: 1px solid var(--border, #cbd5e1); vertical-align: top; }
-small { display: block; overflow-wrap: anywhere; max-width: 22rem; }
+.audit-table { max-height: min(60vh, 36rem); overflow: auto; scrollbar-gutter: stable; border: 1px solid var(--border, #cbd5e1); border-radius: .4rem; }
+table { width: 100%; min-width: 48rem; border-collapse: separate; border-spacing: 0; font-size: .875rem; line-height: 1.4; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--border, #cbd5e1); vertical-align: top; }
+th { position: sticky; top: 0; z-index: 1; background: var(--bg-card, white); }
+.audit-time, .audit-outcome { white-space: nowrap; }
+.audit-time { font-variant-numeric: tabular-nums; }
+.audit-compact-text { display: block; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-entry { cursor: pointer; }
 .audit-entry:hover, .audit-entry--expanded, .audit-expanded { background: var(--bg-hover, #f1f5f9); }
-.audit-toggle { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.audit-toggle:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: .25rem; }
+.audit-toggle { display: flex; align-items: center; gap: .3rem; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.audit-toggle:focus-visible, .audit-table:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: .15rem; }
 .audit-detail-meta { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin-bottom: .75rem; overflow-wrap: anywhere; }
 .audit-details { overflow-wrap: anywhere; }
 </style>

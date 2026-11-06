@@ -166,4 +166,22 @@ describe('AuditLogPanel', () => {
     expect(wrapper.text()).toContain('before-19 → after-19')
     expect(apiFetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps dense entries in a named keyboard-scrollable region with accessible detail controls', async () => {
+    const name = 'Ein sehr langer Benutzername für den gemeinsamen Arbeitsverlauf'
+    apiFetchMock.mockResolvedValueOnce(response([{ ...event(), actor_name: name }]))
+    wrapper = panel()
+    await flushPromises()
+    const region = wrapper.find('.audit-table')
+    expect(region.attributes()).toMatchObject({ role: 'region', 'aria-label': 'Audit-Einträge', tabindex: '0' })
+    expect(region.find('table').exists()).toBe(true)
+    expect(wrapper.find('.audit-time').text()).toMatch(/\d{2}\.\d{2}\.\d{2}, \d{2}:\d{2}:\d{2}/)
+    expect(wrapper.find('.audit-toggle small').exists()).toBe(false)
+    expect(wrapper.find('.audit-toggle').attributes('aria-label')).toContain('Details öffnen')
+    expect(wrapper.find('.audit-compact-text').attributes('title')).toBe(name)
+    await wrapper.find('.audit-toggle').trigger('click')
+    expect(wrapper.find('.audit-toggle').attributes('aria-label')).toContain('Details schließen')
+    expect(wrapper.find('.audit-expanded').text()).toContain(`Benutzer: ${name}`)
+    expect(apiFetchMock).toHaveBeenCalledTimes(1)
+  })
 })

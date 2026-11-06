@@ -82,8 +82,12 @@ Es gibt keine Archiv-/Exportfunktion; abgelaufene Eintraege werden endgueltig ge
 Die Tabelle zeigt zunaechst nur Aktion, Ziel, Ausgang und eine kurze Felduebersicht.
 Ein Klick auf eine Zeile oder den per Tastatur erreichbaren Aktionsknopf oeffnet
 die vollstaendigen Details (inklusive IDs und HTTP-Status); ein weiterer Klick
-schliesst sie. Nur ein Detailbereich wird gleichzeitig gerendert. Aufklappen
-nutzt die bereits geladene, auf 50 Eintraege begrenzte Seite und erzeugt keine
+schliesst sie. Nur ein Detailbereich wird gleichzeitig gerendert.
+Die kompakten, einzeiligen Zeilen liegen in einem auf 60 % der Fensterhoehe
+(maximal 36 rem) begrenzten Scrollbereich mit feststehender Tabellenkopfzeile.
+Lange Texte werden in der Uebersicht gekuerzt; vollstaendige Namen stehen im
+Detailbereich und als Tooltip bereit. Der Scrollbereich ist per Tastatur erreichbar.
+Aufklappen nutzt die bereits geladene, auf 50 Eintraege begrenzte Seite und erzeugt keine
 weitere API-/DB-Anfrage. Es gibt kein automatisches Audit-Polling.
 
 Der Schreibpfad behaelt die drei fuer die Haltbarkeit notwendigen Journal-Schritte
