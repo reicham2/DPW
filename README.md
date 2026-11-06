@@ -101,6 +101,24 @@ URI in Entra ID; the frontend uses `window.location.origin`. Login requests use
 `Mail.Send`, `People.Read` as implemented in
 [useAuth.ts](frontend/src/composables/useAuth.ts).
 
+## Geteilte Aktivitäten und öffentliche Formulare
+
+Freigabelinks unter `/shared/:token` zeigen Aktivitäten mit gut lesbaren Texten
+und einer gegliederten Kartenansicht. Geteilte Aktivitäten und öffentliche
+Formulare unter `/forms/:slug` zeigen das DPWeb-Logo als Link zur Startseite.
+Die Links verwenden die konfigurierte öffentliche Basis-URL (`DPW_PUBLIC_URL`
+bzw. **System > Einstellungen**); ohne Konfiguration bleibt die Startseite
+auf derselben Instanz.
+
+**In DPWeb öffnen** führt von der geteilten Aktivität zu `/activities/:id`.
+Ohne Anmeldung erscheint dort die normale Anmeldung; nach erfolgreichem Login
+wird dieselbe Aktivität geöffnet. Der Freigabelink gewährt keine zusätzlichen
+Zugriffsrechte in der angemeldeten Ansicht. Programmbeschreibungen und ihre
+eingebetteten Bilder bleiben in der Freigabeansicht erhalten; nur Bilder, die
+zur freigegebenen Aktivität gehören, werden über den bestehenden Freigabelink
+geladen. Freigabelinks und öffentliche Formularantworten bleiben ohne Anmeldung
+nutzbar.
+
 ## Bilder in Programmpunkten
 
 In der Beschreibung eines Programmpunkts lassen sich Bilder **zwischen Text**

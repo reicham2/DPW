@@ -6,10 +6,11 @@ import type { User } from './types';
 const mocks = vi.hoisted(() => ({
 	wsRegister: vi.fn(),
 	wsDisconnect: vi.fn(),
+	route: { path: '/', meta: {} },
 }));
 
 vi.mock('vue-router', () => ({
-	useRoute: () => ({ path: '/', meta: {} }),
+	useRoute: () => mocks.route,
 }));
 
 vi.mock('./components/UserAvatar.vue', () => ({ default: { template: '<span />' } }));
@@ -128,7 +129,22 @@ describe('App authentication lifecycle', () => {
 		user.value = null;
 		maintenanceActive.value = false;
 		config.MIDATA_ENABLED = false;
+		mocks.route.path = '/';
 		vi.clearAllMocks();
+	});
+
+	it('keeps activity content unmounted during login and shows it after authentication', async () => {
+		mocks.route.path = '/activities/activity-1';
+		wrapper = shallowMount(App, { global: { stubs: ['router-link', 'router-view'] } });
+		await flushPromises();
+		expect(wrapper.find('.auth-box').exists()).toBe(true);
+		expect(wrapper.find('router-view-stub').exists()).toBe(false);
+
+		user.value = testUser;
+		await nextTick();
+		expect(wrapper.find('.auth-box').exists()).toBe(false);
+		expect(wrapper.find('router-view-stub').exists()).toBe(true);
+		expect(mocks.route.path).toBe('/activities/activity-1');
 	});
 
 	it('keeps an existing admin session in the app when maintenance starts', async () => {
