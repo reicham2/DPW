@@ -431,6 +431,19 @@ describe('DetailPage activity access', () => {
 		await cards[0].get('.program-card__toggle').trigger('click');
 		expect(cards[0].get('.program-card__toggle').attributes('aria-expanded')).toBe('false');
 		expect(cards[1].get('.program-card__toggle').attributes('aria-expanded')).toBe('true');
+
+		const toggleAll = wrapper.get('.program-card__toggle-all');
+		expect(toggleAll.text()).toBe('Alle öffnen');
+		await toggleAll.trigger('click');
+		expect(wrapper.findAll('.program-card').every((card) =>
+			card.get('.program-card__toggle').attributes('aria-expanded') === 'true'
+		)).toBe(true);
+		expect(toggleAll.text()).toBe('Alle schliessen');
+		await toggleAll.trigger('click');
+		expect(wrapper.findAll('.program-card').every((card) =>
+			card.get('.program-card__toggle').attributes('aria-expanded') === 'false'
+		)).toBe(true);
+		expect(toggleAll.text()).toBe('Alle öffnen');
 		wrapper.unmount();
 	});
 
