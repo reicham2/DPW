@@ -87,6 +87,33 @@ make up
 make db-seed
 ```
 
+## Bilder in Programmpunkten
+
+In der Beschreibung eines Programmpunkts lassen sich Bilder **zwischen Text**
+einfügen: im fokussierten Beschreibungseditor auf **Bild** klicken und Dateien
+auswählen, oder ein kopiertes Bild direkt einfügen. PNG, JPEG, GIF und WebP bis
+**10 MiB pro Bild** werden unterstützt; SVG und leere Dateien werden abgelehnt.
+Gemischte Zwischenablage-Inhalte behalten bereinigten Text und die Bildpositionen.
+Externe Bild-URLs werden beim Einfügen nicht übernommen: stattdessen die Bilddatei
+hochladen oder das Bild selbst kopieren. Uploadfehler bleiben sichtbar; vor dem
+Wechsel zur Ansicht wird ein laufender Upload abgeschlossen.
+
+Die Bildbytes liegen dauerhaft als `BYTEA` in PostgreSQL (`program_images`),
+getrennt von der Anhangsliste. Beschreibungen speichern nur stabile
+`/api/program-images/<id>`-Referenzen, niemals Blob-URLs oder Anmeldetokens.
+Schreibzugriffe verwenden dieselbe Aktivitätsberechtigung wie Anhang-Uploads;
+Bildabrufe prüfen die Leseberechtigung ihres Elternobjekts. Ein Freigabelink zeigt
+nur Bilder, die tatsächlich in den Programmpunkten dieser freigegebenen Aktivität
+stehen. Editieransicht, normale Ansicht, Ideenkiste und Freigabeansicht laden
+Bilder berechtigt nach; der Word-Export bettet sie in der Textreihenfolge ein.
+Beim Kopieren einer Aktivität oder Speichern/Übernehmen über die Ideenkiste werden
+berechtigt gelesene Bilder innerhalb der Schreibtransaktion für das neue
+Elternobjekt kopiert. Das endgültige Löschen eines Elternobjekts entfernt dessen
+Bilder; Kopien bleiben erhalten. Entfernte Bildreferenzen geben keine öffentliche
+Zugriffsmöglichkeit frei. Nicht mehr referenzierte Bytes bleiben bis zum
+endgültigen Löschen des Elternobjekts erhalten; beim Abbrechen einer Bearbeitung
+werden neu hochgeladene Bilder nach erfolgreichem Zurücksetzen entfernt.
+
 ## Audit Log
 
 Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein persistentes,

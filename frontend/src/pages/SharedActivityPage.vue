@@ -77,7 +77,7 @@
 										<p class="program-title">{{ prog.title }}</p>
 									</div>
 									<p v-if="prog.responsible.length" class="program-resp">Leitung: {{ prog.responsible.join(', ') }}</p>
-									<div v-if="prog.description" class="program-desc" v-html="sanitizeHtml(prog.description)" />
+									<ProgramDescription v-if="prog.description" :html="prog.description" :shared-token="token" />
 								</div>
 							</div>
 						</div>
@@ -133,7 +133,7 @@ import { useRoute } from 'vue-router';
 import type { Activity } from '../types';
 import { Search } from 'lucide-vue-next';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
-import { sanitizeHtml } from '../utils/sanitizeHtml';
+import ProgramDescription from '../components/ProgramDescription.vue';
 import { addMinutesToClock, formatDuration } from '../utils/time';
 
 const route = useRoute();

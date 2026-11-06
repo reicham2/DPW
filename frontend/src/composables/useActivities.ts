@@ -10,6 +10,7 @@ import type {
 import { useWebSocket } from './useWebSocket';
 import { apiFetch, formatApiError } from './useApi';
 import { getGraphAccessToken } from './useAuth';
+import { validateProgramImageFile } from '../utils/programImages';
 
 const BASE = '/api';
 
@@ -280,8 +281,10 @@ export function useActivities() {
 	async function uploadAttachment(
 		activityId: string,
 		file: File,
+		programImage = false,
 	): Promise<Attachment | null> {
 		try {
+			if (programImage) validateProgramImageFile(file);
 			const buf = await file.arrayBuffer();
 			const bytes = new Uint8Array(buf);
 			let binary = '';
@@ -289,7 +292,7 @@ export function useActivities() {
 				binary += String.fromCharCode(bytes[i]);
 			const data = btoa(binary);
 			const res = await apiFetch(
-				`${BASE}/activities/${activityId}/attachments`,
+				`${BASE}/activities/${activityId}/${programImage ? 'program-images' : 'attachments'}`,
 				{
 					method: 'POST',
 					body: JSON.stringify({
@@ -299,9 +302,10 @@ export function useActivities() {
 					}),
 				},
 			);
-			if (!res.ok) return null;
+			if (!res.ok) throw new Error(await res.text());
 			return (await res.json()) as Attachment;
-		} catch {
+		} catch (e) {
+			error.value = formatApiError(e);
 			return null;
 		}
 	}

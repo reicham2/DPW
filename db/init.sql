@@ -590,6 +590,21 @@ CREATE INDEX IF NOT EXISTS idx_activity_share_links_activity ON activity_share_l
 
 CREATE INDEX IF NOT EXISTS idx_attachments_activity_id ON attachments (activity_id);
 
+-- Inline description images have their own parent, independent of replaced program rows.
+CREATE TABLE IF NOT EXISTS program_images (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id   UUID        REFERENCES activities(id) ON DELETE CASCADE,
+    ideenkiste_id UUID        REFERENCES ideenkiste(id) ON DELETE CASCADE,
+    filename      TEXT        NOT NULL,
+    content_type  TEXT        NOT NULL CHECK (content_type IN ('image/png', 'image/jpeg', 'image/gif', 'image/webp')),
+    data          BYTEA       NOT NULL CHECK (octet_length(data) BETWEEN 1 AND 10485760),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK ((activity_id IS NULL) <> (ideenkiste_id IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_program_images_activity ON program_images (activity_id);
+CREATE INDEX IF NOT EXISTS idx_program_images_ideenkiste ON program_images (ideenkiste_id);
+
 -- ── Role permissions ────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS role_permissions (

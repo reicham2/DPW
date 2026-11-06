@@ -1,4 +1,5 @@
 #include "handlers/handler_deps.hpp"
+#include "handlers/program_images.hpp"
 
 #include <cstdio>
 
@@ -286,8 +287,9 @@ void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
     if (!scope)
         return;
     res->onAborted([]() {});
-    res->onData([res, &db, user_dept = user.department, scope = *scope](std::string_view body, bool last)
+    res->onData([res, &db, user, scope = *scope, body = std::string{}](std::string_view chunk, bool last) mutable
                 {
+        body.append(chunk);
         if (!last) return;
         try
         {
@@ -304,7 +306,8 @@ void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
                 return;
             }
             if (scope == "own_dept")
-                input.department = user_dept;
+                input.department = user.department;
+            if (!validate_program_image_references(res, db, user, {input.description})) return;
             auto item = db.create_ideenkiste_item(input);
             if (!item)
             {
@@ -327,12 +330,13 @@ void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
         return;
     std::string id{req->getParameter(0)};
     res->onAborted([]() {});
-    res->onData([res, &db, id, user_dept = user.department, scope = *scope](std::string_view body, bool last)
+    res->onData([res, &db, id, user, scope = *scope, body = std::string{}](std::string_view chunk, bool last) mutable
                 {
+        body.append(chunk);
         if (!last) return;
         try
         {
-            if (!ideenkiste_item_in_scope(db, id, scope, user_dept))
+            if (!ideenkiste_item_in_scope(db, id, scope, user.department))
             {
                 send_json(res, 403, R"({"error":"Keine Berechtigung"})");
                 return;
@@ -351,7 +355,8 @@ void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db)
                 return;
             }
             if (scope == "own_dept")
-                input.department = user_dept;
+                input.department = user.department;
+            if (!validate_program_image_references(res, db, user, {input.description}, std::nullopt, id)) return;
             auto item = db.update_ideenkiste_item(id, input);
             if (!item)
             {

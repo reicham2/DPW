@@ -69,6 +69,7 @@ set(INFRA_SOURCES
 set(DB_SOURCES
     src/db/db_connection.cpp
     src/db/db_activities.cpp
+    src/db/db_program_images.cpp
     src/db/db_users.cpp
     src/db/db_notifications.cpp
     src/db/db_forms.cpp
@@ -82,6 +83,7 @@ set(UTILS_SOURCES
     src/utils/strings.cpp
     src/utils/templates.cpp
     src/utils/activity_helpers.cpp
+    src/utils/program_images.cpp
 )
 
 set(HANDLER_SOURCES
@@ -92,6 +94,7 @@ set(HANDLER_SOURCES
     src/handlers/notifications.cpp
     src/handlers/admin.cpp
     src/handlers/share_ideenkiste.cpp
+    src/handlers/program_images.cpp
     src/handlers/setup_maintenance.cpp
 )
 
@@ -160,6 +163,7 @@ if (BUILD_TESTS)
         tests/test_audit.cpp
         tests/test_utils.cpp
         tests/test_models.cpp
+        tests/test_program_images.cpp
         tests/test_integrations.cpp
         tests/test_stubs.cpp
         tests/test_cron_scheduler.cpp
@@ -168,6 +172,7 @@ if (BUILD_TESTS)
         src/utils/permissions.cpp
         src/utils/templates.cpp
         src/utils/activity_helpers.cpp
+        src/utils/program_images.cpp
         src/infra/auth.cpp
         src/infra/audit_actions.cpp
         src/infra/midata_client.cpp

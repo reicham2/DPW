@@ -8,7 +8,7 @@ import { user } from '../composables/useAuth';
 import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
-import { apiFetch } from '../composables/useApi';
+import { apiFetch, formatApiError } from '../composables/useApi';
 import { useIdeaBox } from '../composables/useIdeaBox';
 import { useActivityExport } from '../composables/useActivityExport';
 import { useUserResolver } from '../composables/useUserResolver';
@@ -19,7 +19,9 @@ import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import BadgeSelect from '../components/BadgeSelect.vue';
 import ResponsibleAvatars from '../components/ResponsibleAvatars.vue';
-import { sanitizeHtml } from '../utils/sanitizeHtml';
+import ProgramDescription from '../components/ProgramDescription.vue';
+import { PROGRAM_IMAGE_ACCEPT, ProgramImageRenderer, insertProgramHtml, prepareProgramImageFiles, prepareProgramPaste, sanitizeProgramDescription, serializeProgramDescription } from '../utils/programImages';
+import type { ProgramPaste } from '../utils/programImages';
 import { replaceTemplateVarsPlain } from '../utils/templateVars';
 import { addMinutesToClock, formatDuration } from '../utils/time';
 import { replaceDateOffsets } from '../utils/templateDateVars';
@@ -57,7 +59,7 @@ const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canFo
 
 const { fetchForm } = useForms();
 const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
-const { exportToWord } = useActivityExport();
+const { exportToWord, error: exportError } = useActivityExport();
 const { resolveResponsibleName } = useUserResolver();
 
 const activity = ref<Activity | null>(null);
@@ -1754,6 +1756,8 @@ function enterEdit() {
 	captureEditSnapshot();
 	loadPendingLocalDraft();
 	editAttachmentIdsSnapshot.value = attachments.value.map(a => a.id);
+	newProgramImageIds.clear();
+	progImageError.value = null;
 	error.value = null;
 	mode.value = 'edit';
 	void fetchUsers();
@@ -1766,12 +1770,17 @@ function enterEdit() {
 	});
 }
 
-function leaveEdit() {
+async function leaveEdit() {
+	if (pendingProgramImageUploads.size) {
+		await Promise.all(pendingProgramImageUploads);
+		if (progImageError.value) return;
+	}
 	void flushAutoSave({ skipFuzzyCheck: true });
 	mode.value = 'view';
 }
 
 async function cancelEdit() {
+	await Promise.all(pendingProgramImageUploads);
 	if (autoSaveTimer) {
 		clearTimeout(autoSaveTimer);
 		autoSaveTimer = null;
@@ -1794,7 +1803,14 @@ async function cancelEdit() {
 	savedFields.value = {};
 	await doSave();
 	if (!error.value) {
-		mode.value = 'view';
+		try {
+			for (const imageId of newProgramImageIds) await deleteUnusedProgramImage(imageId);
+			newProgramImageIds.clear();
+			progImageError.value = null;
+			mode.value = 'view';
+		} catch (e) {
+			error.value = formatApiError(e);
+		}
 	}
 	nextTick(() => {
 		suppressDirtyTracking = false;
@@ -2246,20 +2262,166 @@ function onProgRespBlur(i: number) {
 }
 
 // ---- Program description rich editor ----------------------------------------
-const progEditorRefs = ref<Record<number, HTMLElement>>({});
+const progEditorElements = shallowReactive(new Map<ProgramInput, HTMLElement>());
+const progEditorRefs = computed(() => Object.fromEntries(
+	editPrograms.value.map((program, index) => [index, progEditorElements.get(program)]),
+));
+const progEditorKeys = new WeakMap<ProgramInput, string>();
+let progEditorKeySequence = 0;
 const progToolbar = ref<({ idx: number } & RichTextToolbarState) | null>(null);
+const progImageRenderers = new Map<HTMLElement, ProgramImageRenderer>();
+const pendingProgramImageUploads = new Set<Promise<void>>();
+const newProgramImageIds = new Set<string>();
+const programImageUploadCount = ref(0);
+const progImageError = ref<string | null>(null);
+let progImagePickerTarget: { program: ProgramInput; range: Range | null } | null = null;
 
-function setProgEditorRef(el: any, i: number) {
-	if (el) progEditorRefs.value[i] = el as HTMLElement;
-	else delete progEditorRefs.value[i];
+function programEditorKey(program: ProgramInput): string {
+	let key = progEditorKeys.get(program);
+	if (!key) {
+		key = `program-${++progEditorKeySequence}`;
+		progEditorKeys.set(program, key);
+	}
+	return key;
+}
+
+function setProgEditorRef(el: unknown, program: ProgramInput) {
+	if (el instanceof HTMLElement) {
+		progEditorElements.set(program, el);
+		if (!progImageRenderers.has(el)) progImageRenderers.set(el, new ProgramImageRenderer());
+	} else {
+		const previous = progEditorElements.get(program);
+		progEditorElements.delete(program);
+		if (previous) {
+			nextTick(() => {
+				if (Array.from(progEditorElements.values()).includes(previous)) return;
+				progImageRenderers.get(previous)?.dispose();
+				progImageRenderers.delete(previous);
+			});
+		}
+	}
 }
 
 function onProgDescInput(i: number) {
 	const el = progEditorRefs.value[i];
-	if (el) editPrograms.value[i].description = el.innerHTML;
+	if (el && editPrograms.value[i]) editPrograms.value[i].description = serializeProgramDescription(el);
 	markDirty(`prog_${i}_desc`);
 	updateProgToolbar(i);
 }
+
+async function renderProgImages(el: HTMLElement) {
+	try {
+		await progImageRenderers.get(el)?.render(el);
+	} catch (e) {
+		progImageError.value = formatApiError(e);
+	}
+}
+
+async function deleteUnusedProgramImage(imageId: string) {
+	const response = await apiFetch(`/api/program-images/${imageId}`, { method: 'DELETE' });
+	if (!response.ok && response.status !== 404) throw new Error(await response.text());
+}
+
+function chooseProgImage(i: number) {
+	if (isLockedByOther(`program_${i}`)) return;
+	const el = progEditorRefs.value[i];
+	const selection = window.getSelection();
+	const range = progSavedSelection ?? (selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null);
+	progSavedSelection = null;
+	progImagePickerTarget = {
+		program: editPrograms.value[i]!,
+		range: range && el?.contains(range.startContainer) && el.contains(range.endContainer) ? range : null,
+	};
+	const input = document.getElementById(`program-image-input-${i}`);
+	if (input instanceof HTMLInputElement) input.click();
+}
+
+function insertProgPaste(program: ProgramInput, el: HTMLElement, paste: ProgramPaste, replaceSelection = true): Promise<void> {
+	insertProgramHtml(el, paste.html, replaceSelection);
+	onProgDescInput(editPrograms.value.indexOf(program));
+	if (paste.warning) progImageError.value = paste.warning;
+	void renderProgImages(el);
+	const pending = (async () => {
+		const failures: string[] = [];
+		for (const upload of paste.uploads) {
+			const marker = el.querySelector(`[data-program-image-upload="${upload.marker}"]`);
+			try {
+				const image = await uploadAttachment(id, upload.file, true);
+				if (!image) throw new Error(error.value || 'Bild konnte nicht hochgeladen werden. Bitte erneut versuchen.');
+				const index = editPrograms.value.indexOf(program);
+				if (!marker || !el.contains(marker) || index < 0 || !el.isConnected || mode.value !== 'edit') {
+					await deleteUnusedProgramImage(image.id);
+					if (index < 0) throw new Error('Der Programmpunkt wurde während des Uploads geändert. Bitte das Bild erneut einfügen.');
+					continue;
+				}
+				const img = document.createElement('img');
+				img.src = `/api/program-images/${image.id}`;
+				img.alt = upload.alt;
+				marker.replaceWith(img);
+				newProgramImageIds.add(image.id);
+				onProgDescInput(index);
+				await renderProgImages(el);
+			} catch (e) {
+				marker?.remove();
+				failures.push(`${upload.file.name}: ${formatApiError(e)}`);
+			}
+		}
+		if (failures.length) progImageError.value = [...new Set(failures)].join(' ');
+	})().finally(() => {
+		pendingProgramImageUploads.delete(pending);
+		programImageUploadCount.value -= paste.uploads.length;
+	});
+	pendingProgramImageUploads.add(pending);
+	programImageUploadCount.value += paste.uploads.length;
+	return pending;
+}
+
+async function onProgImageUpload(i: number, event: Event) {
+	const input = event.target;
+	if (!(input instanceof HTMLInputElement)) return;
+	const files = Array.from(input.files ?? []);
+	input.value = '';
+	if (!files.length) return;
+	const target = progImagePickerTarget;
+	progImagePickerTarget = null;
+	const program = target?.program ?? editPrograms.value[i];
+	const index = program ? editPrograms.value.indexOf(program) : -1;
+	const el = progEditorRefs.value[index];
+	if (!program || !el || index < 0 || isLockedByOther(`program_${index}`)) {
+		progImageError.value = 'Der Programmpunkt ist nicht mehr bearbeitbar. Bitte das Bild erneut einfügen.';
+		return;
+	}
+	try {
+		const paste = prepareProgramImageFiles(files);
+		progImageError.value = null;
+		const selection = window.getSelection();
+		if (target?.range && el.contains(target.range.startContainer) && el.contains(target.range.endContainer) && selection) {
+			selection.removeAllRanges();
+			selection.addRange(target.range);
+		}
+		await insertProgPaste(program, el, paste, false);
+	} catch (e) {
+		progImageError.value = formatApiError(e);
+	}
+}
+
+async function onProgPaste(i: number, event: ClipboardEvent) {
+	event.preventDefault();
+	const el = progEditorRefs.value[i];
+	const program = editPrograms.value[i];
+	if (!event.clipboardData || !el || !program || isLockedByOther(`program_${i}`)) return;
+	try {
+		progImageError.value = null;
+		await insertProgPaste(program, el, prepareProgramPaste(event.clipboardData));
+	} catch (e) {
+		progImageError.value = formatApiError(e);
+	}
+}
+
+onUnmounted(() => {
+	progImageRenderers.forEach(renderer => renderer.dispose());
+	progImageRenderers.clear();
+});
 
 function updateProgToolbar(i: number) {
 	const el = progEditorRefs.value[i];
@@ -2386,9 +2548,11 @@ function initProgEditors() {
 			// Never rewrite the editor the user is currently typing in: an
 			// innerHTML reset destroys its text nodes and sends the caret to the start.
 			if (el === document.activeElement) continue;
-			if (el && el.innerHTML !== editPrograms.value[i].description) {
-				el.innerHTML = editPrograms.value[i].description;
+			const description = sanitizeProgramDescription(editPrograms.value[i]!.description);
+			if (el && serializeProgramDescription(el) !== description) {
+				el.innerHTML = description;
 			}
+			if (el) void renderProgImages(el);
 		}
 	});
 }
@@ -3045,7 +3209,7 @@ function copyShareLink() {
 
 		<!-- ================================================================ VIEW -->
 		<div v-else-if="mode === 'view'" class="detail-view">
-			<ErrorAlert v-if="error" :error="error" />
+			<ErrorAlert v-if="error || progImageError || exportError" :error="error || progImageError || exportError" />
 			<div class="detail-view-layout">
 				<div class="detail-view-main">
 					<!-- Hero: Titel + Datum + Stufe -->
@@ -3136,7 +3300,7 @@ function copyShareLink() {
 										<p class="program-title">{{ prog.title }}</p>
 							</div>
 									<p v-if="prog.responsible.length" class="program-resp">Leitung: <ResponsibleAvatars :names="prog.responsible" /></p>
-									<div v-if="prog.description" class="program-desc" v-html="sanitizeHtml(prog.description)" />
+									<ProgramDescription v-if="prog.description" :html="prog.description" />
 						</div>
 					</div>
 				</div>
@@ -3590,7 +3754,7 @@ function copyShareLink() {
 			<div class="form-section">
 				<p class="form-section-title">Programmpunkte</p>
 				<div style="display: flex; flex-direction: column; gap: 10px">
-					<div v-for="(prog, i) in editPrograms" :key="i" class="program-card lock-wrapper"
+					<div v-for="(prog, i) in editPrograms" :key="programEditorKey(prog)" class="program-card lock-wrapper"
 						:class="{
 							'is-locked': isLockedByOther(`program_${i}`),
 							'program-card--drag-source': draggedProgramIndex === i,
@@ -3732,19 +3896,27 @@ function copyShareLink() {
 										<button type="button" @mousedown.prevent @click="progExecCmd(i, 'removeFormat')" title="Formatierung entfernen"><X :size="12" aria-hidden="true" /> Format</button>
 										<span class="toolbar-sep"></span>
 										<button type="button" @mousedown="progSaveSelection" @click="openProgLinkDialog" title="Link einfügen">🔗 Link</button>
+										<button type="button" @mousedown.prevent="progSaveSelection" @click="chooseProgImage(i)" :disabled="isLockedByOther(`program_${i}`)" title="Bild in Beschreibung einfügen"><Upload :size="12" aria-hidden="true" /> Bild</button>
 									</div>
+									<input :id="`program-image-input-${i}`" type="file" :accept="PROGRAM_IMAGE_ACCEPT" multiple hidden aria-label="Bild in Beschreibung einfügen" @change="onProgImageUpload(i, $event)" :disabled="isLockedByOther(`program_${i}`)" />
 									<div
-										:ref="(el) => setProgEditorRef(el, i)"
+										:ref="(el) => setProgEditorRef(el, prog)"
 										class="rich-editor rich-editor--compact"
 										:contenteditable="!isLockedByOther(`program_${i}`)"
 										@input="onProgDescInput(i)"
+										@paste="onProgPaste(i, $event)"
 										@focus="onProgEditorFocus(i)"
 										@mouseup="updateProgToolbar(i)"
 										@keyup="updateProgToolbar(i)"
 										data-placeholder="Beschreibung…"
+										role="textbox"
+										aria-label="Beschreibung"
+										aria-multiline="true"
 									></div>
 									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
+								<p v-if="programImageUploadCount" class="field-hint" role="status">Bilder werden hochgeladen…</p>
+								<p class="field-hint">Bilder direkt einfügen oder über «Bild» hochladen (PNG, JPEG, GIF, WebP; max. 10 MiB).</p>
 							</div>
 						</div>
 					</div>
@@ -3999,7 +4171,7 @@ function copyShareLink() {
 			</div>
 
 			<!-- Error -->
-			<ErrorAlert :error="error" />
+			<ErrorAlert :error="error || progImageError" />
 
 			<!-- Actions -->
 			<div class="form-actions">

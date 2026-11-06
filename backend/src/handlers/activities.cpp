@@ -1,5 +1,7 @@
 #include "handlers/handler_deps.hpp"
 #include "infra/audit.hpp"
+#include "handlers/program_images.hpp"
+#include "utils/program_images.hpp"
 #include <atomic>
 #include <memory>
 #include <thread>
@@ -737,7 +739,7 @@ void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db)
 
 // ---- POST /activities/:id/attachments ---------------------------------------
 
-void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db)
+void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db, bool program_image)
 {
     TokenClaims claims;
     if (!require_auth(res, req, claims))
@@ -767,8 +769,14 @@ void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db)
 
     res->onAborted([] {});
     std::string body;
-    res->onData([res, &db, activity_id, body = std::move(body)](std::string_view chunk, bool last) mutable
+    res->onData([res, &db, activity_id, program_image, rejected = false, body = std::move(body)](std::string_view chunk, bool last) mutable
                 {
+        if (rejected) return;
+        if (program_image && chunk.size() > kMaxProgramImageBodyBytes - body.size()) {
+            rejected = true;
+            send_json(res, 413, R"({"error":"Bilder d\u00fcrfen h\u00f6chstens 10 MiB gross sein"})");
+            return;
+        }
         body.append(chunk);
         if (!last) return;
 
@@ -777,15 +785,30 @@ void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 400, R"({"error":"invalid JSON"})");
             return;
         }
-        std::string filename = j.value("filename", "");
+        if (!j.contains("filename") || !j["filename"].is_string()
+            || !j.contains("data") || !j["data"].is_string()
+            || (j.contains("content_type") && !j["content_type"].is_string())) {
+            send_json(res, 400, R"({"error":"filename, content_type and data must be text"})");
+            return;
+        }
+        std::string filename = j["filename"].get<std::string>();
         std::string content_type = j.value("content_type", "application/octet-stream");
-        std::string data_base64 = j.value("data", "");
+        std::string data_base64 = j["data"].get<std::string>();
         if (filename.empty() || data_base64.empty()) {
             send_json(res, 400, R"({"error":"filename and data required"})");
             return;
         }
         try {
-            auto att = db.add_attachment(activity_id, filename, content_type, data_base64);
+            if (program_image) {
+                std::vector<uint8_t> bytes;
+                if (filename.size() > 255 || !decode_program_image(data_base64, content_type, bytes)) {
+                    send_json(res, 400, R"({"error":"Ung\u00fcltiges Bild. Erlaubt: PNG, JPEG, GIF oder WebP bis 10 MiB."})");
+                    return;
+                }
+            }
+            auto att = program_image
+                ? db.add_program_image(activity_id, filename, content_type, data_base64)
+                : db.add_attachment(activity_id, filename, content_type, data_base64);
             if (!att) {
                 send_json(res, 500, R"({"error":"failed to add attachment"})");
                 return;
@@ -953,6 +976,9 @@ void handle_post_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMan
         }
 
         try {
+            std::vector<std::string> descriptions;
+            for (const auto &program : input.programs) descriptions.push_back(program.description);
+            if (!validate_program_image_references(res, db, *current_user, descriptions)) return;
             auto activity = db.create_activity(input);
             if (!activity) {
                 send_json(res, 500, R"({"error":"Datenbankfehler"})");
@@ -1222,6 +1248,9 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         }
 
         try {
+            std::vector<std::string> descriptions;
+            for (const auto &program : input.programs) descriptions.push_back(program.description);
+            if (!validate_program_image_references(res, db, *current_user, descriptions, id)) return;
             auto updated = db.update_activity(id, input);
             if (!updated) {
                 send_json(res, 404, R"({"error":"Nicht gefunden"})");

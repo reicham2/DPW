@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 	replace: vi.fn(),
 	fetchActivity: vi.fn(),
 	updateActivity: vi.fn(),
+	uploadAttachment: vi.fn(),
 	fetchForm: vi.fn(),
 	fetchEventTemplate: vi.fn(),
 	fetchPublication: vi.fn(),
@@ -42,7 +43,7 @@ vi.mock('../composables/useActivities', async () => {
 			updateActivity: mocks.updateActivity,
 			deleteActivity: noop,
 			fetchAttachments: vi.fn().mockResolvedValue([]),
-			uploadAttachment: noop,
+			uploadAttachment: mocks.uploadAttachment,
 			deleteAttachment: noop,
 			getAttachmentBlobUrl: noop,
 			error,
@@ -102,6 +103,7 @@ vi.mock('../composables/useEventTemplates', () => ({
 }));
 vi.mock('../composables/useApi', () => ({
 	apiFetch: vi.fn().mockResolvedValue(new Response('{}', { status: 200 })),
+	formatApiError: (error: unknown) => error instanceof Error ? error.message : String(error),
 }));
 vi.mock('../composables/useIdeaBox', async () => {
 	const { ref } = await vi.importActual<typeof import('vue')>('vue');
@@ -124,6 +126,7 @@ import { user } from '../composables/useAuth';
 import { config } from '../config';
 
 const initialAutosaveDebounce = config.AUTOSAVE_DEBOUNCE;
+const initialQueryCommandState = Object.getOwnPropertyDescriptor(document, 'queryCommandState');
 
 function makeActivity(overrides: Partial<Activity> = {}): Activity {
 	return {
@@ -177,6 +180,7 @@ function allowEditing() {
 
 describe('DetailPage activity access', () => {
 	beforeEach(() => {
+		Object.defineProperty(document, 'queryCommandState', { configurable: true, value: vi.fn(() => false) });
 		config.MIDATA_ENABLED = false;
 		config.WP_PUBLISHING_ENABLED = false;
 		config.PUBLIC_BASE_URL = '';
@@ -189,6 +193,7 @@ describe('DetailPage activity access', () => {
 		mocks.onMessage = undefined;
 		mocks.fetchActivity.mockReset().mockResolvedValue(makeActivity());
 		mocks.updateActivity.mockReset().mockResolvedValue(true);
+		mocks.uploadAttachment.mockReset().mockResolvedValue(null);
 		mocks.fetchForm.mockReset().mockResolvedValue(null);
 		mocks.fetchEventTemplate.mockReset().mockResolvedValue(null);
 		mocks.fetchPublication.mockReset().mockResolvedValue(null);
@@ -198,6 +203,8 @@ describe('DetailPage activity access', () => {
 	});
 
 	afterEach(() => {
+		if (initialQueryCommandState) Object.defineProperty(document, 'queryCommandState', initialQueryCommandState);
+		else Reflect.deleteProperty(document, 'queryCommandState');
 		vi.clearAllMocks();
 		vi.restoreAllMocks();
 		vi.useRealTimers();
@@ -207,6 +214,149 @@ describe('DetailPage activity access', () => {
 		config.AUTOSAVE_DEBOUNCE = initialAutosaveDebounce;
 		user.value = null;
 		localStorage.removeItem('dpw:activity-edit-draft:activity-1');
+	});
+
+	it('uploads inline at the caret and autosaves durable references, not blob URLs', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const imageId = '12345678-1234-1234-1234-123456789abc';
+		const path = `/api/program-images/${imageId}`;
+		const file = new File(['bytes'], 'Bild.png', { type: 'image/png' });
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ programs: [{
+			id: 'program-1', activity_id: 'activity-1', duration_minutes: 30,
+			title: 'Programm', description: '<p>Vorher Danach</p>', responsible: [],
+		}] }));
+		mocks.uploadAttachment.mockResolvedValue({ id: imageId, activity_id: 'activity-1', filename: file.name, content_type: file.type, created_at: '' });
+		vi.mocked(apiFetch).mockImplementation(async (url) => url === path
+			? new Response(new Blob(['image'], { type: 'image/png' }))
+			: new Response('{}'));
+		vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:inline-image');
+		vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get<HTMLElement>('.rich-editor--compact');
+		editor.element.focus();
+		const range = document.createRange();
+		range.setStart(editor.element.querySelector('p')!.firstChild!, 7);
+		range.collapse(true);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+		const input = wrapper.get<HTMLInputElement>('#program-image-input-0');
+		Object.defineProperty(input.element, 'files', { configurable: true, value: [file] });
+		await input.trigger('change');
+		await flushPromises();
+		expect(mocks.uploadAttachment).toHaveBeenCalledWith('activity-1', file, true);
+		expect(editor.get('img').attributes('src')).toBe('blob:inline-image');
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		const saved = mocks.updateActivity.mock.lastCall?.[1].programs[0].description as string;
+		expect(saved).toMatch(/Vorher <img[^>]*>Danach/);
+		expect(saved).toContain(path);
+		expect(saved).not.toMatch(/blob:|data-program-image|hochgeladen/);
+		wrapper.unmount();
+	});
+
+	it('keeps a pasted image with its program when reordered during upload', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const imageId = '12345678-1234-1234-1234-123456789abc';
+		const path = `/api/program-images/${imageId}`;
+		let finishUpload: ((image: unknown) => void) | undefined;
+		mocks.uploadAttachment.mockImplementation(() => new Promise(resolve => { finishUpload = resolve; }));
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ programs: ['First', 'Second'].map((title, index) => ({
+			id: `program-${index}`, activity_id: 'activity-1', duration_minutes: 10,
+			title, description: title, responsible: [],
+		})) }));
+		vi.mocked(apiFetch).mockImplementation(async (url) => url === path
+			? new Response(new Blob(['image'], { type: 'image/png' })) : new Response('{}'));
+		vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:pasted-image');
+		vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await flushPromises();
+		const editor = wrapper.findAll<HTMLElement>('.rich-editor--compact')[0]!;
+		editor.element.focus();
+		const range = document.createRange();
+		range.selectNodeContents(editor.element);
+		range.collapse(false);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+		const event = new Event('paste', { bubbles: true, cancelable: true });
+		const file = new File(['bytes'], 'Paste.png', { type: 'image/png' });
+		Object.defineProperty(event, 'clipboardData', { value: { files: [file], items: [], getData: () => '' } });
+		editor.element.dispatchEvent(event);
+		await flushPromises();
+		expect(editor.find('[data-program-image-upload]').exists()).toBe(true);
+		const cards = wrapper.findAll('.program-card');
+		await cards[0]!.get('.program-card__drag-handle').trigger('dragstart', {
+			dataTransfer: { effectAllowed: '', setData: vi.fn() },
+		});
+		await cards[1]!.trigger('drop');
+		await flushPromises();
+		expect(wrapper.findAll('.rich-editor--compact')[1]!.element).toBe(editor.element);
+		expect(editor.find('[data-program-image-upload]').exists()).toBe(true);
+		finishUpload!({ id: imageId, activity_id: 'activity-1', filename: file.name, content_type: file.type, created_at: '' });
+		await flushPromises();
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		const programs = mocks.updateActivity.mock.lastCall?.[1].programs;
+		expect(programs.map((program: { title: string }) => program.title)).toEqual(['Second', 'First']);
+		expect(programs[1].description).toContain(path);
+		expect(programs[0].description).not.toContain(path);
+		wrapper.unmount();
+	});
+
+	it('keeps upload failures visible after text autosave and never inserts untrusted pasted HTML', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ programs: [{
+			id: 'program-1', activity_id: 'activity-1', duration_minutes: 30,
+			title: 'Programm', description: 'Legacy', responsible: [],
+		}] }));
+		mocks.uploadAttachment.mockImplementation(async () => {
+			mocks.setActivityError?.('Bild-Upload fehlgeschlagen');
+			return null;
+		});
+		mocks.updateActivity.mockImplementation(async () => { mocks.setActivityError?.(null); return true; });
+		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get<HTMLElement>('.rich-editor--compact');
+		const event = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(event, 'clipboardData', { value: {
+			files: [new File(['bytes'], 'Paste.png', { type: 'image/png' })], items: [],
+			getData: (type: string) => type === 'text/html' ? '<b>Text</b><img src="file:///paste.png" onerror="alert(1)"><script>alert(1)</script>' : '',
+		} });
+		editor.element.dispatchEvent(event);
+		await flushPromises();
+		expect(event.defaultPrevented).toBe(true);
+		expect(editor.html()).not.toMatch(/onerror|script|hochgeladen|file:/);
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(wrapper.getComponent(ErrorAlert).props('error')).toContain('Bild-Upload fehlgeschlagen');
+		expect(mocks.updateActivity.mock.lastCall?.[1].programs[0].description).toContain('<b>Text</b>');
+		wrapper.unmount();
+	});
+
+	it('honors program locks for image upload and paste', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ programs: [{
+			id: 'program-1', activity_id: 'activity-1', duration_minutes: 30,
+			title: 'Programm', description: 'Unchanged', responsible: [],
+		}] }));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		mocks.onMessage?.({ event: 'lock', activity_id: 'activity-1', section: 'program_0', user: 'Other editor' });
+		await flushPromises();
+		expect(wrapper.get<HTMLInputElement>('#program-image-input-0').element.disabled).toBe(true);
+		expect(wrapper.get('.rich-editor--compact').attributes('contenteditable')).toBe('false');
+		await wrapper.get('.rich-editor--compact').trigger('paste', {
+			clipboardData: { files: [new File(['bytes'], 'Paste.png', { type: 'image/png' })], items: [], getData: () => '' },
+		});
+		expect(mocks.uploadAttachment).not.toHaveBeenCalled();
+		wrapper.unmount();
 	});
 
 	it('leaves the detail page only when access to the displayed activity is removed', async () => {

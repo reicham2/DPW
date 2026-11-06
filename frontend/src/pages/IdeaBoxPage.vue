@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Plus, Pencil, Trash2, X, Check, Search, ChevronDown, ChevronUp, Minus } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { user } from '../composables/useAuth'
@@ -8,7 +8,8 @@ import { useIdeaBox } from '../composables/useIdeaBox'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import BadgeSelect from '../components/BadgeSelect.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
-import { sanitizeHtml } from '../utils/sanitizeHtml'
+import ProgramDescription from '../components/ProgramDescription.vue'
+import { ProgramImageRenderer, sanitizeProgramDescription, serializeProgramDescription } from '../utils/programImages'
 import { defaultRichTextToolbarState, readRichTextToolbarState } from '../utils/richTextToolbar'
 import type { RichTextToolbarState } from '../utils/richTextToolbar'
 import type { IdeenkisteItem } from '../types'
@@ -97,6 +98,23 @@ let editDescLinkSavedRange: Range | null = null
 const showEditDescLinkDialog = ref(false)
 const editDescLinkUrl = ref('')
 const editDescLinkInputRef = ref<HTMLInputElement | null>(null)
+const newImageRenderer = new ProgramImageRenderer()
+const editImageRenderer = new ProgramImageRenderer()
+
+async function renderIdeaImages(el: HTMLElement, editing: boolean) {
+  try {
+    await (editing ? editImageRenderer : newImageRenderer).render(el)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Bild konnte nicht geladen werden.'
+    if (editing) editError.value = message
+    else saveError.value = message
+  }
+}
+
+onUnmounted(() => {
+  newImageRenderer.dispose()
+  editImageRenderer.dispose()
+})
 
 function setEditDescEditorRef(refEl: unknown) {
   const el = refEl instanceof Element
@@ -106,7 +124,11 @@ function setEditDescEditorRef(refEl: unknown) {
       : null)
   editDescEditorRef.value = el as HTMLElement | null
   if (editDescEditorRef.value) {
-    editDescEditorRef.value.innerHTML = editDescription.value
+    const description = sanitizeProgramDescription(editDescription.value)
+    if (serializeProgramDescription(editDescEditorRef.value) !== description) {
+      editDescEditorRef.value.innerHTML = description
+    }
+    void renderIdeaImages(editDescEditorRef.value, true)
   }
 }
 
@@ -118,7 +140,11 @@ function setNewDescEditorRef(refEl: unknown) {
       : null)
   newDescEditorRef.value = el as HTMLElement | null
   if (newDescEditorRef.value) {
-    newDescEditorRef.value.innerHTML = newDescription.value
+    const description = sanitizeProgramDescription(newDescription.value)
+    if (serializeProgramDescription(newDescEditorRef.value) !== description) {
+      newDescEditorRef.value.innerHTML = description
+    }
+    void renderIdeaImages(newDescEditorRef.value, false)
   }
 }
 
@@ -189,14 +215,15 @@ async function submitNew() {
 function syncNewDescEditor() {
   const el = newDescEditorRef.value
   if (!el) return
-  if (el.innerHTML !== newDescription.value) {
-    el.innerHTML = newDescription.value
+  if (serializeProgramDescription(el) !== sanitizeProgramDescription(newDescription.value)) {
+    el.innerHTML = sanitizeProgramDescription(newDescription.value)
   }
+  void renderIdeaImages(el, false)
 }
 
 function onNewDescInput() {
   const el = newDescEditorRef.value
-  if (el) newDescription.value = el.innerHTML
+  if (el) newDescription.value = serializeProgramDescription(el)
   updateNewDescToolbar()
 }
 
@@ -345,14 +372,15 @@ function canDeleteItem(item: IdeenkisteItem): boolean {
 function syncEditDescEditor() {
   const el = editDescEditorRef.value
   if (!el) return
-  if (el.innerHTML !== editDescription.value) {
-    el.innerHTML = editDescription.value
+  if (serializeProgramDescription(el) !== sanitizeProgramDescription(editDescription.value)) {
+    el.innerHTML = sanitizeProgramDescription(editDescription.value)
   }
+  void renderIdeaImages(el, true)
 }
 
 function onEditDescInput() {
   const el = editDescEditorRef.value
-  if (el) editDescription.value = el.innerHTML
+  if (el) editDescription.value = serializeProgramDescription(el)
   updateEditDescToolbar()
 }
 
@@ -758,7 +786,7 @@ function openNewForm() {
             <div class="program-header">
               <p class="program-title">{{ item.title }}</p>
             </div>
-            <div v-if="item.description" class="program-desc" v-html="sanitizeHtml(item.description)" />
+            <ProgramDescription v-if="item.description" :html="item.description" />
           </div>
         </div>
       </div>

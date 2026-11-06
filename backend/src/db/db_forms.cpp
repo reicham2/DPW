@@ -568,18 +568,20 @@ std::vector<IdeenkisteItem> Database::list_ideenkiste(const std::string &dept_fi
     return out;
 }
 
-std::optional<IdeenkisteItem> Database::create_ideenkiste_item(const IdeenkisteInput &input)
+std::optional<IdeenkisteItem> Database::get_ideenkiste_item(const std::string &id)
 {
     ensure_connected();
-    std::string dur = std::to_string(input.duration_minutes);
-    const char *dept = input.department && !input.department->empty() ? input.department->c_str() : nullptr;
-    const char *params[] = {input.title.c_str(), dur.c_str(), input.description.c_str(), dept};
+    const char *params[] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO ideenkiste (title, duration_minutes, description, department) "
-                                 "VALUES ($1, $2::int, $3, $4) "
-                                 "RETURNING id, title, duration_minutes, description, department, created_at, updated_at",
-                                 4, nullptr, params, nullptr, nullptr, 0);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+        "SELECT id, title, duration_minutes, description, department, created_at, updated_at FROM ideenkiste WHERE id=$1",
+        1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        const std::string error = PQerrorMessage(conn_);
+        PQclear(res);
+        throw std::runtime_error("get_ideenkiste_item: " + error);
+    }
+    if (PQntuples(res) == 0)
     {
         PQclear(res);
         return std::nullopt;
@@ -589,25 +591,109 @@ std::optional<IdeenkisteItem> Database::create_ideenkiste_item(const IdeenkisteI
     return item;
 }
 
+namespace
+{
+    void idea_transaction_command(PGconn *conn, const char *sql)
+    {
+        PGresult *res = PQexec(conn, sql);
+        const bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+        PQclear(res);
+        if (!ok) throw std::runtime_error("ideenkiste transaction: " + std::string(PQerrorMessage(conn)));
+    }
+
+    void save_idea_image_description(PGconn *conn, IdeenkisteItem &item, const std::string &description)
+    {
+        if (item.description == description) return;
+        const char *params[] = {item.id.c_str(), description.c_str()};
+        PGresult *res = PQexecParams(conn,
+            "UPDATE ideenkiste SET description=$2 WHERE id=$1 RETURNING updated_at",
+            2, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) != 1)
+        {
+            const std::string error = PQerrorMessage(conn);
+            PQclear(res);
+            throw std::runtime_error("ideenkiste images: " + error);
+        }
+        item.description = description;
+        item.updated_at = PQgetvalue(res, 0, 0);
+        PQclear(res);
+    }
+}
+
+std::optional<IdeenkisteItem> Database::create_ideenkiste_item(const IdeenkisteInput &input)
+{
+    ensure_connected();
+    idea_transaction_command(conn_, "BEGIN");
+    try
+    {
+        std::string dur = std::to_string(input.duration_minutes);
+        const char *dept = input.department && !input.department->empty() ? input.department->c_str() : nullptr;
+        const char *params[] = {input.title.c_str(), dur.c_str(), input.description.c_str(), dept};
+        PGresult *res = PQexecParams(conn_,
+            "INSERT INTO ideenkiste (title, duration_minutes, description, department) VALUES ($1, $2::int, $3, $4) "
+            "RETURNING id, title, duration_minutes, description, department, created_at, updated_at",
+            4, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) != 1)
+        {
+            const std::string error = PQerrorMessage(conn_);
+            PQclear(res);
+            throw std::runtime_error("create_ideenkiste_item: " + error);
+        }
+        auto item = row_to_ideenkiste(res, 0);
+        PQclear(res);
+        std::map<std::string, std::string> copies;
+        save_idea_image_description(conn_, item,
+            copy_program_image_references(item.description, std::nullopt, item.id, copies));
+        idea_transaction_command(conn_, "COMMIT");
+        return item;
+    }
+    catch (...)
+    {
+        PGresult *rollback = PQexec(conn_, "ROLLBACK");
+        PQclear(rollback);
+        throw;
+    }
+}
+
 std::optional<IdeenkisteItem> Database::update_ideenkiste_item(const std::string &id, const IdeenkisteInput &input)
 {
     ensure_connected();
-    std::string dur = std::to_string(input.duration_minutes);
-    const char *dept = input.department && !input.department->empty() ? input.department->c_str() : nullptr;
-    const char *params[] = {id.c_str(), input.title.c_str(), dur.c_str(), input.description.c_str(), dept};
-    PGresult *res = PQexecParams(conn_,
-                                 "UPDATE ideenkiste SET title=$2, duration_minutes=$3::int, description=$4, department=$5 "
-                                 "WHERE id=$1 "
-                                 "RETURNING id, title, duration_minutes, description, department, created_at, updated_at",
-                                 5, nullptr, params, nullptr, nullptr, 0);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    idea_transaction_command(conn_, "BEGIN");
+    try
     {
+        std::string dur = std::to_string(input.duration_minutes);
+        const char *dept = input.department && !input.department->empty() ? input.department->c_str() : nullptr;
+        const char *params[] = {id.c_str(), input.title.c_str(), dur.c_str(), input.description.c_str(), dept};
+        PGresult *res = PQexecParams(conn_,
+            "UPDATE ideenkiste SET title=$2, duration_minutes=$3::int, description=$4, department=$5 WHERE id=$1 "
+            "RETURNING id, title, duration_minutes, description, department, created_at, updated_at",
+            5, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK)
+        {
+            const std::string error = PQerrorMessage(conn_);
+            PQclear(res);
+            throw std::runtime_error("update_ideenkiste_item: " + error);
+        }
+        if (PQntuples(res) == 0)
+        {
+            PQclear(res);
+            idea_transaction_command(conn_, "ROLLBACK");
+            return std::nullopt;
+        }
+        auto item = row_to_ideenkiste(res, 0);
         PQclear(res);
-        return std::nullopt;
+        std::map<std::string, std::string> copies;
+        save_idea_image_description(conn_, item,
+            copy_program_image_references(item.description, std::nullopt, item.id, copies));
+        idea_transaction_command(conn_, "COMMIT");
+        return item;
     }
-    auto item = row_to_ideenkiste(res, 0);
-    PQclear(res);
-    return item;
+    catch (...)
+    {
+        PGresult *rollback = PQexec(conn_, "ROLLBACK");
+        PQclear(rollback);
+        throw;
+    }
 }
 
 bool Database::delete_ideenkiste_item(const std::string &id)
