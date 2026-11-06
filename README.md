@@ -90,8 +90,9 @@ make db-seed
 ## Aktivitäten bearbeiten
 
 Programmpunkte sind im Bearbeitungsmodus zunächst eingeklappt und lassen sich
-unabhängig voneinander öffnen. Änderungen bleiben beim Einklappen erhalten;
-die Reihenfolge kann weiterhin über den Ziehgriff angepasst werden.
+unabhängig voneinander öffnen oder mit **Alle öffnen / Alle schliessen**
+gemeinsam ein- und ausklappen. Änderungen bleiben beim Einklappen erhalten; die
+Reihenfolge kann weiterhin über den Ziehgriff angepasst werden.
 
 ## Audit Log
 

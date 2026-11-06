@@ -357,12 +357,22 @@ function isProgramExpanded(program: ProgramInput): boolean {
 	return expandedProgramIds.value.has(programUiId(program));
 }
 
+const allProgramsExpanded = computed(() =>
+	editPrograms.value.length > 0 && editPrograms.value.every(isProgramExpanded)
+);
+
 function toggleProgramExpanded(program: ProgramInput) {
 	const uiId = programUiId(program);
 	const expandedIds = new Set(expandedProgramIds.value);
 	if (expandedIds.has(uiId)) expandedIds.delete(uiId);
 	else expandedIds.add(uiId);
 	expandedProgramIds.value = expandedIds;
+}
+
+function toggleAllProgramsExpanded() {
+	expandedProgramIds.value = allProgramsExpanded.value
+		? new Set()
+		: new Set(editPrograms.value.map(programUiId));
 }
 
 interface EditSnapshot {
@@ -3616,7 +3626,17 @@ function copyShareLink() {
 
 			<!-- Programmpunkte -->
 			<div class="form-section">
-				<p class="form-section-title">Programmpunkte</p>
+				<div class="program-section-heading">
+					<p class="form-section-title">Programmpunkte</p>
+					<button
+						type="button"
+						class="program-card__toggle-all"
+						:disabled="!editPrograms.length"
+						@click="toggleAllProgramsExpanded"
+					>
+						{{ allProgramsExpanded ? 'Alle schliessen' : 'Alle öffnen' }}
+					</button>
+				</div>
 				<div style="display: flex; flex-direction: column; gap: 10px">
 					<div v-for="(prog, i) in editPrograms" :key="programUiId(prog)" class="program-card lock-wrapper"
 						:class="{
