@@ -1,0 +1,19 @@
+# Use the production topology with isolated CI images, configuration and ports.
+services:
+  backend:
+    image: ${UPGRADE_BACKEND_IMAGE:?Set UPGRADE_BACKEND_IMAGE}
+    env_file: !reset []
+    environment:
+      DPW_CONFIG_ENCRYPTION_KEY: ${UPGRADE_ENCRYPTION_KEY:?Set UPGRADE_ENCRYPTION_KEY}
+    volumes: !reset []
+  frontend:
+    image: ${UPGRADE_FRONTEND_IMAGE:?Set UPGRADE_FRONTEND_IMAGE}
+    env_file: !reset []
+    ports: !override
+      - "127.0.0.1::80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 3s

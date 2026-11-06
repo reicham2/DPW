@@ -1,0 +1,104 @@
+name: Upgrade Compatibility
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  group: upgrade-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upgrade:
+    name: Persisted Environment Upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Resolve last successfully published main image pair
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          # A successful CI run includes both image publishing jobs.
+          sha="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" \
+            --jq '.workflow_runs[0].head_sha')"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::No successfully published main CI revision found"
+            exit 1
+          fi
+          gh api "repos/$REPOSITORY/contents/docker-compose.yml?ref=$sha" \
+            --jq .content | base64 --decode > "$RUNNER_TEMP/baseline-compose.yml"
+          echo "compose=$RUNNER_TEMP/baseline-compose.yml" >> "$GITHUB_OUTPUT"
+          owner="${OWNER,,}"
+          for service in backend frontend; do
+            image="ghcr.io/$owner/dpw-$service:sha-${sha:0:7}"
+            docker pull "$image"
+            revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+            if [ "$revision" != "$sha" ]; then
+              echo "::error::Baseline $service revision does not match $sha"
+              exit 1
+            fi
+            digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")"
+            echo "$service=$digest" >> "$GITHUB_OUTPUT"
+            echo "- Baseline $service: \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "Baseline main revision: \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate revision: \`$(git rev-parse HEAD)\` (PR merge result for pull_request)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production candidate backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          build-args: |
+            BACKEND_BUILD_TYPE=Release
+            ENABLE_DEBUG_AUTH=0
+          load: true
+          tags: dpw-upgrade-backend:candidate
+          cache-from: type=gha,scope=dpw-backend
+          cache-to: type=gha,mode=max,scope=dpw-upgrade-backend
+
+      - name: Build production candidate frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          build-args: ENABLE_DEBUG_AUTH=0
+          load: true
+          tags: dpw-upgrade-frontend:candidate
+          cache-from: type=gha,scope=dpw-frontend
+          cache-to: type=gha,mode=max,scope=dpw-upgrade-frontend
+
+      - name: Upgrade persisted environment and exercise failure detection
+        env:
+          BASELINE_BACKEND_IMAGE: ${{ steps.baseline.outputs.backend }}
+          BASELINE_FRONTEND_IMAGE: ${{ steps.baseline.outputs.frontend }}
+          BASELINE_COMPOSE_FILE: ${{ steps.baseline.outputs.compose }}
+          CANDIDATE_BACKEND_IMAGE: dpw-upgrade-backend:candidate
+          CANDIDATE_FRONTEND_IMAGE: dpw-upgrade-frontend:candidate
+          UPGRADE_RESULTS_DIR: ${{ runner.temp }}/upgrade-results
+        run: bash scripts/environment-upgrade-tests.sh
+
+      - name: Upload upgrade diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-diagnostics
+          path: ${{ runner.temp }}/upgrade-results
+          if-no-files-found: warn
+          retention-days: 7
