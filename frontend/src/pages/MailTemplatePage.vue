@@ -55,6 +55,7 @@ const activeDept = ref<Department>(
 )
 
 const selectedTemplateId = ref('')
+const showTemplateEditor = ref(false)
 const templateName = ref('')
 const templateIsDefault = ref(false)
 const subject = ref('')
@@ -479,6 +480,7 @@ onUnmounted(() => {
 })
 
 async function flushCurrentTemplate(): Promise<boolean> {
+  if (!showTemplateEditor.value) return true
   const needsSave = dirtyFields.size > 0 || hasPendingChanges || autoSaveTimer !== null
   if (autoSaveTimer) {
     clearTimeout(autoSaveTimer)
@@ -489,7 +491,7 @@ async function flushCurrentTemplate(): Promise<boolean> {
   return needsSave ? doSave() : true
 }
 
-function activateTemplate(dept: Department, template: MailTemplate | null) {
+function activateTemplate(dept: Department, template: MailTemplate | null, edit = true) {
   wsLeave()
   myLockedSection.value = null
   sectionLocks.value = new Map()
@@ -498,6 +500,7 @@ function activateTemplate(dept: Department, template: MailTemplate | null) {
 
   suppressDirtyTracking = true
   activeDept.value = dept
+  showTemplateEditor.value = edit
   selectedTemplateId.value = template?.id ?? ''
   templateName.value = template?.name ?? ''
   templateIsDefault.value = template?.is_default ?? false
@@ -512,27 +515,29 @@ function activateTemplate(dept: Department, template: MailTemplate | null) {
     suppressDirtyTracking = false
     dirtyFields.clear()
   })
-  if (template) wsJoin(tplId())
+  if (template && edit) wsJoin(tplId())
 }
 
 async function loadDept(dept: Department) {
   if (dept === activeDept.value && selectedTemplateId.value) return
-  if (dept !== activeDept.value && !(await flushCurrentTemplate())) return
+  if (dept !== activeDept.value && showTemplateEditor.value && !(await flushCurrentTemplate())) return
   const templatesForDepartment = templates.value.filter(template => template.department === dept)
   const template = templatesForDepartment.find(item => item.is_default) ?? templatesForDepartment[0] ?? null
-  activateTemplate(dept, template)
+  activateTemplate(dept, template, false)
 }
 
-async function selectTemplate(id: string) {
-  if (id === selectedTemplateId.value || !(await flushCurrentTemplate())) return
-  const template = templates.value.find(item => item.id === id && item.department === activeDept.value)
-  if (template) activateTemplate(activeDept.value, template)
+async function editTemplate(template: MailTemplate) {
+  if (showTemplateEditor.value && !(await flushCurrentTemplate())) return
+  activateTemplate(activeDept.value, template)
 }
 
-async function onTemplateSelection(event: Event) {
-  const select = event.target as HTMLSelectElement
-  await selectTemplate(select.value)
-  select.value = selectedTemplateId.value
+async function showTemplateList() {
+  if (!(await flushCurrentTemplate())) return
+  showTemplateEditor.value = false
+  wsLeave()
+  myLockedSection.value = null
+  sectionLocks.value = new Map()
+  activeEditors.value = []
 }
 
 async function createNewTemplate() {
@@ -545,17 +550,37 @@ async function createNewTemplate() {
   activateTemplate(activeDept.value, template)
 }
 
-async function deleteCurrentTemplate() {
-  const template = selectedTemplate.value
+async function deleteCurrentTemplate(template = selectedTemplate.value) {
   if (!template || !window.confirm(`Vorlage „${template.name}" wirklich löschen?`)) return
-  if (!(await flushCurrentTemplate())) return
+  const isEditingDeletedTemplate = showTemplateEditor.value && selectedTemplateId.value === template.id
+  if (isEditingDeletedTemplate && !(await flushCurrentTemplate())) return
   clearLocalDraft(template.department, template.id, template.is_default)
   if (!(await deleteTemplate(template.id))) return
+  if (!isEditingDeletedTemplate && selectedTemplateId.value !== template.id) return
   const remaining = departmentTemplates.value
   activateTemplate(
     activeDept.value,
     remaining.find(item => item.is_default) ?? remaining[0] ?? null,
+    false,
   )
+}
+
+async function toggleDefault(template: MailTemplate) {
+  const updated = await updateTemplate(
+    template.id,
+    template.name,
+    template.subject,
+    template.body,
+    template.recipients,
+    template.cc,
+    !template.is_default,
+  )
+  if (!updated) return
+  await fetchTemplates(activeDept.value)
+}
+
+function templatePreview(template: MailTemplate): string {
+  return template.body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function onEditorInput() {
@@ -858,6 +883,54 @@ function onCcKeydown(e: KeyboardEvent) {
     <p v-if="loading" class="loading">Laden...</p>
 
     <div v-else class="detail-form">
+      <template v-if="!showTemplateEditor">
+        <div class="mt-page-header">
+          <h2 class="mt-title">Vorlagen für {{ activeDept || '—' }}</h2>
+          <button v-if="activeDept" type="button" class="btn-primary" @click="createNewTemplate">
+            + Neue Vorlage
+          </button>
+        </div>
+
+        <div v-if="departmentTemplates.length === 0" class="mt-empty-state">
+          Noch keine Mail-Vorlagen in dieser Stufe.
+        </div>
+
+        <div v-for="template in departmentTemplates" :key="template.id" class="mt-row">
+          <div class="mt-row-main">
+            <div class="mt-row-name">
+              {{ template.name }}
+              <span v-if="template.is_default" class="default-badge">Standard</span>
+            </div>
+            <div class="mt-row-meta">
+              <span>{{ template.subject || 'Kein Betreff' }}</span>
+              <span class="mt-meta-divider">·</span>
+              <span>{{ template.recipients.length }} Empfänger</span>
+              <span v-if="templatePreview(template)" class="mt-preview">
+                {{ templatePreview(template) }}
+              </span>
+            </div>
+          </div>
+          <div class="mt-row-actions">
+            <button
+              type="button"
+              :class="['btn-sm', template.is_default ? 'active-default' : '']"
+              :title="template.is_default ? 'Standard entfernen' : 'Als Standard setzen'"
+              @click="toggleDefault(template)"
+            >
+              {{ template.is_default ? '⭐ Standard' : '☆ Standard' }}
+            </button>
+            <button type="button" class="btn-sm" @click="editTemplate(template)">Bearbeiten</button>
+            <button type="button" class="btn-sm danger" @click="deleteCurrentTemplate(template)">Löschen</button>
+          </div>
+        </div>
+        <ErrorAlert :error="error" />
+      </template>
+
+      <template v-else>
+      <div class="mt-editor-header">
+        <button type="button" class="btn-sm" @click="showTemplateList">← Zurück zu Vorlagen</button>
+        <h2 class="mt-title">{{ templateName || 'Mail-Vorlage bearbeiten' }}</h2>
+      </div>
       <div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
         <span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
         <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
@@ -869,32 +942,6 @@ function onCcKeydown(e: KeyboardEvent) {
         <span>Lokaler Entwurf wurde wiederhergestellt.</span>
       </div>
 
-      <div class="template-controls">
-        <label for="mail-template-admin-selector">Vorlage</label>
-        <select
-          id="mail-template-admin-selector"
-          :value="selectedTemplateId"
-          :disabled="!departmentTemplates.length"
-          @change="onTemplateSelection"
-        >
-          <option v-if="!departmentTemplates.length" value="">Noch keine Vorlage</option>
-          <option v-for="template in departmentTemplates" :key="template.id" :value="template.id">
-            {{ template.name }}{{ template.is_default ? ' (Standard)' : '' }}
-          </option>
-        </select>
-        <button type="button" class="btn-secondary" @click="createNewTemplate">+ Neue Vorlage</button>
-        <button
-          v-if="selectedTemplateId"
-          type="button"
-          class="btn-secondary danger"
-          @click="deleteCurrentTemplate"
-        >Löschen</button>
-      </div>
-
-      <div v-if="!selectedTemplateId" class="empty-state">
-        Noch keine Mail-Vorlage in dieser Stufe. Erstelle eine Vorlage, um Betreff, Inhalt und Empfänger zu hinterlegen.
-      </div>
-      <template v-else>
       <!-- Active editors indicator -->
       <div v-if="activeEditors.length" class="editors-banner">
         <span class="editors-banner-icon"><Users :size="16" aria-hidden="true" /></span>
@@ -1061,9 +1108,9 @@ function onCcKeydown(e: KeyboardEvent) {
 
       <!-- Variable reference -->
       <TemplateVarsDropdown :extra-vars="MAIL_EXTRA_VARS" hint="Variablen können im Betreff und im Inhalt verwendet werden. Im Betreff werden Links als URL eingefügt." />
-      </template>
 
       <ErrorAlert :error="error" />
+      </template>
     </div>
   </main>
 
@@ -1089,28 +1136,126 @@ function onCcKeydown(e: KeyboardEvent) {
 </template>
 
 <style scoped>
-.template-controls {
+.mt-page-header,
+.mt-editor-header {
 	display: flex;
+	justify-content: space-between;
 	align-items: center;
-	gap: 0.6rem;
 	margin-bottom: 1rem;
+	gap: 1rem;
 	flex-wrap: wrap;
 }
 
-.template-controls label {
+.mt-editor-header {
+	justify-content: flex-start;
+}
+
+.mt-title {
+	font-size: 1.05rem;
+	font-weight: 700;
+	color: var(--text-primary);
+	margin: 0;
+}
+
+.mt-empty-state {
+	text-align: center;
+	color: var(--text-subtle);
+	padding: 2rem;
 	font-size: 0.875rem;
-	font-weight: 600;
-	color: var(--text-secondary);
+	border: 1px dashed var(--border);
+	border-radius: 0.5rem;
 }
 
-.template-controls select {
+.mt-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	margin-bottom: 0.5rem;
+	background: var(--card-bg);
+	gap: 1rem;
+}
+
+.mt-row-main {
 	flex: 1;
-	min-width: 12rem;
+	min-width: 0;
 }
 
-.template-controls .danger {
+.mt-row-name {
+	font-weight: 600;
+	color: var(--text-primary);
+	font-size: 0.95rem;
+}
+
+.mt-row-meta {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 0.25rem;
+	font-size: 0.78rem;
+	color: var(--text-muted);
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.mt-meta-divider {
+	color: var(--text-subtle);
+}
+
+.mt-preview {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: min(34rem, 55vw);
+}
+
+.mt-row-actions {
+	display: flex;
+	gap: 0.4rem;
+	flex-shrink: 0;
+}
+
+.btn-sm {
+	padding: 0.25rem 0.65rem;
+	background: var(--bg-surface);
+	color: var(--text-secondary);
+	border: 1px solid var(--border-strong);
+	border-radius: 0.25rem;
+	font-size: 0.78rem;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.btn-sm:hover {
+	background: var(--bg-hover);
+}
+
+.btn-sm.danger {
 	color: var(--error-color);
 	border-color: var(--error-border);
+}
+
+.btn-sm.danger:hover {
+	background: var(--error-bg);
+}
+
+.default-badge {
+	display: inline-block;
+	font-size: 0.7rem;
+	font-weight: 600;
+	background: #fef3c7;
+	color: #92400e;
+	padding: 0.1rem 0.4rem;
+	border-radius: 0.25rem;
+	margin-left: 0.4rem;
+	vertical-align: middle;
+}
+
+.active-default {
+	background: #fef3c7 !important;
+	border-color: #f59e0b !important;
+	color: #92400e !important;
 }
 
 .default-template-control {
@@ -1144,17 +1289,27 @@ function onCcKeydown(e: KeyboardEvent) {
 }
 
 @media (max-width: 599px) {
-	.template-controls {
-		align-items: stretch;
+	.mt-row {
+		align-items: flex-start;
+		flex-direction: column;
 	}
 
-	.template-controls select {
-		min-width: 100%;
-		min-height: 42px;
+	.mt-row-actions {
+		width: 100%;
+		flex-wrap: wrap;
 	}
 
-	.template-controls button {
+	.mt-row-actions .btn-sm {
 		min-height: 40px;
+	}
+
+	.mt-preview {
+		max-width: 100%;
+	}
+
+	.mt-editor-header {
+		align-items: flex-start;
+		flex-direction: column;
 	}
 }
 </style>
