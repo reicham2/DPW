@@ -161,6 +161,8 @@ function allowEditing() {
 		time_display_mode: 'minutes',
 		notify_material_assigned: false,
 		notify_activity_assigned: false,
+		notify_activity_reminder: false,
+		activity_reminder_hours: 24,
 		notify_program_assigned: false,
 		notify_mail_own_activity: false,
 		notify_mail_department: false,

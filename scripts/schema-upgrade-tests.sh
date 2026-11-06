@@ -62,6 +62,19 @@ CREATE TABLE programs (
     responsible TEXT[] NOT NULL DEFAULT '{}',
     position INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    microsoft_oid TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    department TEXT,
+    role TEXT NOT NULL DEFAULT 'Mitglied',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO users (id, microsoft_oid, email, display_name)
+VALUES ('00000000-0000-0000-0000-000000000003', 'legacy-reminder-user',
+        'legacy@example.invalid', 'Existing user');
 INSERT INTO activities (id, title, date, start_time, end_time, goal, location, siko_text)
 VALUES ('00000000-0000-0000-0000-000000000001', 'Bestehende Aktivität', '2026-07-01',
         '10:00', '11:00', 'Bestehendes Ziel', 'Wald', 'Sicherheitskonzept');
@@ -99,9 +112,17 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Existing program changed during schema sync';
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE microsoft_oid = 'legacy-reminder-user'
+            AND notify_activity_reminder AND activity_reminder_hours = 24
+    ) THEN
+        RAISE EXCEPTION 'Existing user did not receive the subscribed 24h reminder default';
+    END IF;
 END $$;
 UPDATE activities SET guiding_thread = E'Erste Zeile\nZweite Zeile'
 WHERE id = '00000000-0000-0000-0000-000000000001';
+UPDATE users SET activity_reminder_hours = 2, notify_activity_reminder = false
+WHERE microsoft_oid = 'legacy-reminder-user';
 SQL
     cat db/init.sql
     cat <<'SQL'
@@ -114,6 +135,12 @@ BEGIN
           AND guiding_thread = E'Erste Zeile\nZweite Zeile'
     ) THEN
         RAISE EXCEPTION 'Repeated schema sync changed the guiding thread';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE microsoft_oid = 'legacy-reminder-user'
+            AND NOT notify_activity_reminder AND activity_reminder_hours = 2
+    ) THEN
+        RAISE EXCEPTION 'Repeated schema sync changed the reminder preferences';
     END IF;
 END $$;
 ROLLBACK;

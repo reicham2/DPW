@@ -270,6 +270,9 @@ jobs:
       - name: API - Add authorization fixtures
         run: docker compose -f docker-compose-dev.yml exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < scripts/api-auth-fixtures.sql
 
+      - name: API - Activity reminder SQL regressions
+        run: docker compose -f docker-compose-dev.yml exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < backend/tests/test_activity_reminders.sql
+
       - name: API - Run integration tests
         run: |
           docker compose -f docker-compose-dev.yml exec -T db \
@@ -283,6 +286,11 @@ jobs:
         run: |
           docker run --rm --network host -v "$PWD:/tests:ro" -w /tests node:22-alpine \
             node --test scripts/api-websocket-tests.mjs
+
+      - name: API - Run scheduled activity reminder tests
+        run: |
+          docker run --rm --network host -v "$PWD:/tests:ro" -w /tests node:22-alpine \
+            node --test scripts/api-reminder-tests.mjs
 
       - name: Smoke - Verify snapshot rollback on sync failure
         run: |

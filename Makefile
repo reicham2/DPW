@@ -47,11 +47,14 @@ test-api:
 	$(DC) exec -T db psql -U activities_user -d activities < db/seed.sql
 	$(DC) exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < scripts/api-auth-fixtures.sql
 	$(DC) exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < backend/tests/test_cron_notifications.sql
+	$(DC) exec -T db psql -v ON_ERROR_STOP=1 -U activities_user -d activities < backend/tests/test_activity_reminders.sql
 	docker run --rm --network host -v "$(CURDIR):/etc/newman" postman/newman:alpine \
 		run /etc/newman/scripts/api-tests.postman_collection.json \
 		--env-var baseUrl=http://127.0.0.1:8000/api --reporters cli
 	docker run --rm --network host -v "$(CURDIR):/tests:ro" -w /tests node:22-alpine \
 		node --test scripts/api-websocket-tests.mjs
+	docker run --rm --network host -v "$(CURDIR):/tests:ro" -w /tests node:22-alpine \
+		node --test scripts/api-reminder-tests.mjs
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:

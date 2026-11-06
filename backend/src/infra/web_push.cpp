@@ -456,6 +456,8 @@ namespace
         }
 
         nlohmann::json json_payload = {
+            {"id", notification.id},
+            {"category", notification.category},
             {"title", notification.title},
             {"body", notification_push_body(notification)},
             {"url", notification.link ? *notification.link : std::string("/profile")}};
@@ -523,26 +525,45 @@ namespace
 
 } // namespace
 
-void deliver_web_push_for_user(Database &db, const UserRecord &user, const NotificationRecord &notification)
+bool deliver_web_push_for_user(Database &db, const UserRecord &user, const NotificationRecord &notification)
 {
-    const std::string vapid_pub = app_config::get_or(db, app_config::kVapidPublicKey, "");
-    if (vapid_pub.empty())
-        return;
-
     auto subscriptions = db.list_push_subscriptions_for_user(user.id);
+    if (subscriptions.empty())
+        return true;
+    const std::string vapid_pub = app_config::get_or(db, app_config::kVapidPublicKey, "");
+    if (vapid_pub.empty()) {
+        std::fprintf(stderr, "[web-push] VAPID public key is unavailable\n");
+        return false;
+    }
+
+    bool delivered = true;
     for (const auto &sub : subscriptions)
     {
         std::string aud = endpoint_origin(sub.endpoint);
-        if (aud.empty())
+        if (aud.empty()) {
+            std::fprintf(stderr, "[web-push] Invalid subscription origin\n");
+            delivered = false;
             continue;
+        }
 
         auto jwt = build_vapid_jwt_for_audience(db, aud);
-        if (!jwt)
+        if (!jwt) {
+            std::fprintf(stderr, "[web-push] Unable to sign VAPID token\n");
+            delivered = false;
             continue;
+        }
 
         long status = send_web_push(sub, notification, *jwt, vapid_pub);
         // Endpoint no longer valid.
-        if (status == 404 || status == 410)
-            db.delete_push_subscription_by_endpoint(sub.endpoint);
+        if (status == 404 || status == 410) {
+            if (!db.delete_push_subscription_by_endpoint(sub.endpoint)) {
+                std::fprintf(stderr, "[web-push] Failed to remove expired subscription\n");
+                delivered = false;
+            }
+        } else if (status < 200 || status >= 300) {
+            std::fprintf(stderr, "[web-push] Delivery failed (HTTP %ld)\n", status);
+            delivered = false;
+        }
     }
+    return delivered;
 }

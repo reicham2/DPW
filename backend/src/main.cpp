@@ -4,6 +4,8 @@
 #include "db/database.hpp"
 #include "infra/ws_manager.hpp"
 #include "infra/cron_scheduler.hpp"
+#include "infra/activity_reminders.hpp"
+#include "utils/activity_helpers.hpp"
 #include "handlers/handlers.hpp"
 #include "utils/strings.hpp"
 #include <cstdlib>
@@ -87,6 +89,7 @@ int main()
           setenv("AZURE_CLIENT_SECRET", azure_secret->c_str(), 1);
 
      WebSocketManager wm(db);
+     auto *http_loop = uWS::Loop::get();
      CronScheduler cron;
      const std::string job_conn_str = conn_str +
          " connect_timeout=5 options='-c statement_timeout=30000 -c lock_timeout=5000'";
@@ -109,6 +112,25 @@ int main()
           const int deleted = job_db.purge_deleted_activities_older_than_days(90);
           if (deleted > 0)
                std::printf("[cron] activity-trash: deleted %d activities\n", deleted);
+     });
+     cron.add("activity-reminders", "Erinnerungen an kommende Aktivitaeten", 1, [job_conn_str, http_loop, &db, &wm]
+     {
+          Database job_db(job_conn_str, false);
+          run_activity_reminders(job_db, [http_loop, &db, &wm](const NotificationRecord &note)
+          {
+               http_loop->defer([id = note.id, &db, &wm]
+               {
+                    try {
+                         auto current = db.get_current_activity_reminder(id);
+                         if (current) {
+                              nlohmann::json message = {{"event", "notification"}, {"notification", notification_to_json(*current)}};
+                              wm.send_to_user_ids({current->user_id}, message.dump());
+                         }
+                    } catch (const std::exception &e) {
+                         std::fprintf(stderr, "[activity-reminders] WebSocket delivery failed: %s\n", e.what());
+                    }
+               });
+          });
      });
 
      AuditApp(db)
@@ -446,4 +468,5 @@ int main()
             }
             else       printf("[server] FAILED to listen on :8080\n"); })
          .run();
+     cron.stop();
 }

@@ -293,6 +293,43 @@ Regressionstests fuer die sofortige Benachrichtigungsfilterung:
 `psql -v ON_ERROR_STOP=1 -f backend/tests/test_cron_notifications.sql`
 gegen eine mit `db/init.sql` initialisierte Testdatenbank ausfuehren.
 Die Testdaten werden innerhalb einer Transaktion vollstaendig zurueckgerollt.
+## Aktivitaetserinnerungen
+
+Die Kategorie `activity_reminder` erinnert registrierte Benutzer an kommende Aktivitaeten
+ihrer aktuellen Stufe, sofern sie Lesezugriff und das Abonnement im Profil aktiviert haben.
+Im Profil sind genau 2, 24 oder 48 Stunden Vorlauf waehlbar; Standard fuer neue und bestehende
+Benutzer ist 24 Stunden. Datum/Startzeit werden in `Europe/Zurich` interpretiert; der Vorlauf
+ist eine verstrichene Stundenzahl, auch ueber Sommerzeitwechsel.
+
+Verspaetete Durchlaeufe holen faellige Erinnerungen bis zum Beginn nach, einschliesslich
+spaet angelegter Aktivitaeten und neu zugeordneter Benutzer. Eine geaenderte Vorlaufzeit gilt
+fuer noch nicht ausgestellte Erinnerungen, nicht als erneuter Versand einer bereits
+ausgestellten Erinnerung. Der transaktionale DB-Ledger verhindert doppelte In-App-Meldungen
+bei parallelen Prozessen, Neustarts und geloeschten/gelesenen Meldungen. Datum, Startzeit,
+Stufe und Loeschen/Wiederherstellen erzeugen eine neue Terminrevision und entfernen alte
+In-App-Erinnerungen; reine Titel-/Programmaenderungen loesen keinen erneuten Versand aus.
+
+In-App-Meldungen werden bis zur bestehenden Aktivitaetsbenachrichtigungs-Ablaufgrenze
+(Folgetag um Mitternacht) gespeichert. Browser/App/Web-Push respektieren den
+Kanal-Schalter; fehlgeschlagene Push-Zustellungen werden mit persistenter Fuenf-Minuten-Lease
+bis zum Beginn erneut versucht (maximal 20 Empfaenger pro Durchlauf). Externe Zustellung
+ist mindestens einmal: ein Absturz nach dem Senden kann eine Wiederholung verursachen,
+wobei die Browser-Notification-ID denselben Hinweis ersetzt. Bereits zugestellte externe
+Meldungen koennen bei spaeterer Absage nicht zurueckgezogen werden. Automatische E-Mails
+werden nicht versendet: der bestehende Mail-Pfad benoetigt ein delegiertes Benutzer-Token.
+`DPW_PUBLIC_URL` muss fuer Aktivitaetslinks konfiguriert sein.
+
+Der zentrale CronScheduler fuehrt `activity-reminders` beim Serverstart und jede Minute aus;
+er ist im System-Bereich sichtbar und pausierbar. Der Job verwendet eine eigene DB-Verbindung
+mit begrenzten Verbindungs-, Statement- und Lock-Timeouts. Push laeuft im Worker; WebSocket-
+Zustellung wird auf den HTTP-Loop verschoben und prueft dort erneut Terminrevision, aktuellen
+Stufenzugriff und Einstellungen. Es gibt keinen zweiten Scheduler.
+
+SQL-Regressionen (in einer Testdatenbank; alle Fixtures werden zurueckgerollt):
+
+```bash
+psql -v ON_ERROR_STOP=1 -U activities_user -d activities -f backend/tests/test_activity_reminders.sql
+```
 
 ## Role Permissions
 

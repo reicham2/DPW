@@ -125,6 +125,8 @@ export interface User {
 	time_display_mode: TimeDisplayMode;
 	notify_material_assigned: boolean;
 	notify_activity_assigned: boolean;
+	notify_activity_reminder: boolean;
+	activity_reminder_hours: 2 | 24 | 48;
 	notify_program_assigned: boolean;
 	notify_mail_own_activity: boolean;
 	notify_mail_department: boolean;
@@ -136,6 +138,7 @@ export interface User {
 }
 
 export type NotificationCategory =
+	| 'activity_reminder'
 	| 'material_assigned'
 	| 'activity_assigned'
 	| 'program_assigned'

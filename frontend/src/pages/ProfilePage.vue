@@ -165,6 +165,17 @@
               <span>Aktivität dir zugewiesen</span>
             </label>
             <label class="notify-option">
+              <input v-model="form.notify_activity_reminder" type="checkbox" />
+              <span>Erinnerung an Aktivitäten deiner Stufe</span>
+            </label>
+            <label class="form-label" for="activity-reminder-hours">Erinnerung vor Beginn</label>
+            <select id="activity-reminder-hours" v-model.number="form.activity_reminder_hours"
+              class="form-input" :disabled="!form.notify_activity_reminder">
+              <option :value="2">2 Stunden</option>
+              <option :value="24">24 Stunden</option>
+              <option :value="48">48 Stunden</option>
+            </select>
+            <label class="notify-option">
               <input v-model="form.notify_program_assigned" type="checkbox" />
               <span>Programmblock dir zugewiesen</span>
             </label>
@@ -194,6 +205,7 @@
             </label>
             <p class="form-hint">
               Browser / App zeigt Benachrichtigungen im Browser und in der installierten PWA-App.
+              Automatische Aktivitätserinnerungen werden nicht per E-Mail versendet.
             </p>
           </div>
         </div>
@@ -230,6 +242,8 @@ const form = ref({
   avatar_color: user.value?.avatar_color ?? '#4f8cff',
   notify_material_assigned: user.value?.notify_material_assigned ?? true,
   notify_activity_assigned: user.value?.notify_activity_assigned ?? true,
+  notify_activity_reminder: user.value?.notify_activity_reminder ?? true,
+  activity_reminder_hours: user.value?.activity_reminder_hours ?? 24,
   notify_program_assigned: user.value?.notify_program_assigned ?? true,
   notify_mail_own_activity: user.value?.notify_mail_own_activity ?? true,
   notify_mail_department: user.value?.notify_mail_department ?? true,
@@ -266,6 +280,8 @@ onMounted(async () => {
     form.value.avatar_color = user.value.avatar_color ?? '#4f8cff'
     form.value.notify_material_assigned = user.value.notify_material_assigned ?? true
     form.value.notify_activity_assigned = user.value.notify_activity_assigned ?? true
+    form.value.notify_activity_reminder = user.value.notify_activity_reminder ?? true
+    form.value.activity_reminder_hours = user.value.activity_reminder_hours ?? 24
     form.value.notify_program_assigned = user.value.notify_program_assigned ?? true
     form.value.notify_mail_own_activity = user.value.notify_mail_own_activity ?? true
     form.value.notify_mail_department = user.value.notify_mail_department ?? true
@@ -298,6 +314,8 @@ async function save() {
         avatar_color: form.value.avatar_color,
         notify_material_assigned: form.value.notify_material_assigned,
         notify_activity_assigned: form.value.notify_activity_assigned,
+        notify_activity_reminder: form.value.notify_activity_reminder,
+        activity_reminder_hours: form.value.activity_reminder_hours,
         notify_program_assigned: form.value.notify_program_assigned,
         notify_mail_own_activity: form.value.notify_mail_own_activity,
         notify_mail_department: form.value.notify_mail_department,

@@ -144,6 +144,7 @@ wsAddGlobalHandler((event: WsEvent) => {
 		typeof window !== 'undefined' &&
 		'Notification' in window &&
 		Notification.permission === 'granted' &&
+		(incoming.category !== 'activity_reminder' || user.value?.notify_activity_reminder) &&
 		(user.value?.notify_channel_websocket ?? true)
 	) {
 		void showSystemNotification(incoming);
@@ -210,6 +211,8 @@ const unreadCount = computed(
 				return user.value.notify_material_assigned;
 			if (n.category === 'activity_assigned')
 				return user.value.notify_activity_assigned;
+			if (n.category === 'activity_reminder')
+				return user.value.notify_activity_reminder;
 			if (n.category === 'program_assigned')
 				return user.value.notify_program_assigned;
 			if (n.category === 'mail_own_activity')

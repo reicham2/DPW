@@ -100,7 +100,14 @@ public:
                                           const std::optional<bool> &notify_mail_department = std::nullopt,
                                           const std::optional<bool> &notify_channel_websocket = std::nullopt,
                                           const std::optional<bool> &notify_channel_email = std::nullopt,
-                                          const std::optional<std::string> &avatar_color = std::nullopt);
+                                          const std::optional<std::string> &avatar_color = std::nullopt,
+                                          const std::optional<bool> &notify_activity_reminder = std::nullopt,
+                                          const std::optional<int> &activity_reminder_hours = std::nullopt);
+    void create_due_activity_reminders();
+    std::vector<NotificationRecord> claim_activity_reminder_deliveries();
+    std::optional<NotificationRecord> get_current_activity_reminder(const std::string &notification_id);
+    void finish_activity_reminder_delivery(const std::string &notification_id, bool delivered);
+
     // Admin: update any user's display_name, department and role.
     std::optional<UserRecord> update_user_admin(const std::string &id,
                                                 const std::string &display_name,

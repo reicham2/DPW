@@ -262,6 +262,108 @@ CREATE TRIGGER trg_ideenkiste_updated_at
 
 CREATE INDEX IF NOT EXISTS idx_ideenkiste_department ON ideenkiste (department);
 
+-- A ledger outlives notification dismissal/expiry and isolates meaningful schedule changes.
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS reminder_revision BIGINT NOT NULL DEFAULT 0;
+
+CREATE OR REPLACE FUNCTION activity_reminder_start(activity_date DATE, activity_time TEXT)
+RETURNS TIMESTAMPTZ LANGUAGE SQL IMMUTABLE STRICT AS $$
+    SELECT CASE WHEN activity_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        THEN (activity_date + activity_time::time) AT TIME ZONE 'Europe/Zurich'
+        ELSE NULL END;
+$$;
+
+CREATE OR REPLACE FUNCTION revise_activity_reminders()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        DELETE FROM notifications
+        WHERE category = 'activity_reminder' AND payload->>'activity_id' = OLD.id::text;
+        RETURN OLD;
+    END IF;
+    IF (NEW.date, NEW.start_time, NEW.department, NEW.deleted_at)
+        IS DISTINCT FROM (OLD.date, OLD.start_time, OLD.department, OLD.deleted_at) THEN
+        NEW.reminder_revision := OLD.reminder_revision + 1;
+        DELETE FROM notifications
+        WHERE category = 'activity_reminder' AND payload->>'activity_id' = OLD.id::text;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_activity_reminder_revision ON activities;
+CREATE TRIGGER trg_activity_reminder_revision BEFORE UPDATE OR DELETE ON activities
+    FOR EACH ROW EXECUTE FUNCTION revise_activity_reminders();
+
+CREATE OR REPLACE FUNCTION create_due_activity_reminders(
+    check_at TIMESTAMPTZ DEFAULT NOW(), public_base_url TEXT DEFAULT '')
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE
+    activity RECORD;
+    recipient RECORD;
+    note_id UUID;
+    activity_link TEXT;
+    created_count INTEGER := 0;
+BEGIN
+    -- Serialize concurrent scheduler processes, while still allowing normal activity edits.
+    PERFORM pg_advisory_xact_lock(126, 1);
+    IF EXISTS (SELECT 1 FROM activities a WHERE a.deleted_at IS NULL
+        AND a.date BETWEEN (check_at AT TIME ZONE 'Europe/Zurich')::date
+            AND (check_at AT TIME ZONE 'Europe/Zurich')::date + 2
+        AND activity_reminder_start(a.date, a.start_time) IS NULL) THEN
+        RAISE WARNING 'activity-reminders: invalid activity start times skipped';
+    END IF;
+    FOR activity IN
+        SELECT a.*, activity_reminder_start(a.date, a.start_time) AS starts_at
+        FROM activities a
+        WHERE a.deleted_at IS NULL AND a.department IS NOT NULL
+          AND activity_reminder_start(a.date, a.start_time) > check_at
+          AND activity_reminder_start(a.date, a.start_time) - INTERVAL '48 hours' <= check_at
+        ORDER BY a.id
+        FOR SHARE OF a
+    LOOP
+        activity_link := rtrim(public_base_url, '/') || '/activities/' || activity.id;
+        FOR recipient IN
+            SELECT u.* FROM users u
+            WHERE u.department = activity.department AND u.notify_activity_reminder
+              AND activity.starts_at - make_interval(hours => u.activity_reminder_hours) <= check_at
+              AND EXISTS (
+                  SELECT 1 FROM role_permissions p WHERE p.role = u.role AND (
+                      u.role = 'admin' OR p.activity_read_scope IN ('all', 'same_dept')
+                      OR EXISTS (SELECT 1 FROM role_dept_access d
+                          WHERE d.role = u.role AND d.department = activity.department AND d.can_read)
+                  )
+              )
+            ORDER BY u.id
+            FOR SHARE OF u
+        LOOP
+            INSERT INTO activity_reminders (activity_id, revision, user_id, next_attempt_at)
+                VALUES (activity.id, activity.reminder_revision, recipient.id, check_at)
+                ON CONFLICT DO NOTHING;
+            IF NOT FOUND THEN CONTINUE; END IF;
+            INSERT INTO notifications (user_id, category, title, message, link, payload, created_at)
+            VALUES (recipient.id, 'activity_reminder', 'Erinnerung an deine nächste Aktivität',
+                'Die Aktivität "' || activity.title || '" am ' || to_char(activity.date, 'DD.MM.YYYY')
+                    || ' um ' || activity.start_time || ' steht bevor.',
+                activity_link,
+                jsonb_build_object(
+                    'activity_id', activity.id, 'activity_title', activity.title,
+                    'activity_date', activity.date, 'activity_date_display', to_char(activity.date, 'DD.MM.YYYY'),
+                    'activity_time', activity.start_time || '-' || activity.end_time,
+                    'activity_start_at', activity.starts_at, 'reminder_revision', activity.reminder_revision,
+                    'reminder_hours', recipient.activity_reminder_hours,
+                    'department', activity.department, 'location', activity.location,
+                    'notification_recipient_name', recipient.display_name,
+                    'notification_recipient_email', recipient.email,
+                    'activity_url', activity_link, 'triggered_by_name', 'Server'),
+                check_at) RETURNING id INTO note_id;
+            UPDATE activity_reminders SET notification_id = note_id
+                WHERE activity_id = activity.id AND revision = activity.reminder_revision AND user_id = recipient.id;
+            created_count := created_count + 1;
+        END LOOP;
+    END LOOP;
+    RETURN created_count;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS users (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     microsoft_oid TEXT        NOT NULL UNIQUE,
@@ -273,6 +375,8 @@ CREATE TABLE IF NOT EXISTS users (
         CHECK (time_display_mode IN ('minutes', 'clock')),
     notify_material_assigned BOOLEAN NOT NULL DEFAULT true,
     notify_activity_assigned BOOLEAN NOT NULL DEFAULT true,
+    notify_activity_reminder BOOLEAN NOT NULL DEFAULT true,
+    activity_reminder_hours INTEGER NOT NULL DEFAULT 24 CHECK (activity_reminder_hours IN (2, 24, 48)),
     notify_program_assigned BOOLEAN NOT NULL DEFAULT true,
     notify_mail_own_activity BOOLEAN NOT NULL DEFAULT true,
     notify_mail_department BOOLEAN NOT NULL DEFAULT true,
@@ -383,6 +487,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     category   TEXT NOT NULL CHECK (category IN (
         'material_assigned',
         'activity_assigned',
+        'activity_reminder',
         'program_assigned',
         'mail_own_activity',
         'mail_department'
@@ -700,6 +805,9 @@ END $$;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_material_assigned BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_activity_assigned BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_activity_reminder BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_reminder_hours INTEGER NOT NULL DEFAULT 24
+    CHECK (activity_reminder_hours IN (2, 24, 48));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_program_assigned BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_mail_own_activity BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_mail_department BOOLEAN NOT NULL DEFAULT true;
@@ -724,16 +832,51 @@ BEGIN
         CHECK (category IN (
             'material_assigned',
             'activity_assigned',
+            'activity_reminder',
             'program_assigned',
             'mail_own_activity',
             'mail_department'
         ));
-EXCEPTION
-    WHEN OTHERS THEN
-        NULL;
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_form_drafts_activity ON form_drafts (activity_id);
+
+CREATE TABLE IF NOT EXISTS activity_reminders (
+    activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    revision BIGINT NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    notification_id UUID REFERENCES notifications(id) ON DELETE SET NULL,
+    browser_delivered BOOLEAN NOT NULL DEFAULT false,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (activity_id, revision, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_activity_reminders_pending
+    ON activity_reminders (next_attempt_at) WHERE NOT browser_delivered;
+
+CREATE OR REPLACE FUNCTION claim_activity_reminder_deliveries(check_at TIMESTAMPTZ DEFAULT NOW())
+RETURNS SETOF notifications LANGUAGE SQL AS $$
+    WITH pending AS (
+        SELECT r.activity_id, r.revision, r.user_id
+        FROM activity_reminders r
+        JOIN activities a ON a.id = r.activity_id AND a.reminder_revision = r.revision
+        JOIN users u ON u.id = r.user_id AND u.department = a.department
+        JOIN notifications n ON n.id = r.notification_id
+        WHERE NOT r.browser_delivered AND r.next_attempt_at <= check_at
+          AND a.deleted_at IS NULL AND activity_reminder_start(a.date, a.start_time) > check_at
+          AND u.notify_activity_reminder AND u.notify_channel_websocket AND NOT n.is_read
+          AND EXISTS (SELECT 1 FROM role_permissions p WHERE p.role = u.role AND (
+              u.role = 'admin' OR p.activity_read_scope IN ('all', 'same_dept')
+              OR EXISTS (SELECT 1 FROM role_dept_access d
+                  WHERE d.role = u.role AND d.department = a.department AND d.can_read)))
+        ORDER BY r.next_attempt_at, r.activity_id, r.user_id
+        LIMIT 20 FOR UPDATE OF r SKIP LOCKED
+    ), claimed AS (
+        UPDATE activity_reminders r SET next_attempt_at = check_at + INTERVAL '5 minutes'
+        FROM pending p WHERE (r.activity_id, r.revision, r.user_id) = (p.activity_id, p.revision, p.user_id)
+        RETURNING r.notification_id
+    )
+    SELECT n.* FROM notifications n JOIN claimed c ON c.notification_id = n.id;
+$$;
 
 CREATE TABLE IF NOT EXISTS ideenkiste (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

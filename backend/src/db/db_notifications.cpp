@@ -5,8 +5,87 @@
 #include <sstream>
 #include <cstdlib>
 #include "json.hpp"
+#include "infra/app_config.hpp"
+#include "utils/strings.hpp"
 
 // ---- Notification helpers ---------------------------------------------------
+
+void Database::create_due_activity_reminders()
+{
+    ensure_connected();
+    const std::string base = trim_ascii(app_config::get_or(*this, app_config::kPublicBaseUrl, ""));
+    if (base.empty())
+        throw std::runtime_error("activity-reminders: public base URL is not configured");
+    const char *params[] = {base.c_str()};
+    PGresult *res = PQexecParams(conn_, "SELECT create_due_activity_reminders(NOW(), $1)",
+                                1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        const std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("create_due_activity_reminders: " + error);
+    }
+    PQclear(res);
+}
+
+std::vector<NotificationRecord> Database::claim_activity_reminder_deliveries()
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_, "SELECT * FROM claim_activity_reminder_deliveries()");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        const std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("claim_activity_reminder_deliveries: " + error);
+    }
+    std::vector<NotificationRecord> notes;
+    for (int i = 0; i < PQntuples(res); ++i)
+        notes.push_back(row_to_notification(res, i));
+    PQclear(res);
+    return notes;
+}
+
+void Database::finish_activity_reminder_delivery(const std::string &notification_id, bool delivered)
+{
+    ensure_connected();
+    const char *params[] = {notification_id.c_str(), delivered ? "true" : "false"};
+    PGresult *res = PQexecParams(conn_,
+        "UPDATE activity_reminders SET browser_delivered = $2::boolean "
+        "WHERE notification_id = $1::uuid", 2, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        const std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("finish_activity_reminder_delivery: " + error);
+    }
+    PQclear(res);
+}
+
+std::optional<NotificationRecord> Database::get_current_activity_reminder(const std::string &notification_id)
+{
+    ensure_connected();
+    const char *params[] = {notification_id.c_str()};
+    PGresult *res = PQexecParams(conn_, R"SQL(
+        SELECT n.* FROM notifications n
+        JOIN activity_reminders r ON r.notification_id = n.id
+        JOIN activities a ON a.id = r.activity_id AND a.reminder_revision = r.revision
+        JOIN users u ON u.id = n.user_id AND u.department = a.department
+        WHERE n.id = $1::uuid AND NOT n.is_read AND a.deleted_at IS NULL
+          AND activity_reminder_start(a.date, a.start_time) > NOW()
+          AND u.notify_activity_reminder AND u.notify_channel_websocket
+          AND EXISTS (SELECT 1 FROM role_permissions p WHERE p.role = u.role AND (
+              u.role = 'admin' OR p.activity_read_scope IN ('all', 'same_dept')
+              OR EXISTS (SELECT 1 FROM role_dept_access d
+                  WHERE d.role = u.role AND d.department = a.department AND d.can_read)))
+    )SQL", 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        const std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("get_current_activity_reminder: " + error);
+    }
+    std::optional<NotificationRecord> result;
+    if (PQntuples(res) > 0)
+        result = row_to_notification(res, 0);
+    PQclear(res);
+    return result;
+}
 
 NotificationRecord Database::row_to_notification(PGresult *res, int row)
 {
