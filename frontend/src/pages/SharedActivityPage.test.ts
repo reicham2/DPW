@@ -144,6 +144,15 @@ describe('SharedActivityPage', () => {
 		expect(wrapper.find('.shared-open').exists()).toBe(false);
 	});
 
+	it('shows an explicit network error even when the failure has no message', async () => {
+		vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('')));
+		const wrapper = mountPage();
+		await flushPromises();
+		expect(wrapper.get('[role="alert"]').text()).toContain('Bitte versuche es später erneut.');
+		expect(wrapper.find('.public-brand').exists()).toBe(true);
+		expect(wrapper.find('.shared-open').exists()).toBe(false);
+	});
+
 	it.each(['light', 'dark'])('uses readable body and label colors in the %s theme', async (theme) => {
 		document.documentElement.dataset.theme = theme;
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(activity), { status: 200 })));
