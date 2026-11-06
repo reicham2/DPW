@@ -852,6 +852,34 @@ video {
 	z-index: 1;
 }
 
+.program-card__toggle {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 28px;
+	padding: 0 74px 0 0;
+	border: 0;
+	background: transparent;
+	color: var(--text-primary);
+	text-align: left;
+	cursor: pointer;
+}
+
+.program-card__toggle-title {
+	min-width: 0;
+	overflow: hidden;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.program-card__toggle-meta {
+	flex-shrink: 0;
+	color: var(--text-muted);
+	font-size: 0.8rem;
+}
+
 .program-card__remove {
 	width: 28px;
 	height: 28px;
@@ -904,6 +932,7 @@ video {
 	display: grid;
 	grid-template-columns: 160px 1fr 1fr;
 	gap: 10px;
+	margin-top: 12px;
 	padding-right: 70px;
 }
 

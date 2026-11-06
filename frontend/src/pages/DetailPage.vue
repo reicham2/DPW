@@ -12,7 +12,7 @@ import { apiFetch, formatApiError } from '../composables/useApi';
 import { useIdeaBox } from '../composables/useIdeaBox';
 import { useActivityExport } from '../composables/useActivityExport';
 import { useUserResolver } from '../composables/useUserResolver';
-import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText } from 'lucide-vue-next';
+import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText, ChevronDown, ChevronRight } from 'lucide-vue-next';
 import type { Activity, ActivityInput, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
@@ -342,6 +342,19 @@ const editTnMaterial = ref<string[]>(['']);
 const editSikoText = ref('');
 const editBadWeather = ref('');
 const editPrograms = ref<ProgramInput[]>([]);
+const expandedProgramKeys = ref(new Set<string>());
+
+function isProgramExpanded(program: ProgramInput): boolean {
+	return expandedProgramKeys.value.has(programEditorKey(program));
+}
+
+function toggleProgramExpanded(program: ProgramInput) {
+	const editorKey = programEditorKey(program);
+	const expandedKeys = new Set(expandedProgramKeys.value);
+	if (expandedKeys.has(editorKey)) expandedKeys.delete(editorKey);
+	else expandedKeys.add(editorKey);
+	expandedProgramKeys.value = expandedKeys;
+}
 
 interface EditSnapshot {
 	title: string;
@@ -1752,6 +1765,7 @@ function enterEdit() {
 	if (!activity.value || !canEdit.value) return;
 	suppressDirtyTracking = true;
 	localDraftRestoredAt.value = null;
+	expandedProgramKeys.value = new Set();
 	syncEditFields(activity.value);
 	captureEditSnapshot();
 	loadPendingLocalDraft();
@@ -2074,6 +2088,9 @@ function addProgram() {
 	});
 }
 function removeProgram(i: number) {
+	const expandedKeys = new Set(expandedProgramKeys.value);
+	expandedKeys.delete(programEditorKey(editPrograms.value[i]));
+	expandedProgramKeys.value = expandedKeys;
 	editPrograms.value.splice(i, 1);
 }
 
@@ -3788,6 +3805,19 @@ function copyShareLink() {
 							</span>
 						</div>
 						<div v-if="lockedBy(`program_${i}`)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy(`program_${i}`) }}</div>
+						<button
+							type="button"
+							class="program-card__toggle"
+							:aria-expanded="isProgramExpanded(prog)"
+							:aria-controls="`program-fields-${programEditorKey(prog)}`"
+							:aria-label="`Programmpunkt ${i + 1} ${isProgramExpanded(prog) ? 'einklappen' : 'aufklappen'}`"
+							@click="toggleProgramExpanded(prog)"
+						>
+							<ChevronDown v-if="isProgramExpanded(prog)" :size="16" aria-hidden="true" />
+							<ChevronRight v-else :size="16" aria-hidden="true" />
+							<span class="program-card__toggle-title">{{ prog.title.trim() || `Programmpunkt ${i + 1}` }}</span>
+							<span v-if="editProgramLabel(i)" class="program-card__toggle-meta">{{ editProgramLabel(i) }}</span>
+						</button>
 						<div class="program-card__top-actions">
 							<button
 								v-if="canIdeenkisteAdd()"
@@ -3809,7 +3839,11 @@ function copyShareLink() {
 								<X :size="14" aria-hidden="true" />
 							</button>
 						</div>
-						<div class="program-card__fields">
+						<div
+							:id="`program-fields-${programEditorKey(prog)}`"
+							v-show="isProgramExpanded(prog)"
+							class="program-card__fields"
+						>
 							<div class="form-group">
 								<label>Dauer (Minuten)</label>
 								<div class="input-save-wrap">
