@@ -250,7 +250,8 @@ static void exec_or_throw(PGconn *conn, const char *sql, const char *context)
 static void insert_programs(PGconn *conn,
                             const std::string &activity_id,
                             const std::vector<ProgramInput> &programs,
-                            const std::function<std::string(const std::vector<std::string> &)> &fmt)
+                            const std::function<std::string(const std::vector<std::string> &)> &fmt,
+                            const std::function<std::string(const std::string &)> &copy_images)
 {
     for (size_t idx = 0; idx < programs.size(); ++idx)
     {
@@ -258,11 +259,12 @@ static void insert_programs(PGconn *conn,
         std::string resp_json = fmt(pi.responsible);
         std::string dm_str = std::to_string(pi.duration_minutes);
         std::string pos_str = std::to_string(idx);
+        std::string description = copy_images(pi.description);
         const char *params[6] = {
             activity_id.c_str(),
             dm_str.c_str(),
             pi.title.c_str(),
-            pi.description.c_str(),
+            description.c_str(),
             resp_json.c_str(),
             pos_str.c_str()};
         PGresult *r = PQexecParams(conn,
@@ -588,7 +590,11 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
         Activity a = row_to_activity(r, 0);
         PQclear(r);
 
-        insert_programs(conn_, a.id, input.programs, Database::format_material_param);
+        std::map<std::string, std::string> image_copies;
+        insert_programs(conn_, a.id, input.programs, Database::format_material_param,
+            [&](const std::string &description) {
+                return copy_program_image_references(description, a.id, std::nullopt, image_copies);
+            });
         exec_or_throw(conn_, "COMMIT", "create_activity COMMIT");
         attach_programs_single(a);
         return a;
@@ -686,7 +692,11 @@ std::optional<std::pair<Activity, Activity>> Database::update_activity(const std
                                      1, nullptr, del_params, nullptr, nullptr, 0);
         PQclear(del);
 
-        insert_programs(conn_, a.id, input.programs, Database::format_material_param);
+        std::map<std::string, std::string> image_copies;
+        insert_programs(conn_, a.id, input.programs, Database::format_material_param,
+            [&](const std::string &description) {
+                return copy_program_image_references(description, a.id, std::nullopt, image_copies);
+            });
         attach_programs_single(a);
         exec_or_throw(conn_, "COMMIT", "update_activity COMMIT");
         return std::make_pair(std::move(previous), std::move(a));

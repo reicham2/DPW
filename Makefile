@@ -55,6 +55,8 @@ test-api:
 		node --test scripts/api-websocket-tests.mjs
 	docker run --rm --network host -v "$(CURDIR):/tests:ro" -w /tests node:22-alpine \
 		node --test scripts/api-reminder-tests.mjs
+	docker run --rm --network host -v "$(CURDIR):/tests:ro" -w /tests node:22-alpine \
+		node --test scripts/api-program-image-tests.mjs
 
 # ── Alles starten / stoppen ──────────────────────────────────────────────────
 up:

@@ -24,11 +24,11 @@ RUN mkdir -p src/core/models src/infra src/db src/utils src/handlers \
   && for f in http request_helpers; do echo "// stub" > src/core/$f.cpp; done \
   && for f in auth audit audit_actions cache app_config ws_manager graph wp_client web_push activity_reminders midata_client weather_client cron_scheduler; do \
        echo "// stub" > src/infra/$f.cpp; done \
-  && for f in db_connection db_activities db_users db_notifications db_forms db_mail db_admin db_audit; do \
+  && for f in db_connection db_activities db_program_images db_users db_notifications db_forms db_mail db_admin db_audit; do \
        echo "// stub" > src/db/$f.cpp; done \
-  && for f in permissions strings templates activity_helpers; do \
+  && for f in permissions strings templates activity_helpers program_images; do \
        echo "// stub" > src/utils/$f.cpp; done \
-  && for f in activities forms mail users notifications admin share_ideenkiste setup_maintenance; do \
+  && for f in activities forms mail users notifications admin share_ideenkiste setup_maintenance program_images; do \
        echo "// stub" > src/handlers/$f.cpp; done \
   && touch src/core/http.hpp src/core/request_helpers.hpp \
   && touch src/core/models/all_models.hpp src/core/models/activity.hpp \
@@ -41,8 +41,8 @@ RUN mkdir -p src/core/models src/infra src/db src/utils src/handlers \
      src/infra/web_push.hpp src/infra/midata_client.hpp src/infra/weather_client.hpp src/infra/cron_scheduler.hpp \
   && touch src/db/database.hpp \
   && touch src/utils/permissions.hpp src/utils/strings.hpp src/utils/templates.hpp \
-     src/utils/activity_helpers.hpp \
-  && touch src/handlers/handlers.hpp src/handlers/handler_deps.hpp
+     src/utils/activity_helpers.hpp src/utils/program_images.hpp \
+  && touch src/handlers/handlers.hpp src/handlers/handler_deps.hpp src/handlers/program_images.hpp
 
 ARG BACKEND_BUILD_TYPE=Release
 ARG ENABLE_DEBUG_AUTH=0

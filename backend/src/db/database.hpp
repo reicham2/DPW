@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <map>
 #include <libpq-fe.h>
 #include "core/models/all_models.hpp"
 #include "core/models/user.hpp"
@@ -74,6 +75,12 @@ public:
     std::vector<Attachment> list_attachments(const std::string &activity_id);
     std::optional<AttachmentData> get_attachment_data(const std::string &id);
     bool delete_attachment(const std::string &id);
+    std::optional<Attachment> add_program_image(const std::string &activity_id,
+                                                const std::string &filename,
+                                                const std::string &content_type,
+                                                const std::string &data_base64);
+    std::optional<ProgramImageData> get_program_image_data(const std::string &id, bool include_data = true);
+    bool delete_program_image(const std::string &id);
 
     // Users
     std::vector<UserRecord> list_users();
@@ -307,6 +314,7 @@ public:
 
     // Ideenkiste CRUD
     std::vector<IdeenkisteItem> list_ideenkiste(const std::string &dept_filter = "");
+    std::optional<IdeenkisteItem> get_ideenkiste_item(const std::string &id);
     std::optional<IdeenkisteItem> create_ideenkiste_item(const IdeenkisteInput &input);
     std::optional<IdeenkisteItem> update_ideenkiste_item(const std::string &id, const IdeenkisteInput &input);
     bool delete_ideenkiste_item(const std::string &id);
@@ -354,6 +362,10 @@ private:
     MaterialNameRecord row_to_material_name(PGresult *res, int row);
     void attach_programs(std::vector<Activity> &activities);
     void attach_programs_single(Activity &a);
+    std::string copy_program_image_references(const std::string &description,
+                                              const std::optional<std::string> &activity_id,
+                                              const std::optional<std::string> &ideenkiste_id,
+                                              std::map<std::string, std::string> &copies);
 
     static std::vector<std::string> parse_pg_array(const char *raw);
     static std::string format_material_param(const std::vector<std::string> &material);
