@@ -52,7 +52,7 @@ services:
     image: ghcr.io/reicham2/dpw-backend:latest
     restart: unless-stopped
     env_file:
-      - path: ./ .env
+      - path: ./.env
         required: false
       - path: ./stack.env
         required: false
@@ -89,7 +89,7 @@ services:
     image: ghcr.io/reicham2/dpw-frontend:latest
     restart: unless-stopped
     env_file:
-      - path: ./ .env
+      - path: ./.env
         required: false
       - path: ./stack.env
         required: false
