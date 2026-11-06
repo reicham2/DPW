@@ -23,15 +23,15 @@ function isSafeUrl(value: string): boolean {
 	);
 }
 
-export function sanitizeHtml(html: string, preserveClipboardImages = false): string {
-	const wrapper = document.createElement('template');
+export function sanitizeHtml(html: string): string {
+	const wrapper = document.createElement('div');
 	wrapper.innerHTML = html;
 
-	wrapper.content
+	wrapper
 		.querySelectorAll(Array.from(BLOCKED_TAGS).join(','))
 		.forEach((el) => el.remove());
 
-	wrapper.content.querySelectorAll('*').forEach((el) => {
+	wrapper.querySelectorAll('*').forEach((el) => {
 		for (const attr of Array.from(el.attributes)) {
 			const name = attr.name.toLowerCase();
 			const value = attr.value;
@@ -41,10 +41,7 @@ export function sanitizeHtml(html: string, preserveClipboardImages = false): str
 				continue;
 			}
 
-			// Clipboard image bytes are validated and uploaded before insertion.
-			const clipboardImage = preserveClipboardImages && el.tagName === 'IMG' && name === 'src'
-				&& /^(?:data:image\/|blob:)/i.test(value.trim());
-			if (URL_ATTRS.has(name) && !isSafeUrl(value) && !clipboardImage) {
+			if (URL_ATTRS.has(name) && !isSafeUrl(value)) {
 				el.removeAttribute(attr.name);
 			}
 		}

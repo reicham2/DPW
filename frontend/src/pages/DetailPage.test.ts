@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Activity, User, WsEvent } from '../types';
@@ -180,6 +181,10 @@ function allowEditing() {
 
 describe('DetailPage activity access', () => {
 	beforeEach(() => {
+		vi.stubGlobal('URL', class extends URL {
+			static createObjectURL = vi.fn(() => 'blob:program-image');
+			static revokeObjectURL = vi.fn();
+		});
 		Object.defineProperty(document, 'queryCommandState', { configurable: true, value: vi.fn(() => false) });
 		config.MIDATA_ENABLED = false;
 		config.WP_PUBLISHING_ENABLED = false;
@@ -207,6 +212,7 @@ describe('DetailPage activity access', () => {
 		else Reflect.deleteProperty(document, 'queryCommandState');
 		vi.clearAllMocks();
 		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 		vi.useRealTimers();
 		config.MIDATA_ENABLED = false;
 		config.WP_PUBLISHING_ENABLED = false;
@@ -228,7 +234,7 @@ describe('DetailPage activity access', () => {
 		}] }));
 		mocks.uploadAttachment.mockResolvedValue({ id: imageId, activity_id: 'activity-1', filename: file.name, content_type: file.type, created_at: '' });
 		vi.mocked(apiFetch).mockImplementation(async (url) => url === path
-			? new Response(new Blob(['image'], { type: 'image/png' }))
+			? new Response('image', { headers: { 'Content-Type': 'image/png' } })
 			: new Response('{}'));
 		vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:inline-image');
 		vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
@@ -269,7 +275,7 @@ describe('DetailPage activity access', () => {
 			title, description: title, responsible: [],
 		})) }));
 		vi.mocked(apiFetch).mockImplementation(async (url) => url === path
-			? new Response(new Blob(['image'], { type: 'image/png' })) : new Response('{}'));
+			? new Response('image', { headers: { 'Content-Type': 'image/png' } }) : new Response('{}'));
 		vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:pasted-image');
 		vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
@@ -869,7 +875,7 @@ describe('DetailPage activity access', () => {
 		const restoreButton = wrapper.findAll('button').find((button) => button.text() === 'Wiederherstellen');
 		expect(restoreButton).toBeDefined();
 		await restoreButton!.trigger('click');
-		const setItem = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+		const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
 		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
 		expect(setItem).toHaveBeenCalled();
 		expect(wrapper.getComponent(ErrorAlert).props('error')).toContain('der rote Faden konnte nicht lokal gesichert werden');
@@ -906,7 +912,7 @@ describe('DetailPage activity access', () => {
 	it('loads MiData immediately when runtime configuration arrives after the activity', async () => {
 		const wrapper = shallowMount(DetailPage);
 		await flushPromises();
-		vi.mocked(apiFetch).mockResolvedValue(
+		vi.mocked(apiFetch).mockImplementation(async () =>
 			new Response(JSON.stringify({ configured: true, children_count: 24 }), { status: 200 }),
 		);
 		config.MIDATA_ENABLED = true;

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiFetch } from '../composables/useApi';
 import { MAX_PROGRAM_IMAGE_BYTES, ProgramImageRenderer, insertProgramHtml, prepareProgramImageFiles, prepareProgramPaste, sanitizeProgramDescription, serializeProgramDescription, validateProgramImageFile } from './programImages';
@@ -19,12 +20,15 @@ function clipboard(html = '', files: File[] = [], text = ''): DataTransfer {
 describe('inline program images', () => {
 	beforeEach(() => {
 		vi.mocked(apiFetch).mockReset().mockResolvedValue(new Response(image(), { headers: { 'Content-Type': 'image/png' } }));
-		vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:program-image');
-		vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+		vi.stubGlobal('URL', class extends URL {
+			static createObjectURL = vi.fn(() => 'blob:program-image');
+			static revokeObjectURL = vi.fn();
+		});
 	});
 	afterEach(() => {
 		document.body.innerHTML = '';
 		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 	});
 
 	it('accepts supported nonempty files at the exact size limit', () => {
@@ -126,5 +130,19 @@ describe('inline program images', () => {
 		const active = 'Text<svg><a><animate attributeName="href" values="javascript:alert(1)"></animate></a></svg><math><mtext>x</mtext></math><picture><source srcset="https://example.com/image.png"></picture><base href="https://example.com/">';
 		expect(sanitizeProgramDescription(active)).toBe('Text<picture></picture>');
 		expect(prepareProgramPaste(clipboard(active)).html).toBe('Text<picture></picture>');
+	});
+
+	it('preserves safe typography and links in mixed clipboard contents', () => {
+		const html = `<p style="color: red"><strong>Text</strong><a href="/local">Link</a><img src="data:image/png;base64,${png}"></p>`;
+		const paste = prepareProgramPaste(clipboard(html));
+		expect(paste.uploads).toHaveLength(1);
+		expect(paste.html).toContain('<p style="color: red"><strong>Text</strong><a href="/local">Link</a>');
+	});
+
+	it('sanitizes active clipboard markup before processing embedded image bytes', () => {
+		const paste = prepareProgramPaste(clipboard(`<p><a href="javascript:alert(1)">Text</a><img src="data:image/png;base64,${png}" onerror="alert(1)"></p><script>alert(1)</script>`));
+		expect(paste.uploads).toHaveLength(1);
+		expect(paste.html).toContain('<a>Text</a>');
+		expect(paste.html).not.toMatch(/javascript:|onerror|script|data:image/);
 	});
 });

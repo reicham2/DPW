@@ -48,15 +48,4 @@ describe('sanitizeHtml', () => {
 		const html = '<p><strong>Hallo</strong> <em>Welt</em></p>';
 		expect(sanitizeHtml(html)).toBe(html);
 	});
-
-	it('preserves clipboard image sources only when explicitly requested', () => {
-		const html = '<img src="data:image/png;base64,AAAA"><img src="blob:clipboard">';
-		expect(sanitizeHtml(html)).toBe('<img><img>');
-		expect(sanitizeHtml(html, true)).toBe(html);
-	});
-
-	it('still removes active markup and non-image unsafe URLs when preparing clipboard images', () => {
-		const out = sanitizeHtml('<img src="data:image/png;base64,AAAA" onerror="alert(1)"><script>alert(1)</script><a href="data:image/png;base64,AAAA">Text</a><img src="javascript:alert(1)">', true);
-		expect(out).toBe('<img src="data:image/png;base64,AAAA"><a>Text</a><img>');
-	});
 });

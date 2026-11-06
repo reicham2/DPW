@@ -1,5 +1,6 @@
 import { apiFetch } from '../composables/useApi';
 import { sanitizeHtml } from './sanitizeHtml';
+import DOMPurify from 'dompurify';
 
 export const MAX_PROGRAM_IMAGE_BYTES = 10 * 1024 * 1024;
 export const PROGRAM_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
@@ -175,7 +176,9 @@ export function prepareProgramPaste(data: DataTransfer): ProgramPaste {
 		return { ...pasted, html: wrapper.innerHTML + pasted.html };
 	}
 	const template = document.createElement('template');
-	template.innerHTML = sanitizeHtml(html, true);
+	template.innerHTML = DOMPurify.sanitize(html, {
+		ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|blob:|data:image\/|\/|#)/i,
+	});
 	const unsupportedMarkup = removeUnsupportedImageMarkup(template.content);
 	template.content.querySelectorAll<HTMLImageElement>('img[data-program-image]').forEach(img => {
 		const id = programImageId(`/api/program-images/${img.dataset.programImage ?? ''}`);

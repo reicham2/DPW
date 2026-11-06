@@ -94,6 +94,8 @@ einfügen: im fokussierten Beschreibungseditor auf **Bild** klicken und Dateien
 auswählen, oder ein kopiertes Bild direkt einfügen. PNG, JPEG, GIF und WebP bis
 **10 MiB pro Bild** werden unterstützt; SVG und leere Dateien werden abgelehnt.
 Gemischte Zwischenablage-Inhalte behalten bereinigten Text und die Bildpositionen.
+Zwischenablage-HTML wird vor der Bildverarbeitung mit DOMPurify bereinigt;
+gespeicherte Beschreibungen verwenden weiterhin die vorhandene HTML-Bereinigung.
 Externe Bild-URLs werden beim Einfügen nicht übernommen: stattdessen die Bilddatei
 hochladen oder das Bild selbst kopieren. Uploadfehler bleiben sichtbar; vor dem
 Wechsel zur Ansicht wird ein laufender Upload abgeschlossen.
