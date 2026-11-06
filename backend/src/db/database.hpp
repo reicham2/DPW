@@ -20,6 +20,18 @@ public:
     Database(const Database &) = delete;
     Database &operator=(const Database &) = delete;
 
+    std::string begin_audit_event(const std::string &action, const std::string &resource_type,
+                                 const std::string &resource_id);
+    void attribute_audit_event(const std::string &id, const std::string &actor_id,
+                               const std::string &actor_name);
+    void set_audit_resource(const std::string &id, const std::string &resource_type,
+                            const std::string &resource_id);
+    void finish_audit_event(const std::string &id, const std::string &outcome, int status,
+                           const std::string &created_id, const nlohmann::json &details = nlohmann::json::object());
+    int purge_audit_events_older_than_days(int days);
+    nlohmann::json list_audit_events(int limit, const std::string &before,
+                                    const std::string &actor, const std::string &outcome);
+
     // Activities
     std::vector<Activity> list_activities();
     std::optional<Activity> get_activity_by_id(const std::string &id);
@@ -42,12 +54,14 @@ public:
     // Predefined locations
     std::vector<std::string> get_predefined_locations();
     std::vector<LocationRecord> list_predefined_locations();
+    std::optional<LocationRecord> get_predefined_location_by_id(const std::string &id);
     std::optional<LocationRecord> create_predefined_location(const std::string &name);
     std::optional<LocationRecord> update_predefined_location(const std::string &id, const std::string &name);
     bool delete_predefined_location(const std::string &id);
 
     std::vector<std::string> get_predefined_materials();
     std::vector<MaterialNameRecord> list_predefined_materials();
+    std::optional<MaterialNameRecord> get_predefined_material_by_id(const std::string &id);
     std::optional<MaterialNameRecord> create_predefined_material(const std::string &name);
     std::optional<MaterialNameRecord> update_predefined_material(const std::string &id, const std::string &name);
     bool delete_predefined_material(const std::string &id);

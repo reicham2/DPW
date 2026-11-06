@@ -1,4 +1,5 @@
 #include "handlers/handler_deps.hpp"
+#include "infra/audit.hpp"
 
 #include <curl/curl.h>
 
@@ -579,13 +580,17 @@ void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db)
                 if (!pub->wp_event_id.empty()) {
                     auto wp = wp_update_event(pub->wp_event_id, title, body_html, start_ts, end_ts, location, department, db);
                     if (!wp)
+                    {
+                        audit_mark_uncertain(res);
                         fprintf(stderr, "[wp_client] update failed for wp_event_id=%s\n", pub->wp_event_id.c_str());
+                    }
                 } else {
                     auto wp = wp_create_event(title, body_html, start_ts, end_ts, location, department, db);
                     if (wp) {
                         db.update_event_publication_wp_id(activity_id, wp->wp_event_id);
                         pub->wp_event_id = wp->wp_event_id;
                     } else {
+                        audit_mark_uncertain(res);
                         fprintf(stderr, "[wp_client] create failed for activity=%s\n", activity_id.c_str());
                     }
                 }
@@ -644,7 +649,10 @@ void handle_delete_event_publication(HttpRes *res, HttpReq *req, Database &db)
         if (pub && !pub->wp_event_id.empty())
         {
             if (!wp_delete_event(pub->wp_event_id, db))
+            {
+                audit_mark_uncertain(res);
                 fprintf(stderr, "[wp_client] delete failed for wp_event_id=%s\n", pub->wp_event_id.c_str());
+            }
         }
     }
 
@@ -734,8 +742,10 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
         }
 
         try {
+            audit_activity_resource(res, activity_id);
             bool ok = db.send_mail(graph_token, from_email, to_emails, cc_emails, subject, body_html);
             if (ok) {
+                audit_record_change(res, nullptr, {{"recipient_count", to_emails.size()}, {"cc_count", cc_emails.size()}, {"status", "sent"}});
                 // Log sent mail if activity_id was provided
                 if (!activity_id.empty()) {
                     std::string sender_id = current_user ? current_user->id : "";

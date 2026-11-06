@@ -53,6 +53,8 @@ set(CORE_SOURCES
 set(INFRA_SOURCES
     src/infra/cron_scheduler.cpp
     src/infra/auth.cpp
+    src/infra/audit.cpp
+    src/infra/audit_actions.cpp
     src/infra/cache.cpp
     src/infra/app_config.cpp
     src/infra/ws_manager.cpp
@@ -71,6 +73,7 @@ set(DB_SOURCES
     src/db/db_forms.cpp
     src/db/db_mail.cpp
     src/db/db_admin.cpp
+    src/db/db_audit.cpp
 )
 
 set(UTILS_SOURCES
@@ -153,6 +156,7 @@ if (BUILD_TESTS)
         tests/test_harness.cpp
         tests/test_main.cpp
         tests/test_auth.cpp
+        tests/test_audit.cpp
         tests/test_utils.cpp
         tests/test_models.cpp
         tests/test_integrations.cpp
@@ -164,6 +168,7 @@ if (BUILD_TESTS)
         src/utils/templates.cpp
         src/utils/activity_helpers.cpp
         src/infra/auth.cpp
+        src/infra/audit_actions.cpp
         src/infra/midata_client.cpp
         src/infra/weather_client.cpp
     )

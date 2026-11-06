@@ -1,4 +1,5 @@
 #include "handlers/handler_deps.hpp"
+#include "infra/audit.hpp"
 
 static nlohmann::json user_to_json(const UserRecord &u)
 {
@@ -124,6 +125,8 @@ void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 500, R"({"error":"Datenbankfehler"})");
             return;
         }
+
+        audit_attribute(res, claims, true);
 
         // Block non-admins when maintenance mode is active.
         if (!is_admin(*user))
@@ -300,8 +303,14 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
         if (j.contains("department") && j["department"].is_string())
             department = j["department"].get<std::string>();
 
+        std::optional<UserRecord> target;
+        try {
+            target = db.get_user_by_id(target_id);
+        } catch (const std::exception& e) {
+            send_internal_error(res, "handler", e);
+            return;
+        }
         if (current_perm) {
-            auto target = db.get_user_by_id(target_id);
             if (!target) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
@@ -358,6 +367,7 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
+            audit_record_change(res, target ? user_to_json(*target) : nlohmann::json(nullptr), user_to_json(*user));
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             cache_bump_version(db, "mail_templates");
@@ -438,6 +448,7 @@ void handle_delete_admin_user(HttpRes *res, HttpReq *req, Database &db)
 
     if (db.delete_user(target_id))
     {
+        audit_record_change(res, user_to_json(*target), nullptr);
         cache_bump_version(db, "activities");
         cache_bump_version(db, "activity");
         cache_bump_version(db, "mail_templates");
@@ -590,6 +601,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
+            audit_record_change(res, user_to_json(*current_user), user_to_json(*user));
             send_json(res, 200, user_to_json(*user).dump());
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);

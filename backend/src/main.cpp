@@ -1,5 +1,6 @@
 #include "App.h"
 #include "infra/app_config.hpp"
+#include "infra/audit.hpp"
 #include "db/database.hpp"
 #include "infra/ws_manager.hpp"
 #include "infra/cron_scheduler.hpp"
@@ -89,6 +90,14 @@ int main()
      CronScheduler cron;
      const std::string job_conn_str = conn_str +
          " connect_timeout=5 options='-c statement_timeout=30000 -c lock_timeout=5000'";
+     cron.add("audit-retention", "Audit Log aufbewahren / rotieren", 60, [job_conn_str]
+     {
+          Database job_db(job_conn_str, false);
+          const int days = audit_retention_days(app_config::get_or(job_db, app_config::kAuditRetentionDays, "14"));
+          const int deleted = job_db.purge_audit_events_older_than_days(days);
+          if (deleted > 0)
+               std::printf("[cron] audit-retention: deleted %d events older than %d days\n", deleted, days);
+     });
      cron.add("expired-notifications", "Abgelaufene Aktivitaetsbenachrichtigungen", 1, [job_conn_str]
      {
           Database job_db(job_conn_str, false);
@@ -102,7 +111,7 @@ int main()
                std::printf("[cron] activity-trash: deleted %d activities\n", deleted);
      });
 
-     uWS::App()
+     AuditApp(db)
          // CORS preflight
          .options("/*", [](auto *res, auto * /*req*/)
                   { res->writeHeader("Access-Control-Allow-Origin", "*")
@@ -172,6 +181,8 @@ int main()
                { handle_post_push_payload(res, req, db); })
 
          // Admin endpoints
+         .get("/admin/audit-log", [&](auto *res, auto *req)
+              { handle_get_admin_audit_log(res, req, db); })
          .patch("/admin/users/:id", [&](auto *res, auto *req)
                 { handle_patch_admin_user(res, req, db); })
          .del("/admin/users/:id", [&](auto *res, auto *req)

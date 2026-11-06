@@ -1,4 +1,5 @@
 #pragma once
+
 #include "core/http.hpp"
 #include "db/database.hpp"
 #include "infra/ws_manager.hpp"
@@ -7,6 +8,7 @@
 void handle_get_admin_cron_jobs(HttpRes *res, HttpReq *req, Database &db, CronScheduler &cron);
 void handle_put_admin_cron_job(HttpRes *res, HttpReq *req, Database &db, CronScheduler &cron);
 
+void handle_get_admin_audit_log(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_departments(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_setup_auth_config(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_setup_auth_config(HttpRes *res, HttpReq *req, Database &db);

@@ -197,7 +197,13 @@ namespace
         case app_config::ValueType::Integer:
             try
             {
-                const int parsed = std::stoi(value);
+                size_t consumed = 0;
+                const int parsed = std::stoi(value, &consumed);
+                if (consumed != value.size())
+                {
+                    error = "invalid-integer";
+                    return false;
+                }
                 if (parsed < def.min_int || parsed > def.max_int)
                 {
                     error = "out-of-range";
@@ -256,6 +262,7 @@ namespace app_config
             {kAutosaveIntervalMs, "AUTOSAVE_INTERVAL", "1500", false, true, ValueType::Integer, 250, 600000},
             {kAutosaveDebounce, "AUTOSAVE_DEBOUNCE", "true", false, true, ValueType::Boolean, 0, 0},
             {kCacheVersionLocalTtlMs, "DPW_CACHE_VERSION_TTL_MS", "1500", false, true, ValueType::Integer, 0, 60000},
+            {kAuditRetentionDays, "DPW_AUDIT_RETENTION_DAYS", "14", false, true, ValueType::Integer, 1, 3650},
             {kMidataWeatherRefreshIntervalMs, "MIDATA_WEATHER_REFRESH_INTERVAL", "900000", false, true, ValueType::Integer, 10000, 86400000},
             {kGitHubToken, "GITHUB_TOKEN", "", true, false, ValueType::Text, 0, 0},
             {kGitHubRepo, "GITHUB_REPO", "reicham2/DPW", false, true, ValueType::Slug, 0, 0},

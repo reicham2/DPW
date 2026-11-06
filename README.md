@@ -34,6 +34,98 @@ make up
 make db-seed
 ```
 
+## Audit Log
+
+Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein persistentes,
+serverseitiges Journal wichtiger Aktionen. Der API-Endpunkt `GET /admin/audit-log`
+prueft diese Berechtigung unabhaengig von der UI. Filter: `actor` (Name/ID),
+`outcome` (`completed`, `rejected`, `unknown`, `pending`), `limit` (1–100, Standard 50)
+und `before` (ID-Cursor). IDs werden als Strings geliefert; Seiten sind absteigend
+nach Journal-ID geordnet und enthalten `next_cursor`.
+
+Erfasst werden Anmeldung/Profil, Aktivitaeten inklusive Programmen und Material
+(auch indirekte/bulk Aenderungen innerhalb einer Anfrage), Anhaenge, Freigabelinks,
+Wetterort, Benutzer/Rollen/Abteilungen/Berechtigungen, Orte/Materialverantwortliche,
+Systemeinstellungen/Wartung/Ersteinrichtung, Mailversand und Entwuerfe,
+Eventveroeffentlichungen, Vorlagen, Formularverwaltung/Antwortloeschung,
+Ideenkiste und Fehlermeldungen. Eine Anfrage ergibt einen Journal-Eintrag, nicht
+einen Eintrag pro betroffenem Datensatz. Automatische Hintergrundjobs, Lesezugriffe,
+Polling, Push-Abonnements, Benachrichtigungs-Lesestatus und oeffentliche
+Formularantworten werden nicht erfasst.
+
+Das Journal speichert verifizierte Benutzer-ID und Anzeigenamen als Momentaufnahme,
+Zeitpunkt, lesbare Aktion, Ressourcentyp, UUIDs, bekannte Einstellungsschluessel
+und HTTP-Ergebnis. Die aufklappbaren **Details** zeigen erlaubte Metadaten wie Anzeigename,
+Rolle, Stufe, Titel, Termin und Ort. Benutzer-/Profil-, Aktivitaets-, Rollen-,
+Abteilungs-, Berechtigungs- und Orts-/Materialaenderungen zeigen vorher/nachher;
+bei anderen Antworten werden nur erlaubte gespeicherte Metadaten angezeigt.
+Verschachtelte Programm-/Materialaenderungen und sensible Freitexte werden nur als
+geschuetzte Aenderung markiert. Es werden keine kompletten Request-/Response-Inhalte,
+IP-Adressen, E-Mail-Adressen, Tokens, Freigabe-Slugs, Konfigurationswerte
+(ausser der Audit-Aufbewahrungsdauer), Mailinhalte oder Formularantworten gespeichert.
+Mailversand zeigt Empfaengeranzahl und optionale Aktivitaets-UUID, nicht Empfaengeradressen
+oder Betreff. Metadaten sind auf 300 Bytes plus Kuerzungszeichen begrenzt.
+Alte Eintraege ohne Details bleiben lesbar; fehlende historische Details werden nicht erfunden.
+Ohne verifizierte Anmeldung bleibt der Akteur leer.
+Erstregistrierung verwendet bis zur Anlage des Benutzers die verifizierte Microsoft-ID.
+Historie bleibt nach Benutzer-/Ressourcenloeschung innerhalb der Aufbewahrungsfrist erhalten.
+Unter **System > Einstellungen > Allgemein > Audit Log Aufbewahrung (Tage)** ist
+die Frist konfigurierbar: **Standard 14 Tage**, 1–3650 ganze Tage. Optional setzt
+`DPW_AUDIT_RETENTION_DAYS` die Frist per ENV (sperrt den UI-Wert).
+Der Cron-Job `audit-retention` loescht beim Start und danach stuendlich alle
+Eintraege, die aelter als die Frist sind, einschliesslich alter offener/unterbrochener
+Eintraege. Eine geaenderte Frist gilt beim naechsten Lauf; bis dahin koennen Eintraege
+maximal ein weiteres Stundenintervall vorhanden sein. **System > Cron-Jobs** zeigt
+Zustand und Fehler; Pausieren setzt auch die automatische Loeschung aus.
+Es gibt keine Archiv-/Exportfunktion; abgelaufene Eintraege werden endgueltig geloescht.
+
+Die Tabelle zeigt zunaechst nur Aktion, Ziel, Ausgang und eine kurze Felduebersicht.
+Ein Klick auf eine Zeile oder den per Tastatur erreichbaren Aktionsknopf oeffnet
+die vollstaendigen Details (inklusive IDs und HTTP-Status); ein weiterer Klick
+schliesst sie. Nur ein Detailbereich wird gleichzeitig gerendert.
+Die kompakten, einzeiligen Zeilen liegen in einem auf 60 % der Fensterhoehe
+(maximal 36 rem) begrenzten Scrollbereich mit feststehender Tabellenkopfzeile.
+Lange Texte werden in der Uebersicht gekuerzt; vollstaendige Namen stehen im
+Detailbereich und als Tooltip bereit. Der Scrollbereich ist per Tastatur erreichbar.
+Aufklappen nutzt die bereits geladene, auf 50 Eintraege begrenzte Seite und erzeugt keine
+weitere API-/DB-Anfrage. Es gibt kein automatisches Audit-Polling.
+
+Der Schreibpfad behaelt die drei fuer die Haltbarkeit notwendigen Journal-Schritte
+(Intent, verifizierter Akteur, Abschluss) bei; wiederholte Auth-Pruefungen derselben
+Anfrage schreiben den Akteur nicht erneut. Die Anmeldung aktualisiert ihren
+Akteurssnapshot nach Benutzeranlage weiterhin explizit. Vorher-Zustaende von
+Orten/Materialverantwortlichen werden per Primaerschluessel statt per Vollistenabfrage
+gelesen; Benutzer-/Abteilungspruefungen verwenden vorhandene Snapshots erneut.
+Bereits vorbereitete Details werden beim Abschluss verschoben statt kopiert und
+Antwort-JSON wird nur geparst, wenn Ressourcen-ID oder Details noch fehlen.
+Pagination sortiert numerisch ueber den ID-Index statt OFFSET oder Textsortierung;
+der Retention-Job hat einen Zeitindex und laeuft im vorhandenen Worker, nicht im
+HTTP-Thread. Die optionale Teilnamensuche kann bei fehlenden Treffern weiterhin
+den Verlauf durchsuchen; sie wird nur auf explizite Filteranfrage ausgefuehrt.
+
+Vor Ausfuehrung wird ein `pending`-Eintrag dauerhaft geschrieben; ist dies nicht
+moeglich, wird die Aktion mit HTTP 503 blockiert. Erst nach der Handler-Antwort
+wird `completed` (2xx), `rejected` (4xx) oder `unknown` (andere Ergebnisse/Abbruch)
+gespeichert. Dies beschreibt den **Anfrageausgang**, nicht einen atomaren Rollback
+aller DB-/externen Effekte: bei Fehlern koennen Teilaktionen bereits erfolgt sein.
+Ein Crash kann `pending` hinterlassen. Scheitert das abschliessende Schreiben,
+wird explizit HTTP 500 mit Hinweis auf moeglicherweise ausgefuehrte Aktionen
+zurueckgegeben und ein Betriebsfehler protokolliert; vor einem erneuten Versuch
+den Zustand pruefen. Audit-Schreiboperationen werfen bei DB-Fehlern, statt Erfolg
+vorzutaeuschen. `audit_events` wird additiv durch den bestehenden Schema-Sync angelegt.
+Bekannte Fehler der WordPress-Synchronisierung markieren auch bei unveraendertem
+HTTP-2xx-Verhalten den Audit-Ausgang als `unknown`.
+
+Audit-Regression: Frontend `npm test -- src/components/AuditLogPanel.test.ts`,
+Backend ueber `backend/Dockerfile.test`; zusaetzlich
+`AUDIT_BASE_URL=http://127.0.0.1:<frontend-port>/api AUDIT_BACKEND_URL=http://127.0.0.1:<backend-port> AUDIT_DB_CONTAINER=<name> node scripts/test-audit.mjs`
+gegen einen **wegwerfbaren, mit `db/seed.sql` vorbereiteten Debug-Backend/DB-Stack**.
+Die Ports liefert `docker compose -f docker-compose-dev.yml port frontend 80`
+und `docker compose -f docker-compose-dev.yml port backend 8080`.
+Bei abweichendem DB-Benutzer `AUDIT_DB_USER` setzen. Der Integrationstest injiziert
+gezielt DB-Schreibfehler und veraendert Testdaten; niemals gegen Produktion ausfuehren.
+CI fuehrt ihn vor der bestehenden API-Suite im isolierten Teststack aus.
+
 ## Relative Datumsvariablen in Vorlagen
 
 Formular-, Mail- und Event-Vorlagen unterstützen `{{datum|-7}}` (langes deutsches
@@ -165,7 +257,8 @@ Systemadministratoren (`admin` oder `user_role_scope = all`) Jobs einsehen, paus
 und fortsetzen. Die API ist `GET /admin/cron-jobs` und
 `PUT /admin/cron-jobs/:id` mit `{"enabled":false}` bzw. `{"enabled":true}`.
 
-Aktuell registriert: abgelaufene Aktivitaetsbenachrichtigungen (jede Minute) und
+Aktuell registriert: Audit-Log-Aufbewahrung (stuendlich, Standard 14 Tage),
+abgelaufene Aktivitaetsbenachrichtigungen (jede Minute) und
 permanentes Loeschen von seit mehr als 90 Tagen im Papierkorb liegenden Aktivitaeten
 (taeglich). Die DB-View `active_notifications` filtert abgelaufene Eintraege bei
 Lesen, Gelesen-Markierung und Push-Abfragen sofort aus; physisches Loeschen erfolgt

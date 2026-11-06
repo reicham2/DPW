@@ -1,4 +1,5 @@
 #include "handlers/handler_deps.hpp"
+#include "infra/audit.hpp"
 #include <atomic>
 #include <memory>
 #include <thread>
@@ -663,8 +664,10 @@ void handle_patch_location(HttpRes *res, HttpReq *req, Database &db)
         std::string name = j.value("name", "");
         if (name.empty()) { send_json(res, 400, R"({"error":"name erforderlich"})"); return; }
         try {
+            auto previous = db.get_predefined_location_by_id(id);
             auto loc = db.update_predefined_location(id, name);
             if (!loc) { send_json(res, 404, R"({"error":"Nicht gefunden"})"); return; }
+            audit_record_change(res, previous ? location_to_json(*previous) : nlohmann::json(nullptr), location_to_json(*loc));
             cache_bump_version(db, "locations");
             cache_bump_version(db, "locations_admin");
             send_json(res, 200, location_to_json(*loc).dump());
@@ -682,12 +685,14 @@ void handle_delete_location(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter(0)};
     try
     {
+        auto previous = db.get_predefined_location_by_id(id);
         bool ok = db.delete_predefined_location(id);
         if (!ok)
         {
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
+        audit_record_change(res, previous ? location_to_json(*previous) : nlohmann::json(nullptr), nullptr);
         cache_bump_version(db, "locations");
         cache_bump_version(db, "locations_admin");
         send_json(res, 204, "");
@@ -1224,6 +1229,7 @@ void handle_patch_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
             }
             std::optional<Activity> previous_activity{std::move(updated->first)};
             std::optional<Activity> activity{std::move(updated->second)};
+            audit_record_change(res, to_json(*previous_activity), to_json(*activity));
 
             if (current_user) {
                 auto new_assigned = unique_names_from_material(activity->material);
@@ -1478,12 +1484,11 @@ void handle_delete_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketM
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
+        audit_record_change(res, to_json(*activity), nullptr);
         wm.broadcast_activity_deleted(*activity);
         cache_bump_version(db, "activities");
         cache_bump_version(db, "activity");
-        set_cors(res);
-        res->writeStatus("204 No Content");
-        res->end();
+        send_json(res, 204, "");
     }
     catch (std::exception &e)
     {
@@ -1606,11 +1611,13 @@ void handle_patch_material(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 400, R"({"error":"name darf nicht leer sein"})");
                 return;
             }
+            auto previous = db.get_predefined_material_by_id(id);
             auto updated = db.update_predefined_material(id, name);
             if (!updated) {
                 send_json(res, 404, R"({"error":"Nicht gefunden"})");
                 return;
             }
+            audit_record_change(res, previous ? material_name_to_json(*previous) : nlohmann::json(nullptr), material_name_to_json(*updated));
             send_json(res, 200, material_name_to_json(*updated).dump());
         } catch (std::exception &e) {
             send_internal_error(res, "handler", e);
@@ -1624,15 +1631,15 @@ void handle_delete_material(HttpRes *res, HttpReq *req, Database &db)
     std::string id{req->getParameter("id")};
     try
     {
+        auto previous = db.get_predefined_material_by_id(id);
         bool ok = db.delete_predefined_material(id);
         if (!ok)
         {
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
-        set_cors(res);
-        res->writeStatus("204 No Content");
-        res->end();
+        audit_record_change(res, previous ? material_name_to_json(*previous) : nlohmann::json(nullptr), nullptr);
+        send_json(res, 204, "");
     }
     catch (std::exception &e)
     {
