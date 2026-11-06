@@ -196,7 +196,7 @@ onMounted(async () => {
 			document.title = `${activity.value.title} – Geteilte Aktivität`;
 		}
 	} catch (e) {
-		error.value = e instanceof Error ? e.message : 'Bitte versuche es später erneut.';
+		error.value = e instanceof Error && e.message.trim() ? e.message : 'Bitte versuche es später erneut.';
 	} finally {
 		loading.value = false;
 	}
