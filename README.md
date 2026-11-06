@@ -87,6 +87,21 @@ make up
 make db-seed
 ```
 
+## Geteilte Aktivitäten und öffentliche Formulare
+
+Freigabelinks unter `/shared/:token` zeigen Aktivitäten mit gut lesbaren Texten
+und einer gegliederten Kartenansicht. Geteilte Aktivitäten und öffentliche
+Formulare unter `/forms/:slug` zeigen das DPWeb-Logo als Link zur Startseite.
+Die Links verwenden die konfigurierte öffentliche Basis-URL (`DPW_PUBLIC_URL`
+bzw. **System > Einstellungen**); ohne Konfiguration bleibt die Startseite
+auf derselben Instanz.
+
+**In DPWeb öffnen** führt von der geteilten Aktivität zu `/activities/:id`.
+Ohne Anmeldung erscheint dort die normale Anmeldung; nach erfolgreichem Login
+wird dieselbe Aktivität geöffnet. Der Freigabelink gewährt keine zusätzlichen
+Zugriffsrechte in der angemeldeten Ansicht. Freigabelinks und öffentliche
+Formularantworten bleiben ohne Anmeldung nutzbar.
+
 ## Audit Log
 
 Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein persistentes,

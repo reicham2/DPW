@@ -2815,29 +2815,90 @@ video {
 .shared-page {
 	max-width: 800px;
 	margin: 0 auto;
-	padding: 24px 16px;
-}
-
-.shared-header {
-	margin-bottom: 20px;
-}
-
-.shared-badge {
-	display: inline-block;
-	padding: 6px 14px;
-	background: var(--warning-bg);
-	color: var(--warning-color);
-	border: 1px solid var(--warning-border);
-	border-radius: 8px;
-	font-size: 0.88rem;
-	font-weight: 600;
 }
 
 .shared-main {
-	background: var(--bg-surface);
-	border: 1px solid var(--border);
-	border-radius: 12px;
-	padding: 24px;
+	background: var(--card-bg);
+	border: 1px solid var(--card-border);
+	border-radius: 16px;
+	box-shadow: var(--card-shadow);
+	padding: 8px 32px;
+}
+
+.shared-page .detail-section {
+	padding: 24px 0;
+	border-color: var(--border);
+}
+
+.shared-page .detail-section-title,
+.shared-page .detail-label {
+	color: var(--text-secondary);
+	font-size: 0.875rem;
+	letter-spacing: 0.04em;
+}
+
+.shared-page .detail-value,
+.shared-page .program-desc {
+	color: var(--text-primary);
+	font-size: 1rem;
+	line-height: 1.7;
+}
+
+.shared-page .detail-hero-title {
+	font-size: 1.75rem;
+}
+
+.shared-page .detail-hero-time,
+.shared-page .program-resp,
+.shared-page .program-time-secondary,
+.shared-page .material-list-resp {
+	color: var(--text-secondary);
+	font-size: 0.9rem;
+}
+
+.shared-page .detail-hero > div {
+	min-width: 0;
+}
+
+.shared-open {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 44px;
+	padding: 10px 16px;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: var(--accent-bg);
+	color: var(--text-primary);
+	font-size: 0.9rem;
+	font-weight: 700;
+	text-decoration: none;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.shared-open:hover {
+	background: var(--accent-bg-hover);
+}
+
+.shared-open:focus-visible {
+	outline: 2px solid var(--text-primary);
+	outline-offset: 4px;
+}
+
+@media (max-width: 599px) {
+	.shared-main {
+		padding: 0 20px;
+	}
+
+	.shared-page .detail-hero-title {
+		font-size: 1.5rem;
+	}
+
+	.shared-open {
+		width: 100%;
+	}
 }
 
 .mail-activity-info {

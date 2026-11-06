@@ -23,7 +23,7 @@ export const router = createRouter({
 		{ path: '/maintenance', component: MaintenancePage, meta: { public: true } },
 		{ path: '/', component: IndexPage },
 		{ path: '/activities/new', component: CreatePage },
-		{ path: '/activities/:id', component: DetailPage },
+		{ path: '/activities/:id', component: DetailPage, meta: { loginInPlace: true } },
 		{ path: '/activities/:id/mail', component: MailComposerPage },
 		{ path: '/activities/:id/forms', component: ActivityFormsPage },
 		{ path: '/templates', component: TemplatesPage },
@@ -74,9 +74,8 @@ router.beforeEach(async (to) => {
 		});
 	}
 
-	// Redirect to home if not logged in and trying to access a protected route
-	// Allow public routes (marked with meta.public) and home page
-	if (!user.value && !to.meta.public && to.path !== '/') {
+	// App.vue keeps protected content unmounted until login; retain activity deep links.
+	if (!user.value && !to.meta.loginInPlace && to.path !== '/') {
 		return '/';
 	}
 
