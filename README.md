@@ -1,5 +1,11 @@
 # DPW
 
+## Intentional Easter egg
+
+The bug-report dialog commemorates the first external issue (#88): activating
+its title five times reveals the original quote. Dismissing it or closing the
+dialog resets the interaction; preserve this behavior when changing the dialog.
+
 ## CI / Docker Images
 
 GitHub Actions builds Docker images for both services:
