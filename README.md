@@ -302,6 +302,24 @@ und im Event-Titel.
 - Unbekannte Variablen bleiben unveraendert. Rich-Text-Inhalte behalten
   ihre bisherige Formatierung und Linkdarstellung.
 
+## Wartungsmodus
+
+Unter **Admin > System > Wartungsfenster** koennen Admins den Wartungsmodus
+manuell aktivieren oder Wartungsfenster planen. Solange er aktiv ist, koennen
+sich nur Benutzer mit der Rolle `admin` anmelden. Angemeldete Admins sehen
+einen nicht ausblendbaren Hinweis mit der konfigurierten Wartungsnachricht.
+Der Hinweis folgt dem aktuellen Serverstatus (WebSocket und Status-Polling),
+auch bei geplanten Wartungsfenstern, und verschwindet nach deren Ende.
+Danach wird ein Hinweis zum Neuladen angezeigt.
+
+Bereits angemeldete Nicht-Admins werden nach dem Speichern ausstehender
+Aenderungen auf die Wartungsseite umgeleitet (maximal 1,5 Sekunden Wartezeit).
+Bestehende API- und WebSocket-Sitzungen bleiben bewusst zugaenglich, damit
+dieses Speichern moeglich ist; der Wartungsmodus ist keine serverseitige
+Zugriffssperre fuer bestehende Tokens. Oeffentliche Formulare, Freigabelinks
+und der Wartungsstatus bleiben erreichbar. Die Wartungsseite prueft regelmaessig,
+ob die Anwendung wieder verfuegbar ist.
+
 ## Zentrale Cron-Jobs
 
 Das Backend registriert wiederkehrende Serveraufgaben in `CronScheduler` und startet

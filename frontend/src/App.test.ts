@@ -1,4 +1,4 @@
-import { shallowMount } from '@vue/test-utils';
+import { flushPromises, shallowMount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from './types';
@@ -97,6 +97,7 @@ vi.mock('./config', async () => {
 import App from './App.vue';
 import { user } from './composables/useAuth';
 import { config } from './config';
+import { maintenanceActive } from './composables/useMaintenance';
 
 const testUser: User = {
 	id: 'user-1',
@@ -125,8 +126,65 @@ describe('App authentication lifecycle', () => {
 
 	beforeEach(() => {
 		user.value = null;
+		maintenanceActive.value = false;
 		config.MIDATA_ENABLED = false;
 		vi.clearAllMocks();
+	});
+
+	it('keeps an existing admin session in the app when maintenance starts', async () => {
+		const replace = vi.spyOn(window.location, 'replace').mockImplementation(() => {});
+		user.value = testUser;
+		wrapper = shallowMount(App, { global: { stubs: ['router-link', 'router-view'] } });
+		maintenanceActive.value = true;
+		await flushPromises();
+		expect(replace).not.toHaveBeenCalled();
+		replace.mockRestore();
+	});
+
+	it('flushes pending changes before redirecting an existing non-admin session', async () => {
+		const replace = vi.spyOn(window.location, 'replace').mockImplementation(() => {});
+		user.value = { ...testUser, role: 'Mitglied' };
+		let finishSave!: () => void;
+		const pendingSave = new Promise<void>((resolve) => { finishSave = resolve; });
+		const flush = (event: Event) => {
+			(event as CustomEvent<{ waitUntil: (promise: Promise<void>) => void }>).detail.waitUntil(pendingSave);
+		};
+		window.addEventListener('dpw:before-maintenance-redirect', flush);
+		try {
+			wrapper = shallowMount(App, { global: { stubs: ['router-link', 'router-view'] } });
+			maintenanceActive.value = true;
+			await flushPromises();
+			expect(replace).not.toHaveBeenCalled();
+			finishSave();
+			await flushPromises();
+			expect(replace).toHaveBeenCalledExactlyOnceWith('/maintenance');
+		} finally {
+			window.removeEventListener('dpw:before-maintenance-redirect', flush);
+			replace.mockRestore();
+		}
+	});
+
+	it('cancels the redirect if maintenance ends while autosave is pending', async () => {
+		const replace = vi.spyOn(window.location, 'replace').mockImplementation(() => {});
+		user.value = { ...testUser, role: 'Mitglied' };
+		let finishSave!: () => void;
+		const pendingSave = new Promise<void>((resolve) => { finishSave = resolve; });
+		const flush = (event: Event) => {
+			(event as CustomEvent<{ waitUntil: (promise: Promise<void>) => void }>).detail.waitUntil(pendingSave);
+		};
+		window.addEventListener('dpw:before-maintenance-redirect', flush);
+		try {
+			wrapper = shallowMount(App, { global: { stubs: ['router-link', 'router-view'] } });
+			maintenanceActive.value = true;
+			await flushPromises();
+			maintenanceActive.value = false;
+			finishSave();
+			await flushPromises();
+			expect(replace).not.toHaveBeenCalled();
+		} finally {
+			window.removeEventListener('dpw:before-maintenance-redirect', flush);
+			replace.mockRestore();
+		}
 	});
 
 	afterEach(() => {
