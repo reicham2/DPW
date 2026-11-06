@@ -331,5 +331,6 @@ Compose config, with no external AI service, network link checker or real secret
 
 **Limits:** command-name/link checks cannot prove every instruction executes
 correctly, prose reflects behavior, credentials are valid or deployment succeeds.
+Checked heading anchors require plain Markdown headings, not inline HTML.
 Source links, same-PR documentation review, meaningful negative tests and the
 application/upgrade suites reduce drift; none can guarantee a README never goes stale.
