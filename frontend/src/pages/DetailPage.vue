@@ -3916,7 +3916,6 @@ function copyShareLink() {
 									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 								<p v-if="programImageUploadCount" class="field-hint" role="status">Bilder werden hochgeladen…</p>
-								<p class="field-hint">Bilder direkt einfügen oder über «Bild» hochladen (PNG, JPEG, GIF, WebP; max. 10 MiB).</p>
 							</div>
 						</div>
 					</div>
