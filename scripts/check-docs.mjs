@@ -167,7 +167,10 @@ function headings(source) {
 	const anchors = new Set();
 	const prose = source.replace(/^```[^\n]*\n[\s\S]*?^```\s*$/gm, '');
 	for (const match of prose.matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm)) {
-		const base = match[1].toLowerCase().replace(/<[^>]*>/g, '')
+		if (/[<>]/.test(match[1])) {
+			throw new Error('Use plain Markdown headings for checked anchors; inline HTML headings are unsupported.');
+		}
+		const base = match[1].toLowerCase()
 			.replace(/[^\p{L}\p{N}_\-\s]/gu, '').replace(/\s/g, '-');
 		const count = seen.get(base) || 0;
 		anchors.add(count ? `${base}-${count}` : base);

@@ -112,6 +112,12 @@ test('script references with flags are checked and prose is not treated as a com
 	assert.doesNotThrow(() => checkDocs(root));
 });
 
+test('inline HTML headings fail explicitly instead of being partially stripped', t => {
+	const root = fixture(t);
+	replace(root, 'README.md', '# DPW (DPWeb)', '# <span>DPW</span>');
+	assert.throws(() => checkDocs(root), /Use plain Markdown headings for checked anchors/);
+});
+
 test('nonexistent Make and npm commands fail even after a cosmetic README edit', t => {
 	const root = fixture(t);
 	replace(root, 'README.md', '# DPW', '# DPW\n\nRun `make nonexistent-target`.');
