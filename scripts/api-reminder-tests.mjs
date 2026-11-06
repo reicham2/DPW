@@ -134,7 +134,7 @@ test('shared scheduler delivers preference-aware reminders without duplicates an
 			assert.equal((await notes(ids[0]))[0].id, currentId, 'Changing lead after issuance does not resend');
 			assert.equal(messages(ids[0]).length, 1, 'Repeated runs cannot duplicate delivery');
 
-			await request('DELETE', `/activities/${activity}`);
+			await request('DELETE', `/activities/${activity}`, admin, undefined, 204);
 			await run();
 			for (const id of ids.slice(0, 3)) assert.equal((await notes(id)).length, 0, 'Cancellation removes stale reminders');
 			await request('PATCH', '/me', ids[0], { notify_activity_reminder: false });
@@ -152,7 +152,7 @@ test('shared scheduler delivers preference-aware reminders without duplicates an
 				const existing = await fetch(`${baseUrl}/activities/${activity}`, {
 					headers: { Authorization: `Bearer debug:${admin}` },
 				});
-				if (existing.status === 200) await request('DELETE', `/activities/${activity}`);
+				if (existing.status === 200) await request('DELETE', `/activities/${activity}`, admin, undefined, 204);
 				else assert.equal(existing.status, 404);
 				await request('DELETE', `/admin/activities/${activity}/trash`);
 			}
