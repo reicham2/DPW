@@ -87,6 +87,12 @@ make up
 make db-seed
 ```
 
+## Aktivitäten bearbeiten
+
+Programmpunkte sind im Bearbeitungsmodus zunächst eingeklappt und lassen sich
+unabhängig voneinander öffnen. Änderungen bleiben beim Einklappen erhalten;
+die Reihenfolge kann weiterhin über den Ziehgriff angepasst werden.
+
 ## Audit Log
 
 Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein persistentes,
