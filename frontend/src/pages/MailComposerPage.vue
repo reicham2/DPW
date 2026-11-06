@@ -10,7 +10,7 @@ import { usePermissions } from '../composables/usePermissions';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import { ArrowLeft, Save, Check, X, Clipboard, Send } from 'lucide-vue-next';
-import type { Activity, SentMail } from '../types';
+import type { Activity, MailTemplate, SentMail } from '../types';
 import { useAutosave } from '../composables/useAutosave';
 import { config } from '../config';
 import { useUserResolver } from '../composables/useUserResolver';
@@ -27,6 +27,9 @@ const { myPermissions, fetchMyPermissions } = usePermissions()
 const { resolveResponsibleName } = useUserResolver()
 
 const activity = ref<Activity | null>(null)
+const mailTemplates = ref<MailTemplate[]>([])
+const selectedTemplateId = ref('')
+let composerHasUserEdits = false
 const subject = ref('')
 const body = ref('')
 const recipients = ref<string[]>([''])
@@ -80,6 +83,7 @@ function showSavedIndicator() {
 }
 
 function markDirty(field: string) {
+	composerHasUserEdits = true
 	dirtyFieldSet.add(field)
 	scheduleLocalDraftWrite()
 	scheduleAutoSave()
@@ -202,6 +206,7 @@ function applyLocalDraft() {
 	cc.value = pendingLocalDraft.value.cc.length ? [...pendingLocalDraft.value.cc] : ['']
 	subject.value = pendingLocalDraft.value.subject
 	body.value = pendingLocalDraft.value.body
+	composerHasUserEdits = true
 	pendingLocalDraft.value = null
 	localDraftRestoredAt.value = Date.now()
 	nextTick(() => {
@@ -327,6 +332,44 @@ function replaceTemplateVars(text: string, act: Activity, opts: { htmlLists?: bo
   return container.innerHTML
 }
 
+function applyMailTemplate(template: MailTemplate | null, act: Activity) {
+  selectedTemplateId.value = template?.id ?? ''
+  subject.value = template
+    ? replaceTemplateVars(template.subject, act, { htmlLists: false })
+    : ''
+  body.value = template
+    ? replaceTemplateVars(template.body, act, { htmlLists: true })
+    : ''
+  recipients.value = template?.recipients.length ? [...template.recipients] : ['']
+  cc.value = template?.cc.length ? [...template.cc] : ['']
+  nextTick(() => {
+    if (editorRef.value) editorRef.value.innerHTML = body.value
+  })
+}
+
+function selectMailTemplate(id: string) {
+  if (!activity.value || id === selectedTemplateId.value) return
+  if (composerHasUserEdits && !window.confirm('Deine bisherigen Änderungen werden durch die gewählte Vorlage ersetzt. Möchtest du fortfahren?')) {
+    return
+  }
+  const template = mailTemplates.value.find((item) => item.id === id) ?? null
+  applyMailTemplate(template, activity.value)
+  composerHasUserEdits = true
+  markDirty('recipients')
+  markDirty('cc')
+  markDirty('subject')
+  markDirty('body')
+  composerHasUserEdits = false
+}
+
+function onMailTemplateChange(event: Event) {
+  const select = event.target as HTMLSelectElement
+  selectMailTemplate(select.value)
+  if (select.value !== selectedTemplateId.value) {
+    select.value = selectedTemplateId.value
+  }
+}
+
 onMounted(async () => {
   await fetchMyPermissions()
   if (!myPermissions.value || myPermissions.value.mail_send_scope === 'none') {
@@ -342,6 +385,8 @@ onMounted(async () => {
   activity.value = act
 
 	const composerContext = await fetchComposerContext(activityId)
+	mailTemplates.value = composerContext?.templates
+		?? (composerContext?.template ? [composerContext.template] : [])
 	if (composerContext?.form.exists && composerContext.form.public_slug) {
 		hasForm.value = true
 		const baseUrl = configuredPublicBaseUrl()
@@ -358,22 +403,15 @@ onMounted(async () => {
     showWarning.value = true
   }
 
-	const tpl = composerContext?.template
-	if (tpl) {
-		subject.value = replaceTemplateVars(tpl.subject, act, { htmlLists: false })
-		body.value = replaceTemplateVars(tpl.body, act, { htmlLists: true })
-		if (tpl.recipients?.length) {
-			recipients.value = [...tpl.recipients]
-		}
-		if (tpl.cc?.length) {
-			cc.value = [...tpl.cc]
-		}
-	}
+	const tpl = mailTemplates.value.find((item) => item.is_default)
+		?? composerContext?.template
+	applyMailTemplate(tpl ?? null, act)
 
   // Load existing draft (overrides template if present)
   const draft = await fetchDraft(activityId)
   if (draft) {
     hadDraftOnEntry = true
+		composerHasUserEdits = true
     if (draft.recipients.length) recipients.value = [...draft.recipients]
     if (draft.cc?.length) cc.value = [...draft.cc]
     if (draft.subject) subject.value = draft.subject
@@ -849,6 +887,20 @@ async function cancelAndRevert() {
 			<div class="mail-activity-info">
 				<DepartmentBadge :department="activity.department" />
 				<strong>{{ activity.title }}</strong>
+			</div>
+
+			<div v-if="mailTemplates.length > 1" class="form-group">
+				<label for="mail-template-selector">Vorlage</label>
+				<select
+					id="mail-template-selector"
+					:value="selectedTemplateId"
+					@change="onMailTemplateChange"
+				>
+					<option value="">Ohne Vorlage</option>
+					<option v-for="template in mailTemplates" :key="template.id" :value="template.id">
+						{{ template.name }}{{ template.is_default ? ' (Standard)' : '' }}
+					</option>
+				</select>
 			</div>
 
 			<!-- Form link -->

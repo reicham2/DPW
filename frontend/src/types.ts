@@ -83,6 +83,8 @@ export type EditSection =
 	| 'goal_weather'
 	| 'tpl_recipients'
 	| 'tpl_cc'
+	| 'tpl_name'
+	| 'tpl_default'
 	| 'tpl_subject'
 	| 'tpl_body';
 
@@ -159,11 +161,13 @@ export interface NotificationRecord {
 
 export interface MailTemplate {
 	id: string;
+	name: string;
 	department: Department;
 	subject: string;
 	body: string;
 	recipients: string[];
 	cc: string[];
+	is_default: boolean;
 	created_at: string;
 	updated_at: string;
 }
@@ -217,6 +221,7 @@ export interface MailComposerFormContext {
 
 export interface MailComposerContext {
 	template: MailTemplate | null;
+	templates?: MailTemplate[];
 	form: MailComposerFormContext;
 }
 

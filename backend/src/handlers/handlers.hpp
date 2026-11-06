@@ -64,7 +64,9 @@ void handle_debug_get_users(HttpRes *res, HttpReq *req, Database &db);
 
 void handle_get_mail_templates(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_mail_template(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_mail_template(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_get_sent_mails(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_mail_composer_context(HttpRes *res, HttpReq *req, Database &db);

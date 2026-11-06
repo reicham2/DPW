@@ -308,7 +308,23 @@ bool WebSocketManager::can_access_room(WsHandle ws, const std::string &room, boo
         if (room.rfind("evt_tpl_", 0) == 0)
             return can_manage_department_scope(*user, permission ? permission->event_templates_scope : "none", room.substr(8));
         if (room.rfind("tpl_", 0) == 0)
-            return can_manage_department_scope(*user, permission ? permission->mail_templates_scope : "none", room.substr(4));
+        {
+            const std::string template_room = room.substr(4);
+            const auto separator = template_room.rfind(':');
+            if (separator != std::string::npos)
+            {
+                const std::string department = template_room.substr(0, separator);
+                const std::string template_id = template_room.substr(separator + 1);
+                const auto mail_template = db_.get_mail_template_by_id(template_id);
+                return mail_template && mail_template->department == department &&
+                       can_manage_department_scope(*user,
+                                                   permission ? permission->mail_templates_scope : "none",
+                                                   department);
+            }
+            return can_manage_department_scope(*user,
+                                               permission ? permission->mail_templates_scope : "none",
+                                               template_room);
+        }
         if (!permission)
             return false;
 

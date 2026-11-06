@@ -72,6 +72,86 @@ export function useMailTemplates() {
 		}
 	}
 
+	async function createTemplate(
+		name: string,
+		department: Department,
+		subject = '',
+		body = '',
+		recipients: string[] = [],
+		cc: string[] = [],
+		isDefault = false,
+	): Promise<MailTemplate | null> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/mail-templates`, {
+				method: 'POST',
+				body: JSON.stringify({
+					name,
+					department,
+					subject,
+					body,
+					recipients,
+					cc,
+					is_default: isDefault,
+				}),
+			});
+			if (!res.ok) throw new Error(await res.text());
+			return (await res.json()) as MailTemplate;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return null;
+		}
+	}
+
+	async function updateTemplate(
+		id: string,
+		name: string,
+		subject: string,
+		body: string,
+		recipients: string[] = [],
+		cc: string[] = [],
+		isDefault = false,
+	): Promise<MailTemplate | null> {
+		error.value = null;
+		try {
+			const res = await apiFetch(
+				`${BASE}/mail-templates/${encodeURIComponent(id)}`,
+				{
+					method: 'PUT',
+					body: JSON.stringify({
+						name,
+						subject,
+						body,
+						recipients,
+						cc,
+						is_default: isDefault,
+					}),
+				},
+			);
+			if (!res.ok) throw new Error(await res.text());
+			return (await res.json()) as MailTemplate;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return null;
+		}
+	}
+
+	async function deleteTemplate(id: string): Promise<boolean> {
+		error.value = null;
+		try {
+			const res = await apiFetch(
+				`${BASE}/mail-templates/${encodeURIComponent(id)}`,
+				{ method: 'DELETE' },
+			);
+			if (!res.ok) throw new Error(await res.text());
+			templates.value = templates.value.filter((template) => template.id !== id);
+			return true;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return false;
+		}
+	}
+
 	async function sendMail(
 		to: string[],
 		subject: string,
@@ -194,6 +274,9 @@ export function useMailTemplates() {
 		fetchTemplates,
 		fetchTemplate,
 		saveTemplate,
+		createTemplate,
+		updateTemplate,
+		deleteTemplate,
 		sendMail,
 		fetchSentMails,
 		fetchDraft,

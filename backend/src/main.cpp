@@ -336,10 +336,14 @@ int main()
          // Mail templates + send
          .get("/mail-templates", [&](auto *res, auto *req)
               { handle_get_mail_templates(res, req, db); })
+         .post("/mail-templates", [&](auto *res, auto *req)
+               { handle_post_mail_template(res, req, db, wm); })
          .get("/mail-templates/:department", [&](auto *res, auto *req)
               { handle_get_mail_template(res, req, db); })
          .put("/mail-templates/:department", [&](auto *res, auto *req)
               { handle_put_mail_template(res, req, db, wm); })
+         .del("/mail-templates/:id", [&](auto *res, auto *req)
+              { handle_delete_mail_template(res, req, db); })
 
          // Event templates
          .get("/event-templates", [&](auto *res, auto *req)

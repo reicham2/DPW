@@ -1,4 +1,5 @@
 #include "db/database.hpp"
+#include <algorithm>
 #include <stdexcept>
 #include <cstdio>
 #include <cstring>
@@ -20,6 +21,7 @@ MailTemplate Database::row_to_mail_template(PGresult *res, int row)
     };
     MailTemplate t;
     t.id = col("id") ? col("id") : "";
+    t.name = col("name") ? col("name") : "";
     t.department = col("department") ? col("department") : "";
     t.subject = col("subject") ? col("subject") : "";
     t.body = col("body") ? col("body") : "";
@@ -27,17 +29,45 @@ MailTemplate Database::row_to_mail_template(PGresult *res, int row)
         t.recipients = parse_pg_array(col("recipients"));
     if (col("cc"))
         t.cc = parse_pg_array(col("cc"));
+    t.is_default = col("is_default") && std::string(col("is_default")) == "t";
     t.created_at = col("created_at") ? col("created_at") : "";
     t.updated_at = col("updated_at") ? col("updated_at") : "";
     return t;
+}
+
+static std::string mail_template_array_literal(const std::vector<std::string> &values)
+{
+    std::string result = "{";
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        if (i)
+            result += ",";
+        result += "\"";
+        for (char c : values[i])
+        {
+            if (c == '\\' || c == '"')
+                result += '\\';
+            result += c;
+        }
+        result += "\"";
+    }
+    result += "}";
+    return result;
+}
+
+static bool mail_template_command_ok(PGresult *res)
+{
+    const bool ok = PQresultStatus(res) == PGRES_COMMAND_OK;
+    PQclear(res);
+    return ok;
 }
 
 std::vector<MailTemplate> Database::list_mail_templates()
 {
     ensure_connected();
     PGresult *res = PQexec(conn_,
-                           "SELECT id, department, subject, body, recipients, cc, created_at, updated_at "
-                           "FROM mail_templates ORDER BY department");
+                           "SELECT id, name, department, subject, body, recipients, cc, is_default, created_at, updated_at "
+                           "FROM mail_templates ORDER BY department, is_default DESC, name");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
@@ -54,13 +84,36 @@ std::vector<MailTemplate> Database::list_mail_templates()
     return out;
 }
 
+std::vector<MailTemplate> Database::list_mail_templates(const std::string &department)
+{
+    ensure_connected();
+    const char *params[1] = {department.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, name, department, subject, body, recipients, cc, is_default, created_at, updated_at "
+                                 "FROM mail_templates WHERE department = $1 ORDER BY is_default DESC, name",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("list_mail_templates: " + err);
+    }
+    std::vector<MailTemplate> out;
+    const int n = PQntuples(res);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back(row_to_mail_template(res, i));
+    PQclear(res);
+    return out;
+}
+
 std::optional<MailTemplate> Database::get_mail_template_by_department(const std::string &department)
 {
     ensure_connected();
     const char *params[1] = {department.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, department, subject, body, recipients, cc, created_at, updated_at "
-                                 "FROM mail_templates WHERE department = $1",
+                                 "SELECT id, name, department, subject, body, recipients, cc, is_default, created_at, updated_at "
+                                 "FROM mail_templates WHERE department = $1 ORDER BY is_default DESC, name LIMIT 1",
                                  1, nullptr, params, nullptr, nullptr, 0);
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
@@ -73,35 +126,14 @@ std::optional<MailTemplate> Database::get_mail_template_by_department(const std:
     return t;
 }
 
-std::optional<MailTemplate> Database::upsert_mail_template(const std::string &department,
-                                                           const std::string &subject,
-                                                           const std::string &body,
-                                                           const std::vector<std::string> &recipients,
-                                                           const std::vector<std::string> &cc)
+std::optional<MailTemplate> Database::get_mail_template_by_id(const std::string &id)
 {
     ensure_connected();
-    auto build_arr = [](const std::vector<std::string> &v)
-    {
-        std::string s = "{";
-        for (size_t i = 0; i < v.size(); ++i)
-        {
-            if (i > 0)
-                s += ",";
-            s += "\"" + v[i] + "\"";
-        }
-        s += "}";
-        return s;
-    };
-    std::string recipients_arr = build_arr(recipients);
-    std::string cc_arr = build_arr(cc);
-    const char *params[5] = {department.c_str(), subject.c_str(), body.c_str(), recipients_arr.c_str(), cc_arr.c_str()};
+    const char *params[1] = {id.c_str()};
     PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO mail_templates (department, subject, body, recipients, cc) "
-                                 "VALUES ($1, $2, $3, $4::text[], $5::text[]) "
-                                 "ON CONFLICT (department) DO UPDATE SET subject = EXCLUDED.subject, body = EXCLUDED.body, recipients = EXCLUDED.recipients, cc = EXCLUDED.cc "
-                                 "RETURNING id, department, subject, body, recipients, cc, created_at, updated_at",
-                                 5, nullptr, params, nullptr, nullptr, 0);
-
+                                 "SELECT id, name, department, subject, body, recipients, cc, is_default, created_at, updated_at "
+                                 "FROM mail_templates WHERE id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
     {
         PQclear(res);
@@ -110,6 +142,134 @@ std::optional<MailTemplate> Database::upsert_mail_template(const std::string &de
     MailTemplate t = row_to_mail_template(res, 0);
     PQclear(res);
     return t;
+}
+
+std::optional<MailTemplate> Database::create_mail_template(const std::string &name,
+                                                           const std::string &department,
+                                                           const std::string &subject,
+                                                           const std::string &body,
+                                                           const std::vector<std::string> &recipients,
+                                                           const std::vector<std::string> &cc,
+                                                           bool is_default)
+{
+    ensure_connected();
+    if (!mail_template_command_ok(PQexec(conn_, "BEGIN")))
+        return std::nullopt;
+    if (is_default)
+    {
+        const char *params[1] = {department.c_str()};
+        if (!mail_template_command_ok(PQexecParams(conn_,
+                                                   "UPDATE mail_templates SET is_default = FALSE WHERE department = $1 AND is_default = TRUE",
+                                                   1, nullptr, params, nullptr, nullptr, 0)))
+        {
+            mail_template_command_ok(PQexec(conn_, "ROLLBACK"));
+            return std::nullopt;
+        }
+    }
+
+    const std::string recipients_arr = mail_template_array_literal(recipients);
+    const std::string cc_arr = mail_template_array_literal(cc);
+    const char *is_default_str = is_default ? "true" : "false";
+    const char *params[7] = {name.c_str(), department.c_str(), subject.c_str(), body.c_str(),
+                             recipients_arr.c_str(), cc_arr.c_str(), is_default_str};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO mail_templates (name, department, subject, body, recipients, cc, is_default) "
+                                 "VALUES ($1, $2, $3, $4, $5::text[], $6::text[], $7::boolean) "
+                                 "RETURNING id, name, department, subject, body, recipients, cc, is_default, created_at, updated_at",
+                                 7, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        mail_template_command_ok(PQexec(conn_, "ROLLBACK"));
+        return std::nullopt;
+    }
+    MailTemplate t = row_to_mail_template(res, 0);
+    PQclear(res);
+    if (!mail_template_command_ok(PQexec(conn_, "COMMIT")))
+    {
+        mail_template_command_ok(PQexec(conn_, "ROLLBACK"));
+        return std::nullopt;
+    }
+    return t;
+}
+
+std::optional<MailTemplate> Database::update_mail_template(const std::string &id,
+                                                           const std::string &name,
+                                                           const std::string &subject,
+                                                           const std::string &body,
+                                                           const std::vector<std::string> &recipients,
+                                                           const std::vector<std::string> &cc,
+                                                           bool is_default)
+{
+    ensure_connected();
+    if (!mail_template_command_ok(PQexec(conn_, "BEGIN")))
+        return std::nullopt;
+    if (is_default)
+    {
+        const char *params[1] = {id.c_str()};
+        if (!mail_template_command_ok(PQexecParams(conn_,
+                                                   "UPDATE mail_templates SET is_default = FALSE "
+                                                   "WHERE department = (SELECT department FROM mail_templates WHERE id = $1) "
+                                                   "AND is_default = TRUE AND id != $1",
+                                                   1, nullptr, params, nullptr, nullptr, 0)))
+        {
+            mail_template_command_ok(PQexec(conn_, "ROLLBACK"));
+            return std::nullopt;
+        }
+    }
+
+    const std::string recipients_arr = mail_template_array_literal(recipients);
+    const std::string cc_arr = mail_template_array_literal(cc);
+    const char *is_default_str = is_default ? "true" : "false";
+    const char *params[7] = {id.c_str(), name.c_str(), subject.c_str(), body.c_str(),
+                             recipients_arr.c_str(), cc_arr.c_str(), is_default_str};
+    PGresult *res = PQexecParams(conn_,
+                                 "UPDATE mail_templates SET name=$2, subject=$3, body=$4, recipients=$5::text[], "
+                                 "cc=$6::text[], is_default=$7::boolean WHERE id=$1 "
+                                 "RETURNING id, name, department, subject, body, recipients, cc, is_default, created_at, updated_at",
+                                 7, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        mail_template_command_ok(PQexec(conn_, "ROLLBACK"));
+        return std::nullopt;
+    }
+    MailTemplate t = row_to_mail_template(res, 0);
+    PQclear(res);
+    if (!mail_template_command_ok(PQexec(conn_, "COMMIT")))
+    {
+        mail_template_command_ok(PQexec(conn_, "ROLLBACK"));
+        return std::nullopt;
+    }
+    return t;
+}
+
+bool Database::delete_mail_template(const std::string &id)
+{
+    ensure_connected();
+    const char *params[1] = {id.c_str()};
+    return mail_template_command_ok(PQexecParams(conn_,
+                                                 "DELETE FROM mail_templates WHERE id = $1",
+                                                 1, nullptr, params, nullptr, nullptr, 0));
+}
+
+std::optional<MailTemplate> Database::upsert_mail_template(const std::string &department,
+                                                           const std::string &subject,
+                                                           const std::string &body,
+                                                           const std::vector<std::string> &recipients,
+                                                           const std::vector<std::string> &cc)
+{
+    auto templates = list_mail_templates(department);
+    const auto existing = std::find_if(templates.begin(), templates.end(),
+                                       [](const MailTemplate &tpl) { return tpl.is_default; });
+    if (existing != templates.end())
+        return update_mail_template(existing->id, existing->name, subject, body, recipients, cc, true);
+    if (!templates.empty())
+    {
+        const auto &tpl = templates.front();
+        return update_mail_template(tpl.id, tpl.name, subject, body, recipients, cc, true);
+    }
+    return create_mail_template("Standard", department, subject, body, recipients, cc, true);
 }
 
 // ---- Event templates ---------------------------------------------------------
