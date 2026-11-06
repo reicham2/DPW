@@ -36,6 +36,8 @@ services:
         BACKEND_BUILD_TYPE: "${BACKEND_BUILD_TYPE:-Release}"
         ENABLE_DEBUG_AUTH: "${ENABLE_DEBUG_AUTH:-0}"
     restart: unless-stopped
+    ports:
+      - "127.0.0.1::8080"
     env_file:
       - .env
     environment:
