@@ -1,5 +1,5 @@
 <template>
-	<div class="shared-page">
+	<PublicPageLayout label="Geteilte Aktivität">
 		<!-- Loading -->
 		<div v-if="loading" class="loading-state">
 			<span class="spinner" />
@@ -13,20 +13,30 @@
 			<p>Diese Aktivität existiert nicht oder der Link ist nicht mehr gültig.</p>
 		</div>
 
+		<div v-else-if="error" class="error-state" role="alert">
+			<TriangleAlert :size="28" aria-hidden="true" />
+			<h2>Aktivität konnte nicht geladen werden</h2>
+			<p>{{ error }}</p>
+		</div>
+
 		<!-- Activity view -->
 		<template v-else-if="activity">
-			<main class="main">
+			<article class="shared-page shared-main">
 				<div class="detail-view">
 					<!-- Hero -->
 					<div class="detail-section">
 						<div class="detail-hero">
 							<div>
-								<h2 class="detail-hero-title">{{ activity.title }}</h2>
+								<h1 class="detail-hero-title">{{ activity.title }}</h1>
 								<p class="detail-hero-time">
 									{{ formatDate(activity.date) }} &middot;
 									{{ activity.start_time }}–{{ activity.end_time }}
 								</p>
 							</div>
+							<a :href="activityUrl" class="shared-open">
+								<ExternalLink :size="18" aria-hidden="true" />
+								In DPWeb öffnen
+							</a>
 						</div>
 					</div>
 
@@ -52,13 +62,13 @@
 					</div>
 
 					<div class="detail-section">
-						<p class="detail-section-title">Roter Faden</p>
+						<h2 class="detail-section-title">Roter Faden</h2>
 						<p class="detail-value detail-value--multiline">{{ activity.guiding_thread || '—' }}</p>
 					</div>
 
 					<!-- Programmpunkte -->
 					<div class="detail-section">
-						<p class="detail-section-title">Programmpunkte</p>
+						<h2 class="detail-section-title">Programmpunkte</h2>
 						<div v-if="activity.programs.length" class="program-timeline">
 							<div
 								v-for="(prog, pi) in activity.programs"
@@ -86,7 +96,7 @@
 
 					<!-- Material -->
 					<div class="detail-section">
-						<p class="detail-section-title">Material</p>
+						<h2 class="detail-section-title">Material</h2>
 						<ul v-if="activity.material.length" class="material-list-view">
 							<li v-for="(m, i) in activity.material" :key="i" class="material-list-item">
 								<span class="material-list-name">{{ m.name }}</span>
@@ -98,7 +108,7 @@
 
 					<!-- SiKo -->
 					<div class="detail-section">
-						<p class="detail-section-title">Sicherheitskonzept</p>
+						<h2 class="detail-section-title">Sicherheitskonzept</h2>
 						<p class="detail-value detail-value--multiline">
 							{{ activity.siko_text || '—' }}
 						</p>
@@ -108,13 +118,13 @@
 					<div class="detail-section">
 						<div class="detail-grid">
 							<div>
-								<p class="detail-section-title">Ziel</p>
+								<h2 class="detail-section-title">Ziel</h2>
 								<p class="detail-value detail-value--multiline">
 									{{ activity.goal || '—' }}
 								</p>
 							</div>
 							<div>
-								<p class="detail-section-title">Schlechtwetter-Info</p>
+								<h2 class="detail-section-title">Schlechtwetter-Info</h2>
 								<p class="detail-value detail-value--multiline">
 									{{ activity.bad_weather_info || '—' }}
 								</p>
@@ -122,19 +132,21 @@
 						</div>
 					</div>
 				</div>
-			</main>
+			</article>
 		</template>
-	</div>
+	</PublicPageLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Activity } from '../types';
-import { Search } from 'lucide-vue-next';
+import { ExternalLink, Search, TriangleAlert } from 'lucide-vue-next';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
+import PublicPageLayout from '../components/PublicPageLayout.vue';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 import { addMinutesToClock, formatDuration } from '../utils/time';
+import { publicUrl } from '../utils/publicUrl';
 
 const route = useRoute();
 const token = route.params.token as string;
@@ -142,6 +154,10 @@ const token = route.params.token as string;
 const activity = ref<Activity | null>(null);
 const loading = ref(true);
 const notFound = ref(false);
+const error = ref<string | null>(null);
+const activityUrl = computed(() =>
+	activity.value ? publicUrl(`/activities/${encodeURIComponent(activity.value.id)}`) : '',
+);
 
 function formatDate(iso: string): string {
 	const d = new Date(iso + 'T00:00:00');
@@ -167,21 +183,20 @@ function programSecondaryLabel(index: number): string {
 
 onMounted(async () => {
 	try {
-		const res = await fetch(`/api/shared/${token}`);
+		const res = await fetch(`/api/shared/${encodeURIComponent(token)}`);
 		if (res.status === 404) {
 			notFound.value = true;
 			return;
 		}
 		if (!res.ok) {
-			notFound.value = true;
-			return;
+			throw new Error(`Aktivität konnte nicht geladen werden (HTTP ${res.status}).`);
 		}
 		activity.value = await res.json();
 		if (activity.value) {
 			document.title = `${activity.value.title} – Geteilte Aktivität`;
 		}
-	} catch {
-		notFound.value = true;
+	} catch (e) {
+		error.value = e instanceof Error && e.message.trim() ? e.message : 'Bitte versuche es später erneut.';
 	} finally {
 		loading.value = false;
 	}

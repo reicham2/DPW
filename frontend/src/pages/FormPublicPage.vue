@@ -1,5 +1,5 @@
 <template>
-	<div class="public-form-page">
+	<PublicPageLayout label="Öffentliches Formular">
 		<!-- Loading -->
 		<div v-if="loading" class="loading-state">
 			<span class="spinner" />
@@ -64,7 +64,7 @@
 				</form>
 			</div>
 		</template>
-	</div>
+	</PublicPageLayout>
 </template>
 
 <script setup lang="ts">
@@ -73,13 +73,14 @@ import { useRoute } from 'vue-router';
 import type { SignupForm } from '../types';
 import { useForms } from '../composables/useForms';
 import FormQuestion from '../components/FormQuestion.vue';
+import PublicPageLayout from '../components/PublicPageLayout.vue';
 import { Search, TriangleAlert, CheckCircle2 } from 'lucide-vue-next';
 
 const route = useRoute();
 const publicSlug = route.params.slug as string;
 
-const { loading, error } = useForms();
-const { fetchPublicForm, submitResponse } = useForms();
+const { loading, error, fetchPublicForm } = useForms();
+const { submitResponse, error: responseError } = useForms();
 
 const form = ref<SignupForm | null>(null);
 const notFound = ref(false);
@@ -93,7 +94,7 @@ const validationErrors = reactive<Record<string, string>>({});
 onMounted(async () => {
 	const result = await fetchPublicForm(publicSlug);
 	if (!result) {
-		notFound.value = true;
+		notFound.value = !error.value;
 		return;
 	}
 	form.value = result;
@@ -129,7 +130,7 @@ async function doSubmit() {
 		}));
 		const result = await submitResponse(publicSlug, { answers: answerList });
 		if (!result) {
-			submitError.value = error.value ?? 'Ein Fehler ist aufgetreten.';
+			submitError.value = responseError.value ?? 'Ein Fehler ist aufgetreten.';
 			return;
 		}
 		submitted.value = true;
@@ -140,14 +141,6 @@ async function doSubmit() {
 </script>
 
 <style scoped>
-.public-form-page {
-	min-height: 100vh;
-	background: #f9fafb;
-	display: flex;
-	justify-content: center;
-	padding: 2rem 1rem;
-}
-
 .loading-state, .error-state, .success-state {
 	text-align: center;
 	padding: 3rem 1rem;
@@ -158,7 +151,7 @@ async function doSubmit() {
 }
 
 .loading-state {
-	color: #6b7280;
+	color: var(--text-secondary);
 	flex-direction: row;
 	gap: 0.5rem;
 }
@@ -171,21 +164,23 @@ async function doSubmit() {
 .error-state h2, .success-state h2 {
 	font-size: 1.25rem;
 	font-weight: 700;
-	color: #111827;
+	color: var(--text-primary);
 	margin: 0;
 }
 
 .error-state p, .success-state p {
 	font-size: 0.875rem;
-	color: #6b7280;
+	color: var(--text-secondary);
 	margin: 0;
 }
 
-.success-title { color: #065f46 !important; }
-.success-desc { color: #374151 !important; }
+.success-title { color: var(--success-color) !important; }
+.success-desc { color: var(--text-secondary) !important; }
 
 .form-container {
-	background: #fff;
+	margin: 0 auto;
+	background: var(--card-bg);
+	border: 1px solid var(--card-border);
 	border-radius: 0.75rem;
 	box-shadow: 0 1px 6px rgba(0,0,0,0.08);
 	padding: 2rem;
@@ -201,20 +196,20 @@ async function doSubmit() {
 .form-title {
 	font-size: 1.35rem;
 	font-weight: 800;
-	color: #111827;
+	color: var(--text-primary);
 	margin: 0 0 0.3rem;
 }
 
 .form-subtitle {
 	font-size: 0.85rem;
-	color: #6b7280;
+	color: var(--text-secondary);
 	margin: 0;
 	font-weight: 500;
 }
 
 .submit-error {
-	background: #fee2e2;
-	color: #991b1b;
+	background: var(--error-bg);
+	color: var(--error-color);
 	border-radius: 0.375rem;
 	padding: 0.65rem 0.9rem;
 	font-size: 0.875rem;
@@ -232,7 +227,7 @@ async function doSubmit() {
 	align-items: center;
 	gap: 0.5rem;
 	padding: 0.6rem 1.75rem;
-	background: #6366f1;
+	background: #4f46e5;
 	color: #fff;
 	border: none;
 	border-radius: 0.5rem;
@@ -241,7 +236,8 @@ async function doSubmit() {
 	cursor: pointer;
 	transition: background 0.15s;
 }
-.btn-submit:hover:not(:disabled) { background: #4f46e5; }
+.btn-submit:hover:not(:disabled) { background: #4338ca; }
+.btn-submit:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 4px; }
 .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .spinner {
@@ -259,4 +255,10 @@ async function doSubmit() {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 599px) {
+	.form-container {
+		padding: 1.25rem;
+	}
+}
 </style>

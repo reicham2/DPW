@@ -48,7 +48,7 @@ describe('Router guard logic', () => {
 
 	it('redirects to / when user is null and route is protected', () => {
 		const user = { value: null };
-		const to = { meta: {}, path: '/activities/123' };
+		const to = { meta: {}, path: '/activities/123/forms' };
 
 		const result =
 			!user.value && !(to.meta as any).public && to.path !== '/' ? '/' : true;
