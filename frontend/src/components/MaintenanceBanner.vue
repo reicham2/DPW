@@ -1,4 +1,15 @@
 <template>
+  <div v-if="showActiveMaintenance" class="banner-wrap">
+    <div class="maintenance-banner" role="status">
+      <span class="maintenance-banner-icon" aria-hidden="true">🔧</span>
+      <span class="maintenance-banner-text">
+        <strong>Wartungsmodus ist aktiv.</strong>
+        Nur Admins können sich anmelden.
+        <template v-if="message"> {{ message }}</template>
+      </span>
+    </div>
+  </div>
+
   <div v-if="showMaintenanceNotice" class="banner-wrap">
     <div class="maintenance-banner" role="alert">
       <span class="maintenance-banner-icon">🔧</span>
@@ -28,6 +39,7 @@
 import { ref, computed, watch } from 'vue'
 import { maintenanceAnnounced, maintenanceScheduledStart, maintenanceScheduledEnd, maintenanceMessage } from '../composables/useMaintenance'
 import { maintenanceActive } from '../composables/useMaintenance'
+import { user } from '../composables/useAuth'
 
 const dismissedMaintenance = ref(false)
 const dismissedReload = ref(false)
@@ -45,6 +57,11 @@ watch(
       dismissedReload.value = false
     }
   },
+  { immediate: true },
+)
+
+const showActiveMaintenance = computed(
+  () => maintenanceActive.value && user.value?.role === 'admin',
 )
 
 const startsWithin24Hours = computed(() => {
