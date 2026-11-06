@@ -45,8 +45,8 @@ export function serializeProgramDescription(el: HTMLElement): string {
 	const clone = el.cloneNode(true) as HTMLElement;
 	clone.querySelectorAll('[data-program-image-upload]').forEach(node => node.remove());
 	clone.querySelectorAll('img[data-program-image]').forEach(img => {
-		const id = img.getAttribute('data-program-image') ?? '';
-		if (programImageId(`/api/program-images/${id}`)) img.setAttribute('src', `/api/program-images/${id}`);
+		const id = programImageId(`/api/program-images/${img.getAttribute('data-program-image') ?? ''}`);
+		if (id) img.setAttribute('src', `/api/program-images/${encodeURIComponent(id)}`);
 		if (img.hasAttribute('data-program-image-error')) img.removeAttribute('title');
 	});
 	return sanitizeProgramDescription(clone.innerHTML);
@@ -175,11 +175,11 @@ export function prepareProgramPaste(data: DataTransfer): ProgramPaste {
 		return { ...pasted, html: wrapper.innerHTML + pasted.html };
 	}
 	const template = document.createElement('template');
-	template.innerHTML = html;
+	template.innerHTML = sanitizeHtml(html, true);
 	const unsupportedMarkup = removeUnsupportedImageMarkup(template.content);
 	template.content.querySelectorAll<HTMLImageElement>('img[data-program-image]').forEach(img => {
 		const id = programImageId(`/api/program-images/${img.dataset.programImage ?? ''}`);
-		if (id && img.getAttribute('src')?.startsWith('blob:')) img.setAttribute('src', `/api/program-images/${id}`);
+		if (id && img.getAttribute('src')?.startsWith('blob:')) img.setAttribute('src', `/api/program-images/${encodeURIComponent(id)}`);
 	});
 	template.content.querySelectorAll('*').forEach(el => {
 		el.removeAttribute('data-program-image');

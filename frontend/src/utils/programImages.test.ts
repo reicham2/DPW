@@ -68,6 +68,9 @@ describe('inline program images', () => {
 		const paste = prepareProgramPaste(clipboard(`<img src="blob:program-image" data-program-image="${id}" onerror="alert(1)">`));
 		expect(paste.html).toBe(`<img src="${path}">`);
 		expect(paste.uploads).toHaveLength(0);
+		const el = document.createElement('div');
+		el.innerHTML = '<img src="blob:unowned" data-program-image="javascript:alert(1)">';
+		expect(serializeProgramDescription(el)).toBe('<img>');
 	});
 
 	it('inserts at the caret and never stores upload placeholders or runtime blob URLs', async () => {
