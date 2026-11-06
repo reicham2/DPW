@@ -65,6 +65,61 @@ describe('useMailTemplates', () => {
 
 		const tpl = await m.saveTemplate('Pfadi', 'S', 'B', ['a@x'], ['c@x']);
 		expect(tpl?.id).toBe('p');
+		expect(apiFetchMock).toHaveBeenCalledWith(
+			'/api/mail-templates/Pfadi',
+			expect.objectContaining({
+				method: 'PUT',
+				body: JSON.stringify({ subject: 'S', body: 'B', recipients: ['a@x'], cc: ['c@x'] }),
+			}),
+		);
+	});
+
+	it('creates, updates, and deletes named templates by id', async () => {
+		const m = useMailTemplates();
+		apiFetchMock
+			.mockResolvedValueOnce(response({ id: 't1', name: 'Eltern', is_default: true }))
+			.mockResolvedValueOnce(response({ id: 't1', name: 'Eltern aktualisiert', is_default: false }))
+			.mockResolvedValueOnce(response({ ok: true }));
+
+		await m.createTemplate('Eltern', 'Pfadi', 'Betreff', '<p>Text</p>', ['a@x'], ['c@x'], true);
+		expect(apiFetchMock).toHaveBeenNthCalledWith(
+			1,
+			'/api/mail-templates',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({
+					name: 'Eltern',
+					department: 'Pfadi',
+					subject: 'Betreff',
+					body: '<p>Text</p>',
+					recipients: ['a@x'],
+					cc: ['c@x'],
+					is_default: true,
+				}),
+			}),
+		);
+		await m.updateTemplate('t1', 'Eltern aktualisiert', 'Neu', '<p>Neu</p>', [], [], false);
+		expect(apiFetchMock).toHaveBeenNthCalledWith(
+			2,
+			'/api/mail-templates/t1',
+			expect.objectContaining({
+				method: 'PUT',
+				body: JSON.stringify({
+					name: 'Eltern aktualisiert',
+					subject: 'Neu',
+					body: '<p>Neu</p>',
+					recipients: [],
+					cc: [],
+					is_default: false,
+				}),
+			}),
+		);
+		await expect(m.deleteTemplate('t1')).resolves.toBe(true);
+		expect(apiFetchMock).toHaveBeenNthCalledWith(
+			3,
+			'/api/mail-templates/t1',
+			{ method: 'DELETE' },
+		);
 	});
 
 	it('sendMail posts graph token and toggles sending flag', async () => {

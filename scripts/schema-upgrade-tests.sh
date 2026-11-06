@@ -81,6 +81,29 @@ VALUES ('00000000-0000-0000-0000-000000000001', 'Bestehende Aktivität', '2026-0
 INSERT INTO programs (id, activity_id, duration_minutes, title, description, position)
 VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001',
         30, 'Programm', 'Beschreibung', 1);
+CREATE TABLE departments (
+    name TEXT PRIMARY KEY,
+    color TEXT NOT NULL DEFAULT '#6b7280',
+    midata_group_id TEXT,
+    midata_child_roles TEXT[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO departments (name) VALUES ('Legacy mail department');
+CREATE TABLE mail_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    department TEXT NOT NULL UNIQUE REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    recipients TEXT[] NOT NULL DEFAULT '{}',
+    cc TEXT[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO mail_templates (id, department, subject, body, recipients, cc)
+VALUES ('00000000-0000-0000-0000-000000000004', 'Legacy mail department',
+        'Custom legacy subject', '<p>Custom legacy body</p>',
+        ARRAY['legacy@example.invalid'], ARRAY['copy@example.invalid']);
 DO $$
 BEGIN
     IF EXISTS (
@@ -118,6 +141,17 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Existing user did not receive the subscribed 24h reminder default';
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM mail_templates
+        WHERE department = 'Legacy mail department'
+          AND name = 'Standard' AND is_default
+          AND subject = 'Custom legacy subject'
+          AND body = '<p>Custom legacy body</p>'
+          AND recipients = ARRAY['legacy@example.invalid']
+          AND cc = ARRAY['copy@example.invalid']
+    ) THEN
+        RAISE EXCEPTION 'Existing mail template content was not preserved as the default';
+    END IF;
 END $$;
 UPDATE activities SET guiding_thread = E'Erste Zeile\nZweite Zeile'
 WHERE id = '00000000-0000-0000-0000-000000000001';
@@ -141,6 +175,17 @@ BEGIN
             AND NOT notify_activity_reminder AND activity_reminder_hours = 2
     ) THEN
         RAISE EXCEPTION 'Repeated schema sync changed the reminder preferences';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM mail_templates
+        WHERE department = 'Legacy mail department'
+          AND name = 'Standard' AND is_default
+          AND subject = 'Custom legacy subject'
+          AND body = '<p>Custom legacy body</p>'
+          AND recipients = ARRAY['legacy@example.invalid']
+          AND cc = ARRAY['copy@example.invalid']
+    ) THEN
+        RAISE EXCEPTION 'Repeated schema sync changed the existing mail template';
     END IF;
 END $$;
 ROLLBACK;

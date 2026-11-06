@@ -5,11 +5,13 @@
 struct MailTemplate
 {
     std::string id;
+    std::string name;
     std::string department;
     std::string subject;
     std::string body;
     std::vector<std::string> recipients;
     std::vector<std::string> cc;
+    bool is_default{false};
     std::string created_at;
     std::string updated_at;
 };
