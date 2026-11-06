@@ -11,6 +11,8 @@ import SharedActivityPage from '../pages/SharedActivityPage.vue';
 import ActivityFormsPage from '../pages/ActivityFormsPage.vue';
 import TemplatesPage from '../pages/TemplatesPage.vue';
 import IdeaBoxPage from '../pages/IdeaBoxPage.vue';
+import CampListPage from '../pages/CampListPage.vue';
+import CampDetailPage from '../pages/CampDetailPage.vue';
 import SetupPage from '../pages/SetupPage.vue';
 import MaintenancePage from '../pages/MaintenancePage.vue';
 import { user, authLoading } from '../composables/useAuth';
@@ -32,6 +34,8 @@ export const router = createRouter({
 		{ path: '/ideenkiste', redirect: '/ideas' },
 		{ path: '/mail-templates', redirect: '/templates' },
 		{ path: '/form-templates', redirect: '/templates' },
+		{ path: '/camps', component: CampListPage },
+		{ path: '/camps/:id', component: CampDetailPage },
 		{ path: '/stats', component: StatsPage },
 		{ path: '/profile', component: ProfilePage },
 		{ path: '/admin', component: AdminPage },

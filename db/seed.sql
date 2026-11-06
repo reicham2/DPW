@@ -885,3 +885,73 @@ JOIN activities a ON a.id = sf.activity_id
 CROSS JOIN generate_series(1, 24) AS gs(n)
 WHERE a.date < CURRENT_DATE
 ON CONFLICT (id) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- Camp Planning Seed (Sommerlager 2026)
+-- ════════════════════════════════════════════════════════════════════════════
+INSERT INTO camps (id, title, short_title, motto, kind, organizer, address_city, color, department, created_by)
+VALUES (
+    'c1000000-0000-0000-0000-000000000001',
+    'Sommerlager 2026', 'SoLa26', 'Piraten der sieben Meere', 'Zeltlager',
+    'Pfadi Hue', 'Flüeli-Ranft', '#0080ff', 'Pfadi',
+    'a0000000-0000-0000-0000-000000000001'
+) ON CONFLICT (id) DO NOTHING;
+
+-- Categories
+INSERT INTO camp_categories (id, camp_id, short_name, name, color, numbering_style, position) VALUES
+    ('c1a00000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'LP', 'Lagerprogramm', '#0080ff', '1', 0),
+    ('c1a00000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000001', 'LA', 'Lageraktivität', '#065f46', 'a', 1),
+    ('c1a00000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000001', 'ES', 'Essen', '#92400e', '1', 2)
+ON CONFLICT (id) DO NOTHING;
+
+-- Collaborations (RF-Liste)
+INSERT INTO camp_collaborations (id, camp_id, user_id, display_name, role, camp_role, abbreviation, color, status) VALUES
+    ('c1b00000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Admin User', 'manager', 'Lagerleitung', 'LL', '#0080ff', 'established'),
+    ('c1b00000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000003', 'Leiter Eins', 'member', 'Programm', 'PR', '#065f46', 'established'),
+    ('c1b00000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000004', 'Leiter Zwei', 'member', 'Küche', 'KÜ', '#92400e', 'established')
+ON CONFLICT (id) DO NOTHING;
+
+-- Periods (two non-overlapping blocks)
+INSERT INTO camp_periods (id, camp_id, description, start_date, end_date, position) VALUES
+    ('c1c00000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'Hauptlager', CURRENT_DATE + 30, CURRENT_DATE + 36, 0),
+    ('c1c00000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000001', 'Vorlager', CURRENT_DATE + 28, CURRENT_DATE + 29, 1)
+ON CONFLICT (id) DO NOTHING;
+
+-- Activities + schedule entries (some overlapping on day 1)
+INSERT INTO camp_activities (id, camp_id, category_id, title, location) VALUES
+    ('c1d00000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'c1a00000-0000-0000-0000-000000000003', 'Zmorge', 'Küchenzelt'),
+    ('c1d00000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000001', 'c1a00000-0000-0000-0000-000000000001', 'Geländespiel', 'Wald'),
+    ('c1d00000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000001', 'c1a00000-0000-0000-0000-000000000002', 'Bastel-Workshop', 'Lagerplatz')
+ON CONFLICT (id) DO NOTHING;
+
+-- Day-1 schedule: Zmorge 08:00-09:00 full width; then two overlapping at 09:30
+INSERT INTO schedule_entries (id, activity_id, period_id, period_offset, length, left_fraction, width_fraction) VALUES
+    ('c1e00000-0000-0000-0000-000000000001', 'c1d00000-0000-0000-0000-000000000001', 'c1c00000-0000-0000-0000-000000000001', 480, 60, 0, 1),
+    ('c1e00000-0000-0000-0000-000000000002', 'c1d00000-0000-0000-0000-000000000002', 'c1c00000-0000-0000-0000-000000000001', 570, 120, 0, 0.5),
+    ('c1e00000-0000-0000-0000-000000000003', 'c1d00000-0000-0000-0000-000000000003', 'c1c00000-0000-0000-0000-000000000001', 570, 120, 0.5, 0.5)
+ON CONFLICT (id) DO NOTHING;
+
+-- Activity responsibles
+INSERT INTO camp_activity_responsibles (activity_id, collaboration_id) VALUES
+    ('c1d00000-0000-0000-0000-000000000001', 'c1b00000-0000-0000-0000-000000000003'),
+    ('c1d00000-0000-0000-0000-000000000002', 'c1b00000-0000-0000-0000-000000000002'),
+    ('c1d00000-0000-0000-0000-000000000003', 'c1b00000-0000-0000-0000-000000000002')
+ON CONFLICT DO NOTHING;
+
+-- Content nodes for Geländespiel: root ColumnLayout → SingleText (goal) + Storyboard (Geschichte)
+INSERT INTO content_nodes (id, activity_id, parent_id, slot, position, content_type, instance_name, is_root, data) VALUES
+    ('c1f00000-0000-0000-0000-000000000001', 'c1d00000-0000-0000-0000-000000000002', NULL, '', 0, 'ColumnLayout', '', true, '{"columns":[{"slot":"1","width":12}]}'),
+    ('c1f00000-0000-0000-0000-000000000002', 'c1d00000-0000-0000-0000-000000000002', 'c1f00000-0000-0000-0000-000000000001', '1', 0, 'SingleText', 'Ziel', false, '{"html":"<p>Die TN lernen Teamarbeit beim Geländespiel.</p>"}'),
+    ('c1f00000-0000-0000-0000-000000000003', 'c1d00000-0000-0000-0000-000000000002', 'c1f00000-0000-0000-0000-000000000001', '1', 1, 'Storyboard', 'Geschichte', false, '{"sections":[{"id":"s1","column1":"<p>00:00</p>","column2":"<p>Die Piraten suchen den Schatz.</p>","position":0}]}'),
+    ('c1f00000-0000-0000-0000-000000000004', 'c1d00000-0000-0000-0000-000000000002', 'c1f00000-0000-0000-0000-000000000001', '1', 2, 'MaterialNode', 'Material', false, '{}')
+ON CONFLICT (id) DO NOTHING;
+
+-- Material list + items
+INSERT INTO camp_material_lists (id, camp_id, collaboration_id, name) VALUES
+    ('c1900000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'c1b00000-0000-0000-0000-000000000002', 'Programm-Material')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO camp_material_items (material_list_id, content_node_id, period_id, article_name, quantity, unit) VALUES
+    ('c1900000-0000-0000-0000-000000000001', 'c1f00000-0000-0000-0000-000000000004', 'c1c00000-0000-0000-0000-000000000001', 'Schatzkarte', 5, 'Stk'),
+    ('c1900000-0000-0000-0000-000000000001', 'c1f00000-0000-0000-0000-000000000004', 'c1c00000-0000-0000-0000-000000000001', 'Seil', 2, 'm')
+ON CONFLICT DO NOTHING;

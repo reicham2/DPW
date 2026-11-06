@@ -10,4 +10,5 @@
 #include "core/models/ideenkiste.hpp"
 #include "core/models/share.hpp"
 #include "core/models/location.hpp"
+#include "core/models/camp.hpp"
 #include "core/models/serializers.hpp"
