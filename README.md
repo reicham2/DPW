@@ -20,6 +20,59 @@ Published tags include:
 - `sha-<short-commit>`
 - release tag name (for example `v1.2.3`)
 
+### Persisted environment upgrade check
+
+Every pull request to `main` also runs **Upgrade Compatibility / Persisted
+Environment Upgrade**, independently of the fresh-install smoke/API suite.
+The baseline is the most recent successful `CI` push run on `main`, whose
+backend and frontend images have both been published. This follows production's
+`latest` convention without racing two independently updated `latest` tags:
+the check pulls matching `sha-<short-commit>` images, verifies both full revision
+labels, and pins their digests for the entire run. A missing baseline or image
+fails the check; it never silently substitutes a fresh install or another version.
+The baseline revision, image digests and candidate merge revision are recorded
+in the Actions job summary. This covers the previous published main version,
+not every historical release or PostgreSQL major-version upgrade.
+
+The check starts all four services using the baseline revision's production Compose
+file (including its PostgreSQL/Redis versions) with isolated configuration,
+no Docker socket access, and a random loopback HTTP port. The old backend initializes
+the database before linked users, permissions, activities, programs, binary
+attachments, forms, responses and encrypted settings are inserted. It then
+recreates the containers using the PR Compose file and production PR images (Release, debug authentication
+disabled), retaining the same PostgreSQL volume and cluster identifier.
+
+It verifies container health and restart counts, frontend and proxied backend
+HTTP health, pre-upgrade values and relationships, and secret decryption with the
+unchanged configuration key. The backend image's bundled SQL must match the PR's
+`db/init.sql`, preventing a stale packaged schema from becoming its own oracle.
+A separate fresh PR environment supplies a canonical
+schema reference (tables, columns/defaults, constraints, indexes, views, triggers,
+functions, enums and sequences). The upgraded database must match it without
+manually replaying SQL. A backend restart checks schema-sync idempotence.
+Negative controls must detect changed data, schema drift and a stopped container.
+Logs, schema comparisons and expected negative-control failures are retained as
+the `upgrade-diagnostics` artifact, including on failure; test volumes are removed.
+
+To reproduce with Docker Compose 2.24.4+ and Bash, first build production candidate
+images using `backend/Dockerfile` (repository-root context) and
+`frontend/Dockerfile` (frontend context), then run:
+
+```bash
+BASELINE_BACKEND_IMAGE=ghcr.io/reicham2/dpw-backend@sha256:<digest> \
+BASELINE_FRONTEND_IMAGE=ghcr.io/reicham2/dpw-frontend@sha256:<digest> \
+BASELINE_COMPOSE_FILE=/path/to/baseline/docker-compose.yml \
+CANDIDATE_BACKEND_IMAGE=dpw-upgrade-backend:candidate \
+CANDIDATE_FRONTEND_IMAGE=dpw-upgrade-frontend:candidate \
+bash scripts/environment-upgrade-tests.sh
+```
+
+Only disposable test data is used; no deployment secrets are required. The script
+generates a temporary encryption key shared across old, upgraded and reference
+environments. Set `UPGRADE_RESULTS_DIR` to retain diagnostics in a chosen directory.
+When adding intentional data transformations, update the fixtures/assertions to
+express that migration explicitly rather than weakening the preservation check.
+
 ## Schnellstart
 
 ```bash
