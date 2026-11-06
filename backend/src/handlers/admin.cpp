@@ -1,5 +1,6 @@
 #include "handlers/handler_deps.hpp"
 #include "infra/cron_scheduler.hpp"
+#include "infra/audit.hpp"
 
 #include <sys/wait.h>
 #include <unistd.h>
@@ -160,11 +161,16 @@ void handle_put_admin_cron_job(HttpRes *res, HttpReq *req, Database &db, CronSch
             send_json(res, 400, R"({"error":"enabled muss ein Boolean sein"})");
             return;
         }
+        nlohmann::json previous = nullptr;
+        const auto status = cron.status();
+        for (const auto &job : status["jobs"])
+            if (job["id"] == id) previous = {{"enabled", job["enabled"]}};
         if (!cron.set_enabled(id, body["enabled"].get<bool>()))
         {
             send_json(res, 404, R"({"error":"Job nicht gefunden"})");
             return;
         }
+        audit_record_change(res, previous, {{"enabled", body["enabled"]}});
         send_json(res, 200, cron.status().dump());
     });
 }
@@ -667,6 +673,11 @@ void handle_put_admin_app_setting(HttpRes *res, HttpReq *req, Database &db)
                 return;
             }
 
+            nlohmann::json setting_details = {{"setting_operation", is_clear_operation ? "Zurückgesetzt" : "Gesetzt"}};
+            if (key == app_config::kAuditRetentionDays)
+                setting_details["retention_days"] = app_config::get_int_or(db, key, 14, 1, 3650);
+            audit_record_change(res, nullptr, setting_details);
+
             if (key == app_config::kMidataApiKey ||
                 key == app_config::kMidataApiUrlTemplate ||
                 key == app_config::kMidataApiTimeoutMs) {
@@ -786,8 +797,15 @@ void handle_patch_department(HttpRes *res, HttpReq *req, Database &db)
                     }
                 }
             }
+            nlohmann::json previous = nullptr;
+            for (const auto &dept : db.list_departments())
+                if (dept.name == name)
+                    previous = {{"name", dept.name}, {"color", dept.color},
+                                {"midata_group_id", dept.midata_group_id ? nlohmann::json(*dept.midata_group_id) : nlohmann::json(nullptr)}};
             auto d = db.update_department(name, new_name, color, midata_group_id);
             if (!d) { send_json(res, 404, R"({"error":"Abteilung nicht gefunden"})"); return; }
+            audit_record_change(res, previous, {{"name", d->name}, {"color", d->color},
+                                {"midata_group_id", d->midata_group_id ? nlohmann::json(*d->midata_group_id) : nlohmann::json(nullptr)}});
             cache_bump_version(db, "departments");
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
@@ -836,6 +854,9 @@ void handle_delete_department(HttpRes *res, HttpReq *req, Database &db, WebSocke
                 send_json(res, 404, R"({"error":"Stufe nicht gefunden"})");
                 return;
             }
+            audit_record_change(res, nlohmann::json::object(),
+                                {{"transfer_activities_to", transfer_activities_to}, {"delete_activities", delete_activities},
+                                 {"transfer_users_to", transfer_users_to}, {"delete_users", delete_users}});
             nlohmann::json msg = {{"event", "department_deleted"}, {"name", name}};
             wm.broadcast(msg.dump());
             cache_bump_version(db, "departments");
@@ -926,8 +947,13 @@ void handle_patch_role(HttpRes *res, HttpReq *req, Database &db)
         std::string new_name = j.value("name", name);
         std::string color = j.value("color", "#6b7280");
         try {
+            nlohmann::json previous = nullptr;
+            for (const auto &role : db.list_roles())
+                if (role.name == name)
+                    previous = {{"name", role.name}, {"color", role.color}, {"sort_order", role.sort_order}};
             auto r = db.update_role(name, new_name, color);
             if (!r) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
+            audit_record_change(res, previous, {{"name", r->name}, {"color", r->color}, {"sort_order", r->sort_order}});
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             cache_bump_version(db, "mail_templates");
@@ -966,6 +992,7 @@ void handle_post_role_move(HttpRes *res, HttpReq *req, Database &db)
         try {
             bool ok = db.move_role(name, direction == "up");
             if (!ok) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
+            audit_record_change(res, nlohmann::json::object(), {{"direction", direction}});
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             cache_bump_version(db, "mail_templates");
@@ -1002,6 +1029,7 @@ void handle_post_roles_reorder(HttpRes *res, HttpReq *req, Database &db)
         }
         try {
             db.reorder_roles(names);
+            audit_record_change(res, nlohmann::json::object(), {{"order", names}});
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             cache_bump_version(db, "mail_templates");
@@ -1049,6 +1077,8 @@ void handle_delete_role(HttpRes *res, HttpReq *req, Database &db, WebSocketManag
         try {
             bool ok = db.delete_role(name, transfer_users_to, del_users);
             if (!ok) { send_json(res, 404, R"({"error":"Rolle nicht gefunden"})"); return; }
+            audit_record_change(res, nlohmann::json::object(),
+                                {{"transfer_users_to", transfer_users_to}, {"delete_users", del_users}});
             nlohmann::json msg = {{"event", "role_deleted"}, {"name", name}};
             wm.broadcast(msg.dump());
             cache_bump_version(db, "activities");
@@ -1155,6 +1185,7 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
         bool can_write_all_depts = activity_create_scope == "all";
 
         try {
+            auto previous = db.get_role_permission(role);
             bool ok = db.update_role_permission(role, can_read_own_dept, can_write_own_dept,
                                                 can_read_all_depts, can_write_all_depts,
                                                 activity_read_scope, activity_create_scope, activity_edit_scope,
@@ -1167,6 +1198,10 @@ void handle_put_role_permission(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 404, R"({"error":"Rolle nicht gefunden"})");
                 return;
             }
+            auto updated = db.get_role_permission(role);
+            if (updated)
+                audit_record_change(res, previous ? role_perm_to_json(*previous) : nlohmann::json(nullptr),
+                                    role_perm_to_json(*updated));
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             cache_bump_version(db, "mail_templates");
@@ -1223,7 +1258,13 @@ void handle_put_role_dept_access(HttpRes *res, HttpReq *req, Database &db)
         bool can_read = j.value("can_read", false);
         bool can_write = j.value("can_write", false);
         try {
+            nlohmann::json previous = {{"role", role}, {"department", department}, {"can_read", false}, {"can_write", false}};
+            for (const auto &entry : db.list_role_dept_access(role))
+                if (entry.department == department)
+                    previous = {{"role", role}, {"department", department}, {"can_read", entry.can_read}, {"can_write", entry.can_write}};
             db.set_role_dept_access(role, department, can_read, can_write);
+            audit_record_change(res, previous, {{"role", role}, {"department", department},
+                                               {"can_read", can_read}, {"can_write", can_write}});
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             cache_bump_version(db, "mail_templates");

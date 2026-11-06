@@ -27,7 +27,8 @@ public:
     void set_audit_resource(const std::string &id, const std::string &resource_type,
                             const std::string &resource_id);
     void finish_audit_event(const std::string &id, const std::string &outcome, int status,
-                           const std::string &created_id);
+                           const std::string &created_id, const nlohmann::json &details = nlohmann::json::object());
+    int purge_audit_events_older_than_days(int days);
     nlohmann::json list_audit_events(int limit, const std::string &before,
                                     const std::string &actor, const std::string &outcome);
 

@@ -13,6 +13,11 @@ interface AuditEvent {
   resource_id: string
   outcome: 'pending' | 'completed' | 'rejected' | 'unknown'
   http_status: number | null
+  details?: {
+    kind?: 'created' | 'deleted' | 'changed' | 'saved'
+    resource_name?: string
+    changes?: { field: string; label: string; redacted: boolean; before?: string | number | boolean | null; after?: string | number | boolean | null }[]
+  }
 }
 interface AuditPage {
   entries: AuditEvent[]
@@ -36,6 +41,15 @@ const resources: Record<string, string> = {
   user: 'Benutzer', system: 'System', role: 'Rolle', department: 'Abteilung',
   activity: 'Aktivität', location: 'Ort', material: 'Material',
   attachment: 'Anhang', template: 'Vorlage', mail: 'Mail', idea: 'Idee',
+}
+function valueLabel(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'Ja' : 'Nein'
+  const values: Record<string, string> = {
+    none: 'Keine', all: 'Alle', own: 'Eigene', own_dept: 'Eigene Stufe', same_dept: 'Gleiche Stufe',
+    up: 'Nach oben', down: 'Nach unten', minutes: 'Minuten', clock: 'Uhrzeit',
+  }
+  return values[String(value)] || String(value)
 }
 
 async function load(more = false) {
@@ -67,7 +81,7 @@ onMounted(() => load())
 <template>
   <section class="audit-log">
     <h2>Audit Log</h2>
-    <p>Wichtige Benutzeraktionen, neueste zuerst. Einträge zeigen den Ausgang der Anfrage, nicht jede einzelne Datenänderung.</p>
+    <p>Wichtige Benutzeraktionen, neueste zuerst. Details zeigen gespeicherte Änderungen; sensible Inhalte werden nicht übernommen.</p>
     <p class="audit-note">Bei Fehlern können Teilaktionen bereits ausgeführt sein. „Ausgang offen“ bedeutet laufend oder unterbrochen; vor Wiederholung den Zustand prüfen.</p>
     <form class="audit-filters" @submit.prevent="load()">
       <label>Benutzer (Name oder ID)
@@ -86,13 +100,26 @@ onMounted(() => load())
     <p v-else-if="!entries.length && !error">Keine Audit-Einträge gefunden.</p>
     <div v-if="entries.length" class="audit-table">
       <table>
-        <thead><tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Ressource</th><th>Ergebnis</th></tr></thead>
+        <thead><tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Ressource</th><th>Details</th><th>Ergebnis</th></tr></thead>
         <tbody>
           <tr v-for="entry in entries" :key="entry.id">
             <td>{{ new Date(entry.occurred_at).toLocaleString('de-DE') }}</td>
             <td>{{ entry.actor_name || 'Ohne verifizierte Anmeldung' }}<small v-if="entry.actor_id">{{ entry.actor_id }}</small></td>
             <td>{{ entry.action }}</td>
-            <td>{{ resources[entry.resource_type] || entry.resource_type }}<small v-if="entry.resource_id">{{ entry.resource_id }}</small></td>
+            <td>{{ resources[entry.resource_type] || entry.resource_type }}<span v-if="entry.details?.resource_name">: {{ entry.details.resource_name }}</span><small v-if="entry.resource_id">{{ entry.resource_id }}</small></td>
+            <td class="audit-details">
+              <template v-if="entry.details?.changes?.length">
+                <div v-for="change in entry.details.changes" :key="change.field">
+                  <strong>{{ change.label + ': ' }}</strong>
+                  <span v-if="change.redacted"> {{ entry.details.kind === 'deleted' ? 'gelöscht' : entry.details.kind === 'changed' ? 'geändert' : 'gespeichert' }} (Inhalt geschützt)</span>
+                  <span v-else-if="entry.details.kind === 'saved' || entry.details.kind === 'created'"> {{ valueLabel(change.after) }}</span>
+                  <span v-else-if="entry.details.kind === 'deleted'"> {{ valueLabel(change.before) }} → gelöscht</span>
+                  <span v-else> {{ valueLabel(change.before) }} → {{ valueLabel(change.after) }}</span>
+                </div>
+              </template>
+              <span v-else-if="entry.details?.kind === 'changed'">Keine protokollierbaren Feldänderungen.</span>
+              <span v-else class="audit-note">Keine Detaildaten vorhanden (älterer Eintrag oder Aktion ohne Feldvergleich).</span>
+            </td>
             <td>{{ labels[entry.outcome] }}<small v-if="entry.http_status">HTTP {{ entry.http_status }}</small></td>
           </tr>
         </tbody>
@@ -112,4 +139,5 @@ input, select { padding: .5rem; border: 1px solid var(--border, #cbd5e1); border
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: .75rem; border-bottom: 1px solid var(--border, #cbd5e1); vertical-align: top; }
 small { display: block; overflow-wrap: anywhere; max-width: 22rem; }
+.audit-details { min-width: 16rem; max-width: 36rem; overflow-wrap: anywhere; }
 </style>

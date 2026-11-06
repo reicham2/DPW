@@ -745,6 +745,7 @@ void handle_post_send_mail(HttpRes *res, HttpReq *req, Database &db, WebSocketMa
             audit_activity_resource(res, activity_id);
             bool ok = db.send_mail(graph_token, from_email, to_emails, cc_emails, subject, body_html);
             if (ok) {
+                audit_record_change(res, nullptr, {{"recipient_count", to_emails.size()}, {"cc_count", cc_emails.size()}, {"status", "sent"}});
                 // Log sent mail if activity_id was provided
                 if (!activity_id.empty()) {
                     std::string sender_id = current_user ? current_user->id : "";

@@ -356,11 +356,13 @@ void handle_patch_admin_user(HttpRes *res, HttpReq *req, Database &db)
         }
 
         try {
+            auto previous = db.get_user_by_id(target_id);
             auto user = db.update_user_admin(target_id, display_name, department, role);
             if (!user) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
+            audit_record_change(res, previous ? user_to_json(*previous) : nlohmann::json(nullptr), user_to_json(*user));
             cache_bump_version(db, "activities");
             cache_bump_version(db, "activity");
             cache_bump_version(db, "mail_templates");
@@ -441,6 +443,7 @@ void handle_delete_admin_user(HttpRes *res, HttpReq *req, Database &db)
 
     if (db.delete_user(target_id))
     {
+        audit_record_change(res, user_to_json(*target), nullptr);
         cache_bump_version(db, "activities");
         cache_bump_version(db, "activity");
         cache_bump_version(db, "mail_templates");
@@ -593,6 +596,7 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
                 return;
             }
+            audit_record_change(res, user_to_json(*current_user), user_to_json(*user));
             send_json(res, 200, user_to_json(*user).dump());
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);

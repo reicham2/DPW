@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import net from 'node:net'
+import { readFileSync } from 'node:fs'
 
 const base = process.env.AUDIT_BASE_URL
 const backendBase = process.env.AUDIT_BACKEND_URL || base
@@ -61,7 +62,12 @@ try {
   assert.equal(entry.resource_id, locationId)
   assert.equal(entry.http_status, 201)
   assert(entry.finished_at)
-  assert(!JSON.stringify(entry).includes(locationName), 'no request content')
+  assert.equal(entry.details.resource_name, locationName)
+  assert.equal(entry.details.changes[0].after, locationName, 'allowlisted name is readable')
+  assert.equal((await request(`/admin/locations/${locationId}`, 'PATCH', { name: `${locationName}-renamed` })).status, 200)
+  assert.deepEqual(latest().details.changes[0], {
+    field: 'name', label: 'Name', redacted: false, before: locationName, after: `${locationName}-renamed`,
+  })
 
   result = await request('/admin/materials', 'POST', { name: materialName })
   assert.equal(result.status, 201, result.text)
@@ -115,6 +121,29 @@ try {
   assert(!JSON.stringify(latest()).includes(secret), 'configuration values must never reach audit rows')
   assert.equal(latest().resource_id, 'github.token')
   assert.equal((await request('/admin/app-settings/github.token', 'PUT', { value: null })).status, 200)
+  const retention = (await request('/admin/app-settings')).data.find(item => item.key === 'audit.retention_days')
+  assert.equal(retention.value, '14')
+  for (const value of ['0', '3651', '14days', '1.5']) {
+    assert.equal((await request('/admin/app-settings/audit.retention_days', 'PUT', { value })).status, 400)
+  }
+  assert.equal((await request('/admin/cron-jobs/audit-retention', 'PUT', { enabled: false })).status, 200)
+  assert.equal((await request('/admin/app-settings/audit.retention_days', 'PUT', { value: '7' })).status, 200)
+  assert.equal(latest().details.changes.find(change => change.field === 'retention_days').after, 7)
+  sql(`INSERT INTO audit_events(action,resource_type,resource_id,occurred_at) VALUES
+    ('cron-retention-test','system','cron-retention-old',NOW() - INTERVAL '8 days'),
+    ('cron-retention-test','system','cron-retention-recent',NOW() - INTERVAL '6 days')`)
+  assert.equal((await request('/admin/cron-jobs/audit-retention', 'PUT', { enabled: true })).status, 200)
+  for (let attempt = 0; attempt < 100; ++attempt) {
+    if (sql("SELECT count(*) FROM audit_events WHERE resource_id='cron-retention-old'") === '0') break
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  assert.equal(sql("SELECT count(*) FROM audit_events WHERE resource_id='cron-retention-old'"), '0', 'scheduler must apply configured retention')
+  assert.equal(sql("SELECT count(*) FROM audit_events WHERE resource_id='cron-retention-recent'"), '1', 'scheduler must retain recent entries')
+  sql("DELETE FROM audit_events WHERE action='cron-retention-test'")
+  assert.equal((await request('/admin/app-settings/audit.retention_days', 'PUT', { value: null })).status, 200)
+  sql(readFileSync(new URL('../backend/tests/test_audit_retention.sql', import.meta.url), 'utf8'))
+  const jobs = (await request('/admin/cron-jobs')).data.jobs
+  assert(jobs.some(job => job.id === 'audit-retention' && job.interval_minutes === 60))
 
   // Success for a compound activity mutation represents one whole request.
   result = await request('/activities', 'POST', {
@@ -123,6 +152,15 @@ try {
   })
   assert.equal(result.status, 201, result.text)
   activityId = result.data.id
+  result = await request(`/activities/${activityId}`, 'PATCH', {
+    title: `${locationName}-updated`, date: '2027-01-02', start_time: '14:00', end_time: '16:00',
+    department: 'Pfadi', responsible: [admin], programs: [], goal: secret,
+  })
+  assert.equal(result.status, 200, result.text)
+  assert.equal(latest().details.changes.find(change => change.field === 'title').before, locationName)
+  assert.equal(latest().details.changes.find(change => change.field === 'title').after, `${locationName}-updated`)
+  assert.equal(latest().details.changes.find(change => change.field === 'goal').redacted, true)
+  assert(!JSON.stringify(latest()).includes(secret), 'activity free text must be protected')
   for (const [key, value] of [['wp.url', 'http://127.0.0.1:1'], ['wp.user', 'audit-test'], ['wp.app_password', 'audit-test-only']]) {
     assert.equal((await request(`/admin/app-settings/${key}`, 'PUT', { value })).status, 200)
   }
@@ -188,15 +226,27 @@ try {
   fixtureUserId = randomUUID()
   sql(`INSERT INTO users(id,microsoft_oid,email,display_name,department,role)
        VALUES ('${fixtureUserId}','audit-${fixtureUserId}','audit@example.invalid','Audit fixture','Pfadi','Mitglied')`)
+  assert.equal((await request(`/admin/users/${fixtureUserId}`, 'PATCH', {
+    display_name: 'Audit fixture renamed', department: 'Pfadi', role: 'Leiter',
+    access_token: secret, unknown_field: secret,
+  })).status, 200)
+  const userChange = latest()
+  assert.equal(userChange.details.resource_name, 'Audit fixture renamed')
+  assert.deepEqual(userChange.details.changes.find(change => change.field === 'role'), {
+    field: 'role', label: 'Rolle', redacted: false, before: 'Mitglied', after: 'Leiter',
+  })
+  assert(!JSON.stringify(userChange).includes(secret), 'unknown request fields and tokens must not be stored')
   assert.equal((await request('/auth/me', 'POST', undefined, fixtureUserId)).status, 200)
   const fixtureEventId = latest().id
   assert.equal((await request(`/admin/users/${fixtureUserId}`, 'DELETE')).status, 200)
   fixtureUserId = null
   const historical = JSON.parse(sql(`SELECT row_to_json(a) FROM audit_events a WHERE id=${fixtureEventId}`))
-  assert.equal(historical.actor_name, 'Audit fixture')
+  assert.equal(historical.actor_name, 'Audit fixture renamed')
+  assert.equal(latest().details.resource_name, 'Audit fixture renamed')
+  assert.equal(latest().details.kind, 'deleted')
   assert(historical.actor_id)
   assert.equal(historical.outcome, 'completed')
-  console.log('Audit integration passed: persistence, attribution, authorization, filtering/cursors, 204/compound requests, privacy and write-failure semantics')
+  console.log('Audit integration passed: readable before/after details, configured scheduled retention, persistence, attribution, authorization, filtering/cursors, 204/compound requests, privacy and write-failure semantics')
 } finally {
   removeTrigger()
   if (locationId) await request(`/admin/locations/${locationId}`, 'DELETE')

@@ -115,6 +115,17 @@ const settingMeta: Record<string, SettingMeta> = {
     max: 60000,
     step: 100,
   },
+  'audit.retention_days': {
+    title: 'Audit Log Aufbewahrung (Tage)',
+    hint: 'Standard: 14 Tage. Ältere Einträge werden beim Start und danach stündlich gelöscht. Steuerung unter System > Cron-Jobs.',
+    category: 'Allgemein',
+    categoryOrder: 20,
+    fieldType: 'number',
+    order: 24,
+    min: 1,
+    max: 3650,
+    step: 1,
+  },
   'midata.weather_refresh_interval_ms': {
     title: 'MiData Refresh Intervall (ms)',
     hint: 'Auto-Refresh fuer MiData/Wetter',

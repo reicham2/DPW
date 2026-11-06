@@ -36,7 +36,7 @@ make db-seed
 
 ## Audit Log
 
-Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein dauerhaftes,
+Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein persistentes,
 serverseitiges Journal wichtiger Aktionen. Der API-Endpunkt `GET /admin/audit-log`
 prueft diese Berechtigung unabhaengig von der UI. Filter: `actor` (Name/ID),
 `outcome` (`completed`, `rejected`, `unknown`, `pending`), `limit` (1–100, Standard 50)
@@ -55,15 +55,29 @@ Formularantworten werden nicht erfasst.
 
 Das Journal speichert verifizierte Benutzer-ID und Anzeigenamen als Momentaufnahme,
 Zeitpunkt, lesbare Aktion, Ressourcentyp, UUIDs, bekannte Einstellungsschluessel
-und HTTP-Ergebnis; keine Request-
-oder Response-Inhalte, IP-Adressen, Tokens, Freigabe-Slugs, Konfigurationswerte
-oder Formularantworten. Freie Rollen-/Abteilungsnamen und Vorlageninhalte werden
-nicht gespeichert; fuer Aktionen ohne UUID wird nur die Ressourcenkategorie gezeigt.
-Mailversand uebernimmt die optionale Aktivitaets-UUID, aber keine Empfaenger/Betreff/Inhalte.
+und HTTP-Ergebnis. Die Spalte **Details** zeigt erlaubte Metadaten wie Anzeigename,
+Rolle, Stufe, Titel, Termin und Ort. Benutzer-/Profil-, Aktivitaets-, Rollen-,
+Abteilungs-, Berechtigungs- und Orts-/Materialaenderungen zeigen vorher/nachher;
+bei anderen Antworten werden nur erlaubte gespeicherte Metadaten angezeigt.
+Verschachtelte Programm-/Materialaenderungen und sensible Freitexte werden nur als
+geschuetzte Aenderung markiert. Es werden keine kompletten Request-/Response-Inhalte,
+IP-Adressen, E-Mail-Adressen, Tokens, Freigabe-Slugs, Konfigurationswerte
+(ausser der Audit-Aufbewahrungsdauer), Mailinhalte oder Formularantworten gespeichert.
+Mailversand zeigt Empfaengeranzahl und optionale Aktivitaets-UUID, nicht Empfaengeradressen
+oder Betreff. Metadaten sind auf 300 Bytes plus Kuerzungszeichen begrenzt.
+Alte Eintraege ohne Details bleiben lesbar; fehlende historische Details werden nicht erfunden.
 Ohne verifizierte Anmeldung bleibt der Akteur leer.
 Erstregistrierung verwendet bis zur Anlage des Benutzers die verifizierte Microsoft-ID.
-Historie bleibt nach Benutzer-/Ressourcenloeschung erhalten; es gibt keine automatische
-Loeschung, Exportfunktion oder konfigurierbare Aufbewahrungsfrist.
+Historie bleibt nach Benutzer-/Ressourcenloeschung innerhalb der Aufbewahrungsfrist erhalten.
+Unter **System > Einstellungen > Allgemein > Audit Log Aufbewahrung (Tage)** ist
+die Frist konfigurierbar: **Standard 14 Tage**, 1–3650 ganze Tage. Optional setzt
+`DPW_AUDIT_RETENTION_DAYS` die Frist per ENV (sperrt den UI-Wert).
+Der Cron-Job `audit-retention` loescht beim Start und danach stuendlich alle
+Eintraege, die aelter als die Frist sind, einschliesslich alter offener/unterbrochener
+Eintraege. Eine geaenderte Frist gilt beim naechsten Lauf; bis dahin koennen Eintraege
+maximal ein weiteres Stundenintervall vorhanden sein. **System > Cron-Jobs** zeigt
+Zustand und Fehler; Pausieren setzt auch die automatische Loeschung aus.
+Es gibt keine Archiv-/Exportfunktion; abgelaufene Eintraege werden endgueltig geloescht.
 
 Vor Ausfuehrung wird ein `pending`-Eintrag dauerhaft geschrieben; ist dies nicht
 moeglich, wird die Aktion mit HTTP 503 blockiert. Erst nach der Handler-Antwort
@@ -219,7 +233,8 @@ Systemadministratoren (`admin` oder `user_role_scope = all`) Jobs einsehen, paus
 und fortsetzen. Die API ist `GET /admin/cron-jobs` und
 `PUT /admin/cron-jobs/:id` mit `{"enabled":false}` bzw. `{"enabled":true}`.
 
-Aktuell registriert: abgelaufene Aktivitaetsbenachrichtigungen (jede Minute) und
+Aktuell registriert: Audit-Log-Aufbewahrung (stuendlich, Standard 14 Tage),
+abgelaufene Aktivitaetsbenachrichtigungen (jede Minute) und
 permanentes Loeschen von seit mehr als 90 Tagen im Papierkorb liegenden Aktivitaeten
 (taeglich). Die DB-View `active_notifications` filtert abgelaufene Eintraege bei
 Lesen, Gelesen-Markierung und Push-Abfragen sofort aus; physisches Loeschen erfolgt

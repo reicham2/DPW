@@ -13,6 +13,8 @@ namespace
         Database *db;
         std::string id;
         bool uncertain = false;
+        std::string resource_type;
+        nlohmann::json details;
     };
     // The HTTP event loop owns these contexts; asynchronous body callbacks use
     // the response key, never a thread-local actor that another request can replace.
@@ -42,7 +44,7 @@ bool audit_begin(HttpRes *res, HttpReq *req, Database &db,
     try
     {
         std::string resource_id;
-        // UUID parameters only: never include a share token, arbitrary name or key.
+        // UUID parameters only; named administrative resources are allowlisted below.
         for (const char *key : {"id", "rid"})
         {
             if (route.find(std::string(":") + key) == std::string::npos) continue;
@@ -59,8 +61,22 @@ bool audit_begin(HttpRes *res, HttpReq *req, Database &db,
             for (const auto &definition : app_config::definitions())
                 if (key == definition.key) resource_id = key;
         }
+        if (route == "/admin/roles/:name" || route == "/admin/roles/:name/move" ||
+            route == "/admin/departments/:name")
+        {
+            resource_id = url_decode(std::string{req->getParameter("name")});
+            if (resource_id.size() > 300)
+            {
+                size_t end = 300;
+                while (end && (static_cast<unsigned char>(resource_id[end]) & 0xc0) == 0x80) --end;
+                resource_id.resize(end);
+            }
+        }
+        if (route == "/admin/cron-jobs/:id")
+            for (const char *id : {"expired-notifications", "activity-trash", "audit-retention"})
+                if (req->getParameter("id") == id) resource_id = id;
         auto id = db.begin_audit_event(action.label, action.resource_type, resource_id);
-        pending.insert_or_assign(res, PendingAudit{&db, id});
+        pending.insert_or_assign(res, PendingAudit{&db, id, false, action.resource_type, nullptr});
         res->onAborted([] {});
         return true;
     }
@@ -101,8 +117,14 @@ bool audit_finish(HttpRes *res, int status, const std::string &body)
                 auto value = j["id"].get<std::string>();
                 if (uuid(value)) created_id = value;
             }
+            if (context.details.is_null() && j.is_object())
+            {
+                context.details = audit_change_details(context.resource_type, nullptr, j);
+                context.details["kind"] = "saved";
+            }
         }
-        context.db->finish_audit_event(context.id, audit_outcome(status, context.uncertain), status, created_id);
+        context.db->finish_audit_event(context.id, audit_outcome(status, context.uncertain), status, created_id,
+                                      context.details.is_null() ? nlohmann::json::object() : context.details);
         return true;
     }
     catch (const std::exception &e)
@@ -110,6 +132,13 @@ bool audit_finish(HttpRes *res, int status, const std::string &body)
         std::fprintf(stderr, "[audit] Cannot finalize journal; operation may have completed: %s\n", e.what());
         return false;
     }
+}
+
+void audit_record_change(HttpRes *res, const nlohmann::json &before, const nlohmann::json &after)
+{
+    auto it = pending.find(res);
+    if (it != pending.end())
+        it->second.details = audit_change_details(it->second.resource_type, before, after);
 }
 
 void audit_mark_uncertain(HttpRes *res)
@@ -133,7 +162,8 @@ void audit_disconnect(HttpRes *res)
     pending.erase(it);
     try
     {
-        context.db->finish_audit_event(context.id, "unknown", 0, "");
+        context.db->finish_audit_event(context.id, "unknown", 0, "",
+                                      context.details.is_null() ? nlohmann::json::object() : context.details);
     }
     catch (const std::exception &e)
     {

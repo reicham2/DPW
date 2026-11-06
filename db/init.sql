@@ -16,6 +16,21 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 CREATE INDEX IF NOT EXISTS audit_events_actor_id_idx ON audit_events(actor_id, id DESC);
 CREATE INDEX IF NOT EXISTS audit_events_outcome_idx ON audit_events(outcome, id DESC);
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS details JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS audit_events_occurred_at_idx ON audit_events(occurred_at);
+
+CREATE OR REPLACE FUNCTION purge_audit_events(retention_days INTEGER) RETURNS INTEGER
+LANGUAGE plpgsql AS $$
+DECLARE deleted_count INTEGER;
+BEGIN
+    IF retention_days IS NULL OR retention_days < 1 OR retention_days > 3650 THEN
+        RAISE EXCEPTION 'Audit retention must be between 1 and 3650 days';
+    END IF;
+    DELETE FROM audit_events WHERE occurred_at < NOW() - make_interval(days => retention_days);
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$;
 
 -- Runtime app configuration values (stored from admin UI)
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -41,6 +56,7 @@ INSERT INTO app_settings (key, is_secret, value_text, value_secret) VALUES
     ('frontend.public_base_url', false, NULL, NULL),
     ('frontend.autosave_interval_ms', false, '1500', NULL),
     ('frontend.autosave_debounce', false, 'true', NULL),
+    ('audit.retention_days', false, '14', NULL),
     ('midata.weather_refresh_interval_ms', false, '900000', NULL),
     ('github.token', true, NULL, NULL),
     ('github.repo', false, 'reicham2/DPW', NULL),

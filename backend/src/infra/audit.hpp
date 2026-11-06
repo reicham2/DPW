@@ -12,6 +12,7 @@ bool audit_begin(HttpRes *res, HttpReq *req, Database &db,
 void audit_attribute(HttpRes *res, const TokenClaims &claims);
 void audit_mark_uncertain(HttpRes *res);
 void audit_activity_resource(HttpRes *res, const std::string &activity_id);
+void audit_record_change(HttpRes *res, const nlohmann::json &before, const nlohmann::json &after);
 bool audit_finish(HttpRes *res, int status, const std::string &body);
 void audit_disconnect(HttpRes *res);
 

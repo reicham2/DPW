@@ -86,4 +86,35 @@ describe('AuditLogPanel', () => {
     expect(wrapper.text()).toContain('Ohne verifizierte Anmeldung')
     expect(wrapper.text()).toContain('Ausgang offen')
   })
+
+  it('shows field-level changes and a readable target while protecting content', async () => {
+    apiFetchMock.mockResolvedValueOnce(response([{
+      ...event(), resource_type: 'user',
+      details: { kind: 'changed', resource_name: 'Leiter Eins', changes: [
+        { field: 'role', label: 'Rolle', before: 'Mitglied', after: 'Leiter', redacted: false },
+        { field: 'department', label: 'Stufe', before: null, after: '<script>unsafe</script>', redacted: false },
+        { field: 'programs', label: 'Programmblöcke', redacted: true },
+      ] },
+    }]))
+    wrapper = panel()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Benutzer: Leiter Eins')
+    expect(wrapper.text()).toContain('Mitglied → Leiter')
+    expect(wrapper.text()).toContain('— → <script>unsafe</script>')
+    expect(wrapper.text()).toMatch(/Programmblöcke:\s+geändert \(Inhalt geschützt\)/)
+    expect(wrapper.find('script').exists()).toBe(false)
+  })
+
+  it('distinguishes deleted, saved and legacy entries without inventing historical details', async () => {
+    apiFetchMock.mockResolvedValueOnce(response([
+      { ...event('1'), details: { kind: 'deleted', changes: [{ field: 'name', label: 'Name', before: 'Wald', after: null, redacted: false }] } },
+      { ...event('2'), details: { kind: 'saved', changes: [{ field: 'enabled', label: 'Aktiviert', after: false, redacted: false }] } },
+      event('3'),
+    ]))
+    wrapper = panel()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Wald → gelöscht')
+    expect(wrapper.findAll('.audit-details')[1].text()).toMatch(/Aktiviert:\s*Nein/)
+    expect(wrapper.text()).toContain('Keine Detaildaten vorhanden')
+  })
 })
