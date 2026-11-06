@@ -9,7 +9,7 @@ class Database;
 
 bool audit_begin(HttpRes *res, HttpReq *req, Database &db,
                  const std::string &route, const AuditAction &action);
-void audit_attribute(HttpRes *res, const TokenClaims &claims);
+void audit_attribute(HttpRes *res, const TokenClaims &claims, bool refresh = false);
 void audit_mark_uncertain(HttpRes *res);
 void audit_activity_resource(HttpRes *res, const std::string &activity_id);
 void audit_record_change(HttpRes *res, const nlohmann::json &before, const nlohmann::json &after);

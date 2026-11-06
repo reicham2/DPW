@@ -788,20 +788,15 @@ void handle_patch_department(HttpRes *res, HttpReq *req, Database &db)
             }
         }
         try {
-            if (!has_midata_group_field) {
-                auto depts = db.list_departments();
-                for (const auto &dept : depts) {
-                    if (dept.name == name) {
-                        midata_group_id = dept.midata_group_id;
-                        break;
-                    }
-                }
-            }
             nlohmann::json previous = nullptr;
             for (const auto &dept : db.list_departments())
                 if (dept.name == name)
+                {
+                    if (!has_midata_group_field) midata_group_id = dept.midata_group_id;
                     previous = {{"name", dept.name}, {"color", dept.color},
                                 {"midata_group_id", dept.midata_group_id ? nlohmann::json(*dept.midata_group_id) : nlohmann::json(nullptr)}};
+                    break;
+                }
             auto d = db.update_department(name, new_name, color, midata_group_id);
             if (!d) { send_json(res, 404, R"({"error":"Abteilung nicht gefunden"})"); return; }
             audit_record_change(res, previous, {{"name", d->name}, {"color", d->color},

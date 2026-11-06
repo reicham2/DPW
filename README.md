@@ -55,7 +55,7 @@ Formularantworten werden nicht erfasst.
 
 Das Journal speichert verifizierte Benutzer-ID und Anzeigenamen als Momentaufnahme,
 Zeitpunkt, lesbare Aktion, Ressourcentyp, UUIDs, bekannte Einstellungsschluessel
-und HTTP-Ergebnis. Die Spalte **Details** zeigt erlaubte Metadaten wie Anzeigename,
+und HTTP-Ergebnis. Die aufklappbaren **Details** zeigen erlaubte Metadaten wie Anzeigename,
 Rolle, Stufe, Titel, Termin und Ort. Benutzer-/Profil-, Aktivitaets-, Rollen-,
 Abteilungs-, Berechtigungs- und Orts-/Materialaenderungen zeigen vorher/nachher;
 bei anderen Antworten werden nur erlaubte gespeicherte Metadaten angezeigt.
@@ -78,6 +78,26 @@ Eintraege. Eine geaenderte Frist gilt beim naechsten Lauf; bis dahin koennen Ein
 maximal ein weiteres Stundenintervall vorhanden sein. **System > Cron-Jobs** zeigt
 Zustand und Fehler; Pausieren setzt auch die automatische Loeschung aus.
 Es gibt keine Archiv-/Exportfunktion; abgelaufene Eintraege werden endgueltig geloescht.
+
+Die Tabelle zeigt zunaechst nur Aktion, Ziel, Ausgang und eine kurze Felduebersicht.
+Ein Klick auf eine Zeile oder den per Tastatur erreichbaren Aktionsknopf oeffnet
+die vollstaendigen Details (inklusive IDs und HTTP-Status); ein weiterer Klick
+schliesst sie. Nur ein Detailbereich wird gleichzeitig gerendert. Aufklappen
+nutzt die bereits geladene, auf 50 Eintraege begrenzte Seite und erzeugt keine
+weitere API-/DB-Anfrage. Es gibt kein automatisches Audit-Polling.
+
+Der Schreibpfad behaelt die drei fuer die Haltbarkeit notwendigen Journal-Schritte
+(Intent, verifizierter Akteur, Abschluss) bei; wiederholte Auth-Pruefungen derselben
+Anfrage schreiben den Akteur nicht erneut. Die Anmeldung aktualisiert ihren
+Akteurssnapshot nach Benutzeranlage weiterhin explizit. Vorher-Zustaende von
+Orten/Materialverantwortlichen werden per Primaerschluessel statt per Vollistenabfrage
+gelesen; Benutzer-/Abteilungspruefungen verwenden vorhandene Snapshots erneut.
+Bereits vorbereitete Details werden beim Abschluss verschoben statt kopiert und
+Antwort-JSON wird nur geparst, wenn Ressourcen-ID oder Details noch fehlen.
+Pagination sortiert numerisch ueber den ID-Index statt OFFSET oder Textsortierung;
+der Retention-Job hat einen Zeitindex und laeuft im vorhandenen Worker, nicht im
+HTTP-Thread. Die optionale Teilnamensuche kann bei fehlenden Treffern weiterhin
+den Verlauf durchsuchen; sie wird nur auf explizite Filteranfrage ausgefuehrt.
 
 Vor Ausfuehrung wird ein `pending`-Eintrag dauerhaft geschrieben; ist dies nicht
 moeglich, wird die Aktion mit HTTP 503 blockiert. Erst nach der Handler-Antwort

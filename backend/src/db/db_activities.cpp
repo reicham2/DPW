@@ -384,6 +384,24 @@ std::optional<LocationRecord> Database::create_predefined_location(const std::st
     return out;
 }
 
+std::optional<LocationRecord> Database::get_predefined_location_by_id(const std::string &id)
+{
+    ensure_connected();
+    const char *params[] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+        "SELECT id, name, created_at, updated_at FROM predefined_locations WHERE id=$1",
+        1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("get_predefined_location_by_id: " + error);
+    }
+    auto location = PQntuples(res) ? std::optional<LocationRecord>(row_to_location(res, 0)) : std::nullopt;
+    PQclear(res);
+    return location;
+}
+
 std::optional<LocationRecord> Database::update_predefined_location(const std::string &id, const std::string &name)
 {
     ensure_connected();
@@ -469,6 +487,24 @@ std::optional<MaterialNameRecord> Database::create_predefined_material(const std
     auto out = row_to_material_name(res, 0);
     PQclear(res);
     return out;
+}
+
+std::optional<MaterialNameRecord> Database::get_predefined_material_by_id(const std::string &id)
+{
+    ensure_connected();
+    const char *params[] = {id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+        "SELECT id, name, created_at, updated_at FROM predefined_materials WHERE id=$1",
+        1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("get_predefined_material_by_id: " + error);
+    }
+    auto material = PQntuples(res) ? std::optional<MaterialNameRecord>(row_to_material_name(res, 0)) : std::nullopt;
+    PQclear(res);
+    return material;
 }
 
 std::optional<MaterialNameRecord> Database::update_predefined_material(const std::string &id, const std::string &name)

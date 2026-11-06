@@ -36,6 +36,11 @@ const failTrigger = condition => sql(`
   FOR EACH ROW EXECUTE FUNCTION audit_test_fail_158();
 `)
 const removeTrigger = () => sql('DROP TRIGGER IF EXISTS audit_test_fail_158 ON audit_events; DROP FUNCTION IF EXISTS audit_test_fail_158()')
+const removeWriteCounter = () => sql(`
+  DROP TRIGGER IF EXISTS audit_test_count_158 ON audit_events;
+  DROP FUNCTION IF EXISTS audit_test_count_158();
+  DROP TABLE IF EXISTS audit_test_write_counts_158;
+`)
 
 try {
   assert.equal((await request('/admin/audit-log', 'GET', undefined, null)).status, 401)
@@ -195,6 +200,36 @@ try {
   const byName = (await request('/admin/audit-log?actor=Admin+User')).data
   assert(byName.entries.every(e => e.actor_id === admin))
 
+  // IDs are strings on the wire, but sorting and cursors must remain numeric.
+  sql(`INSERT INTO audit_events(id,action,resource_type,actor_id,outcome) VALUES
+    (9007199254740991,'audit-order-test-158','system','audit-order-test-158','completed'),
+    (9007199254740992,'audit-order-test-158','system','audit-order-test-158','completed'),
+    (10000000000000000,'audit-order-test-158','system','audit-order-test-158','completed')`)
+  const numericPage = (await request('/admin/audit-log?actor=audit-order-test-158&limit=2')).data
+  assert.deepEqual(numericPage.entries.map(event => event.id), ['10000000000000000', '9007199254740992'])
+  const numericOlder = (await request(`/admin/audit-log?actor=audit-order-test-158&before=${numericPage.next_cursor}`)).data
+  assert.deepEqual(numericOlder.entries.map(event => event.id), ['9007199254740991'])
+  sql("DELETE FROM audit_events WHERE action='audit-order-test-158'")
+
+  // Nested require_auth calls must not repeat the same persisted attribution.
+  sql(`
+    CREATE TABLE audit_test_write_counts_158(kind text);
+    CREATE FUNCTION audit_test_count_158() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO audit_test_write_counts_158 VALUES (
+        CASE WHEN TG_OP='INSERT' THEN 'intent' WHEN NEW.outcome='pending' THEN 'attribution' ELSE 'finish' END);
+      RETURN NEW;
+    END $$;
+    CREATE TRIGGER audit_test_count_158 AFTER INSERT OR UPDATE ON audit_events
+    FOR EACH ROW EXECUTE FUNCTION audit_test_count_158();
+  `)
+  assert.equal((await request('/admin/app-settings/audit.retention_days', 'PUT', { value: '14' })).status, 200)
+  assert.equal(sql("SELECT count(*) FROM audit_test_write_counts_158 WHERE kind='intent'"), '1')
+  assert.equal(sql("SELECT count(*) FROM audit_test_write_counts_158 WHERE kind='attribution'"), '1')
+  assert.equal(sql("SELECT count(*) FROM audit_test_write_counts_158 WHERE kind='finish'"), '1')
+  removeWriteCounter()
+  assert.equal((await request('/admin/app-settings/audit.retention_days', 'PUT', { value: null })).status, 200)
+
   // Persistence failure must block mutations, not silently acknowledge success.
   failTrigger("TG_OP='INSERT'")
   assert.equal((await request(`/admin/locations/${locationId}`, 'DELETE')).status, 503)
@@ -249,6 +284,8 @@ try {
   console.log('Audit integration passed: readable before/after details, configured scheduled retention, persistence, attribution, authorization, filtering/cursors, 204/compound requests, privacy and write-failure semantics')
 } finally {
   removeTrigger()
+  removeWriteCounter()
+  sql("DELETE FROM audit_events WHERE action='audit-order-test-158'")
   if (locationId) await request(`/admin/locations/${locationId}`, 'DELETE')
   if (materialId) await request(`/admin/materials/${materialId}`, 'DELETE')
   if (activityId) await request(`/admin/activities/${activityId}/trash`, 'DELETE')

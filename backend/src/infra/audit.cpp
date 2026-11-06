@@ -15,6 +15,8 @@ namespace
         bool uncertain = false;
         std::string resource_type;
         nlohmann::json details;
+        std::string attributed_oid;
+        bool needs_resource_id = false;
     };
     // The HTTP event loop owns these contexts; asynchronous body callbacks use
     // the response key, never a thread-local actor that another request can replace.
@@ -76,7 +78,7 @@ bool audit_begin(HttpRes *res, HttpReq *req, Database &db,
             for (const char *id : {"expired-notifications", "activity-trash", "audit-retention"})
                 if (req->getParameter("id") == id) resource_id = id;
         auto id = db.begin_audit_event(action.label, action.resource_type, resource_id);
-        pending.insert_or_assign(res, PendingAudit{&db, id, false, action.resource_type, nullptr});
+        pending.insert_or_assign(res, PendingAudit{&db, id, false, action.resource_type, nullptr, "", resource_id.empty()});
         res->onAborted([] {});
         return true;
     }
@@ -88,28 +90,30 @@ bool audit_begin(HttpRes *res, HttpReq *req, Database &db,
     }
 }
 
-void audit_attribute(HttpRes *res, const TokenClaims &claims)
+void audit_attribute(HttpRes *res, const TokenClaims &claims, bool refresh)
 {
     auto it = pending.find(res);
     if (it == pending.end()) return;
+    if (!refresh && !claims.oid.empty() && it->second.attributed_oid == claims.oid) return;
     auto user = resolve_user(*it->second.db, claims);
     if (claims.oid.rfind("debug:", 0) == 0 && !user)
         return;
     it->second.db->attribute_audit_event(
         it->second.id, user ? user->id : claims.oid,
         user ? user->display_name : claims.display_name);
+    it->second.attributed_oid = claims.oid;
 }
 
 bool audit_finish(HttpRes *res, int status, const std::string &body)
 {
     auto it = pending.find(res);
     if (it == pending.end()) return true;
-    auto context = it->second;
+    auto context = std::move(it->second);
     pending.erase(it);
     try
     {
         std::string created_id;
-        if (status >= 200 && status < 300)
+        if (status >= 200 && status < 300 && (context.needs_resource_id || context.details.is_null()))
         {
             auto j = nlohmann::json::parse(body, nullptr, false);
             if (j.is_object() && j.contains("id") && j["id"].is_string())
@@ -158,7 +162,7 @@ void audit_disconnect(HttpRes *res)
 {
     auto it = pending.find(res);
     if (it == pending.end()) return;
-    auto context = it->second;
+    auto context = std::move(it->second);
     pending.erase(it);
     try
     {

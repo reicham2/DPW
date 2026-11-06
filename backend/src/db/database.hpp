@@ -54,12 +54,14 @@ public:
     // Predefined locations
     std::vector<std::string> get_predefined_locations();
     std::vector<LocationRecord> list_predefined_locations();
+    std::optional<LocationRecord> get_predefined_location_by_id(const std::string &id);
     std::optional<LocationRecord> create_predefined_location(const std::string &name);
     std::optional<LocationRecord> update_predefined_location(const std::string &id, const std::string &name);
     bool delete_predefined_location(const std::string &id);
 
     std::vector<std::string> get_predefined_materials();
     std::vector<MaterialNameRecord> list_predefined_materials();
+    std::optional<MaterialNameRecord> get_predefined_material_by_id(const std::string &id);
     std::optional<MaterialNameRecord> create_predefined_material(const std::string &name);
     std::optional<MaterialNameRecord> update_predefined_material(const std::string &id, const std::string &name);
     bool delete_predefined_material(const std::string &id);

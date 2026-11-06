@@ -82,7 +82,7 @@ nlohmann::json Database::list_audit_events(int limit, const std::string &before,
         "FROM audit_events "
         "WHERE ($2='' OR id<NULLIF($2,'')::bigint) "
         "AND ($3='' OR actor_id=$3 OR strpos(lower(actor_name),lower($3))>0) "
-        "AND ($4='' OR outcome=$4) ORDER BY id DESC LIMIT $1::int", 4, params);
+        "AND ($4='' OR outcome=$4) ORDER BY audit_events.id DESC LIMIT $1::int", 4, params);
     nlohmann::json entries = nlohmann::json::array();
     auto rows = PQntuples(result.get());
     for (int i = 0; i < rows && i < limit; ++i)
