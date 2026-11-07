@@ -28,7 +28,7 @@ RUN mkdir -p src/core/models src/infra src/db src/utils src/handlers \
        echo "// stub" > src/db/$f.cpp; done \
   && for f in permissions strings templates activity_helpers; do \
        echo "// stub" > src/utils/$f.cpp; done \
-  && for f in activities forms mail users notifications admin share_ideenkiste setup_maintenance; do \
+  && for f in activities forms mail users notifications admin share_ideenkiste setup_maintenance proofreading; do \
        echo "// stub" > src/handlers/$f.cpp; done \
   && touch src/core/http.hpp src/core/request_helpers.hpp \
   && touch src/core/models/all_models.hpp src/core/models/activity.hpp \
