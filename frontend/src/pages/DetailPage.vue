@@ -2310,7 +2310,7 @@ async function checkProgDescription(i: number) {
 	const controller = new AbortController();
 	proofreadControllers.set(i, controller);
 	programProofreading.value[i] = { status: 'loading', htmlSnapshot };
-	const timeout = window.setTimeout(() => controller.abort(), 18000);
+	const timeout = window.setTimeout(() => controller.abort(), 35000);
 	try {
 		const response = await apiFetch('/api/proofreading/check', {
 			method: 'POST',
