@@ -2309,7 +2309,7 @@ const programImageUploadCount = ref(0);
 const progImageError = ref<string | null>(null);
 let progImagePickerTarget: { program: ProgramInput; range: Range | null } | null = null;
 type ProgramProofreadingState = {
-	status: 'loading' | 'ready' | 'error';
+	status: 'loading' | 'ready' | 'stale' | 'error';
 	htmlSnapshot: string;
 	matches?: ProofreadingMatch[];
 	error?: string;
@@ -2345,10 +2345,25 @@ function setProgEditorRef(el: unknown, program: ProgramInput) {
 	}
 }
 
-function invalidateProgProofreading(i: number) {
+function cancelProgProofreadingRequest(i: number) {
 	proofreadControllers.get(i)?.abort();
 	proofreadControllers.delete(i);
 	proofreadRequestIds.set(i, (proofreadRequestIds.get(i) ?? 0) + 1);
+}
+
+function invalidateProgProofreading(i: number) {
+	const state = programProofreading.value[i];
+	cancelProgProofreadingRequest(i);
+	if (!state) return;
+	programProofreading.value[i] = {
+		status: 'stale',
+		htmlSnapshot: state.htmlSnapshot,
+		error: 'Die Beschreibung wurde geändert. Bitte erneut prüfen.',
+	};
+}
+
+function closeProgProofreading(i: number) {
+	cancelProgProofreadingRequest(i);
 	delete programProofreading.value[i];
 }
 
@@ -2357,7 +2372,7 @@ async function checkProgDescription(i: number) {
 	if (!editor || isLockedByOther(`program_${i}`)) return;
 	const htmlSnapshot = editor.innerHTML;
 	const text = getProgramText(editor).text;
-	invalidateProgProofreading(i);
+	cancelProgProofreadingRequest(i);
 	if (!text.trim()) {
 		programProofreading.value[i] = {
 			status: 'error',
@@ -2463,6 +2478,7 @@ function applyProgProofreadingSuggestion(i: number, match: ProofreadingMatch, re
 		return;
 	}
 	onProgDescInput(i);
+	void checkProgDescription(i);
 }
 
 function onProgDescInput(i: number) {
@@ -4113,26 +4129,37 @@ function copyShareLink() {
 								<div class="program-proofreading">
 									<button
 										type="button"
-										class="program-proofreading__check"
+										class="toolbar-btn-sm program-proofreading__check"
 										:disabled="isLockedByOther(`program_${i}`) || programProofreading[i]?.status === 'loading'"
+										aria-label="Rechtschreibung prüfen"
+										title="Rechtschreibung prüfen"
 										@click="checkProgDescription(i)"
 									>
 										<Check :size="14" aria-hidden="true" />
-										{{ programProofreading[i]?.status === 'loading' ? 'Prüfe…' : 'Rechtschreibung prüfen' }}
 									</button>
-									<span class="program-proofreading__hint">Prüfung mit LanguageTool auf diesem Server; Vorschläge werden nur auf Klick übernommen.</span>
 								</div>
 								<div
 									v-if="programProofreading[i]"
 									class="program-proofreading__results"
 									:class="{ 'program-proofreading__results--error': programProofreading[i].status === 'error' }"
-									role="status"
-									aria-live="polite"
 								>
-									<p v-if="programProofreading[i].status === 'loading'">Die Beschreibung wird lokal geprüft…</p>
-									<p v-else-if="programProofreading[i].status === 'error'">{{ programProofreading[i].error }}</p>
-									<template v-else-if="programProofreading[i].status === 'ready'">
-										<p v-if="!programProofreading[i].matches?.length">Keine Vorschläge gefunden.</p>
+									<div class="program-proofreading__results-header">
+										<div role="status" aria-live="polite">
+											<p v-if="programProofreading[i].status === 'loading'">Die Beschreibung wird lokal geprüft…</p>
+											<p v-else-if="programProofreading[i].status === 'stale'">{{ programProofreading[i].error }}</p>
+											<p v-else-if="programProofreading[i].status === 'error'">{{ programProofreading[i].error }}</p>
+											<p v-else-if="programProofreading[i].status === 'ready' && !programProofreading[i].matches?.length">Keine Vorschläge gefunden.</p>
+											<p v-else-if="programProofreading[i].status === 'ready'">{{ programProofreading[i].matches?.length }} Vorschläge gefunden.</p>
+										</div>
+										<button
+											type="button"
+											class="toolbar-btn-sm program-proofreading__close"
+											aria-label="Prüfung schliessen"
+											title="Prüfung schliessen"
+											@click="closeProgProofreading(i)"
+										><X :size="14" aria-hidden="true" /></button>
+									</div>
+									<template v-if="programProofreading[i].status === 'ready'">
 										<div
 											v-for="(match, matchIndex) in programProofreading[i].matches"
 											:key="`${match.rule.id ?? 'match'}-${match.offset}-${matchIndex}`"

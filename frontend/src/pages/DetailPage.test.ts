@@ -155,6 +155,43 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
 	};
 }
 
+function stubInsertTextCommand(editor: HTMLElement) {
+	const descriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
+	const queryDescriptor = Object.getOwnPropertyDescriptor(document, 'queryCommandState');
+	const command = vi.fn((name: string, _showUI?: boolean, value?: string) => {
+		if (name !== 'insertText') return false;
+		const selection = document.getSelection();
+		if (!selection?.rangeCount) return false;
+		const range = selection.getRangeAt(0);
+		range.deleteContents();
+		const inserted = document.createTextNode(value ?? '');
+		range.insertNode(inserted);
+		range.setStartAfter(inserted);
+		range.collapse(true);
+		selection.removeAllRanges();
+		selection.addRange(range);
+		editor.dispatchEvent(new Event('input', { bubbles: true }));
+		return true;
+	});
+	Object.defineProperty(document, 'execCommand', {
+		configurable: true,
+		value: command,
+	});
+	Object.defineProperty(document, 'queryCommandState', {
+		configurable: true,
+		value: vi.fn(() => false),
+	});
+	return {
+		command,
+		restore() {
+			if (descriptor) Object.defineProperty(document, 'execCommand', descriptor);
+			else Reflect.deleteProperty(document, 'execCommand');
+			if (queryDescriptor) Object.defineProperty(document, 'queryCommandState', queryDescriptor);
+			else Reflect.deleteProperty(document, 'queryCommandState');
+		},
+	};
+}
+
 function allowEditing() {
 	mocks.editable = true;
 	const editableUser: User = {
@@ -382,6 +419,133 @@ describe('DetailPage activity access', () => {
 		expect(mocks.replace).toHaveBeenCalledWith('/');
 		expect(wrapper.text()).not.toContain('Test activity');
 		wrapper.unmount();
+	});
+
+	it('keeps proofreading open and rechecks offsets after successive corrections', async () => {
+		allowEditing();
+		const description = 'Ich habe ein Fehler und ein Fehler.';
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			programs: [{
+				id: 'program-1',
+				activity_id: 'activity-1',
+				duration_minutes: 10,
+				title: 'Start',
+				description,
+				responsible: [],
+			}],
+		}));
+		const requestTexts: string[] = [];
+		vi.mocked(apiFetch).mockImplementation(async (url, options) => {
+			if (url !== '/api/proofreading/check') return new Response('{}', { status: 200 });
+			const text = JSON.parse(options?.body as string).text as string;
+			requestTexts.push(text);
+			const matches = [...text.matchAll(/ein Fehler/g)].map((match) => ({
+				offset: match.index!,
+				length: match[0].length,
+				message: 'Kasus prüfen',
+				shortMessage: 'Kasus',
+				replacements: [{ value: 'einen Fehler' }],
+				rule: { id: 'OBJECT_AGREEMENT' },
+			}));
+			return new Response(JSON.stringify({ language: 'de-CH', matches }), { status: 200 });
+		});
+
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get('.rich-editor').element as HTMLElement;
+		const execCommand = stubInsertTextCommand(editor);
+		try {
+			await wrapper.get('button[aria-label="Rechtschreibung prüfen"]').trigger('click');
+			await flushPromises();
+			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(2);
+
+			await wrapper.findAll('.program-proofreading__suggestion')[0].trigger('click');
+			await flushPromises();
+			expect(editor.textContent).toBe('Ich habe einen Fehler und ein Fehler.');
+			expect(wrapper.find('.program-proofreading__results').exists()).toBe(true);
+			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
+			expect(requestTexts[1]).toBe(editor.textContent);
+
+			await wrapper.find('.program-proofreading__suggestion').trigger('click');
+			await flushPromises();
+			expect(editor.textContent).toBe('Ich habe einen Fehler und einen Fehler.');
+			expect(wrapper.find('.program-proofreading__results').exists()).toBe(true);
+			expect(wrapper.find('.program-proofreading__results').text()).toContain('Keine Vorschläge gefunden.');
+			expect(requestTexts).toEqual([
+				description,
+				'Ich habe einen Fehler und ein Fehler.',
+				'Ich habe einen Fehler und einen Fehler.',
+			]);
+			expect(execCommand.command).toHaveBeenCalledTimes(2);
+		} finally {
+			execCommand.restore();
+			wrapper.unmount();
+		}
+	});
+
+	it('hides stale suggestions after typing, rechecks the changed text, and allows closing results', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			programs: [{
+				id: 'program-1',
+				activity_id: 'activity-1',
+				duration_minutes: 10,
+				title: 'Start',
+				description: 'Ich habe ein Fehler.',
+				responsible: [],
+			}],
+		}));
+		const requestTexts: string[] = [];
+		vi.mocked(apiFetch).mockImplementation(async (url, options) => {
+			if (url !== '/api/proofreading/check') return new Response('{}', { status: 200 });
+			const text = JSON.parse(options?.body as string).text as string;
+			requestTexts.push(text);
+			const offset = text.indexOf('ein Fehler');
+			return new Response(JSON.stringify({
+				language: 'de-CH',
+				matches: offset < 0 ? [] : [{
+					offset,
+					length: 'ein Fehler'.length,
+					message: 'Kasus prüfen',
+					shortMessage: 'Kasus',
+					replacements: [{ value: 'einen Fehler' }],
+					rule: { id: 'OBJECT_AGREEMENT' },
+				}],
+			}), { status: 200 });
+		});
+
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get('.rich-editor').element as HTMLElement;
+		const execCommand = stubInsertTextCommand(editor);
+		try {
+			await wrapper.get('button[aria-label="Rechtschreibung prüfen"]').trigger('click');
+			await flushPromises();
+			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
+
+			editor.innerHTML = 'Ich habe ein Fehler geändert.';
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
+			await flushPromises();
+			expect(editor.textContent).toBe('Ich habe ein Fehler geändert.');
+			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(0);
+			expect(wrapper.find('.program-proofreading__results').text()).toContain('Bitte erneut prüfen.');
+			expect(requestTexts).toHaveLength(1);
+
+			await wrapper.get('button[aria-label="Rechtschreibung prüfen"]').trigger('click');
+			await flushPromises();
+			expect(requestTexts[1]).toBe('Ich habe ein Fehler geändert.');
+			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
+			await wrapper.get('button[aria-label="Prüfung schliessen"]').trigger('click');
+			expect(wrapper.find('.program-proofreading__results').exists()).toBe(false);
+			expect(editor.textContent).toBe('Ich habe ein Fehler geändert.');
+		} finally {
+			execCommand.restore();
+			wrapper.unmount();
+		}
 	});
 
 	it('shows the guiding thread as escaped multiline text', async () => {
