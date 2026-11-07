@@ -1024,12 +1024,19 @@ video {
 .program-proofreading {
 	display: flex;
 	align-items: center;
-	flex-wrap: wrap;
 	gap: 8px;
-	margin-top: 8px;
+	margin-top: 4px;
 }
 
-.program-proofreading__check,
+.program-proofreading__check {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 30px;
+	min-height: 28px;
+	padding: 4px 7px;
+}
+
 .program-proofreading__suggestion {
 	display: inline-flex;
 	align-items: center;
@@ -1049,9 +1056,15 @@ video {
 	cursor: not-allowed;
 }
 
-.program-proofreading__hint {
-	color: var(--text-muted);
-	font-size: 0.78rem;
+.program-proofreading__results-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.program-proofreading__close {
+	flex-shrink: 0;
 }
 
 .program-proofreading__results {
