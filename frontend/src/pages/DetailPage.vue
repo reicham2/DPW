@@ -2289,6 +2289,7 @@ function setProgEditorRef(el: unknown, program: ProgramInput) {
 	if (el instanceof HTMLElement) {
 		progEditorElements.set(program, el);
 		if (!progImageRenderers.has(el)) progImageRenderers.set(el, new ProgramImageRenderer());
+		syncProgEditor(el, program);
 	} else {
 		const previous = progEditorElements.get(program);
 		progEditorElements.delete(program);
@@ -2315,6 +2316,15 @@ async function renderProgImages(el: HTMLElement) {
 	} catch (e) {
 		progImageError.value = formatApiError(e);
 	}
+}
+
+function syncProgEditor(el: HTMLElement, program: ProgramInput) {
+	if (el === document.activeElement) return;
+	const description = sanitizeProgramDescription(program.description);
+	if (serializeProgramDescription(el) !== description) {
+		el.innerHTML = description;
+	}
+	void renderProgImages(el);
 }
 
 async function deleteUnusedProgramImage(imageId: string) {
@@ -2545,14 +2555,8 @@ function initProgEditors() {
 	nextTick(() => {
 		for (let i = 0; i < editPrograms.value.length; i++) {
 			const el = progEditorRefs.value[i];
-			// Never rewrite the editor the user is currently typing in: an
-			// innerHTML reset destroys its text nodes and sends the caret to the start.
-			if (el === document.activeElement) continue;
-			const description = sanitizeProgramDescription(editPrograms.value[i]!.description);
-			if (el && serializeProgramDescription(el) !== description) {
-				el.innerHTML = description;
-			}
-			if (el) void renderProgImages(el);
+			const program = editPrograms.value[i];
+			if (el && program) syncProgEditor(el, program);
 		}
 	});
 }
