@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Activity, User, WsEvent } from '../types';
+import type { Activity, ActivityInput, IdeenkisteItem, User, WsEvent } from '../types';
 
 const mocks = vi.hoisted(() => ({
 	replace: vi.fn(),
@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 	onMessage: undefined as ((event: WsEvent) => void) | undefined,
 	editable: false,
 	activities: [] as Activity[],
+	ideaItems: [] as IdeenkisteItem[],
 }));
 
 vi.mock('vue-router', () => ({
@@ -71,7 +72,7 @@ vi.mock('../composables/usePermissions', async () => {
 			writableDepts: () => [],
 			canReadActivity: () => true,
 			canForms: () => false,
-			canIdeenkiste: () => false,
+			canIdeenkiste: () => mocks.editable,
 			canIdeenkisteAdd: () => false,
 		}),
 	};
@@ -110,7 +111,7 @@ vi.mock('../composables/useIdeaBox', async () => {
 	const { ref } = await vi.importActual<typeof import('vue')>('vue');
 	return {
 		useIdeaBox: () => ({
-			items: ref([]),
+			items: ref(mocks.ideaItems),
 			fetchItems: vi.fn(),
 			createItem: vi.fn(),
 			deleteItem: vi.fn(),
@@ -125,6 +126,7 @@ import ErrorAlert from '../components/ErrorAlert.vue';
 import { apiFetch } from '../composables/useApi';
 import { user } from '../composables/useAuth';
 import { config } from '../config';
+import * as richTextToolbar from '../utils/richTextToolbar';
 
 const initialAutosaveDebounce = config.AUTOSAVE_DEBOUNCE;
 const initialQueryCommandState = Object.getOwnPropertyDescriptor(document, 'queryCommandState');
@@ -191,6 +193,7 @@ describe('DetailPage activity access', () => {
 		config.PUBLIC_BASE_URL = '';
 		mocks.editable = false;
 		mocks.activities = [];
+		mocks.ideaItems = [];
 		user.value = null;
 		sessionStorage.clear();
 		vi.mocked(apiFetch).mockReset().mockResolvedValue(new Response('{}', { status: 200 }));
@@ -413,6 +416,102 @@ describe('DetailPage activity access', () => {
 		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
 			guiding_thread: null,
 		}));
+		wrapper.unmount();
+	});
+
+	it('shows imported rich text immediately and preserves it through editing, autosave and reload', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		const description = '<p><strong>Spurensuche</strong> mit <em>Karte</em></p><ul><li>Start</li></ul>';
+		mocks.ideaItems = [{
+			id: 'idea-1', title: 'Schnitzeljagd', duration_minutes: 25, description,
+			department: null, created_at: '', updated_at: '',
+		}];
+		let persisted = makeActivity({
+			programs: [{
+				id: 'program-1', activity_id: 'activity-1',
+				duration_minutes: 10, title: 'Begruessung', description: '<p>Bestehend</p>', responsible: ['user-1'],
+			}],
+		});
+		mocks.fetchActivity.mockImplementation(async () => persisted);
+		mocks.updateActivity.mockImplementation(async (_id: string, input: ActivityInput) => {
+			persisted = makeActivity({
+				...input,
+				programs: input.programs.map((program, index) => ({
+					...program, id: `program-${index + 1}`, activity_id: 'activity-1',
+				})),
+			});
+			return true;
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('button[title="Aus Ideenkiste"]').trigger('click');
+		await wrapper.get('.ideen-dropdown__item').trigger('click');
+
+		const editors = wrapper.findAll('.program-card .rich-editor');
+		expect(editors).toHaveLength(2);
+		expect(editors[0].element.innerHTML).toBe('<p>Bestehend</p>');
+		expect(editors[1].element.innerHTML).toBe(description);
+		expect(mocks.updateActivity).not.toHaveBeenCalled();
+		const importedElement = editors[1].element;
+		const edited = `${description}<p>Treffpunkt <a href="https://example.com/">Wald</a></p>`;
+		importedElement.innerHTML = edited;
+		await editors[1].trigger('input');
+		await wrapper.findAll('.program-card input[placeholder="Titel"]')[1].setValue('Schnitzeljagd im Wald');
+		expect(wrapper.findAll('.program-card .rich-editor')[1].element).toBe(importedElement);
+		expect(importedElement.innerHTML).toBe(edited);
+		await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+		expect(mocks.updateActivity).toHaveBeenLastCalledWith('activity-1', expect.objectContaining({
+			programs: [
+				{ title: 'Begruessung', duration_minutes: 10, description: '<p>Bestehend</p>', responsible: ['user-1'] },
+				{ title: 'Schnitzeljagd im Wald', duration_minutes: 25, description: edited, responsible: [] },
+			],
+		}));
+		wrapper.unmount();
+
+		const reloaded = shallowMount(DetailPage);
+		await flushPromises();
+		await reloaded.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		expect(reloaded.findAll('.program-card .rich-editor').map(editor => editor.element.innerHTML))
+			.toEqual(['<p>Bestehend</p>', edited]);
+		reloaded.unmount();
+	});
+
+	it('hydrates newly attached editors without rewriting a focused editor or losing descriptions after removal', async () => {
+		allowEditing();
+		vi.useFakeTimers();
+		vi.spyOn(richTextToolbar, 'readRichTextToolbarState').mockReturnValue(richTextToolbar.defaultRichTextToolbarState());
+		mocks.ideaItems = [{
+			id: 'idea-1', title: 'Import', duration_minutes: 25, description: '<p><b>Importiert</b></p>',
+			department: null, created_at: '', updated_at: '',
+		}];
+		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.btn-add-split__main').trigger('click');
+		const editor = wrapper.get<HTMLElement>('.program-card .rich-editor');
+		expect(editor.element.innerHTML).toBe('');
+		editor.element.focus();
+		editor.element.innerHTML = '<p>Gerade geschrieben</p>';
+		const textNode = editor.element.firstChild!.firstChild!;
+		const selection = window.getSelection()!;
+		const range = document.createRange();
+		range.setStart(textNode, 5);
+		range.collapse(true);
+		selection.removeAllRanges();
+		selection.addRange(range);
+		await editor.trigger('input');
+		await wrapper.get('button[title="Aus Ideenkiste"]').trigger('click');
+		await wrapper.get('.ideen-dropdown__item').trigger('click');
+		expect(document.activeElement).toBe(editor.element);
+		expect(editor.element.firstChild!.firstChild).toBe(textNode);
+		expect(selection.anchorNode).toBe(textNode);
+		expect(selection.anchorOffset).toBe(5);
+		expect(wrapper.findAll('.program-card .rich-editor')[1].element.innerHTML).toBe('<p><b>Importiert</b></p>');
+		editor.element.blur();
+		await wrapper.findAll('.program-card__remove')[0].trigger('click');
+		expect(wrapper.get('.program-card .rich-editor').element.innerHTML).toBe('<p><b>Importiert</b></p>');
 		wrapper.unmount();
 	});
 
