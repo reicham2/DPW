@@ -1,19 +1,42 @@
 #include "handlers/handler_deps.hpp"
 #include "infra/audit.hpp"
 
+#include <algorithm>
 #include <curl/curl.h>
 
 static nlohmann::json template_to_json(const MailTemplate &t)
 {
     return {
         {"id", t.id},
+        {"name", t.name},
         {"department", t.department},
         {"subject", t.subject},
         {"body", t.body},
         {"recipients", t.recipients},
         {"cc", t.cc},
+        {"is_default", t.is_default},
         {"created_at", t.created_at},
         {"updated_at", t.updated_at}};
+}
+
+static std::vector<std::string> template_recipients(const nlohmann::json &j, const char *key)
+{
+    std::vector<std::string> values;
+    if (j.contains(key) && j[key].is_array())
+    {
+        for (const auto &value : j[key])
+        {
+            if (value.is_string() && !value.get<std::string>().empty())
+                values.push_back(value.get<std::string>());
+        }
+    }
+    return values;
+}
+
+static bool is_uuid_path_segment(const std::string &value)
+{
+    return value.size() == 36 && value[8] == '-' && value[13] == '-' &&
+           value[18] == '-' && value[23] == '-';
 }
 
 static bool can_send_mail_for_activity(const RolePermission &perm, const UserRecord &user,
@@ -176,9 +199,16 @@ void handle_get_mail_composer_context(HttpRes *res, HttpReq *req, Database &db)
 
         if (activity->department)
         {
-            if (auto tpl = db.get_mail_template_by_department(*activity->department))
+            auto templates = db.list_mail_templates(*activity->department);
+            nlohmann::json template_list = nlohmann::json::array();
+            for (const auto &tpl : templates)
+                template_list.push_back(template_to_json(tpl));
+            out["templates"] = template_list;
+            auto default_template = std::find_if(templates.begin(), templates.end(),
+                                                 [](const MailTemplate &tpl) { return tpl.is_default; });
+            if (default_template != templates.end())
             {
-                out["template"] = template_to_json(*tpl);
+                out["template"] = template_to_json(*default_template);
             }
         }
 
@@ -190,7 +220,65 @@ void handle_get_mail_composer_context(HttpRes *res, HttpReq *req, Database &db)
     }
 }
 
-// ---- PUT /mail-templates/:department ----------------------------------------
+// ---- POST /mail-templates ---------------------------------------------------
+
+void handle_post_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    auto current_user = resolve_user(db, claims);
+    if (!current_user)
+    {
+        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+        return;
+    }
+    auto permission = db.get_role_permission(current_user->role);
+
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, current_user, permission, &db, &wm](std::string_view chunk, bool last)
+                {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (j.is_discarded()) {
+            send_json(res, 400, R"({"error":"Ungültiges JSON-Format"})");
+            return;
+        }
+        const std::string name = j.value("name", "");
+        const std::string department = j.value("department", "");
+        const std::string subject = j.value("subject", "");
+        const std::string body = j.value("body", "");
+        const bool is_default = j.value("is_default", false);
+        if (name.empty() || department.empty()) {
+            send_json(res, 400, R"({"error":"name und department erforderlich"})");
+            return;
+        }
+        if (!can_manage_department_scope(*current_user,
+                                         permission ? permission->mail_templates_scope : "none",
+                                         department)) {
+            send_json(res, 403, R"({"error":"Keine Berechtigung für dieses Department"})");
+            return;
+        }
+        try {
+            auto tpl = db.create_mail_template(name, department, subject, body,
+                                               template_recipients(j, "recipients"),
+                                               template_recipients(j, "cc"), is_default);
+            if (!tpl) {
+                send_json(res, 500, R"({"error":"Datenbankfehler"})");
+                return;
+            }
+            nlohmann::json msg = {{"event", "template_updated"}, {"template", template_to_json(*tpl)}};
+            wm.broadcast_template_update(TemplateKind::Mail, department, msg.dump());
+            cache_bump_version(db, "mail_templates");
+            send_json(res, 201, template_to_json(*tpl).dump());
+        } catch (const std::exception &e) {
+            send_internal_error(res, "handler", e);
+        } });
+}
+
+// ---- PUT /mail-templates/:id (also supports the legacy department route) ----
 
 void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
@@ -198,7 +286,8 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
     if (!require_auth(res, req, claims))
         return;
 
-    std::string department = url_decode(std::string{req->getParameter(0)});
+    const std::string target = url_decode(std::string{req->getParameter(0)});
+    std::optional<MailTemplate> existing;
 
     try
     {
@@ -209,6 +298,16 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
+        if (is_uuid_path_segment(target))
+        {
+            existing = db.get_mail_template_by_id(target);
+            if (!existing)
+            {
+                send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
+                return;
+            }
+        }
+        const std::string department = existing ? existing->department : target;
         if (!can_manage_department_scope(*current_user, perm ? perm->mail_templates_scope : "none", department))
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -222,7 +321,7 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
     }
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, department, &db, &wm](std::string_view chunk, bool last)
+    res->onData([res, buf, target, existing, &db, &wm](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
@@ -233,26 +332,22 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
             return;
         }
 
-        std::string subject = j.value("subject", "");
-        std::string body    = j.value("body", "");
-
-        std::vector<std::string> recipients;
-        if (j.contains("recipients") && j["recipients"].is_array()) {
-            for (auto& e : j["recipients"]) {
-                if (e.is_string() && !e.get<std::string>().empty())
-                    recipients.push_back(e.get<std::string>());
-            }
-        }
-        std::vector<std::string> cc;
-        if (j.contains("cc") && j["cc"].is_array()) {
-            for (auto& e : j["cc"]) {
-                if (e.is_string() && !e.get<std::string>().empty())
-                    cc.push_back(e.get<std::string>());
-            }
+        const std::string name = j.value("name", existing ? existing->name : "Standard");
+        const std::string subject = j.value("subject", "");
+        const std::string body = j.value("body", "");
+        const bool is_default = j.value("is_default", existing ? existing->is_default : true);
+        const auto recipients = template_recipients(j, "recipients");
+        const auto cc = template_recipients(j, "cc");
+        const std::string department = existing ? existing->department : target;
+        if (name.empty()) {
+            send_json(res, 400, R"({"error":"name erforderlich"})");
+            return;
         }
 
         try {
-            auto tpl = db.upsert_mail_template(department, subject, body, recipients, cc);
+            auto tpl = existing
+                ? db.update_mail_template(existing->id, name, subject, body, recipients, cc, is_default)
+                : db.upsert_mail_template(department, subject, body, recipients, cc);
             if (!tpl) {
                 send_json(res, 500, R"({"error":"Datenbankfehler"})");
                 return;
@@ -264,6 +359,50 @@ void handle_put_mail_template(HttpRes *res, HttpReq *req, Database &db, WebSocke
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);
         } });
+}
+
+// ---- DELETE /mail-templates/:id --------------------------------------------
+
+void handle_delete_mail_template(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    const std::string id{req->getParameter(0)};
+    try
+    {
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        const auto mail_template = db.get_mail_template_by_id(id);
+        if (!mail_template)
+        {
+            send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
+            return;
+        }
+        const auto permission = db.get_role_permission(current_user->role);
+        if (!can_manage_department_scope(*current_user,
+                                         permission ? permission->mail_templates_scope : "none",
+                                         mail_template->department))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        if (!db.delete_mail_template(id))
+        {
+            send_json(res, 500, R"({"error":"Datenbankfehler"})");
+            return;
+        }
+        cache_bump_version(db, "mail_templates");
+        send_json(res, 200, R"({"ok":true})");
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "handler", e);
+    }
 }
 
 // ---- Event templates --------------------------------------------------------

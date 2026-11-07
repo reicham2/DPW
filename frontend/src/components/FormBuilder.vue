@@ -618,7 +618,10 @@ function save() {
 	emit('save', buildPayload());
 }
 
-defineExpose({ flushAutoSave });
+defineExpose({
+	flushAutoSave,
+	hasUnsavedChanges: () => isDirty.value,
+});
 </script>
 
 <style scoped>

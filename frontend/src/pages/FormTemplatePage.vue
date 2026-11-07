@@ -39,6 +39,7 @@ const showBuilder = ref(false);
 const editingTemplate = ref<FormTemplate | null>(null);
 const editingIsDefault = ref(false);
 const editingDraftOverride = ref<SignupFormInput | null>(null);
+const pendingTemplateSaves = new Set<Promise<void>>();
 
 interface LocalFormTemplateDraft {
 	version: 1;
@@ -199,12 +200,12 @@ async function onSave(payload: SignupFormInput) {
 	if (!name) return;
 	if (editingTemplate.value) {
 		saveLocalDraft(editingTemplate.value.id, payload, editingIsDefault.value);
-		await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions, editingIsDefault.value);
-		if (!error.value) {
-			clearLocalDraft(editingTemplate.value.id);
-		}
+		const updated = await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions, editingIsDefault.value);
+		if (!updated) return;
+		clearLocalDraft(editingTemplate.value.id);
 	} else {
-		await createTemplate(name, activeDept.value, payload.form_type, payload.questions, editingIsDefault.value);
+		const created = await createTemplate(name, activeDept.value, payload.form_type, payload.questions, editingIsDefault.value);
+		if (!created) return;
 	}
 	if (editingIsDefault.value) {
 		await fetchTemplates(activeDept.value);
@@ -212,16 +213,39 @@ async function onSave(payload: SignupFormInput) {
 	closeBuilder();
 }
 
-async function onAutoSave(payload: SignupFormInput) {
+async function persistAutoSave(payload: SignupFormInput) {
 	const name = payload.title.trim();
 	if (!name || !editingTemplate.value) return;
 	saveLocalDraft(editingTemplate.value.id, payload, editingIsDefault.value);
-	await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions, editingIsDefault.value);
-	if (!error.value) {
+	const updated = await updateTemplate(editingTemplate.value.id, name, payload.form_type, payload.questions, editingIsDefault.value);
+	if (updated) {
 		clearLocalDraft(editingTemplate.value.id);
 		pendingLocalDraft.value = null;
 		localDraftRestoredAt.value = null;
 	}
+}
+
+function onAutoSave(payload: SignupFormInput) {
+	const save = persistAutoSave(payload);
+	pendingTemplateSaves.add(save);
+	void save.then(
+		() => pendingTemplateSaves.delete(save),
+		() => pendingTemplateSaves.delete(save),
+	);
+	return save;
+}
+
+async function backToTemplateList() {
+	if (!editingTemplate.value && formBuilderRef.value?.hasUnsavedChanges?.()) {
+		if (!window.confirm('Ungespeicherte neue Vorlage verwerfen und zur Übersicht zurückkehren?')) return;
+	}
+
+	await formBuilderRef.value?.flushAutoSave?.();
+	while (pendingTemplateSaves.size > 0) {
+		await Promise.all([...pendingTemplateSaves]);
+	}
+	if (error.value) return;
+	closeBuilder();
 }
 
 async function toggleDefault(tpl: FormTemplate) {
@@ -263,8 +287,9 @@ function typeLabel(t: string): string {
 
 		<!-- Builder -->
 		<template v-if="showBuilder">
-			<div class="ft-page-header">
-				<h2 class="ft-title">{{ editingTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage' }}</h2>
+			<div class="template-editor-header">
+				<button type="button" class="btn-sm template-editor-back" @click="backToTemplateList">← Zurück zu Vorlagen</button>
+				<h2 class="template-overview-title">{{ editingTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage' }}</h2>
 			</div>
 			<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
 				<span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
@@ -300,9 +325,9 @@ function typeLabel(t: string): string {
 
 		<!-- List -->
 		<template v-else>
-			<div class="ft-page-header">
-				<h2 class="ft-title">Vorlagen für {{ activeDept || '—' }}</h2>
-				<button v-if="activeDept" class="btn-primary" @click="openCreate">+ Neue Vorlage</button>
+			<div class="template-overview-header">
+				<h2 class="template-overview-title">Vorlagen für {{ activeDept || '—' }}</h2>
+				<button v-if="activeDept" class="btn-primary template-overview-create" @click="openCreate">+ Neue Vorlage</button>
 			</div>
 
 			<div v-if="!loading && templates.length === 0" class="empty-state">
@@ -312,7 +337,7 @@ function typeLabel(t: string): string {
 			<div
 				v-for="tpl in templates"
 				:key="tpl.id"
-				class="ft-row"
+				class="ft-row template-overview-row"
 			>
 				<div class="ft-row-main">
 					<div class="ft-row-name">
@@ -324,16 +349,16 @@ function typeLabel(t: string): string {
 						<span class="ft-count">{{ tpl.template_config.length }} Frage(n)</span>
 					</div>
 				</div>
-				<div class="ft-row-actions">
+				<div class="ft-row-actions template-overview-row-actions">
 					<button
-						:class="['btn-sm', tpl.is_default ? 'active-default' : '']"
+						:class="['btn-sm', 'template-overview-row-action', tpl.is_default ? 'active-default' : '']"
 						@click="toggleDefault(tpl)"
 						:title="tpl.is_default ? 'Standard entfernen' : 'Als Standard setzen'"
 					>
 						{{ tpl.is_default ? '⭐ Standard' : '☆ Standard' }}
 					</button>
-					<button class="btn-sm" @click="openEdit(tpl)">Bearbeiten</button>
-					<button class="btn-sm danger" @click="onDelete(tpl)">Löschen</button>
+					<button class="btn-sm template-overview-row-action" @click="openEdit(tpl)">Bearbeiten</button>
+					<button class="btn-sm template-overview-row-action danger" @click="onDelete(tpl)">Löschen</button>
 				</div>
 			</div>
 		</template>
@@ -341,20 +366,6 @@ function typeLabel(t: string): string {
 </template>
 
 <style scoped>
-.ft-page-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 1rem;
-	gap: 1rem;
-	flex-wrap: wrap;
-}
-.ft-title {
-	font-size: 1.05rem;
-	font-weight: 700;
-	color: var(--text-primary);
-	margin: 0;
-}
 .empty-state {
 	text-align: center;
 	color: var(--text-subtle);
@@ -380,17 +391,6 @@ function typeLabel(t: string): string {
 	font-size: 0.95rem;
 }
 
-.ft-row {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 0.75rem 1rem;
-	border: 1px solid var(--border);
-	border-radius: 0.5rem;
-	margin-bottom: 0.5rem;
-	background: var(--card-bg);
-	gap: 1rem;
-}
 .ft-row-main { flex: 1; min-width: 0; }
 .ft-row-name { font-weight: 600; color: var(--text-primary); font-size: 0.95rem; }
 .ft-row-meta { display: flex; gap: 0.5rem; margin-top: 0.25rem; font-size: 0.78rem; color: var(--text-muted); align-items: center; }
@@ -404,20 +404,6 @@ function typeLabel(t: string): string {
 }
 .ft-mode[data-type="deregistration"] { background: #fee2e2; color: #991b1b; }
 .ft-count { font-size: 0.75rem; color: var(--text-muted); }
-
-.ft-row-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
-
-.btn-primary {
-	padding: 0.5rem 1rem;
-	background: var(--btn-primary-bg);
-	color: #fff;
-	border: none;
-	border-radius: 0.375rem;
-	font-size: 0.85rem;
-	font-weight: 600;
-	cursor: pointer;
-}
-.btn-primary:hover { background: var(--btn-primary-bg-hover); }
 
 .btn-sm {
 	padding: 0.25rem 0.65rem;
@@ -492,18 +478,6 @@ function typeLabel(t: string): string {
 	.filter-tab {
 		flex-shrink: 0;
 	}
-	.ft-page-header {
-		align-items: stretch;
-		gap: 0.7rem;
-	}
-	.ft-title {
-		font-size: 0.98rem;
-		line-height: 1.4;
-	}
-	.btn-primary {
-		width: 100%;
-		min-height: 42px;
-	}
 	.editors-banner {
 		align-items: flex-start;
 		font-size: 0.8rem;
@@ -519,12 +493,6 @@ function typeLabel(t: string): string {
 		margin-left: 1.35rem;
 		font-size: 0.72rem;
 	}
-	.ft-row {
-		flex-direction: column;
-		align-items: stretch;
-		gap: 0.65rem;
-		padding: 0.7rem 0.75rem;
-	}
 	.ft-row-name {
 		font-size: 0.9rem;
 		overflow-wrap: anywhere;
@@ -532,16 +500,6 @@ function typeLabel(t: string): string {
 	.ft-row-meta {
 		flex-wrap: wrap;
 		row-gap: 0.35rem;
-	}
-	.ft-row-actions {
-		width: 100%;
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 0.4rem;
-	}
-	.btn-sm {
-		min-height: 40px;
-		font-size: 0.75rem;
 	}
 }
 </style>

@@ -288,6 +288,14 @@ Die vorhandenen Variablen (z. B. `{{titel}}`, `{{datum_kurz}}`, `{{ort}}`
 und `{{abteilung}}`) funktionieren auch im Mail-Betreff, im Formular-Titel
 und im Event-Titel.
 
+- Unter **Admin > Vorlagen > Mail** koennen pro Abteilung mehrere benannte
+  Vorlagen mit Empfaengern und CC verwaltet werden. Eine Vorlage kann als
+  Standard gesetzt werden; sie wird beim Oeffnen des Mailversands automatisch
+  geladen. Die Vorlagen erscheinen als Liste mit Standardstatus und Vorschau;
+  im Editor koennen Aenderungen gespeichert oder mit **Zurueck** zur Liste
+  uebernommen werden. Im Mailversand kann zwischen Vorlagen gewechselt werden.
+  Wenn dabei eigene Aenderungen ueberschrieben wuerden, wird vorher nachgefragt.
+  Bestehende Mailvorlagen bleiben beim Datenbank-Upgrade als Standard erhalten.
 - Mail-Betreff und Event-Titel werden beim Laden der Vorlage als Klartext
   aufgeloest; `{{formular_link}}` und `{{formular_link|Anmelden}}` ergeben
   dort die Formular-URL statt HTML. Die Vorschau kann vor dem Versand bzw.
