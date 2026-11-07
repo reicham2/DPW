@@ -3119,6 +3119,106 @@ img[data-program-image-error] {
 	flex-shrink: 0;
 }
 
+/* Shared layout for form- and mail-template overview lists. */
+.template-overview-header,
+.template-editor-header {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	margin-bottom: 1rem;
+	flex-wrap: wrap;
+}
+
+.template-overview-header {
+	justify-content: space-between;
+}
+
+.template-editor-header {
+	justify-content: flex-start;
+}
+
+.template-overview-title {
+	margin: 0;
+	color: var(--text-primary);
+	font-size: 1.05rem;
+	font-weight: 700;
+}
+
+.template-overview-create {
+	padding: 0.5rem 1rem;
+	border-radius: 0.375rem;
+	font-size: 0.85rem;
+}
+
+.template-overview-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 0.5rem;
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	background: var(--card-bg);
+}
+
+.template-overview-row-actions {
+	display: flex;
+	flex-shrink: 0;
+	gap: 0.4rem;
+}
+
+.template-overview-row-action {
+	white-space: nowrap;
+}
+
+.template-overview-row-actions .template-overview-row-action {
+	min-height: 40px;
+}
+
+@media (max-width: 599px) {
+	.template-overview-header {
+		align-items: stretch;
+		gap: 0.7rem;
+	}
+
+	.template-overview-title {
+		font-size: 0.98rem;
+		line-height: 1.4;
+	}
+
+	.template-overview-create {
+		width: 100%;
+		min-height: 42px;
+	}
+
+	.template-overview-row {
+		align-items: stretch;
+		flex-direction: column;
+		gap: 0.65rem;
+		padding: 0.7rem 0.75rem;
+	}
+
+	.template-overview-row-actions {
+		display: grid;
+		width: 100%;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	.template-overview-row-action {
+		white-space: nowrap;
+	}
+
+	.template-editor-header {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
+	.template-editor-back {
+		min-height: 40px;
+	}
+}
+
 .tpl-var-desc {
 	font-size: 0.82rem;
 	color: var(--text-muted);

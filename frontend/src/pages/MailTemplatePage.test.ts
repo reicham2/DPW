@@ -117,6 +117,10 @@ describe('MailTemplatePage template list', () => {
 		await flushPromises();
 
 		expect(wrapper.find('#mail-template-admin-selector').exists()).toBe(false);
+		expect(wrapper.find('.template-overview-header').exists()).toBe(true);
+		expect(wrapper.find('.template-overview-create').exists()).toBe(true);
+		expect(wrapper.findAll('.template-overview-row')).toHaveLength(2);
+		expect(wrapper.findAll('.template-overview-row-actions')).toHaveLength(2);
 		expect(wrapper.findAll('.mt-row')).toHaveLength(2);
 		expect(wrapper.text()).toContain('Standard');
 		expect(wrapper.text()).toContain('Alternative Einladung');
@@ -133,7 +137,7 @@ describe('MailTemplatePage template list', () => {
 		await flushPromises();
 		expect(wrapper.find('#mail-template-name').exists()).toBe(true);
 
-		await wrapper.get('.mt-editor-header button').trigger('click');
+		await wrapper.get('.template-editor-back').trigger('click');
 		await flushPromises();
 		expect(wrapper.findAll('.mt-row')).toHaveLength(2);
 		expect(wrapper.find('#mail-template-name').exists()).toBe(false);
