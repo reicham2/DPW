@@ -20,7 +20,7 @@ namespace
     constexpr size_t kMaxTextBytes = 20 * 1024;
     constexpr size_t kMaxResponseBytes = 1024 * 1024;
     constexpr int kMaxConcurrentRequests = 4;
-    constexpr long kRequestTimeoutMs = 12000;
+    constexpr long kRequestTimeoutMs = 30000;
 
     std::atomic<int> requests_in_flight{0};
 
