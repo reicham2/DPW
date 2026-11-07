@@ -87,6 +87,14 @@ make up
 make db-seed
 ```
 
+## Programmpunkte aus der Ideenkiste
+
+Im Bearbeitungsmodus einer Aktivitaet ueber **Aus Ideenkiste** einen gespeicherten
+Programmpunkt auswaehlen. Titel, Dauer und formatierte Beschreibung stehen direkt
+im neuen Programmblock zur Bearbeitung bereit; ein Neuladen ist nicht erforderlich.
+Weitere Aenderungen werden wie bei manuell angelegten Programmpunkten automatisch
+gespeichert.
+
 ## Audit Log
 
 Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein persistentes,

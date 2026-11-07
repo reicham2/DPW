@@ -2249,9 +2249,20 @@ function onProgRespBlur(i: number) {
 const progEditorRefs = ref<Record<number, HTMLElement>>({});
 const progToolbar = ref<({ idx: number } & RichTextToolbarState) | null>(null);
 
-function setProgEditorRef(el: any, i: number) {
-	if (el) progEditorRefs.value[i] = el as HTMLElement;
-	else delete progEditorRefs.value[i];
+function syncProgEditor(el: HTMLElement, description: string) {
+	// Rewriting a focused editor destroys its text nodes and caret position.
+	if (el !== document.activeElement && el.innerHTML !== description) {
+		el.innerHTML = description;
+	}
+}
+
+function setProgEditorRef(el: unknown, i: number) {
+	if (el instanceof HTMLElement) {
+		progEditorRefs.value[i] = el;
+		syncProgEditor(el, editPrograms.value[i].description);
+	} else {
+		delete progEditorRefs.value[i];
+	}
 }
 
 function onProgDescInput(i: number) {
@@ -2383,12 +2394,7 @@ function initProgEditors() {
 	nextTick(() => {
 		for (let i = 0; i < editPrograms.value.length; i++) {
 			const el = progEditorRefs.value[i];
-			// Never rewrite the editor the user is currently typing in: an
-			// innerHTML reset destroys its text nodes and sends the caret to the start.
-			if (el === document.activeElement) continue;
-			if (el && el.innerHTML !== editPrograms.value[i].description) {
-				el.innerHTML = editPrograms.value[i].description;
-			}
+			if (el) syncProgEditor(el, editPrograms.value[i].description);
 		}
 	});
 }
