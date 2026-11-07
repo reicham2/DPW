@@ -891,11 +891,11 @@ function onCcKeydown(e: KeyboardEvent) {
 
     <p v-if="loading" class="loading">Laden...</p>
 
-    <div v-else class="detail-form">
+    <div v-else :class="{ 'detail-form': showTemplateEditor }">
       <template v-if="!showTemplateEditor">
-        <div class="mt-page-header">
-          <h2 class="mt-title">Vorlagen für {{ activeDept || '—' }}</h2>
-          <button v-if="activeDept" type="button" class="btn-primary" @click="createNewTemplate">
+        <div class="template-overview-header">
+          <h2 class="template-overview-title">Vorlagen für {{ activeDept || '—' }}</h2>
+          <button v-if="activeDept" type="button" class="btn-primary template-overview-create" @click="createNewTemplate">
             + Neue Vorlage
           </button>
         </div>
@@ -904,7 +904,7 @@ function onCcKeydown(e: KeyboardEvent) {
           Noch keine Mail-Vorlagen in dieser Stufe.
         </div>
 
-        <div v-for="template in departmentTemplates" :key="template.id" class="mt-row">
+        <div v-for="template in departmentTemplates" :key="template.id" class="mt-row template-overview-row">
           <div class="mt-row-main">
             <div class="mt-row-name">
               {{ template.name }}
@@ -919,26 +919,26 @@ function onCcKeydown(e: KeyboardEvent) {
               </span>
             </div>
           </div>
-          <div class="mt-row-actions">
+          <div class="mt-row-actions template-overview-row-actions">
             <button
               type="button"
-              :class="['btn-sm', template.is_default ? 'active-default' : '']"
+              :class="['btn-sm', 'template-overview-row-action', template.is_default ? 'active-default' : '']"
               :title="template.is_default ? 'Standard entfernen' : 'Als Standard setzen'"
               @click="toggleDefault(template)"
             >
               {{ template.is_default ? '⭐ Standard' : '☆ Standard' }}
             </button>
-            <button type="button" class="btn-sm" @click="editTemplate(template)">Bearbeiten</button>
-            <button type="button" class="btn-sm danger" @click="deleteCurrentTemplate(template)">Löschen</button>
+            <button type="button" class="btn-sm template-overview-row-action" @click="editTemplate(template)">Bearbeiten</button>
+            <button type="button" class="btn-sm template-overview-row-action danger" @click="deleteCurrentTemplate(template)">Löschen</button>
           </div>
         </div>
         <ErrorAlert :error="error" />
       </template>
 
       <template v-else>
-      <div class="mt-editor-header">
-        <button type="button" class="btn-sm" @click="showTemplateList">← Zurück zu Vorlagen</button>
-        <h2 class="mt-title">{{ templateName || 'Mail-Vorlage bearbeiten' }}</h2>
+      <div class="template-editor-header">
+        <button type="button" class="btn-sm template-editor-back" @click="showTemplateList">← Zurück zu Vorlagen</button>
+        <h2 class="template-overview-title">{{ templateName || 'Mail-Vorlage bearbeiten' }}</h2>
       </div>
       <div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
         <span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
@@ -1150,27 +1150,6 @@ function onCcKeydown(e: KeyboardEvent) {
 </template>
 
 <style scoped>
-.mt-page-header,
-.mt-editor-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 1rem;
-	gap: 1rem;
-	flex-wrap: wrap;
-}
-
-.mt-editor-header {
-	justify-content: flex-start;
-}
-
-.mt-title {
-	font-size: 1.05rem;
-	font-weight: 700;
-	color: var(--text-primary);
-	margin: 0;
-}
-
 .mt-empty-state {
 	text-align: center;
 	color: var(--text-subtle);
@@ -1178,18 +1157,6 @@ function onCcKeydown(e: KeyboardEvent) {
 	font-size: 0.875rem;
 	border: 1px dashed var(--border);
 	border-radius: 0.5rem;
-}
-
-.mt-row {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 0.75rem 1rem;
-	border: 1px solid var(--border);
-	border-radius: 0.5rem;
-	margin-bottom: 0.5rem;
-	background: var(--card-bg);
-	gap: 1rem;
 }
 
 .mt-row-main {
@@ -1222,12 +1189,6 @@ function onCcKeydown(e: KeyboardEvent) {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	max-width: min(34rem, 55vw);
-}
-
-.mt-row-actions {
-	display: flex;
-	gap: 0.4rem;
-	flex-shrink: 0;
 }
 
 .btn-sm {
@@ -1339,27 +1300,8 @@ function onCcKeydown(e: KeyboardEvent) {
 }
 
 @media (max-width: 599px) {
-	.mt-row {
-		align-items: flex-start;
-		flex-direction: column;
-	}
-
-	.mt-row-actions {
-		width: 100%;
-		flex-wrap: wrap;
-	}
-
-	.mt-row-actions .btn-sm {
-		min-height: 40px;
-	}
-
 	.mt-preview {
 		max-width: 100%;
-	}
-
-	.mt-editor-header {
-		align-items: flex-start;
-		flex-direction: column;
 	}
 
 	.mt-editor-actions {
