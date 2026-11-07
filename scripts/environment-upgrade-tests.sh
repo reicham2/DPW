@@ -52,7 +52,11 @@ fi
 
 assert_services() {
     local service id state
-    for service in db redis backend frontend; do
+    local services="db redis backend frontend"
+    if compose config --services | grep -Fxq languagetool; then
+        services="$services languagetool"
+    fi
+    for service in $services; do
         id="$(compose ps -a -q "$service")"
         [ -n "$id" ] || { echo "Missing service: $service" >&2; return 1; }
         state="$(docker inspect --format \
