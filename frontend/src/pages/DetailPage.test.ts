@@ -460,7 +460,7 @@ describe('DetailPage activity access', () => {
 		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
 		const originalCards = wrapper.findAll('.program-card');
 		await originalCards[1].get('.program-card__toggle').trigger('click');
-		await wrapper.get('.btn-add-single .btn-add').trigger('click');
+		await wrapper.get('.btn-add-split__main, .btn-add-single .btn-add').trigger('click');
 		expect(wrapper.findAll('.program-card')).toHaveLength(3);
 		expect(wrapper.findAll('.program-card')[2].get('.program-card__toggle').attributes('aria-expanded')).toBe('false');
 
