@@ -540,6 +540,15 @@ async function showTemplateList() {
   activeEditors.value = []
 }
 
+async function saveTemplateNow() {
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  }
+  hasPendingChanges = false
+  return doSave()
+}
+
 async function createNewTemplate() {
   const name = window.prompt('Name der neuen Mail-Vorlage:')
   if (!name?.trim() || !(await flushCurrentTemplate())) return
@@ -1109,6 +1118,11 @@ function onCcKeydown(e: KeyboardEvent) {
       <!-- Variable reference -->
       <TemplateVarsDropdown :extra-vars="MAIL_EXTRA_VARS" hint="Variablen können im Betreff und im Inhalt verwendet werden. Im Betreff werden Links als URL eingefügt." />
 
+      <div class="mt-editor-actions">
+        <button type="button" class="btn-secondary" @click="showTemplateList">Zurück</button>
+        <button type="button" class="btn-primary" @click="saveTemplateNow">Speichern</button>
+      </div>
+
       <ErrorAlert :error="error" />
       </template>
     </div>
@@ -1288,6 +1302,42 @@ function onCcKeydown(e: KeyboardEvent) {
 	color: var(--text-subtle);
 }
 
+.mt-editor-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.75rem;
+	margin-top: 1.5rem;
+}
+
+.mt-editor-actions .btn-secondary,
+.mt-editor-actions .btn-primary {
+	padding: 0.5rem 1.25rem;
+	border-radius: 0.375rem;
+	font-size: 0.875rem;
+	cursor: pointer;
+}
+
+.mt-editor-actions .btn-secondary {
+	background: var(--btn-secondary-bg);
+	color: var(--text-secondary);
+	border: 1px solid var(--border-strong);
+}
+
+.mt-editor-actions .btn-primary {
+	background: var(--btn-primary-bg);
+	color: var(--btn-primary-color, #fff);
+	border: none;
+	font-weight: 600;
+}
+
+.mt-editor-actions .btn-secondary:hover {
+	background: var(--bg-elevated);
+}
+
+.mt-editor-actions .btn-primary:hover {
+	background: var(--btn-primary-bg-hover);
+}
+
 @media (max-width: 599px) {
 	.mt-row {
 		align-items: flex-start;
@@ -1310,6 +1360,15 @@ function onCcKeydown(e: KeyboardEvent) {
 	.mt-editor-header {
 		align-items: flex-start;
 		flex-direction: column;
+	}
+
+	.mt-editor-actions {
+		justify-content: stretch;
+	}
+
+	.mt-editor-actions button {
+		flex: 1;
+		min-height: 42px;
 	}
 }
 </style>

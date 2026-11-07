@@ -140,6 +140,52 @@ describe('MailTemplatePage template list', () => {
 		wrapper.unmount();
 	});
 
+	it('saves from the editor and stays on the editor', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+		await wrapper.findAll('.mt-row .btn-sm')[1].trigger('click');
+		await flushPromises();
+
+		await wrapper.get('#mail-template-name').setValue('Standard aktualisiert');
+		await wrapper.get('.mt-editor-actions .btn-primary').trigger('click');
+		await flushPromises();
+
+		expect(mocks.updateTemplate).toHaveBeenCalledWith(
+			'template-standard',
+			'Standard aktualisiert',
+			'Einladung',
+			'<p>Hallo zusammen</p>',
+			['eltern@example.com'],
+			[],
+			true,
+		);
+		expect(wrapper.find('#mail-template-name').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('flushes pending edits before returning to the list', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+		await wrapper.findAll('.mt-row .btn-sm')[1].trigger('click');
+		await flushPromises();
+
+		await wrapper.get('#mail-template-name').setValue('Zurück mit Speichern');
+		await wrapper.get('.mt-editor-actions .btn-secondary').trigger('click');
+		await flushPromises();
+
+		expect(mocks.updateTemplate).toHaveBeenCalledWith(
+			'template-standard',
+			'Zurück mit Speichern',
+			'Einladung',
+			'<p>Hallo zusammen</p>',
+			['eltern@example.com'],
+			[],
+			true,
+		);
+		expect(wrapper.findAll('.mt-row')).toHaveLength(2);
+		wrapper.unmount();
+	});
+
 	it('lets a list row become the default', async () => {
 		const wrapper = shallowMount(MailTemplatePage);
 		await flushPromises();
