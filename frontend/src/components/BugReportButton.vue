@@ -9,8 +9,13 @@
     <div v-if="isOpen" class="bug-overlay" @click.self="closeModal">
       <div class="bug-modal">
         <div class="bug-modal-header">
-          <h2 class="bug-modal-title">Problem melden</h2>
+          <h2 class="bug-modal-title"><button type="button" class="bug-title-trigger" @click="activateEasterEgg">Problem melden</button></h2>
           <button class="bug-close-btn" @click="closeModal" aria-label="Schliessen">×</button>
+        </div>
+
+        <div v-if="showEasterEgg" class="bug-easter-egg" role="status">
+          <span>"de Delay gaht mir uf d Eier!!!!!!" - Mulan</span>
+          <button type="button" class="bug-close-btn" @click="resetEasterEgg" aria-label="Erinnerung schliessen">×</button>
         </div>
 
         <!-- Form -->
@@ -75,6 +80,19 @@ const success = ref(false)
 const issueUrl = ref('')
 const sendDebugInfo = ref(false)
 const editorRef = ref<HTMLElement | null>(null)
+const titleActivations = ref(0)
+const showEasterEgg = ref(false)
+
+function activateEasterEgg() {
+  if (showEasterEgg.value) return
+  titleActivations.value++
+  if (titleActivations.value === 5) showEasterEgg.value = true
+}
+
+function resetEasterEgg() {
+  titleActivations.value = 0
+  showEasterEgg.value = false
+}
 
 function markdownToHtml(md: string): string {
   return md
@@ -114,10 +132,12 @@ watch(bugReportOpen, (val) => {
 function closeModal() {
   if (isSubmitting.value) return
   isOpen.value = false
+  resetEasterEgg()
 }
 
 function closeAndReset() {
   isOpen.value = false
+  resetEasterEgg()
   description.value = ''
   error.value = ''
   success.value = false
@@ -214,6 +234,26 @@ async function submitReport() {
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+}
+
+.bug-title-trigger {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.bug-title-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.bug-easter-egg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 24px 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
 }
 
 .bug-close-btn {

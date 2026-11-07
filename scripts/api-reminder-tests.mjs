@@ -61,7 +61,8 @@ test('shared scheduler delivers preference-aware reminders without duplicates an
 		let originalEnabled;
 		const job = async () => (await request('GET', '/admin/cron-jobs')).jobs.find(j => j.id === 'activity-reminders');
 		const setEnabled = enabled => request('PUT', '/admin/cron-jobs/activity-reminders', admin, { enabled });
-		const notes = async user => (await request('GET', '/notifications?limit=0', user))
+		// An explicit zero is clamped to one by the endpoint; fetch all before filtering by activity.
+		const notes = async user => (await request('GET', '/notifications', user))
 			.filter(n => n.category === 'activity_reminder' && n.payload.activity_id === activity);
 		const messages = user => clients.get(user).messages.filter(event =>
 			event.event === 'notification' && event.notification.category === 'activity_reminder'
