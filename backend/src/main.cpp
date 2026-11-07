@@ -281,6 +281,8 @@ int main()
          // Predefined materials
          .get("/materials/predefined", [&](auto *res, auto *req)
               { handle_get_materials_predefined(res, req, db); })
+         .post("/proofreading/check", [&](auto *res, auto *req)
+               { handle_post_proofreading_check(res, req); })
          .get("/admin/materials", [&](auto *res, auto *req)
               { handle_get_materials_admin(res, req, db); })
          .post("/admin/materials", [&](auto *res, auto *req)

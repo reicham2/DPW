@@ -48,6 +48,22 @@ services:
       retries: 5
       start_period: 3s
 
+  languagetool:
+    image: erikvl87/languagetool:6.8@sha256:ef8fa12cbd485166c9ceeb7139d76d56d07707a624da6bb1fc1fbb5411750527
+    restart: unless-stopped
+    expose:
+      - "8010"
+    environment:
+      Java_Xms: 256m
+      Java_Xmx: 768m
+    mem_limit: 1536m
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   backend:
     image: ghcr.io/reicham2/dpw-backend:latest
     restart: unless-stopped
@@ -66,6 +82,7 @@ services:
       REDIS_PORT: "6379"
       DPW_CACHE_TTL_SECONDS: "30"
       REDIS_TIMEOUT_MS: "250"
+      LANGUAGETOOL_URL: http://languagetool:8010/v2/check
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     logging:
@@ -78,6 +95,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      languagetool:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1"]
       interval: 15s

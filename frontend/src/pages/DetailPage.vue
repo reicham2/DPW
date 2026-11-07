@@ -26,6 +26,12 @@ import { replaceDateOffsets } from '../utils/templateDateVars';
 import { defaultRichTextToolbarState, readRichTextToolbarState } from '../utils/richTextToolbar';
 import type { RichTextToolbarState } from '../utils/richTextToolbar';
 import { replaceGuidingThreadPlaceholder } from '../utils/templateText';
+import {
+	getProgramText,
+	getProofreadingRange,
+	proofreadingResultIsCurrent,
+} from '../utils/programProofreading';
+import type { ProofreadingMatch } from '../utils/programProofreading';
 
 
 const route = useRoute();
@@ -2248,14 +2254,160 @@ function onProgRespBlur(i: number) {
 // ---- Program description rich editor ----------------------------------------
 const progEditorRefs = ref<Record<number, HTMLElement>>({});
 const progToolbar = ref<({ idx: number } & RichTextToolbarState) | null>(null);
+type ProgramProofreadingState = {
+	status: 'loading' | 'ready' | 'stale' | 'error';
+	htmlSnapshot: string;
+	matches?: ProofreadingMatch[];
+	error?: string;
+};
+const programProofreading = ref<Record<number, ProgramProofreadingState>>({});
+const proofreadControllers = new Map<number, AbortController>();
+const proofreadRequestIds = new Map<number, number>();
 
 function setProgEditorRef(el: any, i: number) {
 	if (el) progEditorRefs.value[i] = el as HTMLElement;
 	else delete progEditorRefs.value[i];
 }
 
+function cancelProgProofreadingRequest(i: number) {
+	proofreadControllers.get(i)?.abort();
+	proofreadControllers.delete(i);
+	proofreadRequestIds.set(i, (proofreadRequestIds.get(i) ?? 0) + 1);
+}
+
+function invalidateProgProofreading(i: number) {
+	const state = programProofreading.value[i];
+	cancelProgProofreadingRequest(i);
+	if (!state) return;
+	programProofreading.value[i] = {
+		status: 'stale',
+		htmlSnapshot: state.htmlSnapshot,
+		error: 'Die Beschreibung wurde geändert. Bitte erneut prüfen.',
+	};
+}
+
+function closeProgProofreading(i: number) {
+	cancelProgProofreadingRequest(i);
+	delete programProofreading.value[i];
+}
+
+async function checkProgDescription(i: number) {
+	const editor = progEditorRefs.value[i];
+	if (!editor || isLockedByOther(`program_${i}`)) return;
+	const htmlSnapshot = editor.innerHTML;
+	const text = getProgramText(editor).text;
+	cancelProgProofreadingRequest(i);
+	if (!text.trim()) {
+		programProofreading.value[i] = {
+			status: 'error',
+			htmlSnapshot,
+			error: 'Die Beschreibung enthält keinen prüfbaren Text.',
+		};
+		return;
+	}
+
+	const requestId = proofreadRequestIds.get(i)!;
+	const controller = new AbortController();
+	proofreadControllers.set(i, controller);
+	programProofreading.value[i] = { status: 'loading', htmlSnapshot };
+	const timeout = window.setTimeout(() => controller.abort(), 35000);
+	try {
+		const response = await apiFetch('/api/proofreading/check', {
+			method: 'POST',
+			body: JSON.stringify({ text }),
+			signal: controller.signal,
+		});
+		const result = await response.json() as { matches?: unknown; error?: unknown };
+		if (!response.ok) {
+			throw new Error(typeof result.error === 'string'
+				? result.error
+				: 'Die lokale Rechtschreibprüfung ist nicht verfügbar.');
+		}
+		if (!Array.isArray(result.matches)) {
+			throw new Error('Die lokale Rechtschreibprüfung hat eine ungültige Antwort geliefert.');
+		}
+		if (proofreadRequestIds.get(i) !== requestId) return;
+		if (!proofreadingResultIsCurrent(editor, htmlSnapshot)) {
+			programProofreading.value[i] = {
+				status: 'error',
+				htmlSnapshot,
+				error: 'Die Beschreibung wurde geändert. Bitte erneut prüfen.',
+			};
+			return;
+		}
+		programProofreading.value[i] = {
+			status: 'ready',
+			htmlSnapshot,
+			matches: result.matches as ProofreadingMatch[],
+		};
+	} catch (error) {
+		if (proofreadRequestIds.get(i) !== requestId) return;
+		const timedOut = controller.signal.aborted;
+		programProofreading.value[i] = {
+			status: 'error',
+			htmlSnapshot,
+			error: timedOut
+				? 'Die Prüfung hat zu lange gedauert. Bitte später erneut versuchen.'
+				: error instanceof Error
+					? error.message
+					: 'Die lokale Rechtschreibprüfung ist nicht verfügbar.',
+		};
+	} finally {
+		window.clearTimeout(timeout);
+		if (proofreadControllers.get(i) === controller) proofreadControllers.delete(i);
+	}
+}
+
+function applyProgProofreadingSuggestion(i: number, match: ProofreadingMatch, replacement: string) {
+	const state = programProofreading.value[i];
+	const editor = progEditorRefs.value[i];
+	if (!state || state.status !== 'ready' || !editor || isLockedByOther(`program_${i}`)) return;
+	if (!proofreadingResultIsCurrent(editor, state.htmlSnapshot)) {
+		programProofreading.value[i] = {
+			...state,
+			status: 'error',
+			error: 'Die Beschreibung wurde geändert. Bitte erneut prüfen.',
+		};
+		return;
+	}
+	const currentText = getProgramText(editor);
+	const range = getProofreadingRange(currentText, match.offset, match.length);
+	if (!range) {
+		programProofreading.value[i] = {
+			...state,
+			status: 'error',
+			error: 'Dieser Vorschlag überschreitet eine Formatierungs-, Absatz- oder Bildgrenze und kann nicht sicher angewendet werden.',
+		};
+		return;
+	}
+	const selection = window.getSelection();
+	if (!selection) {
+		programProofreading.value[i] = {
+			...state,
+			status: 'error',
+			error: 'Der Vorschlag konnte im Editor nicht markiert werden.',
+		};
+		return;
+	}
+	editor.focus();
+	selection.removeAllRanges();
+	selection.addRange(range);
+	if (!document.execCommand('insertText', false, replacement)) {
+		selection.removeAllRanges();
+		programProofreading.value[i] = {
+			...state,
+			status: 'error',
+			error: 'Dein Browser konnte den Vorschlag nicht im Editor übernehmen.',
+		};
+		return;
+	}
+	onProgDescInput(i);
+	void checkProgDescription(i);
+}
+
 function onProgDescInput(i: number) {
 	const el = progEditorRefs.value[i];
+	invalidateProgProofreading(i);
 	if (el) editPrograms.value[i].description = el.innerHTML;
 	markDirty(`prog_${i}_desc`);
 	updateProgToolbar(i);
@@ -3744,6 +3896,61 @@ function copyShareLink() {
 										data-placeholder="Beschreibung…"
 									></div>
 									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]"><Save :size="12" aria-hidden="true" /></span>
+								</div>
+								<div class="program-proofreading">
+									<button
+										type="button"
+										class="toolbar-btn-sm program-proofreading__check"
+										:disabled="isLockedByOther(`program_${i}`) || programProofreading[i]?.status === 'loading'"
+										aria-label="Rechtschreibung prüfen"
+										title="Rechtschreibung prüfen"
+										@click="checkProgDescription(i)"
+									>
+										<Check :size="14" aria-hidden="true" />
+									</button>
+								</div>
+								<div
+									v-if="programProofreading[i]"
+									class="program-proofreading__results"
+									:class="{ 'program-proofreading__results--error': programProofreading[i].status === 'error' }"
+								>
+									<div class="program-proofreading__results-header">
+										<div role="status" aria-live="polite">
+											<p v-if="programProofreading[i].status === 'loading'">Die Beschreibung wird lokal geprüft…</p>
+											<p v-else-if="programProofreading[i].status === 'stale'">{{ programProofreading[i].error }}</p>
+											<p v-else-if="programProofreading[i].status === 'error'">{{ programProofreading[i].error }}</p>
+											<p v-else-if="programProofreading[i].status === 'ready' && !programProofreading[i].matches?.length">Keine Vorschläge gefunden.</p>
+											<p v-else-if="programProofreading[i].status === 'ready'">{{ programProofreading[i].matches?.length }} Vorschläge gefunden.</p>
+										</div>
+										<button
+											type="button"
+											class="toolbar-btn-sm program-proofreading__close"
+											aria-label="Prüfung schliessen"
+											title="Prüfung schliessen"
+											@click="closeProgProofreading(i)"
+										><X :size="14" aria-hidden="true" /></button>
+									</div>
+									<template v-if="programProofreading[i].status === 'ready'">
+										<div
+											v-for="(match, matchIndex) in programProofreading[i].matches"
+											:key="`${match.rule.id ?? 'match'}-${match.offset}-${matchIndex}`"
+											class="program-proofreading__match"
+										>
+											<p>{{ match.shortMessage || match.message }}</p>
+											<div v-if="match.replacements.length" class="program-proofreading__suggestions">
+												<button
+													v-for="(replacement, replacementIndex) in match.replacements"
+													:key="`${replacement.value}-${replacementIndex}`"
+													type="button"
+													class="program-proofreading__suggestion"
+													:disabled="isLockedByOther(`program_${i}`)"
+													@click="applyProgProofreadingSuggestion(i, match, replacement.value)"
+												>
+													{{ replacement.value }} <span>übernehmen</span>
+												</button>
+											</div>
+										</div>
+									</template>
 								</div>
 							</div>
 						</div>
