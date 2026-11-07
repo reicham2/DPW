@@ -96,6 +96,7 @@ set(HANDLER_SOURCES
     src/handlers/share_ideenkiste.cpp
     src/handlers/program_images.cpp
     src/handlers/setup_maintenance.cpp
+    src/handlers/proofreading.cpp
 )
 
 add_executable(server

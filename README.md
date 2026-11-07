@@ -101,6 +101,29 @@ URI in Entra ID; the frontend uses `window.location.origin`. Login requests use
 `Mail.Send`, `People.Read` as implemented in
 [useAuth.ts](frontend/src/composables/useAuth.ts).
 
+## Selbst gehostete Rechtschreibprüfung
+
+Die Produktions- und Entwicklungs-Compose-Stacks starten einen internen
+LanguageTool-Server (Version 6.8 aus dem Community-Image
+[`erikvl87/languagetool`](https://github.com/Erikvl87/docker-languagetool);
+der Digest ist in Compose fixiert).
+Der Dienst ist nur im privaten Compose-Netz erreichbar und hat keinen
+veröffentlichten Host-Port. Der Backend-Endpunkt akzeptiert nur angemeldete
+Anfragen; Programm-Beschreibungen werden ausschliesslich bei Klick auf
+**Rechtschreibung prüfen** an diesen lokalen Dienst gesendet. Vorschläge werden
+nicht automatisch angewendet. Änderungen laufen danach wie gewohnt durch den
+Editor und dessen Autospeicherung.
+
+Die Prüfung verwendet Schweizer Standarddeutsch (`de-CH`) und die im
+LanguageTool-Open-Source-Server enthaltenen Regeln. Sie ersetzt weder eine
+Prüfung von Dialekt/Pfadi-Eigennamen noch die cloudbasierten AI-Regeln von
+LanguageTool. Für den initialen Image-Pull ist Internetzugriff nötig; der
+laufende Korrekturdienst sendet keine Texte an einen externen Anbieter. Es gibt
+keinen gespeicherten Prüfverlauf oder LanguageTool-Datenträger. Die Compose-
+Ressourcenbegrenzung beträgt 2 CPUs und 1,5 GiB RAM; der Java-Heap ist auf
+768 MiB begrenzt. Ist der Dienst nicht verfügbar, bleibt die normale Bearbeitung
+nutzbar und die Prüfung zeigt einen Fehler.
+
 ## Geteilte Aktivitäten und öffentliche Formulare
 
 Freigabelinks unter `/shared/:token` zeigen Aktivitäten mit gut lesbaren Texten

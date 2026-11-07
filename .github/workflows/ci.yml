@@ -246,6 +246,21 @@ jobs:
           docker compose -f docker-compose-dev.yml logs frontend
           exit 1
 
+      - name: Wait for LanguageTool health
+        run: |
+          echo "Waiting for LanguageTool health..."
+          for i in $(seq 1 90); do
+            id="$(docker compose -f docker-compose-dev.yml ps -q languagetool)"
+            if [ -n "$id" ] && [ "$(docker inspect --format '{{.State.Health.Status}}' "$id")" = "healthy" ]; then
+              echo "LanguageTool healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "LanguageTool did not become healthy"
+          docker compose -f docker-compose-dev.yml logs languagetool
+          exit 1
+
       - name: Smoke Phase - Start
         run: echo "Running smoke checks..."
 
@@ -322,6 +337,18 @@ jobs:
         run: |
           docker run --rm --network host -v "$PWD:/tests:ro" -w /tests node:22-alpine \
             node --test scripts/api-maintenance-tests.mjs
+
+      - name: API - Run local proofreading integration tests
+        run: node --test scripts/api-proofreading-tests.mjs
+
+      - name: API - Verify proofreading failure when service is unavailable
+        run: |
+          docker compose -f docker-compose-dev.yml stop languagetool
+          trap 'docker compose -f docker-compose-dev.yml start languagetool' EXIT
+          EXPECT_PROOFREADING_UNAVAILABLE=1 node --test scripts/api-proofreading-tests.mjs
+
+      - name: Restore LanguageTool after failure test
+        run: docker compose -f docker-compose-dev.yml up -d --wait --wait-timeout 180 languagetool
 
       - name: Smoke - Verify snapshot rollback on sync failure
         run: |
