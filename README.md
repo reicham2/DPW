@@ -130,6 +130,13 @@ im neuen Programmblock zur Bearbeitung bereit; ein Neuladen ist nicht erforderli
 Weitere Aenderungen werden wie bei manuell angelegten Programmpunkten automatisch
 gespeichert.
 
+## Aktivitäten bearbeiten
+
+Programmpunkte sind im Bearbeitungsmodus zunächst eingeklappt und lassen sich
+unabhängig voneinander öffnen oder mit **Alle öffnen / Alle schliessen**
+gemeinsam ein- und ausklappen. Änderungen bleiben beim Einklappen erhalten; die
+Reihenfolge kann weiterhin über den Ziehgriff angepasst werden.
+
 ## Audit Log
 
 Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein persistentes,

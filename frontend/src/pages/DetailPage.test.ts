@@ -396,6 +396,90 @@ describe('DetailPage activity access', () => {
 		wrapper.unmount();
 	});
 
+	it('starts program cards collapsed, expands them independently, and keeps edits while folded', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			programs: [
+				{ id: 'program-1', activity_id: 'activity-1', duration_minutes: 20, title: 'Ankommen', description: '', responsible: [] },
+				{ id: 'program-2', activity_id: 'activity-1', duration_minutes: 30, title: 'Spiel', description: '', responsible: [] },
+			],
+		}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+
+		const cards = wrapper.findAll('.program-card');
+		expect(cards).toHaveLength(2);
+		for (const card of cards) {
+			expect(card.get('.program-card__toggle').attributes('aria-expanded')).toBe('false');
+			expect((card.get('.program-card__fields').element as HTMLElement).style.display).toBe('none');
+		}
+
+		await cards[0].get('.program-card__toggle').trigger('click');
+		expect(cards[0].get('.program-card__toggle').attributes('aria-expanded')).toBe('true');
+		expect((cards[0].get('.program-card__fields').element as HTMLElement).style.display).not.toBe('none');
+		await cards[0].get('input[placeholder="Titel"]').setValue('Ankommen und begrüssen');
+		await cards[0].get('.program-card__toggle').trigger('click');
+		expect(cards[0].get('.program-card__toggle').attributes('aria-expanded')).toBe('false');
+		await cards[0].get('.program-card__toggle').trigger('click');
+		expect((cards[0].get('input[placeholder="Titel"]').element as HTMLInputElement).value)
+			.toBe('Ankommen und begrüssen');
+
+		await cards[1].get('.program-card__toggle').trigger('click');
+		expect(cards[0].get('.program-card__toggle').attributes('aria-expanded')).toBe('true');
+		expect(cards[1].get('.program-card__toggle').attributes('aria-expanded')).toBe('true');
+		await cards[0].get('.program-card__toggle').trigger('click');
+		expect(cards[0].get('.program-card__toggle').attributes('aria-expanded')).toBe('false');
+		expect(cards[1].get('.program-card__toggle').attributes('aria-expanded')).toBe('true');
+
+		const toggleAll = wrapper.get('.program-card__toggle-all');
+		expect(toggleAll.text()).toBe('Alle öffnen');
+		await toggleAll.trigger('click');
+		expect(wrapper.findAll('.program-card').every((card) =>
+			card.get('.program-card__toggle').attributes('aria-expanded') === 'true'
+		)).toBe(true);
+		expect(toggleAll.text()).toBe('Alle schliessen');
+		await toggleAll.trigger('click');
+		expect(wrapper.findAll('.program-card').every((card) =>
+			card.get('.program-card__toggle').attributes('aria-expanded') === 'false'
+		)).toBe(true);
+		expect(toggleAll.text()).toBe('Alle öffnen');
+		wrapper.unmount();
+	});
+
+	it('keeps expansion attached to a program when adding, removing, and reordering cards', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			programs: [
+				{ id: 'program-1', activity_id: 'activity-1', duration_minutes: 20, title: 'Erster', description: '', responsible: [] },
+				{ id: 'program-2', activity_id: 'activity-1', duration_minutes: 30, title: 'Zweiter', description: '', responsible: [] },
+			],
+		}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		const originalCards = wrapper.findAll('.program-card');
+		await originalCards[1].get('.program-card__toggle').trigger('click');
+		await wrapper.get('.btn-add-split__main, .btn-add-single .btn-add').trigger('click');
+		expect(wrapper.findAll('.program-card')).toHaveLength(3);
+		expect(wrapper.findAll('.program-card')[2].get('.program-card__toggle').attributes('aria-expanded')).toBe('false');
+
+		await wrapper.findAll('.program-card')[0].get('.program-card__remove').trigger('click');
+		let cards = wrapper.findAll('.program-card');
+		expect(cards[0].get('.program-card__toggle').text()).toContain('Zweiter');
+		expect(cards[0].get('.program-card__toggle').attributes('aria-expanded')).toBe('true');
+
+		await cards[0].get('.program-card__drag-handle').trigger('dragstart', {
+			dataTransfer: { effectAllowed: '', setData: vi.fn() },
+			clientY: 20,
+		});
+		await cards[1].trigger('drop', { dataTransfer: { dropEffect: 'move' } });
+		cards = wrapper.findAll('.program-card');
+		expect(cards[1].get('.program-card__toggle').text()).toContain('Zweiter');
+		expect(cards[1].get('.program-card__toggle').attributes('aria-expanded')).toBe('true');
+		wrapper.unmount();
+	});
+
 	it('autosaves and clears the guiding thread without affecting other fields', async () => {
 		allowEditing();
 		vi.useFakeTimers();
