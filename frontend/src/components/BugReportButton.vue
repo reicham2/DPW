@@ -14,7 +14,7 @@
         </div>
 
         <div v-if="showEasterEgg" class="bug-easter-egg" role="status">
-          <span>de Delay gaht mir uf d Eier!!!!!!</span>
+          <span>"de Delay gaht mir uf d Eier!!!!!!" - Mulan</span>
           <button type="button" class="bug-close-btn" @click="resetEasterEgg" aria-label="Erinnerung schliessen">×</button>
         </div>
 

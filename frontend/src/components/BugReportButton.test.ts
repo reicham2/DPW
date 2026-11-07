@@ -30,7 +30,7 @@ describe('BugReportButton Easter egg', () => {
     await activateTitle(4)
     expect(wrapper.find('[role="status"]').exists()).toBe(false)
     await activateTitle(1)
-    expect(wrapper.get('[role="status"]').text()).toContain('de Delay gaht mir uf d Eier!!!!!!')
+    expect(wrapper.get('[role="status"]').text()).toContain('"de Delay gaht mir uf d Eier!!!!!!" - Mulan')
 
     await wrapper.get('[aria-label="Erinnerung schliessen"]').trigger('click')
     expect(wrapper.find('[role="status"]').exists()).toBe(false)
