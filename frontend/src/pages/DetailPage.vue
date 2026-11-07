@@ -361,9 +361,9 @@ function toggleProgramExpanded(program: ProgramInput) {
 }
 
 function toggleAllProgramsExpanded() {
-	expandedProgramIds.value = allProgramsExpanded.value
+	expandedProgramKeys.value = allProgramsExpanded.value
 		? new Set()
-		: new Set(editPrograms.value.map(programUiId));
+		: new Set(editPrograms.value.map(programEditorKey));
 }
 
 interface EditSnapshot {
