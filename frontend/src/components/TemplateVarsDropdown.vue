@@ -52,8 +52,8 @@ const allVars = computed(() =>
 
 <style scoped>
 .tpl-vars-hint {
-	margin: 0.25rem 0 0;
-	padding: 0 14px;
+	margin: 0;
+	padding: 0 14px 14px;
 	font-size: 0.75rem;
 	color: var(--text-subtle);
 }
