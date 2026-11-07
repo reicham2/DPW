@@ -12,7 +12,7 @@ async function post(body, { token = debugToken } = {}) {
 		method: 'POST',
 		headers,
 		body,
-		signal: AbortSignal.timeout(20000),
+		signal: AbortSignal.timeout(40000),
 	});
 	const text = await response.text();
 	let payload;
