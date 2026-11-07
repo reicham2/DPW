@@ -50,9 +50,12 @@ void handle_patch_material(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_material(HttpRes *res, HttpReq *req, Database &db);
 
 void handle_get_attachments(HttpRes *res, HttpReq *req, Database &db);
-void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_attachment(HttpRes *res, HttpReq *req, Database &db, bool program_image = false);
 void handle_get_attachment_download(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_attachment(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_program_image(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_shared_program_image(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_program_image(HttpRes *res, HttpReq *req, Database &db);
 
 void handle_post_auth_me(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_me(HttpRes *res, HttpReq *req, Database &db);

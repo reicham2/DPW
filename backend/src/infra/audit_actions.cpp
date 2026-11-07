@@ -37,6 +37,8 @@ std::optional<AuditAction> audit_action(const std::string &method, const std::st
         {"/admin/materials", {"Materialverantwortliche", "material"}},
         {"/admin/materials/:id", {"Materialverantwortliche", "material"}},
         {"/activities/:id/attachments", {"Anhang", "activity"}},
+        {"/activities/:id/program-images", {"Programmbild", "activity"}},
+        {"/program-images/:id", {"Programmbild", "attachment"}},
         {"/attachments/:id", {"Anhang", "attachment"}},
         {"/activities/:id/share", {"Freigabelink", "activity"}},
         {"/activities/:id/weather-location", {"Wetterort", "activity"}},
