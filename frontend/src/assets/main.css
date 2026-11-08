@@ -1080,7 +1080,8 @@ video {
 .program-proofreading__suggestion {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	max-width: 100%;
+	min-width: 0;
 	border: 1px solid var(--input-border);
 	border-radius: 6px;
 	background: var(--input-bg);
@@ -1088,6 +1089,8 @@ video {
 	padding: 6px 9px;
 	font: inherit;
 	cursor: pointer;
+	overflow-wrap: anywhere;
+	white-space: normal;
 }
 
 ::highlight(program-proofreading) {
@@ -1098,6 +1101,7 @@ video {
 	position: absolute;
 	z-index: 20;
 	width: min(260px, 100%);
+	box-sizing: border-box;
 	display: grid;
 	gap: 8px;
 	padding: 10px;
@@ -1149,11 +1153,7 @@ video {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
-}
-
-.program-proofreading__suggestion span {
-	color: var(--text-muted);
-	font-size: 0.75rem;
+	min-width: 0;
 }
 
 /* ---- Collaborative editing: editors banner ---- */

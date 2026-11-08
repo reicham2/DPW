@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { flushPromises, shallowMount } from '@vue/test-utils';
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Activity, ActivityInput, IdeenkisteItem, User, WsEvent } from '../types';
 
@@ -456,7 +458,7 @@ describe('DetailPage activity access', () => {
 				length: match[0].length,
 				message: 'Kasus prüfen',
 				shortMessage: 'Kasus',
-				replacements: [{ value: 'einen Fehler' }],
+				replacements: [{ value: 'einen Fehler' }, { value: 'den Fehler' }],
 				rule: { id: 'OBJECT_AGREEMENT' },
 			}));
 			return new Response(JSON.stringify({ language: 'de-CH', matches }), { status: 200 });
@@ -476,7 +478,29 @@ describe('DetailPage activity access', () => {
 			await vi.advanceTimersByTimeAsync(1500);
 			expect(wrapper.find('.program-proofreading__popover').exists()).toBe(false);
 			await wrapper.get('.rich-editor').trigger('click', { clientX: 20, clientY: 20 });
-			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
+			const suggestions = wrapper.get('.program-proofreading__suggestions');
+			expect(suggestions.findAll('button').map(button => button.text())).toEqual(['einen Fehler', 'den Fehler']);
+			expect(suggestions.findAll('button').map(button => button.attributes('aria-label')))
+				.toEqual(['einen Fehler übernehmen', 'den Fehler übernehmen']);
+			expect(suggestions.text()).not.toContain('übernehmen');
+			const style = document.createElement('style');
+			const mainCss = readFileSync(new NodeURL('../assets/main.css', import.meta.url), 'utf8');
+			const suggestionRule = mainCss.match(/\.program-proofreading__suggestion\s*\{[^}]*\}/);
+			const layoutRule = mainCss.match(/\.program-proofreading__suggestions\s*\{[^}]*\}/);
+			expect(suggestionRule).not.toBeNull();
+			expect(layoutRule).not.toBeNull();
+			style.textContent = `${suggestionRule![0]}\n${layoutRule![0]}`;
+			document.head.appendChild(style);
+			try {
+				expect(getComputedStyle(suggestions.element).display).toBe('flex');
+				expect(getComputedStyle(suggestions.element).flexWrap).toBe('wrap');
+				expect(getComputedStyle(suggestions.element).gap).toBe('6px');
+				const buttonStyle = getComputedStyle(suggestions.get('button').element);
+				expect(buttonStyle.maxWidth).toBe('100%');
+				expect(buttonStyle.overflowWrap).toBe('anywhere');
+			} finally {
+				style.remove();
+			}
 			expect(wrapper.text()).not.toContain('Zum persönlichen Wörterbuch hinzufügen');
 
 			await wrapper.findAll('.program-proofreading__suggestion')[0].trigger('click');
@@ -486,7 +510,7 @@ describe('DetailPage activity access', () => {
 			expect(editor.textContent).toBe('Ich habe einen Fehler und ein Fehler. ');
 			expect(wrapper.find('.program-proofreading__results').exists()).toBe(false);
 			await wrapper.get('.rich-editor').trigger('click', { clientX: 20, clientY: 20 });
-			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
+			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(2);
 			expect(requestTexts[1]).toBe(editor.textContent);
 
 			await wrapper.find('.program-proofreading__suggestion').trigger('click');
