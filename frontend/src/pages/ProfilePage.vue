@@ -226,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import { user } from '../composables/useAuth'
 import { apiFetch } from '../composables/useApi'
 import { usePermissions } from '../composables/usePermissions'
@@ -282,7 +282,6 @@ let initialLoaded = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
-  await Promise.all([fetchMyPermissions(), fetchDepartments()])
   if (user.value) {
     form.value.department   = user.value.department ?? ''
     form.value.time_display_mode = user.value.time_display_mode ?? 'minutes'
@@ -298,7 +297,9 @@ onMounted(async () => {
     form.value.notify_channel_websocket = user.value.notify_channel_websocket ?? true
     form.value.notify_channel_email = user.value.notify_channel_email ?? false
   }
+  await nextTick()
   initialLoaded = true
+  await Promise.all([fetchMyPermissions(), fetchDepartments()])
 })
 
 onUnmounted(() => {
