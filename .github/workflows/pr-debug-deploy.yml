@@ -173,9 +173,13 @@ jobs:
           # Write tunnel config
           CRED_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
           mkdir -p "$TUNNEL_TMP_DIR"
+          CONFIG_FILE="$TUNNEL_TMP_DIR/config.yml"
+          if [ -d "$CONFIG_FILE" ] && [ ! -L "$CONFIG_FILE" ]; then
+            rmdir "$CONFIG_FILE"
+          fi
           printf 'tunnel: %s\ncredentials-file: /etc/cloudflared/credentials.json\ningress:\n  - hostname: %s\n    service: http://frontend:80\n  - service: http_status:404\n' \
             "${TUNNEL_ID}" "${HOSTNAME}" \
-            > "$TUNNEL_TMP_DIR/config.yml"
+            > "$CONFIG_FILE"
 
           # Make credentials readable by non-root container user
           chmod 644 "${CRED_FILE}"
@@ -186,7 +190,7 @@ jobs:
             --network "${NETWORK}" \
             --restart unless-stopped \
             -v "${CRED_FILE}:/etc/cloudflared/credentials.json:ro" \
-            -v "$TUNNEL_TMP_DIR/config.yml:/etc/cloudflared/config.yml:ro" \
+            -v "$CONFIG_FILE:/etc/cloudflared/config.yml:ro" \
             cloudflare/cloudflared:latest \
             tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
 
@@ -287,8 +291,10 @@ jobs:
           TUNNEL_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
         run: |
           PROJECT="${{ steps.slug.outputs.project }}"
-          TUNNEL_NAME="dpw-${{ steps.slug.outputs.slug }}"
+          SLUG="${{ steps.slug.outputs.slug }}"
+          TUNNEL_NAME="dpw-${SLUG}"
           CERT_DIR="$HOME/.cloudflared"
+          CONFIG_FILE="${RUNNER_TEMP:-$HOME}/cloudflared-${SLUG}/config.yml"
 
           # Write origin cert
           mkdir -p "$CERT_DIR"
@@ -302,7 +308,9 @@ jobs:
           cloudflared tunnel --origincert "$CERT_DIR/cert.pem" cleanup "$TUNNEL_NAME" 2>/dev/null || true
           cloudflared tunnel --origincert "$CERT_DIR/cert.pem" delete "$TUNNEL_NAME" 2>/dev/null || true
 
-          rm -f /tmp/cloudflared/${{ steps.slug.outputs.slug }}-config.yml
+          if [ -f "$CONFIG_FILE" ]; then
+            rm -f "$CONFIG_FILE"
+          fi
           echo "Tunnel cleaned up: $TUNNEL_NAME"
 
       - name: Stop and remove containers
