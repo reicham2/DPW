@@ -5,12 +5,16 @@
 
 #include <atomic>
 #include <algorithm>
+#include <chrono>
+#include <codecvt>
 #include <cstdio>
 #include <cstdlib>
+#include <locale>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <curl/curl.h>
 
@@ -23,6 +27,47 @@ namespace
     constexpr long kRequestTimeoutMs = 30000;
 
     std::atomic<int> requests_in_flight{0};
+    std::unordered_map<std::string, std::pair<std::chrono::steady_clock::time_point, int>> dictionary_rates;
+
+    nlohmann::json filter_known_words(Database &db, const std::string &user_id,
+                                      const std::string &text, const nlohmann::json &matches)
+    {
+        std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
+        const auto utf16 = converter.from_bytes(text);
+        nlohmann::json words = nlohmann::json::array();
+        std::vector<size_t> positions;
+        for (size_t i = 0; i < matches.size(); ++i)
+        {
+            const auto &match = matches[i];
+            if (match["rule"].value("issueType", std::string()) != "misspelling")
+                continue;
+            const auto offset = match["offset"].get<int64_t>();
+            const auto length = match["length"].get<int64_t>();
+            if (offset < 0 || length <= 0 || offset > static_cast<int64_t>(utf16.size()) ||
+                length > static_cast<int64_t>(utf16.size()) - offset)
+                continue;
+            try
+            {
+                words.push_back(converter.to_bytes(utf16.substr(static_cast<size_t>(offset), static_cast<size_t>(length))));
+                positions.push_back(i);
+            }
+            catch (const std::range_error &)
+            {
+                // A match splitting a surrogate pair cannot be a dictionary word.
+            }
+        }
+        if (words.empty())
+            return matches;
+        std::vector<bool> omitted(matches.size(), false);
+        for (int index : db.known_proofreading_words(user_id, words))
+            if (index >= 0 && static_cast<size_t>(index) < positions.size())
+                omitted[positions[static_cast<size_t>(index)]] = true;
+        nlohmann::json filtered = nlohmann::json::array();
+        for (size_t i = 0; i < matches.size(); ++i)
+            if (!omitted[i])
+                filtered.push_back(matches[i]);
+        return filtered;
+    }
 
     size_t append_bounded_response(char *data, size_t size, size_t count, void *userdata)
     {
@@ -105,7 +150,7 @@ namespace
 
     void check_text(HttpRes *res, uWS::Loop *loop,
                     const std::shared_ptr<std::atomic_bool> &aborted,
-                    std::string text)
+                    std::string text, Database &db, std::string user_id)
     {
         int status = 503;
         std::string response_body = R"({"error":"Der lokale Korrekturdienst ist nicht erreichbar."})";
@@ -165,26 +210,48 @@ namespace
             std::fprintf(stderr, "[proofreading] curl_easy_init failed\n");
         }
 
-        loop->defer([res, aborted, status, response_body = std::move(response_body)]() mutable {
+        loop->defer([res, aborted, status, response_body = std::move(response_body), text = std::move(text),
+                     &db, user_id = std::move(user_id)]() mutable {
             if (*aborted)
                 return;
-            res->cork([&]() { send_json(res, status, response_body); });
+            try
+            {
+                if (status == 200)
+                {
+                    auto result = nlohmann::json::parse(response_body);
+                    result["matches"] = filter_known_words(db, user_id, text, result["matches"]);
+                    response_body = result.dump();
+                }
+                res->cork([&]() { send_json(res, status, response_body); });
+            }
+            catch (const std::exception &e)
+            {
+                res->cork([&]() { send_internal_error(res, "proofreading dictionary lookup", e); });
+            }
         });
     }
 }
 
-void handle_post_proofreading_check(HttpRes *res, HttpReq *req)
+void handle_post_proofreading_check(HttpRes *res, HttpReq *req, Database &db)
 {
     TokenClaims claims;
     if (!require_auth(res, req, claims))
         return;
+    std::optional<UserRecord> user;
+    try { user = resolve_user(db, claims); }
+    catch (const std::exception &e) { send_internal_error(res, "proofreading user", e); return; }
+    if (!user)
+    {
+        send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
+        return;
+    }
 
     auto body = std::make_shared<std::string>();
     auto aborted = std::make_shared<std::atomic_bool>(false);
     auto handled = std::make_shared<bool>(false);
     res->onAborted([aborted]() { *aborted = true; });
     uWS::Loop *loop = uWS::Loop::get();
-    res->onData([res, body, aborted, handled, loop](std::string_view chunk, bool last) {
+    res->onData([res, body, aborted, handled, loop, &db, user_id = user->id](std::string_view chunk, bool last) {
         if (*handled)
             return;
         if (chunk.size() > kMaxRequestBytes - body->size())
@@ -225,11 +292,80 @@ void handle_post_proofreading_check(HttpRes *res, HttpReq *req)
         }
         try
         {
-            std::thread([res, loop, aborted, text]() {
+            std::thread([res, loop, aborted, text, &db, user_id]() {
                 try
                 {
                     if (!*aborted)
-                        check_text(res, loop, aborted, text);
+                        check_text(res, loop, aborted, text, db, user_id);
+                }
+
+                void handle_proofreading_dictionary(HttpRes *res, HttpReq *req, Database &db, bool remove)
+                {
+                    TokenClaims claims;
+                    if (!require_auth(res, req, claims))
+                        return;
+                    std::optional<UserRecord> user;
+                    try { user = resolve_user(db, claims); }
+                    catch (const std::exception &e) { send_internal_error(res, "proofreading user", e); return; }
+                    if (!user)
+                    {
+                        send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
+                        return;
+                    }
+                    const auto now = std::chrono::steady_clock::now();
+                    for (auto it = dictionary_rates.begin(); it != dictionary_rates.end(); )
+                        if (now - it->second.first >= std::chrono::minutes(1)) it = dictionary_rates.erase(it);
+                        else ++it;
+                    auto &rate = dictionary_rates[user->id];
+                    if (rate.second == 0) rate.first = now;
+                    if (++rate.second > 30)
+                    {
+                        send_json(res, 429, R"({"error":"Zu viele Wörterbuchanfragen. Bitte später erneut versuchen."})");
+                        return;
+                    }
+                    auto body = std::make_shared<std::string>();
+                    auto handled = std::make_shared<bool>(false);
+                    res->onAborted([]() {});
+                    res->onData([res, body, handled, &db, user_id = user->id, remove](std::string_view chunk, bool last) {
+                        if (*handled) return;
+                        if (chunk.size() > 2048 - body->size())
+                        {
+                            *handled = true;
+                            send_json(res, 413, R"({"error":"Der Anfrageinhalt ist zu gross."})");
+                            return;
+                        }
+                        body->append(chunk.data(), chunk.size());
+                        if (!last) return;
+                        *handled = true;
+                        const auto parsed = nlohmann::json::parse(*body, nullptr, false);
+                        if (parsed.is_discarded() || !parsed.is_object() || !parsed.contains("word") || !parsed["word"].is_string())
+                        {
+                            send_json(res, 400, R"({"error":"Erwarte ein einzelnes Wort."})");
+                            return;
+                        }
+                        const auto word = parsed["word"].get<std::string>();
+                        if (word.empty() || word.size() > 256 || word.find('\0') != std::string::npos)
+                        {
+                            send_json(res, 400, R"({"error":"Ungültiges Wort."})");
+                            return;
+                        }
+                        try
+                        {
+                            if (remove)
+                            {
+                                send_json(res, 200, nlohmann::json{{"removed", db.delete_proofreading_word(user_id, word)}}.dump());
+                                return;
+                            }
+                            const auto result = db.add_proofreading_word(user_id, word);
+                            if (result == "invalid")
+                                send_json(res, 400, R"({"error":"Nur einzelne Wörter mit Buchstaben sind erlaubt."})");
+                            else if (result == "limit")
+                                send_json(res, 409, R"({"error":"Das persönliche Wörterbuch ist voll (maximal 500 Wörter)."})");
+                            else
+                                send_json(res, 200, R"({"added":true})");
+                        }
+                        catch (const std::exception &e) { send_internal_error(res, "proofreading dictionary", e); }
+                    });
                 }
                 catch (const std::exception &e)
                 {

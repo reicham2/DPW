@@ -2331,6 +2331,9 @@ const compositionStartText = new Map<number, string>();
 const compositionNeedsCheck = new Set<number>();
 const selectedProofreadingMatch = ref<Record<number, number>>({});
 const proofreadingPopoverStyle = ref<Record<number, Record<string, string>>>({});
+const dictionaryPending = ref<Record<number, boolean>>({});
+const dictionaryError = ref<Record<number, string>>({});
+const dictionaryRequests = new Map<number, symbol>();
 const PROOFREAD_DEBOUNCE_MS = 1500;
 const proofreadingHighlightName = 'program-proofreading';
 
@@ -2400,11 +2403,53 @@ function selectProofreadingMatch(i: number, index: number) {
 		top: `${anchor.bottom - container.top + 4}px`,
 	};
 	selectedProofreadingMatch.value[i] = index;
+	delete dictionaryError.value[i];
 }
 
-function matchText(i: number, match: ProofreadingMatch): string {
-	const text = programProofreading.value[i]?.text ?? '';
-	return text.slice(match.offset, match.offset + match.length);
+function dictionaryWord(i: number, match: ProofreadingMatch): string | null {
+	if (match.rule.issueType !== 'misspelling') return null;
+	const word = programProofreading.value[i]?.text?.slice(match.offset, match.offset + match.length).normalize('NFC') ?? '';
+	if (word.length > 100 || new TextEncoder().encode(word).length > 256 ||
+		!/^\p{L}+(?:[-'’]\p{L}+)*$/u.test(word)) return null;
+	return word;
+}
+
+async function addKnownWord(i: number, match: ProofreadingMatch) {
+	const state = programProofreading.value[i];
+	const editor = progEditorRefs.value[i];
+	const word = dictionaryWord(i, match);
+	if (!state || state.status !== 'ready' || !editor || !word ||
+		!proofreadingResultIsCurrent(editor, state.htmlSnapshot) || dictionaryPending.value[i]) return;
+	const request = Symbol();
+	dictionaryRequests.set(i, request);
+	dictionaryPending.value[i] = true;
+	delete dictionaryError.value[i];
+	try {
+		const response = await apiFetch('/api/proofreading/dictionary', {
+			method: 'POST',
+			body: JSON.stringify({ word }),
+		});
+		const result = await response.json() as { error?: unknown; added?: unknown };
+		if (!response.ok || result.added !== true) {
+			throw new Error(typeof result.error === 'string' ? result.error : 'Das Wort konnte nicht gespeichert werden.');
+		}
+		for (const [key, activeEditor] of Object.entries(progEditorRefs.value)) {
+			if (!activeEditor) continue;
+			const index = Number(key);
+			invalidateProgProofreading(index);
+			scheduleProgProofreading(index, activeEditor);
+		}
+	} catch (error) {
+		if (dictionaryRequests.get(i) === request && programProofreading.value[i] === state &&
+			progEditorRefs.value[i] === editor && state.matches?.[selectedProofreadingMatch.value[i]] === match) {
+			dictionaryError.value[i] = error instanceof Error ? error.message : 'Das Wort konnte nicht gespeichert werden.';
+		}
+	} finally {
+		if (dictionaryRequests.get(i) === request) {
+			dictionaryRequests.delete(i);
+			delete dictionaryPending.value[i];
+		}
+	}
 }
 
 function clearProgProofreadingTimer(i: number) {
@@ -2425,6 +2470,9 @@ function resetProgProofreading() {
 	programProofreading.value = {};
 	selectedProofreadingMatch.value = {};
 	proofreadingPopoverStyle.value = {};
+	dictionaryPending.value = {};
+	dictionaryError.value = {};
+	dictionaryRequests.clear();
 	updateProofreadingHighlights();
 }
 
@@ -2467,6 +2515,7 @@ function invalidateProgProofreading(i: number) {
 	cancelProgProofreadingRequest(i);
 	delete selectedProofreadingMatch.value[i];
 	delete proofreadingPopoverStyle.value[i];
+	delete dictionaryError.value[i];
 	if (!state) return;
 	programProofreading.value[i] = {
 		status: 'stale',
@@ -2482,6 +2531,7 @@ function closeProgProofreading(i: number) {
 	delete programProofreading.value[i];
 	delete selectedProofreadingMatch.value[i];
 	delete proofreadingPopoverStyle.value[i];
+	delete dictionaryError.value[i];
 	updateProofreadingHighlights();
 }
 
@@ -2529,7 +2579,7 @@ async function checkProgDescription(i: number) {
 			programProofreading.value[i] = {
 				status: 'error',
 				htmlSnapshot,
-				error: 'Die Beschreibung wurde geändert. Bitte erneut prüfen.',
+				error: 'Die Beschreibung wurde geändert und kann nach der nächsten Änderung erneut geprüft werden.',
 			};
 			return;
 		}
@@ -2566,7 +2616,7 @@ function applyProgProofreadingSuggestion(i: number, match: ProofreadingMatch, re
 		programProofreading.value[i] = {
 			...state,
 			status: 'error',
-			error: 'Die Beschreibung wurde geändert. Bitte erneut prüfen.',
+			error: 'Die Beschreibung wurde geändert und kann nach der nächsten Änderung erneut geprüft werden.',
 		};
 		return;
 	}
@@ -4326,57 +4376,24 @@ function copyShareLink() {
 													@click="applyProgProofreadingSuggestion(i, match, replacement.value)"
 												>{{ replacement.value }} <span>übernehmen</span></button>
 											</div>
+											<button v-if="dictionaryWord(i, match)" type="button"
+												class="program-proofreading__suggestion"
+												:disabled="dictionaryPending[i] || isLockedByOther(`program_${i}`)"
+												@mousedown.prevent @click="addKnownWord(i, match)"
+											>Zum persönlichen Wörterbuch hinzufügen</button>
+											<p v-if="dictionaryError[i]" role="alert">{{ dictionaryError[i] }}</p>
 										</div>
 										</template>
 									</template>
 									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 								<p v-if="programImageUploadCount" class="field-hint" role="status">Bilder werden hochgeladen…</p>
-								<div class="program-proofreading">
-									<button
-										type="button"
-										class="toolbar-btn-sm program-proofreading__check"
-										:disabled="isLockedByOther(`program_${i}`) || programProofreading[i]?.status === 'loading'"
-										aria-label="Rechtschreibung prüfen"
-										title="Rechtschreibung prüfen"
-										@click="checkProgDescription(i)"
-									>
-										<Check :size="14" aria-hidden="true" />
-									</button>
-								</div>
 								<div
-									v-if="programProofreading[i]"
-									class="program-proofreading__results"
-									:class="{ 'program-proofreading__results--error': programProofreading[i].status === 'error' }"
+									v-if="programProofreading[i]?.status === 'error'"
+									class="program-proofreading__results program-proofreading__results--error"
+									role="alert"
 								>
-									<div class="program-proofreading__results-header">
-										<div role="status" aria-live="polite">
-											<p v-if="programProofreading[i].status === 'loading'">Die Beschreibung wird lokal geprüft…</p>
-											<p v-else-if="programProofreading[i].status === 'stale'">{{ programProofreading[i].error }}</p>
-											<p v-else-if="programProofreading[i].status === 'error'">{{ programProofreading[i].error }}</p>
-											<p v-else-if="programProofreading[i].status === 'ready' && !programProofreading[i].matches?.length">Keine Vorschläge gefunden.</p>
-											<p v-else-if="programProofreading[i].status === 'ready'">{{ programProofreading[i].matches?.length }} {{ programProofreading[i].matches?.length === 1 ? 'Vorschlag' : 'Vorschläge' }} gefunden.</p>
-										</div>
-										<button
-											type="button"
-											class="toolbar-btn-sm program-proofreading__close"
-											aria-label="Prüfung schliessen"
-											title="Prüfung schliessen"
-											@click="closeProgProofreading(i)"
-										><X :size="14" aria-hidden="true" /></button>
-									</div>
-									<template v-if="programProofreading[i].status === 'ready'">
-										<div
-											v-for="(match, matchIndex) in programProofreading[i].matches"
-											:key="`${match.rule.id ?? 'match'}-${match.offset}-${matchIndex}`"
-											class="program-proofreading__match"
-										>
-											<button type="button" class="program-proofreading__excerpt"
-												:aria-expanded="selectedProofreadingMatch[i] === matchIndex"
-												@click="selectProofreadingMatch(i, matchIndex)"
-											>{{ matchText(i, match) }}</button>
-										</div>
-									</template>
+									<p>{{ programProofreading[i].error }}</p>
 								</div>
 							</div>
 						</div>

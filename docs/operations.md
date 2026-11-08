@@ -87,6 +87,39 @@ Quellen: [Upgrade-Workflow](../.github/workflows/upgrade.yml),
 [Testskript](../scripts/environment-upgrade-tests.sh),
 [isolierte Compose-Uebersteuerung](../scripts/upgrade-compose.yml).
 
+## Selbst gehostete Rechtschreibprüfung
+
+Produktions- und Entwicklungs-Compose starten einen internen LanguageTool-Server
+(Version 6.8 aus dem Community-Image
+[`erikvl87/languagetool`](https://github.com/Erikvl87/docker-languagetool);
+der Digest ist in Compose fixiert). Der Dienst ist nur im privaten Compose-Netz
+erreichbar und hat keinen veröffentlichten Host-Port. Der Backend-Endpunkt
+akzeptiert nur angemeldete Anfragen und begrenzt Textgrösse und parallele Anfragen.
+Geänderte Programmpunkt-Beschreibungen werden nach einer kurzen Schreibpause an
+den lokalen Dienst gesendet, ohne eine laufende Prüfung anzuzeigen. Ein Klick auf
+markierte Stellen öffnet Vorschläge; übernommen wird nur auf Klick, über den
+normalen Editor und dessen Autospeicherung. Die Markierungen benötigen die
+CSS Custom Highlight API.
+
+Einzelne als Rechtschreibfehler markierte Wörter können ausdrücklich zum
+persönlichen Wörterbuch hinzugefügt werden. Dieses liegt benutzergebunden in
+PostgreSQL (höchstens 500 Wörter, jeweils höchstens 100 Zeichen und 256 Bytes),
+wird beim Löschen des Benutzerkontos entfernt und wirkt nur auf identische,
+Unicode-NFC-normalisierte Rechtschreibtreffer, nicht auf Grammatik- oder
+Stilregeln. Über `DELETE /api/proofreading/dictionary` mit JSON `{"word":"..."}`
+kann ein angemeldeter Benutzer ein eigenes Wort wieder entfernen; nach einer
+späteren Prüfung erscheint es gegebenenfalls erneut. Wörterbuchanfragen sind
+auf 30 pro Benutzer und Minute begrenzt.
+
+Die Prüfung verwendet Schweizer Standarddeutsch (`de-CH`) und die im Open-Source-
+Server enthaltenen Regeln, nicht die cloudbasierten AI-Regeln; Dialekt und
+Pfadi-Eigennamen können abweichen. Für den initialen Image-Pull ist Internetzugriff
+nötig; der laufende Korrekturdienst sendet keine Texte an externe Anbieter. Es
+gibt keinen gespeicherten Prüfverlauf oder LanguageTool-Datenträger. Die Compose-
+Ressourcenbegrenzung beträgt 2 CPUs und 1,5 GiB RAM; der Java-Heap ist auf 768 MiB
+begrenzt. Ist der Dienst nicht verfügbar, bleibt die Bearbeitung nutzbar und die
+Prüfung zeigt einen Fehler; nach einer weiteren Textänderung versucht sie es erneut.
+
 ## Audit Log
 
 Unter **System > Audit Log** sehen Benutzer mit der Rolle `admin` ein persistentes,

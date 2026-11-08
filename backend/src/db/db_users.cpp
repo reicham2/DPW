@@ -6,6 +6,107 @@
 #include <cstdlib>
 #include "json.hpp"
 
+std::string Database::add_proofreading_word(const std::string &user_id, const std::string &word)
+{
+    ensure_connected();
+    PGresult *res = PQexec(conn_, "BEGIN");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("dictionary begin: " + error);
+    }
+    PQclear(res);
+    try
+    {
+        const char *params[] = {user_id.c_str(), word.c_str()};
+        res = PQexecParams(conn_, "SELECT id FROM users WHERE id=$1 FOR UPDATE", 1, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) != 1)
+        {
+            std::string error = PQresultErrorMessage(res);
+            PQclear(res);
+            throw std::runtime_error("dictionary user lock: " + error);
+        }
+        PQclear(res);
+        res = PQexecParams(conn_,
+            "WITH input AS (SELECT normalize($2, NFC) AS word), "
+            "status AS (SELECT CASE "
+            "WHEN char_length(word) NOT BETWEEN 1 AND 100 OR octet_length(word)>256 "
+            "OR word !~ '^[[:alpha:]]+([-''’][[:alpha:]]+)*$' THEN 'invalid' "
+            "WHEN EXISTS (SELECT 1 FROM proofreading_dictionary WHERE user_id=$1 AND proofreading_dictionary.word=input.word) THEN 'ok' "
+            "WHEN (SELECT count(*) FROM proofreading_dictionary WHERE user_id=$1)>=500 THEN 'limit' "
+            "ELSE 'insert' END AS result, word FROM input), "
+            "inserted AS (INSERT INTO proofreading_dictionary(user_id,word) "
+            "SELECT $1,word FROM status WHERE result='insert' ON CONFLICT DO NOTHING) "
+            "SELECT CASE WHEN result='insert' THEN 'ok' ELSE result END FROM status",
+            2, nullptr, params, nullptr, nullptr, 0);
+        if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) != 1)
+        {
+            std::string error = PQresultErrorMessage(res);
+            PQclear(res);
+            throw std::runtime_error("dictionary insert: " + error);
+        }
+        const std::string result = PQgetvalue(res, 0, 0);
+        PQclear(res);
+        res = PQexec(conn_, "COMMIT");
+        if (PQresultStatus(res) != PGRES_COMMAND_OK)
+        {
+            std::string error = PQresultErrorMessage(res);
+            PQclear(res);
+            throw std::runtime_error("dictionary commit: " + error);
+        }
+        PQclear(res);
+        return result;
+    }
+    catch (...)
+    {
+        res = PQexec(conn_, "ROLLBACK");
+        PQclear(res);
+        throw;
+    }
+}
+
+bool Database::delete_proofreading_word(const std::string &user_id, const std::string &word)
+{
+    ensure_connected();
+    const char *params[] = {user_id.c_str(), word.c_str()};
+    PGresult *res = PQexecParams(conn_,
+        "DELETE FROM proofreading_dictionary WHERE user_id=$1 AND word=normalize($2, NFC) RETURNING word",
+        2, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("dictionary delete: " + error);
+    }
+    const bool removed = PQntuples(res) != 0;
+    PQclear(res);
+    return removed;
+}
+
+std::vector<int> Database::known_proofreading_words(const std::string &user_id, const nlohmann::json &words)
+{
+    ensure_connected();
+    const std::string values = words.dump();
+    const char *params[] = {user_id.c_str(), values.c_str()};
+    PGresult *res = PQexecParams(conn_,
+        "SELECT (candidate.ordinality-1)::integer FROM jsonb_array_elements_text($2::jsonb) "
+        "WITH ORDINALITY AS candidate(word,ordinality) "
+        "JOIN proofreading_dictionary d ON d.user_id=$1 AND d.word=normalize(candidate.word, NFC)",
+        2, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("dictionary lookup: " + error);
+    }
+    std::vector<int> indices;
+    for (int i = 0; i < PQntuples(res); ++i)
+        indices.push_back(std::stoi(PQgetvalue(res, i, 0)));
+    PQclear(res);
+    return indices;
+}
+
 // ---- User helpers -----------------------------------------------------------
 
 UserRecord Database::row_to_user(PGresult *res, int row)
