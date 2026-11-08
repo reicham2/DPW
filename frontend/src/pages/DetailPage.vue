@@ -2505,6 +2505,10 @@ function setProgEditorRef(el: unknown, program: ProgramInput) {
 		progEditorElements.set(program, el);
 		if (!progImageRenderers.has(el)) progImageRenderers.set(el, new ProgramImageRenderer());
 		syncProgEditor(el, program);
+		const index = editPrograms.value.indexOf(program);
+		if (index >= 0 && !proofreadObservedText.has(index)) {
+			proofreadObservedText.set(index, getProgramText(el).text);
+		}
 	} else {
 		const previous = progEditorElements.get(program);
 		progEditorElements.delete(program);
@@ -2730,6 +2734,13 @@ async function renderProgImages(el: HTMLElement) {
 		await progImageRenderers.get(el)?.render(el);
 	} catch (e) {
 		progImageError.value = formatApiError(e);
+	} finally {
+		const index = editPrograms.value.findIndex(program => progEditorElements.get(program) === el);
+		const state = programProofreading.value[index];
+		if (state?.status === 'ready' && state.text === getProgramText(el).text) {
+			state.htmlSnapshot = el.innerHTML;
+			updateProofreadingHighlights();
+		}
 	}
 }
 
@@ -2972,10 +2983,9 @@ function initProgEditors() {
 			const el = progEditorRefs.value[i];
 			const program = editPrograms.value[i];
 			if (el && program) {
-				if (el !== document.activeElement && serializeProgramDescription(el) !== sanitizeProgramDescription(program.description)) {
-				closeProgProofreading(i);
-				}
+				const oldHtml = el.innerHTML;
 				syncProgEditor(el, program);
+				if (el.innerHTML !== oldHtml) closeProgProofreading(i);
 				proofreadObservedText.set(i, getProgramText(el).text);
 			}
 		}
