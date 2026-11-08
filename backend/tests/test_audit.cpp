@@ -33,6 +33,15 @@ TEST(audit_covers_bulk_indirect_and_sensitive_setting_actions_without_values)
     ASSERT_TRUE(audit_action("POST", "/future-mutation").has_value());
 }
 
+TEST(audit_details_show_proofreading_preference_changes)
+{
+    auto details = audit_change_details("user", {{"proofreading_enabled", true}}, {{"proofreading_enabled", false}});
+    ASSERT_EQ((int)details["changes"].size(), 1);
+    ASSERT_STR_EQ(details["changes"][0]["field"].get<std::string>(), "proofreading_enabled");
+    ASSERT_TRUE(details["changes"][0]["before"].get<bool>());
+    ASSERT_FALSE(details["changes"][0]["after"].get<bool>());
+}
+
 TEST(audit_details_show_actual_user_changes_without_credentials)
 {
     nlohmann::json before = {{"display_name", "Leiter"}, {"role", "Mitglied"}, {"department", "Pfadi"},

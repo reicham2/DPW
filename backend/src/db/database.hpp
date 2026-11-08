@@ -112,7 +112,8 @@ public:
                                           const std::optional<bool> &notify_channel_email = std::nullopt,
                                           const std::optional<std::string> &avatar_color = std::nullopt,
                                           const std::optional<bool> &notify_activity_reminder = std::nullopt,
-                                          const std::optional<int> &activity_reminder_hours = std::nullopt);
+                                          const std::optional<int> &activity_reminder_hours = std::nullopt,
+                                          const std::optional<bool> &proofreading_enabled = std::nullopt);
     void create_due_activity_reminders();
     std::vector<NotificationRecord> claim_activity_reminder_deliveries();
     std::optional<NotificationRecord> get_current_activity_reminder(const std::string &notification_id);

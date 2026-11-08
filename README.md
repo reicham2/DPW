@@ -107,7 +107,8 @@ Geänderte Programmpunkt-Beschreibungen werden nach einer kurzen Schreibpause
 lokal geprüft. Erkannte Stellen werden in unterstützten Browsern markiert; ein
 Klick darauf zeigt Vorschläge, die nur auf Klick übernommen werden.
 Als falsch markierte Wörter lassen sich per Klick ins persönliche Wörterbuch
-aufnehmen. Details zu Dienst, Ressourcen und Datenschutz
+aufnehmen. Im Profil lässt sich die standardmässig aktive integrierte Prüfung
+abschalten; dann übernimmt die Rechtschreibprüfung des Browsers. Details zu Dienst, Ressourcen und Datenschutz
 stehen in der [Betriebsreferenz](docs/operations.md#selbst-gehostete-rechtschreibprüfung).
 
 ## Geteilte Aktivitäten und öffentliche Formulare

@@ -2336,6 +2336,7 @@ const dictionaryError = ref<Record<number, string>>({});
 const dictionaryRequests = new Map<number, symbol>();
 const PROOFREAD_DEBOUNCE_MS = 1500;
 const proofreadingHighlightName = 'program-proofreading';
+const proofreadingEnabled = computed(() => user.value?.proofreading_enabled !== false);
 
 type HighlightRegistry = {
 	set(name: string, highlight: unknown): void;
@@ -2458,15 +2459,17 @@ function clearProgProofreadingTimer(i: number) {
 	proofreadTimers.delete(i);
 }
 
-function resetProgProofreading() {
+function resetProgProofreading(preserveComposition = false) {
 	for (const i of new Set([...proofreadTimers.keys(), ...proofreadControllers.keys()])) {
 		clearProgProofreadingTimer(i);
 		cancelProgProofreadingRequest(i);
 	}
 	proofreadObservedText.clear();
-	composingPrograms.clear();
-	compositionStartText.clear();
-	compositionNeedsCheck.clear();
+	if (!preserveComposition) {
+		composingPrograms.clear();
+		compositionStartText.clear();
+		compositionNeedsCheck.clear();
+	}
 	programProofreading.value = {};
 	selectedProofreadingMatch.value = {};
 	proofreadingPopoverStyle.value = {};
@@ -2475,6 +2478,18 @@ function resetProgProofreading() {
 	dictionaryRequests.clear();
 	updateProofreadingHighlights();
 }
+watch(proofreadingEnabled, enabled => {
+	if (!enabled) {
+		resetProgProofreading(true);
+		return;
+	}
+	for (const [key, editor] of Object.entries(progEditorRefs.value)) {
+		if (!editor) continue;
+		const index = Number(key);
+		if (composingPrograms.has(index)) compositionNeedsCheck.add(index);
+		else scheduleProgProofreading(index, editor);
+	}
+}, { flush: 'sync' });
 
 function programEditorKey(program: ProgramInput): string {
 	let key = progEditorKeys.get(program);
@@ -2537,7 +2552,7 @@ function closeProgProofreading(i: number) {
 
 async function checkProgDescription(i: number) {
 	const editor = progEditorRefs.value[i];
-	if (!editor || isLockedByOther(`program_${i}`)) return;
+	if (!proofreadingEnabled.value || !editor || isLockedByOther(`program_${i}`)) return;
 	clearProgProofreadingTimer(i);
 	const htmlSnapshot = editor.innerHTML;
 	const text = getProgramText(editor).text;
@@ -2656,7 +2671,7 @@ function applyProgProofreadingSuggestion(i: number, match: ProofreadingMatch, re
 
 function scheduleProgProofreading(i: number, editor: HTMLElement) {
 	clearProgProofreadingTimer(i);
-	if (!getProgramText(editor).text.trim() || composingPrograms.has(i)) return;
+	if (!proofreadingEnabled.value || !getProgramText(editor).text.trim() || composingPrograms.has(i)) return;
 	const timer = window.setTimeout(() => {
 		proofreadTimers.delete(i);
 		if (mode.value === 'edit' && progEditorRefs.value[i] === editor && !isLockedByOther(`program_${i}`)) {
@@ -4340,6 +4355,7 @@ function copyShareLink() {
 										:ref="(el) => setProgEditorRef(el, prog)"
 										class="rich-editor rich-editor--compact"
 										:contenteditable="!isLockedByOther(`program_${i}`)"
+										:spellcheck="!proofreadingEnabled"
 										@input="onProgDescInput(i)"
 										@paste="onProgPaste(i, $event)"
 										@compositionstart="onProgCompositionStart(i)"

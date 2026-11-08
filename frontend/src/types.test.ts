@@ -137,6 +137,7 @@ describe('Type structures', () => {
 			department: 'Pfadi',
 			role: 'Mitglied',
 			time_display_mode: 'clock',
+			proofreading_enabled: true,
 			notify_material_assigned: true,
 			notify_activity_assigned: true,
 			notify_activity_reminder: true,

@@ -125,6 +125,7 @@ export interface User {
 	department: Department | null;
 	role: UserRole;
 	time_display_mode: TimeDisplayMode;
+	proofreading_enabled: boolean;
 	notify_material_assigned: boolean;
 	notify_activity_assigned: boolean;
 	notify_activity_reminder: boolean;

@@ -237,6 +237,7 @@ function isUser(value: unknown): value is User {
 		'avatar_color', 'created_at', 'updated_at',
 	];
 	const booleanFields = [
+		'proofreading_enabled',
 		'notify_material_assigned', 'notify_activity_assigned', 'notify_program_assigned',
 		'notify_mail_own_activity', 'notify_mail_department',
 		'notify_channel_websocket', 'notify_channel_email',

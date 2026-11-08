@@ -11,6 +11,7 @@ static nlohmann::json user_to_json(const UserRecord &u)
     j["department"] = u.department ? nlohmann::json(*u.department) : nlohmann::json(nullptr);
     j["role"] = u.role;
     j["time_display_mode"] = u.time_display_mode;
+    j["proofreading_enabled"] = u.proofreading_enabled;
     j["notify_material_assigned"] = u.notify_material_assigned;
     j["notify_activity_assigned"] = u.notify_activity_assigned;
     j["notify_activity_reminder"] = u.notify_activity_reminder;
@@ -541,6 +542,15 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
             time_display_mode = mode;
         }
 
+        std::optional<bool> proofreading_enabled;
+        if (j.contains("proofreading_enabled")) {
+            if (!j["proofreading_enabled"].is_boolean()) {
+                send_json(res, 400, R"({"error":"proofreading_enabled muss ein Boolean sein"})");
+                return;
+            }
+            proofreading_enabled = j["proofreading_enabled"].get<bool>();
+        }
+
         std::optional<bool> notify_material_assigned;
         if (j.contains("notify_material_assigned") && j["notify_material_assigned"].is_boolean()) {
             notify_material_assigned = j["notify_material_assigned"].get<bool>();
@@ -617,7 +627,8 @@ void handle_patch_me(HttpRes *res, HttpReq *req, Database &db)
                 notify_channel_email,
                 avatar_color,
                 notify_activity_reminder,
-                activity_reminder_hours
+                activity_reminder_hours,
+                proofreading_enabled
             );
             if (!user) {
                 send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
