@@ -37,6 +37,13 @@ const activeDept = ref<Department>(
     ? user.value.department as Department
     : '' as Department
 )
+const showEditor = ref(false)
+const eventTemplateRows = computed(() =>
+  visibleDepartments.value.map(department => ({
+    department,
+    template: templates.value.find(template => template.department === department),
+  }))
+)
 
 const title = ref('')
 const body = ref('')
@@ -204,8 +211,8 @@ function discardLocalDraft() {
   localDraftRestoredAt.value = null
 }
 
-async function doSave() {
-  if (!activeDept.value) return
+async function doSave(): Promise<EventTemplate | null> {
+  if (!activeDept.value) return null
   const result = await saveTemplate(activeDept.value, title.value, body.value)
   if (result) {
     clearLocalDraft()
@@ -214,8 +221,11 @@ async function doSave() {
     const idx = templates.value.findIndex(t => t.department === activeDept.value)
     if (idx >= 0) templates.value[idx] = result
     else templates.value.push(result)
+    hasPendingChanges = false
+  } else {
+    hasPendingChanges = true
   }
-  hasPendingChanges = false
+  return result
 }
 
 function scheduleAutoSave() {
@@ -249,7 +259,7 @@ function stopAutoSaveInterval() {
 }
 
 // ---- Watch fields -----------------------------------------------------------
-watch(title, () => { markDirty('title'); scheduleAutoSave() })
+watch(title, () => { markDirty('title'); scheduleAutoSave() }, { flush: 'sync' })
 // body changes are triggered by onEditorInput which calls scheduleAutoSave directly
 
 // ---- Load template for department -------------------------------------------
@@ -273,6 +283,31 @@ function loadDept(dept: Department) {
   hasPendingChanges = false
 
   wsJoin(tplId())
+}
+
+function openEditor(dept: Department) {
+  showEditor.value = true
+  loadDept(dept)
+  startAutoSaveInterval()
+  nextTick(() => {
+    if (editorRef.value) editorRef.value.innerHTML = body.value
+  })
+}
+
+async function backToOverview() {
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  }
+  if ((dirtyFields.size || hasPendingChanges) && !(await doSave())) return
+
+  wsLeave()
+  myLockedSection.value = null
+  sectionLocks.value = new Map()
+  activeEditors.value = []
+  activeDept.value = '' as Department
+  stopAutoSaveInterval()
+  showEditor.value = false
 }
 
 // ---- WebSocket events -------------------------------------------------------
@@ -439,23 +474,7 @@ onMounted(async () => {
     return
   }
 
-  const dept = visibleDepartments.value.length
-    ? (visibleDepartments.value.includes(activeDept.value) ? activeDept.value : visibleDepartments.value[0])
-    : '' as Department
-  activeDept.value = dept
-
-  if (dept) {
-    suppressDirtyTracking = true
-    const tpl = templates.value.find(t => t.department === dept)
-    title.value = tpl?.title ?? ''
-    body.value = tpl?.body ?? ''
-    if (editorRef.value) editorRef.value.innerHTML = body.value
-    loadPendingLocalDraft(dept)
-    suppressDirtyTracking = false
-  }
-
-  if (dept) wsJoin(tplId())
-  startAutoSaveInterval()
+  activeDept.value = '' as Department
 })
 
 onUnmounted(() => {
@@ -478,21 +497,19 @@ onUnmounted(() => {
   </header>
 
   <main class="main">
-    <!-- Department tabs -->
-    <div class="filter-tabs" style="margin-bottom: 24px">
-      <button
-        v-for="dept in visibleDepartments"
-        :key="dept"
-        class="filter-tab filter-tab--badge"
-        @click="loadDept(dept)"
-      >
-        <DepartmentBadge :department="dept" :active="activeDept === dept" />
-      </button>
-    </div>
-
     <p v-if="loading" class="loading">Laden...</p>
 
-    <div v-else class="detail-form">
+    <template v-else-if="showEditor">
+      <div class="template-editor-header">
+        <button type="button" class="btn-secondary template-editor-back" @click="backToOverview">← Zurück zu Vorlagen</button>
+        <h2 class="template-overview-title">Vorlage bearbeiten</h2>
+      </div>
+
+      <div class="default-toggle-section event-template-default">
+        <p class="event-template-default-title">Eine Event-Vorlage pro Stufe</p>
+        <p class="default-hint">Für {{ activeDept }} ist nur eine Event-Vorlage vorgesehen.</p>
+      </div>
+
       <!-- Local-draft recovery banner -->
       <div v-if="pendingLocalDraft" class="editors-banner" style="gap: 10px; flex-wrap: wrap;">
         <span class="editors-banner-icon"><Save :size="14" aria-hidden="true" /></span>
@@ -511,21 +528,26 @@ onUnmounted(() => {
         <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
       </div>
 
-      <!-- Title -->
+      <div class="template-editor-card event-template-title-card">
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_title' as EditSection) }"
         @focusin="lockSection('evt_tpl_title' as EditSection)" @focusout="unlockSection('evt_tpl_title' as EditSection, $event)">
         <div v-if="lockedBy('evt_tpl_title' as EditSection)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('evt_tpl_title' as EditSection) }}</div>
-        <label>Titel-Vorlage</label>
+        <label class="template-editor-field-label" for="event-template-title">Titel-Vorlage</label>
         <div class="input-save-wrap">
           <input
+            id="event-template-title"
             v-model="title"
             type="text"
             placeholder="z.B. {{abteilung}}: {{titel}}"
+            class="template-editor-field-input"
             :disabled="isLockedByOther('evt_tpl_title' as EditSection)"
           />
           <span v-if="savedFields['title']" class="field-saved-icon" :key="'wrap-' + savedFields['title']"><Save :size="12" aria-hidden="true" /></span>
         </div>
       </div>
+      </div>
+
+      <div class="detail-form">
 
       <!-- Body (rich text editor) -->
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_body' as EditSection) }"
@@ -590,26 +612,130 @@ onUnmounted(() => {
 			]" />
 
       <ErrorAlert :error="error" />
-    </div>
-  </main>
+      </div>
+    </template>
 
-  <div v-if="showLinkDialog" class="modal-backdrop" @click.self="cancelLink">
-    <div class="modal link-modal">
-      <h2 class="modal-title">Link einfügen</h2>
-      <input
-        ref="linkInputRef"
-        v-model="linkUrl"
-        type="url"
-        class="link-modal-input"
-        placeholder="https://"
-        @keydown.enter.prevent="confirmLink"
-        @keydown.escape.prevent="cancelLink"
-      />
-      <div class="modal-actions">
-        <button class="btn-cancel" @mousedown.prevent @click="cancelLink">Abbrechen</button>
-        <button v-if="linkUrl" class="btn-secondary" @mousedown.prevent @click="() => { linkUrl = ''; confirmLink() }">Link entfernen</button>
-        <button class="btn-primary" @mousedown.prevent @click="confirmLink">{{ linkUrl ? 'Einfügen' : 'OK' }}</button>
+    <template v-else>
+      <div class="template-overview-header">
+        <h2 class="template-overview-title">Vorlagen für Events</h2>
+      </div>
+
+      <div class="event-template-overview-note">
+        Pro Stufe gibt es eine Event-Vorlage.
+      </div>
+      <ErrorAlert :error="error" />
+
+      <div
+        v-for="row in eventTemplateRows"
+        :key="row.department"
+        class="template-overview-row event-template-overview-row"
+      >
+        <div class="event-template-overview-main">
+          <div class="event-template-overview-name">
+            <DepartmentBadge :department="row.department" :active="true" />
+            <span>{{ row.template?.title || 'Titel-Vorlage' }}</span>
+          </div>
+          <div class="event-template-overview-meta">
+            {{ row.template ? 'Event-Vorlage' : 'Noch nicht konfiguriert' }}
+          </div>
+        </div>
+        <div class="template-overview-row-actions">
+          <button type="button" class="btn-sm template-overview-row-action" @click="openEditor(row.department)">Bearbeiten</button>
+        </div>
+      </div>
+    </template>
+
+    <div v-if="showLinkDialog" class="modal-backdrop" @click.self="cancelLink">
+      <div class="modal link-modal">
+        <h2 class="modal-title">Link einfügen</h2>
+        <input
+          ref="linkInputRef"
+          v-model="linkUrl"
+          type="url"
+          class="link-modal-input"
+          placeholder="https://"
+          @keydown.enter.prevent="confirmLink"
+          @keydown.escape.prevent="cancelLink"
+        />
+        <div class="modal-actions">
+          <button class="btn-cancel" @mousedown.prevent @click="cancelLink">Abbrechen</button>
+          <button v-if="linkUrl" class="btn-secondary" @mousedown.prevent @click="() => { linkUrl = ''; confirmLink() }">Link entfernen</button>
+          <button class="btn-primary" @mousedown.prevent @click="confirmLink">{{ linkUrl ? 'Einfügen' : 'OK' }}</button>
+        </div>
       </div>
     </div>
-  </div>
+  </main>
 </template>
+
+<style scoped>
+.event-template-default {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg-elevated);
+}
+
+.event-template-default-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.event-template-default .default-hint {
+  margin: 0.25rem 0 0 1.5rem;
+  color: var(--text-subtle);
+  font-size: 0.75rem;
+}
+
+.event-template-title-card {
+  margin-bottom: 1.25rem;
+}
+
+.event-template-title-card .form-group {
+  margin: 0;
+}
+
+.event-template-overview-note {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.event-template-overview-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-template-overview-name {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.event-template-overview-meta {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 599px) {
+  .event-template-default {
+    padding: 0.7rem 0.75rem;
+  }
+
+  .event-template-default .default-hint {
+    margin-left: 1.35rem;
+    font-size: 0.72rem;
+  }
+
+  .event-template-overview-name {
+    flex-wrap: wrap;
+    overflow-wrap: anywhere;
+  }
+}
+</style>
