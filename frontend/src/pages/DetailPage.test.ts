@@ -532,6 +532,136 @@ describe('DetailPage activity access', () => {
 		}
 	});
 
+	it('preserves and shifts unaffected marks during rechecks without applying stale results', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ programs: [{
+			id: 'program-1', activity_id: 'activity-1', duration_minutes: 10,
+			title: 'Start', description: '<strong>🐾 Tset und Tset</strong>', responsible: [],
+		}] }));
+		const pending: Array<(response: Response) => void> = [];
+		const requests: string[] = [];
+		vi.mocked(apiFetch).mockImplementation((url, options) => {
+			if (url !== '/api/proofreading/check') return Promise.resolve(new Response('{}'));
+			const text = JSON.parse(options?.body as string).text as string;
+			requests.push(text);
+			if (requests.length > 1) return new Promise<Response>(resolve => pending.push(resolve));
+			const matches = [...text.matchAll(/Tset/g)].map(result => ({
+				offset: result.index, length: 4, message: 'Rechtschreibung', shortMessage: '',
+				replacements: [{ value: 'Testen' }], rule: { id: 'SPELLING', issueType: 'misspelling' },
+			}));
+			matches.push({ ...matches[0], length: 8 });
+			return Promise.resolve(new Response(JSON.stringify({ matches })));
+		});
+		const highlights = new Map<string, { ranges: Range[] }>();
+		vi.stubGlobal('CSS', { highlights });
+		vi.stubGlobal('Highlight', class {
+			constructor(...ranges: Range[]) { Object.assign(this, { ranges }); }
+		});
+		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.program-card__toggle').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get('.rich-editor').element as HTMLElement;
+		const command = stubInsertTextCommand(editor);
+		const restoreRects = stubProofreadingRects();
+		vi.useFakeTimers();
+		try {
+			editor.innerHTML = '<strong>🐾 Tset und Tset!</strong>';
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(highlights.get('program-proofreading')?.ranges.map(range => range.toString()))
+				.toEqual(['Tset', 'Tset', 'Tset und']);
+			await wrapper.get('.rich-editor').trigger('click', { clientX: 20, clientY: 20 });
+			await wrapper.get('.program-proofreading__suggestion').trigger('click');
+			expect(editor.innerHTML).toBe('<strong>🐾 Testen und Tset!</strong>');
+			expect(highlights.get('program-proofreading')?.ranges.map(range => range.toString())).toEqual(['Tset']);
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(requests[1]).toBe('🐾 Testen und Tset!');
+			expect(highlights.get('program-proofreading')?.ranges.map(range => range.toString())).toEqual(['Tset']);
+			await wrapper.get('.rich-editor').trigger('click', { clientX: 20, clientY: 20 });
+			expect(wrapper.find('.program-proofreading__popover').exists()).toBe(true);
+			await wrapper.get('.program-proofreading__suggestion').trigger('click');
+			expect(editor.innerHTML).toBe('<strong>🐾 Testen und Testen!</strong>');
+			expect(highlights.has('program-proofreading')).toBe(false);
+			pending[0](new Response(JSON.stringify({ matches: [{
+				offset: 14, length: 4, message: 'stale', shortMessage: '',
+				replacements: [{ value: 'falsch' }], rule: {},
+			}] })));
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(highlights.has('program-proofreading')).toBe(false);
+			expect(requests[2]).toBe('🐾 Testen und Testen!');
+			pending[1](new Response(JSON.stringify({ matches: [] })));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(editor.innerHTML).toBe('<strong>🐾 Testen und Testen!</strong>');
+			expect(highlights.has('program-proofreading')).toBe(false);
+			expect(command.command).toHaveBeenCalledTimes(2);
+		} finally {
+			restoreRects();
+			command.restore();
+			wrapper.unmount();
+		}
+	});
+
+	it('keeps an unaffected selected issue open after refresh and a failed recheck', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ programs: [{
+			id: 'program-1', activity_id: 'activity-1', duration_minutes: 10,
+			title: 'Start', description: 'Tset und Tset und Tset', responsible: [],
+		}] }));
+		let resolveRefresh: ((response: Response) => void) | undefined;
+		let checks = 0;
+		const makeMatch = (offset: number) => ({
+			offset, length: 4, message: 'Rechtschreibung', shortMessage: '',
+			replacements: [{ value: 'Test' }], rule: { id: 'SPELLING', issueType: 'misspelling' },
+		});
+		vi.mocked(apiFetch).mockImplementation((url) => {
+			if (url !== '/api/proofreading/check') return Promise.resolve(new Response('{}'));
+			checks++;
+			if (checks === 1) return Promise.resolve(new Response(JSON.stringify({ matches: [makeMatch(0), makeMatch(9), makeMatch(18)] })));
+			if (checks === 2) return new Promise<Response>(resolve => { resolveRefresh = resolve; });
+			return Promise.reject(new Error('service failure'));
+		});
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const highlights = new Map<string, { ranges: Range[] }>();
+		vi.stubGlobal('CSS', { highlights });
+		vi.stubGlobal('Highlight', class {
+			constructor(...ranges: Range[]) { Object.assign(this, { ranges }); }
+		});
+		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.program-card__toggle').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get('.rich-editor').element as HTMLElement;
+		const command = stubInsertTextCommand(editor);
+		const restoreRects = stubProofreadingRects();
+		vi.useFakeTimers();
+		try {
+			editor.textContent = 'Tset und Tset und Tset!';
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
+			await vi.advanceTimersByTimeAsync(1500);
+			await wrapper.get('.rich-editor').trigger('click', { clientX: 20, clientY: 20 });
+			await wrapper.get('.program-proofreading__suggestion').trigger('click');
+			await vi.advanceTimersByTimeAsync(1500);
+			await wrapper.get('.rich-editor').trigger('click', { clientX: 20, clientY: 20 });
+			resolveRefresh!(new Response(JSON.stringify({ matches: [makeMatch(9), makeMatch(18)] })));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(wrapper.find('.program-proofreading__popover').exists()).toBe(true);
+			expect(highlights.get('program-proofreading')?.ranges.map(range => range.toString())).toEqual(['Tset', 'Tset']);
+			await wrapper.get('.program-proofreading__suggestion').trigger('click');
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(editor.textContent).toBe('Test und Test und Tset!');
+			expect(highlights.get('program-proofreading')?.ranges.map(range => range.toString())).toEqual(['Tset']);
+			expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+			expect(checks).toBe(3);
+		} finally {
+			restoreRects();
+			command.restore();
+			wrapper.unmount();
+		}
+	});
+
 	it('debounces changed text, hides stale suggestions, and checks silently', async () => {
 		allowEditing();
 		mocks.fetchActivity.mockResolvedValue(makeActivity({
@@ -745,7 +875,7 @@ describe('DetailPage activity access', () => {
 		}
 	});
 
-	it('shows failures without a running indicator and retries on a later change', async () => {
+	it('silently handles failures and timeouts and retries on later changes', async () => {
 		allowEditing();
 		mocks.fetchActivity.mockResolvedValue(makeActivity({
 			programs: [{
@@ -754,11 +884,17 @@ describe('DetailPage activity access', () => {
 			}],
 		}));
 		let rejectFirst: ((error: Error) => void) | undefined;
-		vi.mocked(apiFetch).mockImplementation((url) => {
+		let checks = 0;
+		vi.mocked(apiFetch).mockImplementation((url, options) => {
 			if (url !== '/api/proofreading/check') return Promise.resolve(new Response('{}', { status: 200 }));
-			if (!rejectFirst) return new Promise<Response>((_resolve, reject) => { rejectFirst = reject; });
+			checks++;
+			if (checks === 1) return new Promise<Response>((_resolve, reject) => { rejectFirst = reject; });
+			if (checks === 2) return new Promise<Response>((_resolve, reject) => {
+				options?.signal?.addEventListener('abort', () => reject(new Error('timeout')));
+			});
 			return Promise.resolve(new Response(JSON.stringify({ matches: [] }), { status: 200 }));
 		});
+		const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const wrapper = shallowMount(DetailPage);
 		await flushPromises();
 		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
@@ -775,13 +911,25 @@ describe('DetailPage activity access', () => {
 			expect(wrapper.find('button[aria-label="Rechtschreibung prüfen"]').exists()).toBe(false);
 			rejectFirst!(new Error('Dienst nicht erreichbar'));
 			await vi.advanceTimersByTimeAsync(0);
-			expect(wrapper.get('.program-proofreading__results[role="alert"]').text()).toContain('Dienst nicht erreichbar');
+			expect(wrapper.find('.program-proofreading__results').exists()).toBe(false);
+			expect(wrapper.text()).not.toContain('Dienst nicht erreichbar');
 			editor.element.textContent = 'Text nochmals geändert';
 			await editor.trigger('input');
 			expect(wrapper.find('.program-proofreading__results').exists()).toBe(false);
 			await vi.advanceTimersByTimeAsync(1500);
 			expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')).toHaveLength(2);
+			await vi.advanceTimersByTimeAsync(35000);
 			expect(wrapper.find('.program-proofreading__results').exists()).toBe(false);
+			expect(wrapper.text()).not.toContain('timeout');
+			editor.element.textContent = 'Text weiterhin bearbeitbar';
+			await editor.trigger('input');
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(checks).toBe(3);
+			expect(editor.element.textContent).toBe('Text weiterhin bearbeitbar');
+			expect(wrapper.find('.program-proofreading__results').exists()).toBe(false);
+			const proofreadWarnings = warning.mock.calls.filter(call => call[0] === 'Proofreading check failed or timed out.');
+			expect(proofreadWarnings).toHaveLength(2);
+			expect(proofreadWarnings.flat().join(' ')).not.toContain('Text');
 		} finally {
 			wrapper.unmount();
 		}
@@ -829,7 +977,8 @@ describe('DetailPage activity access', () => {
 				.find(button => button.text().includes('Wörterbuch'))!;
 			await addButton().trigger('click');
 			await vi.advanceTimersByTimeAsync(0);
-			expect(wrapper.get('.program-proofreading__popover [role="alert"]').text()).toContain('nicht verfügbar');
+			expect(wrapper.find('.program-proofreading__popover [role="alert"]').exists()).toBe(false);
+			expect(wrapper.text()).not.toContain('Wörterbuch nicht verfügbar');
 			expect(editor.element.textContent).toBe('Ein einfahcer Text!');
 			fail = false;
 			await addButton().trigger('click');

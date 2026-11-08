@@ -2315,24 +2315,24 @@ const programImageUploadCount = ref(0);
 const progImageError = ref<string | null>(null);
 let progImagePickerTarget: { program: ProgramInput; range: Range | null } | null = null;
 type ProgramProofreadingState = {
-	status: 'loading' | 'ready' | 'stale' | 'error';
+	status: 'ready' | 'stale';
 	htmlSnapshot: string;
 	text?: string;
 	matches?: ProofreadingMatch[];
-	error?: string;
 };
 const programProofreading = ref<Record<number, ProgramProofreadingState>>({});
 const proofreadControllers = new Map<number, AbortController>();
+const proofreadRequestTexts = new Map<number, string>();
 const proofreadRequestIds = new Map<number, number>();
 const proofreadTimers = new Map<number, number>();
 const proofreadObservedText = new Map<number, string>();
 const composingPrograms = new Set<number>();
 const compositionStartText = new Map<number, string>();
 const compositionNeedsCheck = new Set<number>();
+const applyingProofreading = new Set<number>();
 const selectedProofreadingMatch = ref<Record<number, number>>({});
 const proofreadingPopoverStyle = ref<Record<number, Record<string, string>>>({});
 const dictionaryPending = ref<Record<number, boolean>>({});
-const dictionaryError = ref<Record<number, string>>({});
 const dictionaryRequests = new Map<number, symbol>();
 const PROOFREAD_DEBOUNCE_MS = 1500;
 const proofreadingHighlightName = 'program-proofreading';
@@ -2387,12 +2387,7 @@ function selectProofreadingMatch(i: number, index: number) {
 		!proofreadingResultIsCurrent(editor, state.htmlSnapshot)) return;
 	const range = getProofreadingRange(getProgramText(editor), match.offset, match.length);
 	if (!range) {
-		programProofreading.value[i] = {
-			...state,
-			status: 'error',
-			error: 'Dieser Vorschlag überschreitet eine Formatierungs-, Absatz- oder Bildgrenze und kann nicht sicher angewendet werden.',
-		};
-		updateProofreadingHighlights();
+		closeProgProofreading(i);
 		return;
 	}
 	const wrapper = editor.parentElement;
@@ -2404,7 +2399,6 @@ function selectProofreadingMatch(i: number, index: number) {
 		top: `${anchor.bottom - container.top + 4}px`,
 	};
 	selectedProofreadingMatch.value[i] = index;
-	delete dictionaryError.value[i];
 }
 
 function dictionaryWord(i: number, match: ProofreadingMatch): string | null {
@@ -2424,15 +2418,14 @@ async function addKnownWord(i: number, match: ProofreadingMatch) {
 	const request = Symbol();
 	dictionaryRequests.set(i, request);
 	dictionaryPending.value[i] = true;
-	delete dictionaryError.value[i];
 	try {
 		const response = await apiFetch('/api/proofreading/dictionary', {
 			method: 'POST',
 			body: JSON.stringify({ word }),
 		});
-		const result = await response.json() as { error?: unknown; added?: unknown };
+		const result = await response.json() as { added?: unknown };
 		if (!response.ok || result.added !== true) {
-			throw new Error(typeof result.error === 'string' ? result.error : 'Das Wort konnte nicht gespeichert werden.');
+			throw new Error('Dictionary request failed');
 		}
 		for (const [key, activeEditor] of Object.entries(progEditorRefs.value)) {
 			if (!activeEditor) continue;
@@ -2440,10 +2433,10 @@ async function addKnownWord(i: number, match: ProofreadingMatch) {
 			invalidateProgProofreading(index);
 			scheduleProgProofreading(index, activeEditor);
 		}
-	} catch (error) {
+	} catch {
 		if (dictionaryRequests.get(i) === request && programProofreading.value[i] === state &&
 			progEditorRefs.value[i] === editor && state.matches?.[selectedProofreadingMatch.value[i]] === match) {
-			dictionaryError.value[i] = error instanceof Error ? error.message : 'Das Wort konnte nicht gespeichert werden.';
+			console.warn('Proofreading dictionary request failed.');
 		}
 	} finally {
 		if (dictionaryRequests.get(i) === request) {
@@ -2474,7 +2467,6 @@ function resetProgProofreading(preserveComposition = false) {
 	selectedProofreadingMatch.value = {};
 	proofreadingPopoverStyle.value = {};
 	dictionaryPending.value = {};
-	dictionaryError.value = {};
 	dictionaryRequests.clear();
 	updateProofreadingHighlights();
 }
@@ -2525,6 +2517,7 @@ function setProgEditorRef(el: unknown, program: ProgramInput) {
 function cancelProgProofreadingRequest(i: number) {
 	proofreadControllers.get(i)?.abort();
 	proofreadControllers.delete(i);
+	proofreadRequestTexts.delete(i);
 	proofreadRequestIds.set(i, (proofreadRequestIds.get(i) ?? 0) + 1);
 }
 
@@ -2534,12 +2527,10 @@ function invalidateProgProofreading(i: number) {
 	cancelProgProofreadingRequest(i);
 	delete selectedProofreadingMatch.value[i];
 	delete proofreadingPopoverStyle.value[i];
-	delete dictionaryError.value[i];
 	if (!state) return;
 	programProofreading.value[i] = {
 		status: 'stale',
 		htmlSnapshot: state.htmlSnapshot,
-		error: 'Die Beschreibung wurde geändert. Sie wird erneut geprüft.',
 	};
 	updateProofreadingHighlights();
 }
@@ -2550,7 +2541,6 @@ function closeProgProofreading(i: number) {
 	delete programProofreading.value[i];
 	delete selectedProofreadingMatch.value[i];
 	delete proofreadingPopoverStyle.value[i];
-	delete dictionaryError.value[i];
 	updateProofreadingHighlights();
 }
 
@@ -2558,25 +2548,18 @@ async function checkProgDescription(i: number) {
 	const editor = progEditorRefs.value[i];
 	if (!proofreadingEnabled.value || !editor || isLockedByOther(`program_${i}`)) return;
 	clearProgProofreadingTimer(i);
-	const htmlSnapshot = editor.innerHTML;
 	const text = getProgramText(editor).text;
-	if (programProofreading.value[i]?.status === 'loading' && programProofreading.value[i]?.text === text) return;
+	if (proofreadControllers.has(i) && proofreadRequestTexts.get(i) === text) return;
 	cancelProgProofreadingRequest(i);
-	delete selectedProofreadingMatch.value[i];
 	if (!text.trim()) {
-		programProofreading.value[i] = {
-			status: 'error',
-			htmlSnapshot,
-			error: 'Die Beschreibung enthält keinen prüfbaren Text.',
-		};
+		closeProgProofreading(i);
 		return;
 	}
 
 	const requestId = proofreadRequestIds.get(i)!;
 	const controller = new AbortController();
 	proofreadControllers.set(i, controller);
-	programProofreading.value[i] = { status: 'loading', htmlSnapshot, text };
-	updateProofreadingHighlights();
+	proofreadRequestTexts.set(i, text);
 	const timeout = window.setTimeout(() => controller.abort(), 35000);
 	try {
 		const response = await apiFetch('/api/proofreading/check', {
@@ -2584,91 +2567,113 @@ async function checkProgDescription(i: number) {
 			body: JSON.stringify({ text }),
 			signal: controller.signal,
 		});
-		const result = await response.json() as { matches?: unknown; error?: unknown };
+		const result = await response.json() as { matches?: unknown };
 		if (!response.ok) {
-			throw new Error(typeof result.error === 'string'
-				? result.error
-				: 'Die lokale Rechtschreibprüfung ist nicht verfügbar.');
+			throw new Error('Proofreading request failed');
 		}
 		if (!Array.isArray(result.matches)) {
-			throw new Error('Die lokale Rechtschreibprüfung hat eine ungültige Antwort geliefert.');
+			throw new Error('Invalid proofreading response');
 		}
 		if (proofreadRequestIds.get(i) !== requestId) return;
+		if (controller.signal.aborted) throw new Error('Proofreading request timed out');
 		if (getProgramText(editor).text !== text) {
-			programProofreading.value[i] = {
-				status: 'error',
-				htmlSnapshot,
-				error: 'Die Beschreibung wurde geändert und kann nach der nächsten Änderung erneut geprüft werden.',
-			};
+			invalidateProgProofreading(i);
 			return;
+		}
+		const oldState = programProofreading.value[i];
+		const selected = oldState?.status === 'ready'
+			? oldState.matches?.[selectedProofreadingMatch.value[i]]
+			: undefined;
+		const matches = result.matches as ProofreadingMatch[];
+		const selectedIndex = selected ? matches.findIndex(match =>
+			match.offset === selected.offset && match.length === selected.length &&
+			match.rule?.id === selected.rule?.id && match.message === selected.message) : -1;
+		if (selectedIndex < 0) {
+			delete selectedProofreadingMatch.value[i];
+			delete proofreadingPopoverStyle.value[i];
+		} else {
+			selectedProofreadingMatch.value[i] = selectedIndex;
 		}
 		programProofreading.value[i] = {
 			status: 'ready',
 			htmlSnapshot: editor.innerHTML,
 			text,
-			matches: result.matches as ProofreadingMatch[],
+			matches,
 		};
 		updateProofreadingHighlights();
-	} catch (error) {
+	} catch {
 		if (proofreadRequestIds.get(i) !== requestId) return;
-		const timedOut = controller.signal.aborted;
-		programProofreading.value[i] = {
-			status: 'error',
-			htmlSnapshot,
-			error: timedOut
-				? 'Die Prüfung hat zu lange gedauert. Bitte später erneut versuchen.'
-				: error instanceof Error
-					? error.message
-					: 'Die lokale Rechtschreibprüfung ist nicht verfügbar.',
-		};
+		const state = programProofreading.value[i];
+		if (state?.status === 'ready' && !proofreadingResultIsCurrent(editor, state.htmlSnapshot)) {
+			invalidateProgProofreading(i);
+		}
+		console.warn('Proofreading check failed or timed out.');
 	} finally {
 		window.clearTimeout(timeout);
-		if (proofreadControllers.get(i) === controller) proofreadControllers.delete(i);
+		if (proofreadControllers.get(i) === controller) {
+			proofreadControllers.delete(i);
+			proofreadRequestTexts.delete(i);
+		}
 	}
 }
 
 function applyProgProofreadingSuggestion(i: number, match: ProofreadingMatch, replacement: string) {
 	const state = programProofreading.value[i];
 	const editor = progEditorRefs.value[i];
-	if (!state || state.status !== 'ready' || !editor || isLockedByOther(`program_${i}`)) return;
+	if (!state || state.status !== 'ready' || !state.matches?.includes(match) ||
+		!editor || isLockedByOther(`program_${i}`)) return;
 	if (!proofreadingResultIsCurrent(editor, state.htmlSnapshot)) {
-		programProofreading.value[i] = {
-			...state,
-			status: 'error',
-			error: 'Die Beschreibung wurde geändert und kann nach der nächsten Änderung erneut geprüft werden.',
-		};
+		invalidateProgProofreading(i);
 		return;
 	}
 	const currentText = getProgramText(editor);
 	const range = getProofreadingRange(currentText, match.offset, match.length);
 	if (!range) {
-		programProofreading.value[i] = {
-			...state,
-			status: 'error',
-			error: 'Dieser Vorschlag überschreitet eine Formatierungs-, Absatz- oder Bildgrenze und kann nicht sicher angewendet werden.',
-		};
+		closeProgProofreading(i);
 		return;
 	}
 	const selection = window.getSelection();
 	if (!selection) {
-		programProofreading.value[i] = {
-			...state,
-			status: 'error',
-			error: 'Der Vorschlag konnte im Editor nicht markiert werden.',
-		};
+		console.warn('Proofreading correction could not select text.');
 		return;
 	}
 	editor.focus();
 	selection.removeAllRanges();
 	selection.addRange(range);
-	if (!document.execCommand('insertText', false, replacement)) {
+	applyingProofreading.add(i);
+	let applied = false;
+	try {
+		applied = document.execCommand('insertText', false, replacement);
+	} catch {
+		applied = false;
+	} finally {
+		applyingProofreading.delete(i);
+	}
+	if (!applied) {
 		selection.removeAllRanges();
-		programProofreading.value[i] = {
-			...state,
-			status: 'error',
-			error: 'Dein Browser konnte den Vorschlag nicht im Editor übernehmen.',
-		};
+		console.warn('Proofreading correction could not be applied.');
+		onProgDescInput(i);
 		return;
+	}
+	const newText = getProgramText(editor).text;
+	const end = match.offset + match.length;
+	const expected = currentText.text.slice(0, match.offset) + replacement + currentText.text.slice(end);
+	if (newText === expected && newText !== currentText.text) {
+		clearProgProofreadingTimer(i);
+		cancelProgProofreadingRequest(i);
+		// Only remap after verifying the editor made exactly the intended UTF-16 replacement.
+		const delta = replacement.length - match.length;
+		const matches = (state.matches ?? []).filter(other =>
+			other.offset + other.length <= match.offset || other.offset >= end
+		).map(other => other.offset >= end ? { ...other, offset: other.offset + delta } : other);
+		programProofreading.value[i] = { status: 'ready', htmlSnapshot: editor.innerHTML, text: newText, matches };
+		proofreadObservedText.set(i, newText);
+		delete selectedProofreadingMatch.value[i];
+		delete proofreadingPopoverStyle.value[i];
+		updateProofreadingHighlights();
+		scheduleProgProofreading(i, editor);
+	} else if (newText === currentText.text) {
+		delete selectedProofreadingMatch.value[i];
 	}
 	onProgDescInput(i);
 }
@@ -2705,6 +2710,7 @@ function onProgCompositionEnd(i: number) {
 }
 
 function onProgDescInput(i: number) {
+	if (applyingProofreading.has(i)) return;
 	const el = progEditorRefs.value[i];
 	if (!el || !editPrograms.value[i]) return;
 	const text = getProgramText(el).text;
@@ -4408,20 +4414,12 @@ function copyShareLink() {
 												:disabled="dictionaryPending[i] || isLockedByOther(`program_${i}`)"
 												@mousedown.prevent @click="addKnownWord(i, match)"
 											>Zum persönlichen Wörterbuch hinzufügen</button>
-											<p v-if="dictionaryError[i]" role="alert">{{ dictionaryError[i] }}</p>
 										</div>
 										</template>
 									</template>
 									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 								<p v-if="programImageUploadCount" class="field-hint" role="status">Bilder werden hochgeladen…</p>
-								<div
-									v-if="programProofreading[i]?.status === 'error'"
-									class="program-proofreading__results program-proofreading__results--error"
-									role="alert"
-								>
-									<p>{{ programProofreading[i].error }}</p>
-								</div>
 							</div>
 						</div>
 					</div>
