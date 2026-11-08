@@ -57,6 +57,7 @@ describe('SharedActivityPage', () => {
 		delete document.documentElement.dataset.theme;
 		config.PUBLIC_BASE_URL = '';
 		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
 		document.title = '';
 	});
 
@@ -106,6 +107,28 @@ describe('SharedActivityPage', () => {
 		expect(wrapper.get('.program-desc strong').text()).toBe('Fährte');
 		expect(wrapper.get('.program-desc li').text()).toBe('Zusammen bleiben');
 		expect(wrapper.find('.program-desc script').exists()).toBe(false);
+	});
+
+	it('loads inline program images through the existing share token', async () => {
+		const imageId = '12345678-1234-1234-1234-123456789abc';
+		const fetch = vi.fn()
+			.mockResolvedValueOnce(new Response(JSON.stringify({
+				...activity,
+				programs: [{
+					...activity.programs[0]!,
+					description: `Vorher<img src="/api/program-images/${imageId}" alt="Bild">Nachher`,
+				}],
+			}), { status: 200 }))
+			.mockResolvedValueOnce(new Response(new Blob(['image'], { type: 'image/png' })));
+		vi.stubGlobal('fetch', fetch);
+		vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:shared-program-image');
+		const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+		const wrapper = mountPage();
+		await flushPromises();
+		expect(wrapper.get('.program-desc img').attributes('src')).toBe('blob:shared-program-image');
+		expect(fetch).toHaveBeenNthCalledWith(2, `/api/shared/share-token/program-images/${imageId}`);
+		wrapper.unmount();
+		expect(revoke).toHaveBeenCalledWith('blob:shared-program-image');
 	});
 
 	it('encodes the activity id and uses the current instance without a configured URL', async () => {
