@@ -1106,6 +1106,40 @@ video {
 	cursor: pointer;
 }
 
+::highlight(program-proofreading) {
+	text-decoration: underline wavy #c44242;
+}
+
+.program-proofreading__excerpt {
+	justify-self: start;
+	border: 0;
+	padding: 0;
+	background: none;
+	color: var(--input-color);
+	font: inherit;
+	text-decoration: underline wavy #c44242;
+	cursor: pointer;
+}
+
+.program-proofreading__popover {
+	position: absolute;
+	z-index: 20;
+	width: min(260px, 100%);
+	display: grid;
+	gap: 8px;
+	padding: 10px;
+	border: 1px solid var(--input-border);
+	border-radius: 6px;
+	background: var(--input-bg);
+	color: var(--input-color);
+	box-shadow: 0 4px 14px #0003;
+	font-size: 0.85rem;
+}
+
+.program-proofreading__popover p {
+	margin: 0;
+}
+
 .program-proofreading__check:disabled,
 .program-proofreading__suggestion:disabled {
 	opacity: 0.6;

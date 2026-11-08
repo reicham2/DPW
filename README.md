@@ -109,10 +109,12 @@ LanguageTool-Server (Version 6.8 aus dem Community-Image
 der Digest ist in Compose fixiert).
 Der Dienst ist nur im privaten Compose-Netz erreichbar und hat keinen
 veröffentlichten Host-Port. Der Backend-Endpunkt akzeptiert nur angemeldete
-Anfragen; Programm-Beschreibungen werden ausschliesslich bei Klick auf
-**Rechtschreibung prüfen** an diesen lokalen Dienst gesendet. Vorschläge werden
-nicht automatisch angewendet. Änderungen laufen danach wie gewohnt durch den
-Editor und dessen Autospeicherung.
+Anfragen; geänderte Programm-Beschreibungen werden nach einer kurzen Schreibpause
+an diesen lokalen Dienst gesendet. Die kompakte Prüftaste startet bei Bedarf eine
+erneute Prüfung. Erkannte Stellen werden in unterstützten Browsern im Text
+markiert; ein Klick darauf oder auf die Stelle in der Ergebnisliste zeigt die
+Vorschläge. Vorschläge werden nur auf Klick übernommen. Änderungen laufen danach
+wie gewohnt durch den Editor und dessen Autospeicherung.
 
 Die Prüfung verwendet Schweizer Standarddeutsch (`de-CH`) und die im
 LanguageTool-Open-Source-Server enthaltenen Regeln. Sie ersetzt weder eine

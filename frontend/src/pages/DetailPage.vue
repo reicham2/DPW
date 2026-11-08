@@ -1618,6 +1618,7 @@ watch(() => config.MIDATA_ENABLED, () => {
 });
 
 onUnmounted(() => {
+	resetProgProofreading();
 	expectedWeatherRequestSeq += 1;
 	if (expectedWeatherRequestController) {
 		expectedWeatherRequestController.abort();
@@ -1806,6 +1807,7 @@ async function leaveEdit() {
 		if (progImageError.value) return;
 	}
 	void flushAutoSave({ skipFuzzyCheck: true });
+	resetProgProofreading();
 	mode.value = 'view';
 }
 
@@ -1837,6 +1839,7 @@ async function cancelEdit() {
 			for (const imageId of newProgramImageIds) await deleteUnusedProgramImage(imageId);
 			newProgramImageIds.clear();
 			progImageError.value = null;
+			resetProgProofreading();
 			mode.value = 'view';
 		} catch (e) {
 			error.value = formatApiError(e);
@@ -2104,10 +2107,12 @@ function addProgram() {
 	});
 }
 function removeProgram(i: number) {
+	resetProgProofreading();
 	const expandedKeys = new Set(expandedProgramKeys.value);
 	expandedKeys.delete(programEditorKey(editPrograms.value[i]));
 	expandedProgramKeys.value = expandedKeys;
 	editPrograms.value.splice(i, 1);
+	initProgEditors();
 }
 
 function updateProgramDragAutoScroll() {
@@ -2187,6 +2192,7 @@ function onProgramDrop(i: number, event: DragEvent) {
 	const from = draggedProgramIndex.value;
 	const to = i;
 	if (from !== to && from >= 0 && to >= 0 && from < editPrograms.value.length && to < editPrograms.value.length) {
+		resetProgProofreading();
 		const moved = editPrograms.value.splice(from, 1)[0];
 		editPrograms.value.splice(to, 0, moved);
 		markDirty('programs');
@@ -2311,12 +2317,116 @@ let progImagePickerTarget: { program: ProgramInput; range: Range | null } | null
 type ProgramProofreadingState = {
 	status: 'loading' | 'ready' | 'stale' | 'error';
 	htmlSnapshot: string;
+	text?: string;
 	matches?: ProofreadingMatch[];
 	error?: string;
 };
 const programProofreading = ref<Record<number, ProgramProofreadingState>>({});
 const proofreadControllers = new Map<number, AbortController>();
 const proofreadRequestIds = new Map<number, number>();
+const proofreadTimers = new Map<number, number>();
+const proofreadObservedText = new Map<number, string>();
+const composingPrograms = new Set<number>();
+const compositionStartText = new Map<number, string>();
+const compositionNeedsCheck = new Set<number>();
+const selectedProofreadingMatch = ref<Record<number, number>>({});
+const proofreadingPopoverStyle = ref<Record<number, Record<string, string>>>({});
+const PROOFREAD_DEBOUNCE_MS = 1500;
+const proofreadingHighlightName = 'program-proofreading';
+
+type HighlightRegistry = {
+	set(name: string, highlight: unknown): void;
+	delete(name: string): boolean;
+};
+const highlightSupport = globalThis as typeof globalThis & {
+	Highlight?: new (...ranges: Range[]) => unknown;
+	CSS?: typeof CSS & { highlights?: HighlightRegistry };
+};
+
+function updateProofreadingHighlights() {
+	const registry = highlightSupport.CSS?.highlights;
+	const Highlight = highlightSupport.Highlight;
+	if (!registry || !Highlight) return;
+	const ranges: Range[] = [];
+	for (const [key, state] of Object.entries(programProofreading.value)) {
+		const editor = progEditorRefs.value[Number(key)];
+		if (!editor || state.status !== 'ready' || !proofreadingResultIsCurrent(editor, state.htmlSnapshot)) continue;
+		const text = getProgramText(editor);
+		for (const match of state.matches ?? []) {
+			const range = getProofreadingRange(text, match.offset, match.length);
+			if (range) ranges.push(range);
+		}
+	}
+	if (ranges.length) registry.set(proofreadingHighlightName, new Highlight(...ranges));
+	else registry.delete(proofreadingHighlightName);
+}
+
+function selectProofreadingAtPoint(i: number, event: MouseEvent) {
+	const editor = progEditorRefs.value[i];
+	const state = programProofreading.value[i];
+	if (!editor || state?.status !== 'ready' || !proofreadingResultIsCurrent(editor, state.htmlSnapshot)) return;
+	const text = getProgramText(editor);
+	const index = (state.matches ?? []).findIndex(match => {
+		const range = getProofreadingRange(text, match.offset, match.length);
+		return range && typeof range.getClientRects === 'function' && Array.from(range.getClientRects()).some(rect =>
+			event.clientX >= rect.left && event.clientX <= rect.right &&
+			event.clientY >= rect.top && event.clientY <= rect.bottom);
+	});
+	if (index >= 0) selectProofreadingMatch(i, index);
+}
+
+function selectProofreadingMatch(i: number, index: number) {
+	const editor = progEditorRefs.value[i];
+	const state = programProofreading.value[i];
+	const match = state?.matches?.[index];
+	if (!editor || state?.status !== 'ready' || !match ||
+		!proofreadingResultIsCurrent(editor, state.htmlSnapshot)) return;
+	const range = getProofreadingRange(getProgramText(editor), match.offset, match.length);
+	if (!range) {
+		programProofreading.value[i] = {
+			...state,
+			status: 'error',
+			error: 'Dieser Vorschlag überschreitet eine Formatierungs-, Absatz- oder Bildgrenze und kann nicht sicher angewendet werden.',
+		};
+		updateProofreadingHighlights();
+		return;
+	}
+	const wrapper = editor.parentElement;
+	if (!wrapper) return;
+	const anchor = typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : editor.getBoundingClientRect();
+	const container = wrapper.getBoundingClientRect();
+	proofreadingPopoverStyle.value[i] = {
+		left: `${Math.max(0, Math.min(anchor.left - container.left, container.width - 260))}px`,
+		top: `${anchor.bottom - container.top + 4}px`,
+	};
+	selectedProofreadingMatch.value[i] = index;
+}
+
+function matchText(i: number, match: ProofreadingMatch): string {
+	const text = programProofreading.value[i]?.text ?? '';
+	return text.slice(match.offset, match.offset + match.length);
+}
+
+function clearProgProofreadingTimer(i: number) {
+	const timer = proofreadTimers.get(i);
+	if (timer !== undefined) window.clearTimeout(timer);
+	proofreadTimers.delete(i);
+}
+
+function resetProgProofreading() {
+	for (const i of new Set([...proofreadTimers.keys(), ...proofreadControllers.keys()])) {
+		clearProgProofreadingTimer(i);
+		cancelProgProofreadingRequest(i);
+	}
+	proofreadObservedText.clear();
+	composingPrograms.clear();
+	compositionStartText.clear();
+	compositionNeedsCheck.clear();
+	programProofreading.value = {};
+	selectedProofreadingMatch.value = {};
+	proofreadingPopoverStyle.value = {};
+	updateProofreadingHighlights();
+}
 
 function programEditorKey(program: ProgramInput): string {
 	let key = progEditorKeys.get(program);
@@ -2353,26 +2463,37 @@ function cancelProgProofreadingRequest(i: number) {
 
 function invalidateProgProofreading(i: number) {
 	const state = programProofreading.value[i];
+	clearProgProofreadingTimer(i);
 	cancelProgProofreadingRequest(i);
+	delete selectedProofreadingMatch.value[i];
+	delete proofreadingPopoverStyle.value[i];
 	if (!state) return;
 	programProofreading.value[i] = {
 		status: 'stale',
 		htmlSnapshot: state.htmlSnapshot,
-		error: 'Die Beschreibung wurde geändert. Bitte erneut prüfen.',
+		error: 'Die Beschreibung wurde geändert. Sie wird erneut geprüft.',
 	};
+	updateProofreadingHighlights();
 }
 
 function closeProgProofreading(i: number) {
+	clearProgProofreadingTimer(i);
 	cancelProgProofreadingRequest(i);
 	delete programProofreading.value[i];
+	delete selectedProofreadingMatch.value[i];
+	delete proofreadingPopoverStyle.value[i];
+	updateProofreadingHighlights();
 }
 
 async function checkProgDescription(i: number) {
 	const editor = progEditorRefs.value[i];
 	if (!editor || isLockedByOther(`program_${i}`)) return;
+	clearProgProofreadingTimer(i);
 	const htmlSnapshot = editor.innerHTML;
 	const text = getProgramText(editor).text;
+	if (programProofreading.value[i]?.status === 'loading' && programProofreading.value[i]?.text === text) return;
 	cancelProgProofreadingRequest(i);
+	delete selectedProofreadingMatch.value[i];
 	if (!text.trim()) {
 		programProofreading.value[i] = {
 			status: 'error',
@@ -2385,7 +2506,8 @@ async function checkProgDescription(i: number) {
 	const requestId = proofreadRequestIds.get(i)!;
 	const controller = new AbortController();
 	proofreadControllers.set(i, controller);
-	programProofreading.value[i] = { status: 'loading', htmlSnapshot };
+	programProofreading.value[i] = { status: 'loading', htmlSnapshot, text };
+	updateProofreadingHighlights();
 	const timeout = window.setTimeout(() => controller.abort(), 35000);
 	try {
 		const response = await apiFetch('/api/proofreading/check', {
@@ -2403,7 +2525,7 @@ async function checkProgDescription(i: number) {
 			throw new Error('Die lokale Rechtschreibprüfung hat eine ungültige Antwort geliefert.');
 		}
 		if (proofreadRequestIds.get(i) !== requestId) return;
-		if (!proofreadingResultIsCurrent(editor, htmlSnapshot)) {
+		if (getProgramText(editor).text !== text) {
 			programProofreading.value[i] = {
 				status: 'error',
 				htmlSnapshot,
@@ -2413,9 +2535,11 @@ async function checkProgDescription(i: number) {
 		}
 		programProofreading.value[i] = {
 			status: 'ready',
-			htmlSnapshot,
+			htmlSnapshot: editor.innerHTML,
+			text,
 			matches: result.matches as ProofreadingMatch[],
 		};
+		updateProofreadingHighlights();
 	} catch (error) {
 		if (proofreadRequestIds.get(i) !== requestId) return;
 		const timedOut = controller.signal.aborted;
@@ -2478,13 +2602,60 @@ function applyProgProofreadingSuggestion(i: number, match: ProofreadingMatch, re
 		return;
 	}
 	onProgDescInput(i);
-	void checkProgDescription(i);
+}
+
+function scheduleProgProofreading(i: number, editor: HTMLElement) {
+	clearProgProofreadingTimer(i);
+	if (!getProgramText(editor).text.trim() || composingPrograms.has(i)) return;
+	const timer = window.setTimeout(() => {
+		proofreadTimers.delete(i);
+		if (mode.value === 'edit' && progEditorRefs.value[i] === editor && !isLockedByOther(`program_${i}`)) {
+			void checkProgDescription(i);
+		}
+	}, PROOFREAD_DEBOUNCE_MS);
+	proofreadTimers.set(i, timer);
+}
+
+function onProgCompositionStart(i: number) {
+	composingPrograms.add(i);
+	const editor = progEditorRefs.value[i];
+	if (editor) compositionStartText.set(i, getProgramText(editor).text);
+	if (proofreadTimers.has(i)) compositionNeedsCheck.add(i);
+	clearProgProofreadingTimer(i);
+}
+
+function onProgCompositionEnd(i: number) {
+	composingPrograms.delete(i);
+	onProgDescInput(i);
+	const editor = progEditorRefs.value[i];
+	if (editor && (compositionNeedsCheck.has(i) || compositionStartText.get(i) !== getProgramText(editor).text)) {
+		scheduleProgProofreading(i, editor);
+	}
+	compositionStartText.delete(i);
+	compositionNeedsCheck.delete(i);
 }
 
 function onProgDescInput(i: number) {
 	const el = progEditorRefs.value[i];
-	invalidateProgProofreading(i);
-	if (el && editPrograms.value[i]) editPrograms.value[i].description = serializeProgramDescription(el);
+	if (!el || !editPrograms.value[i]) return;
+	const text = getProgramText(el).text;
+	const previousText = proofreadObservedText.get(i);
+	const state = programProofreading.value[i];
+	if (previousText !== text) {
+		proofreadObservedText.set(i, text);
+		invalidateProgProofreading(i);
+		if (text.trim()) {
+			scheduleProgProofreading(i, el);
+		} else {
+			delete programProofreading.value[i];
+			updateProofreadingHighlights();
+		}
+	} else if (state?.status === 'ready' && state.htmlSnapshot !== el.innerHTML) {
+		state.htmlSnapshot = el.innerHTML;
+		delete selectedProofreadingMatch.value[i];
+		updateProofreadingHighlights();
+	}
+	editPrograms.value[i].description = serializeProgramDescription(el);
 	markDirty(`prog_${i}_desc`);
 	updateProgToolbar(i);
 }
@@ -2735,7 +2906,13 @@ function initProgEditors() {
 		for (let i = 0; i < editPrograms.value.length; i++) {
 			const el = progEditorRefs.value[i];
 			const program = editPrograms.value[i];
-			if (el && program) syncProgEditor(el, program);
+			if (el && program) {
+				if (el !== document.activeElement && serializeProgramDescription(el) !== sanitizeProgramDescription(program.description)) {
+				closeProgProofreading(i);
+				}
+				syncProgEditor(el, program);
+				proofreadObservedText.set(i, getProgramText(el).text);
+			}
 		}
 	});
 }
@@ -4115,6 +4292,9 @@ function copyShareLink() {
 										:contenteditable="!isLockedByOther(`program_${i}`)"
 										@input="onProgDescInput(i)"
 										@paste="onProgPaste(i, $event)"
+										@compositionstart="onProgCompositionStart(i)"
+										@compositionend="onProgCompositionEnd(i)"
+										@click="selectProofreadingAtPoint(i, $event)"
 										@focus="onProgEditorFocus(i)"
 										@mouseup="updateProgToolbar(i)"
 										@keyup="updateProgToolbar(i)"
@@ -4123,6 +4303,32 @@ function copyShareLink() {
 										aria-label="Beschreibung"
 										aria-multiline="true"
 									></div>
+									<template v-if="programProofreading[i]?.status === 'ready'">
+										<template v-for="(match, matchIndex) in programProofreading[i].matches" :key="`popover-${match.offset}-${matchIndex}`">
+										<div
+											v-if="selectedProofreadingMatch[i] === matchIndex"
+											class="program-proofreading__popover"
+											:style="proofreadingPopoverStyle[i]"
+										>
+											<div class="program-proofreading__results-header">
+												<p>{{ match.shortMessage || match.message }}</p>
+												<button type="button" class="toolbar-btn-sm" aria-label="Vorschlag schliessen"
+													@click="delete selectedProofreadingMatch[i]"><X :size="14" aria-hidden="true" /></button>
+											</div>
+											<div v-if="match.replacements.length" class="program-proofreading__suggestions">
+												<button
+													v-for="(replacement, replacementIndex) in match.replacements"
+													:key="`${replacement.value}-${replacementIndex}`"
+													type="button"
+													class="program-proofreading__suggestion"
+													:disabled="isLockedByOther(`program_${i}`)"
+													@mousedown.prevent
+													@click="applyProgProofreadingSuggestion(i, match, replacement.value)"
+												>{{ replacement.value }} <span>übernehmen</span></button>
+											</div>
+										</div>
+										</template>
+									</template>
 									<span v-if="savedFields[`prog_${i}_desc`]" class="field-saved-icon field-saved-icon--textarea" :key="savedFields[`prog_${i}_desc`]"><Save :size="12" aria-hidden="true" /></span>
 								</div>
 								<p v-if="programImageUploadCount" class="field-hint" role="status">Bilder werden hochgeladen…</p>
@@ -4149,7 +4355,7 @@ function copyShareLink() {
 											<p v-else-if="programProofreading[i].status === 'stale'">{{ programProofreading[i].error }}</p>
 											<p v-else-if="programProofreading[i].status === 'error'">{{ programProofreading[i].error }}</p>
 											<p v-else-if="programProofreading[i].status === 'ready' && !programProofreading[i].matches?.length">Keine Vorschläge gefunden.</p>
-											<p v-else-if="programProofreading[i].status === 'ready'">{{ programProofreading[i].matches?.length }} Vorschläge gefunden.</p>
+											<p v-else-if="programProofreading[i].status === 'ready'">{{ programProofreading[i].matches?.length }} {{ programProofreading[i].matches?.length === 1 ? 'Vorschlag' : 'Vorschläge' }} gefunden.</p>
 										</div>
 										<button
 											type="button"
@@ -4165,19 +4371,10 @@ function copyShareLink() {
 											:key="`${match.rule.id ?? 'match'}-${match.offset}-${matchIndex}`"
 											class="program-proofreading__match"
 										>
-											<p>{{ match.shortMessage || match.message }}</p>
-											<div v-if="match.replacements.length" class="program-proofreading__suggestions">
-												<button
-													v-for="(replacement, replacementIndex) in match.replacements"
-													:key="`${replacement.value}-${replacementIndex}`"
-													type="button"
-													class="program-proofreading__suggestion"
-													:disabled="isLockedByOther(`program_${i}`)"
-													@click="applyProgProofreadingSuggestion(i, match, replacement.value)"
-												>
-													{{ replacement.value }} <span>übernehmen</span>
-												</button>
-											</div>
+											<button type="button" class="program-proofreading__excerpt"
+												:aria-expanded="selectedProofreadingMatch[i] === matchIndex"
+												@click="selectProofreadingMatch(i, matchIndex)"
+											>{{ matchText(i, match) }}</button>
 										</div>
 									</template>
 								</div>

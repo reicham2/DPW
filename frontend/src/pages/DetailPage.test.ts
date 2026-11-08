@@ -459,17 +459,21 @@ describe('DetailPage activity access', () => {
 		try {
 			await wrapper.get('button[aria-label="Rechtschreibung prüfen"]').trigger('click');
 			await flushPromises();
-			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(2);
+			expect(wrapper.findAll('.program-proofreading__excerpt')).toHaveLength(2);
+			await wrapper.findAll('.program-proofreading__excerpt')[0].trigger('click');
+			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
 
+			vi.useFakeTimers();
 			await wrapper.findAll('.program-proofreading__suggestion')[0].trigger('click');
-			await flushPromises();
+			await vi.advanceTimersByTimeAsync(1500);
 			expect(editor.textContent).toBe('Ich habe einen Fehler und ein Fehler.');
 			expect(wrapper.find('.program-proofreading__results').exists()).toBe(true);
+			await wrapper.find('.program-proofreading__excerpt').trigger('click');
 			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
 			expect(requestTexts[1]).toBe(editor.textContent);
 
 			await wrapper.find('.program-proofreading__suggestion').trigger('click');
-			await flushPromises();
+			await vi.advanceTimersByTimeAsync(1500);
 			expect(editor.textContent).toBe('Ich habe einen Fehler und einen Fehler.');
 			expect(wrapper.find('.program-proofreading__results').exists()).toBe(true);
 			expect(wrapper.find('.program-proofreading__results').text()).toContain('Keine Vorschläge gefunden.');
@@ -485,7 +489,7 @@ describe('DetailPage activity access', () => {
 		}
 	});
 
-	it('hides stale suggestions after typing, rechecks the changed text, and allows closing results', async () => {
+	it('debounces changed text, hides stale suggestions, and allows closing results', async () => {
 		allowEditing();
 		mocks.fetchActivity.mockResolvedValue(makeActivity({
 			programs: [{
@@ -525,26 +529,145 @@ describe('DetailPage activity access', () => {
 		try {
 			await wrapper.get('button[aria-label="Rechtschreibung prüfen"]').trigger('click');
 			await flushPromises();
+			await wrapper.get('.program-proofreading__excerpt').trigger('click');
 			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
 
+			vi.useFakeTimers();
 			editor.innerHTML = 'Ich habe ein Fehler geändert.';
 			editor.dispatchEvent(new Event('input', { bubbles: true }));
-			await flushPromises();
+			await wrapper.vm.$nextTick();
 			expect(editor.textContent).toBe('Ich habe ein Fehler geändert.');
 			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(0);
-			expect(wrapper.find('.program-proofreading__results').text()).toContain('Bitte erneut prüfen.');
+			expect(wrapper.find('.program-proofreading__results').text()).toContain('Sie wird erneut geprüft.');
 			expect(requestTexts).toHaveLength(1);
 
-			await wrapper.get('button[aria-label="Rechtschreibung prüfen"]').trigger('click');
-			await flushPromises();
-			expect(requestTexts[1]).toBe('Ich habe ein Fehler geändert.');
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(requestTexts).toHaveLength(1);
+			editor.innerHTML = 'Ich habe ein Fehler nochmals geändert.';
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
+			await vi.advanceTimersByTimeAsync(1499);
+			expect(requestTexts).toHaveLength(1);
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
+			await vi.advanceTimersByTimeAsync(1);
+			expect(requestTexts[1]).toBe('Ich habe ein Fehler nochmals geändert.');
+			await wrapper.get('.program-proofreading__excerpt').trigger('click');
 			expect(wrapper.findAll('.program-proofreading__suggestion')).toHaveLength(1);
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
+			await vi.advanceTimersByTimeAsync(2000);
+			expect(requestTexts).toHaveLength(2);
 			await wrapper.get('button[aria-label="Prüfung schliessen"]').trigger('click');
 			expect(wrapper.find('.program-proofreading__results').exists()).toBe(false);
-			expect(editor.textContent).toBe('Ich habe ein Fehler geändert.');
+			expect(editor.textContent).toBe('Ich habe ein Fehler nochmals geändert.');
 		} finally {
 			execCommand.restore();
 			wrapper.unmount();
+		}
+	});
+
+	it('waits for composition to finish before checking and cancels pending checks on close', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			programs: [{
+				id: 'program-1', activity_id: 'activity-1', duration_minutes: 10,
+				title: 'Start', description: 'Text', responsible: [],
+			}],
+		}));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get('.rich-editor');
+		vi.useFakeTimers();
+		try {
+			await vi.advanceTimersByTimeAsync(3000);
+			expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')).toHaveLength(0);
+			await editor.trigger('compositionstart');
+			editor.element.textContent = 'Text geändert';
+			await editor.trigger('input');
+			await vi.advanceTimersByTimeAsync(3000);
+			expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')).toHaveLength(0);
+			await editor.trigger('compositionend');
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')).toHaveLength(1);
+			editor.element.textContent = 'Nochmals geändert';
+			await editor.trigger('input');
+			await wrapper.get('button[aria-label="Prüfung schliessen"]').trigger('click');
+			await vi.advanceTimersByTimeAsync(2000);
+			expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')).toHaveLength(1);
+		} finally {
+			wrapper.unmount();
+		}
+	});
+
+	it('ignores late responses for old text and opens the inline suggestion at the clicked range', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			programs: [{
+				id: 'program-1', activity_id: 'activity-1', duration_minutes: 10,
+				title: 'Start', description: '<strong>🐾 ein Fehler</strong><img src="/image.png">',
+				responsible: [],
+			}],
+		}));
+		const pending: Array<(response: Response) => void> = [];
+		vi.mocked(apiFetch).mockImplementation((url) => {
+			if (url !== '/api/proofreading/check') return Promise.resolve(new Response('{}', { status: 200 }));
+			return new Promise<Response>(resolve => pending.push(resolve));
+		});
+		const response = (offset: number) => new Response(JSON.stringify({
+			language: 'de-CH',
+			matches: [{
+				offset, length: 10, message: 'Kasus prüfen', shortMessage: 'Kasus',
+				replacements: [{ value: 'einen Fehler' }], rule: { id: 'TEST' },
+			}],
+		}), { status: 200 });
+
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get('.rich-editor').element as HTMLElement;
+		const command = stubInsertTextCommand(editor);
+		const highlights = { set: vi.fn(), delete: vi.fn() };
+		vi.stubGlobal('CSS', { highlights });
+		vi.stubGlobal('Highlight', class {
+			ranges: Range[];
+			constructor(...ranges: Range[]) { this.ranges = ranges; }
+		});
+		const descriptor = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
+		Object.defineProperty(Range.prototype, 'getClientRects', {
+			configurable: true,
+			value: () => [{ left: 10, right: 100, top: 10, bottom: 30 }],
+		});
+		try {
+			vi.useFakeTimers();
+			editor.innerHTML = '<strong>🐾 ein Fehler geändert</strong><img src="/image.png">';
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(pending).toHaveLength(1);
+			editor.innerHTML = '<strong>🐾 ein Fehler nochmals geändert</strong><img src="/image.png">';
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(pending).toHaveLength(2);
+			pending[1](response(3));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(wrapper.find('.program-proofreading__excerpt').text()).toBe('ein Fehler');
+			expect(highlights.set).toHaveBeenCalledWith('program-proofreading', expect.objectContaining({
+				ranges: expect.arrayContaining([expect.any(Range)]),
+			}));
+			pending[0](response(0));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(wrapper.find('.program-proofreading__excerpt').text()).toBe('ein Fehler');
+			await wrapper.get('.rich-editor').trigger('click', { clientX: 20, clientY: 20 });
+			expect(wrapper.find('.program-proofreading__popover').exists()).toBe(true);
+			await wrapper.get('.program-proofreading__suggestion').trigger('click');
+			expect(editor.innerHTML).toContain('<strong>🐾 einen Fehler nochmals geändert</strong>');
+			expect(editor.querySelector('img')?.getAttribute('src')).toBe('/image.png');
+		} finally {
+			if (descriptor) Object.defineProperty(Range.prototype, 'getClientRects', descriptor);
+			else Reflect.deleteProperty(Range.prototype, 'getClientRects');
+			command.restore();
+			wrapper.unmount();
+			vi.unstubAllGlobals();
 		}
 	});
 
