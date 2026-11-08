@@ -173,9 +173,13 @@ jobs:
           # Write tunnel config
           CRED_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
           mkdir -p "$TUNNEL_TMP_DIR"
+          CONFIG_FILE="$TUNNEL_TMP_DIR/config.yml"
+          if [ -d "$CONFIG_FILE" ] && [ ! -L "$CONFIG_FILE" ]; then
+            rmdir "$CONFIG_FILE"
+          fi
           printf 'tunnel: %s\ncredentials-file: /etc/cloudflared/credentials.json\ningress:\n  - hostname: %s\n    service: http://frontend:80\n  - service: http_status:404\n' \
             "${TUNNEL_ID}" "${HOSTNAME}" \
-            > "$TUNNEL_TMP_DIR/config.yml"
+            > "$CONFIG_FILE"
 
           # Make credentials readable by non-root container user
           chmod 644 "${CRED_FILE}"
@@ -186,7 +190,7 @@ jobs:
             --network "${NETWORK}" \
             --restart unless-stopped \
             -v "${CRED_FILE}:/etc/cloudflared/credentials.json:ro" \
-            -v "$TUNNEL_TMP_DIR/config.yml:/etc/cloudflared/config.yml:ro" \
+            -v "$CONFIG_FILE:/etc/cloudflared/config.yml:ro" \
             cloudflare/cloudflared:latest \
             tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
 
@@ -270,6 +274,7 @@ jobs:
     name: Cleanup on PR Close
     if: github.event.action == 'closed'
     runs-on: self-hosted
+    timeout-minutes: 10
     steps:
       - name: Sanitize branch name
         id: slug
@@ -283,11 +288,24 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Stop Cloudflare Tunnel
+        if: always()
+        run: |
+          PROJECT="${{ steps.slug.outputs.project }}"
+          TUNNEL_CONTAINER="${PROJECT}-tunnel"
+          CONTAINERS=$(docker ps -a --format '{{.Names}}')
+          if printf '%s\n' "$CONTAINERS" | grep -Fxq "$TUNNEL_CONTAINER"; then
+            docker rm -f "$TUNNEL_CONTAINER"
+          else
+            echo "Tunnel container already absent: $TUNNEL_CONTAINER"
+          fi
+
+      - name: Delete Cloudflare Tunnel
+        if: always()
         env:
           TUNNEL_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
         run: |
-          PROJECT="${{ steps.slug.outputs.project }}"
-          TUNNEL_NAME="dpw-${{ steps.slug.outputs.slug }}"
+          SLUG="${{ steps.slug.outputs.slug }}"
+          TUNNEL_NAME="dpw-${SLUG}"
           CERT_DIR="$HOME/.cloudflared"
 
           # Write origin cert
@@ -295,19 +313,39 @@ jobs:
           printf '%s\n' "$TUNNEL_ORIGIN_CERT" > "$CERT_DIR/cert.pem"
           chmod 600 "$CERT_DIR/cert.pem"
 
-          # Stop tunnel container
-          docker rm -f "${PROJECT}-tunnel" 2>/dev/null || true
+          TUNNELS=$(cloudflared tunnel --origincert "$CERT_DIR/cert.pem" list -o json)
+          TUNNEL_IDS=$(printf '%s\n' "$TUNNELS" | jq -r --arg name "$TUNNEL_NAME" '.[] | select(.name == $name) | .id')
+          if [ -z "$TUNNEL_IDS" ]; then
+            echo "Cloudflare tunnel already absent: $TUNNEL_NAME"
+          elif [ "$(printf '%s\n' "$TUNNEL_IDS" | wc -l)" -ne 1 ]; then
+            echo "Expected at most one exact-name Cloudflare tunnel, found multiple: $TUNNEL_NAME"
+            exit 1
+          else
+            cloudflared tunnel --origincert "$CERT_DIR/cert.pem" cleanup "$TUNNEL_IDS"
+            cloudflared tunnel --origincert "$CERT_DIR/cert.pem" delete "$TUNNEL_IDS"
+          fi
 
-          # Cleanup and delete tunnel (also removes DNS route)
-          cloudflared tunnel --origincert "$CERT_DIR/cert.pem" cleanup "$TUNNEL_NAME" 2>/dev/null || true
-          cloudflared tunnel --origincert "$CERT_DIR/cert.pem" delete "$TUNNEL_NAME" 2>/dev/null || true
-
-          rm -f /tmp/cloudflared/${{ steps.slug.outputs.slug }}-config.yml
-          echo "Tunnel cleaned up: $TUNNEL_NAME"
+      - name: Remove tunnel config
+        if: always()
+        run: |
+          SLUG="${{ steps.slug.outputs.slug }}"
+          TUNNEL_TMP_DIR="${RUNNER_TEMP:-$HOME}/cloudflared-${SLUG}"
+          CONFIG_FILE="$TUNNEL_TMP_DIR/config.yml"
+          if [ -L "$CONFIG_FILE" ] || [ -f "$CONFIG_FILE" ]; then
+            rm -f "$CONFIG_FILE"
+          elif [ -d "$CONFIG_FILE" ]; then
+            rmdir "$CONFIG_FILE"
+          elif [ -e "$CONFIG_FILE" ]; then
+            echo "Unexpected tunnel config path type; leaving it untouched: $CONFIG_FILE"
+            exit 1
+          else
+            echo "Tunnel config already absent: $CONFIG_FILE"
+          fi
 
       - name: Stop and remove containers
+        if: always()
         run: |
           docker compose -f docker-compose-dev.yml \
             -p "${{ steps.slug.outputs.project }}" \
-            down -v --remove-orphans || true
+            down -v --remove-orphans
           echo "Cleaned up: ${{ steps.slug.outputs.project }}"
