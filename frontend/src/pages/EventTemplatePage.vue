@@ -513,7 +513,7 @@ onUnmounted(() => {
     <p v-if="loading" class="loading">Laden...</p>
 
     <template v-else>
-    <div class="filter-tabs" style="margin-bottom: 24px">
+    <div class="filter-tabs template-department-tabs">
       <button
         v-for="dept in visibleDepartments"
         :key="dept"

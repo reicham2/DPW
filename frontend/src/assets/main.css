@@ -2471,6 +2471,10 @@ img[data-program-image-error] {
 	gap: 6px;
 }
 
+.template-department-tabs {
+	margin: 20px 0 24px;
+}
+
 .filter-tab {
 	padding: 6px 14px;
 	border-radius: 999px;
@@ -3169,7 +3173,18 @@ img[data-program-image-error] {
 }
 
 .template-overview-row-action {
+	padding: 0.25rem 0.65rem;
+	background: var(--bg-surface);
+	color: var(--text-secondary);
+	border: 1px solid var(--border-strong);
+	border-radius: 0.25rem;
+	font-size: 0.78rem;
+	cursor: pointer;
 	white-space: nowrap;
+}
+
+.template-overview-row-action:hover {
+	background: var(--bg-hover);
 }
 
 @media (max-width: 599px) {

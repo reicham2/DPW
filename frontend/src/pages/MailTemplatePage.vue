@@ -106,11 +106,24 @@ const sectionLocks = ref<Map<EditSection, string>>(new Map())
 const myLockedSection = ref<EditSection | null>(null)
 
 const departmentTemplates = computed(() =>
-  templates.value.filter((template) => template.department === activeDept.value),
+  templates.value
+    .filter((template) => template.department === activeDept.value)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' })),
 )
 const selectedTemplate = computed(() =>
   departmentTemplates.value.find((template) => template.id === selectedTemplateId.value) ?? null,
 )
+
+function upsertTemplate(updated: MailTemplate) {
+  let found = false
+  templates.value = templates.value.flatMap((template) => {
+    if (template.id !== updated.id) return [template]
+    if (found) return []
+    found = true
+    return [updated]
+  })
+  if (!found) templates.value.push(updated)
+}
 
 function tplId() {
   return selectedTemplateId.value
@@ -375,7 +388,7 @@ async function doSave(): Promise<boolean> {
       templateIsDefault.value,
     )
     if (!created) return false
-    templates.value.push(created)
+    upsertTemplate(created)
     selectedTemplateId.value = created.id
     isCreatingTemplate.value = false
     clearLocalDraft(activeDept.value, '', false)
@@ -449,8 +462,7 @@ useWebSocket((e) => {
     const tpl = e.template
     const idx = templates.value.findIndex(template => template.id === tpl.id)
     const wasDefault = idx >= 0 && templates.value[idx].is_default
-    if (idx >= 0) templates.value[idx] = tpl
-    else templates.value.push(tpl)
+    upsertTemplate(tpl)
     if (tpl.department !== activeDept.value || tpl.id !== selectedTemplateId.value) return
     if (tpl.is_default || wasDefault) {
       templates.value.forEach((template) => {
@@ -927,7 +939,7 @@ function onCcKeydown(e: KeyboardEvent) {
 
   <main class="main">
     <!-- Department tabs -->
-    <div class="filter-tabs" style="margin-bottom: 24px">
+    <div class="filter-tabs template-department-tabs">
       <button
         v-for="dept in visibleDepartments"
         :key="dept"

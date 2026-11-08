@@ -33,6 +33,9 @@ const visibleDepartments = computed<Department[]>(() => {
 });
 
 const activeDept = ref<Department>((user.value?.department as Department) ?? ('' as Department));
+const sortedTemplates = computed(() =>
+	[...templates.value].sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' })),
+);
 
 const formBuilderRef = ref<InstanceType<typeof FormBuilder> | null>(null);
 const showBuilder = ref(false);
@@ -271,7 +274,7 @@ function typeLabel(t: string): string {
 
 	<main class="main">
 		<!-- Department tabs -->
-		<div class="filter-tabs" style="margin-bottom: 24px">
+		<div class="filter-tabs template-department-tabs">
 			<button
 				v-for="dept in visibleDepartments"
 				:key="dept"
@@ -335,7 +338,7 @@ function typeLabel(t: string): string {
 			</div>
 
 			<div
-				v-for="tpl in templates"
+				v-for="tpl in sortedTemplates"
 				:key="tpl.id"
 				class="ft-row template-overview-row"
 			>

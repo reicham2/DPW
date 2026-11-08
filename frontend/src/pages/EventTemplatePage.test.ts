@@ -105,6 +105,7 @@ describe('EventTemplatePage template overview and editor', () => {
 
 		expect(wrapper.find('.template-overview-header').text()).toContain('Vorlagen für Events');
 		expect(wrapper.findAll('.filter-tab--badge')).toHaveLength(2);
+		expect(wrapper.find('.template-department-tabs').exists()).toBe(true);
 		expect(wrapper.findAll('.event-template-overview-row')).toHaveLength(1);
 		expect(wrapper.text()).toContain('Pro Stufe gibt es eine Event-Vorlage.');
 		expect(wrapper.text()).toContain('{{abteilung}}: {{titel}}');
@@ -128,6 +129,9 @@ describe('EventTemplatePage template overview and editor', () => {
 		expect(wrapper.get('.template-editor-header h2').text()).toBe('Vorlage bearbeiten');
 		expect(wrapper.get('.template-editor-back').text()).toBe('← Zurück zu Vorlagen');
 		expect(wrapper.findAll('.filter-tab--badge')).toHaveLength(2);
+		expect(wrapper.get('.event-template-overview-row .template-overview-row-action').classes()).toEqual(
+			expect.arrayContaining(['btn-sm', 'template-overview-row-action']),
+		);
 		expect(wrapper.get('.event-template-default').text()).toContain('Eine Event-Vorlage pro Stufe');
 		expect(wrapper.get('#event-template-title').classes()).toContain('template-editor-field-input');
 		expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);

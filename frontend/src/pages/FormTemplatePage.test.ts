@@ -131,6 +131,24 @@ describe('FormTemplatePage overview and editor navigation', () => {
 		expect(wrapper.find('.template-overview-row').exists()).toBe(true);
 		expect(wrapper.find('.template-overview-row-actions').exists()).toBe(true);
 		expect(wrapper.findAll('.template-overview-row-action')).toHaveLength(3);
+		expect(wrapper.find('.template-department-tabs').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('sorts the active department templates by name without putting the default first', async () => {
+		mocks.templates = [
+			template({ id: 'form-zulu', name: 'Zulu', is_default: true }),
+			template({ id: 'form-alpha', name: 'Alpha', is_default: false }),
+		];
+		const wrapper = mountPage();
+		await flushPromises();
+
+		const rows = wrapper.findAll('.ft-row');
+		expect(rows).toHaveLength(2);
+		expect(rows[0].text()).toContain('Alpha');
+		expect(rows[0].find('.default-badge').exists()).toBe(false);
+		expect(rows[1].text()).toContain('Zulu');
+		expect(rows[1].find('.default-badge').exists()).toBe(true);
 		wrapper.unmount();
 	});
 
