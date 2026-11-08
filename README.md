@@ -357,9 +357,11 @@ or PostgreSQL major upgrade.
 [PR Debug Deploy](.github/workflows/pr-debug-deploy.yml) is a separate,
 approval-gated `pr-debug` environment on a self-hosted runner. It rebuilds and
 seeds a disposable debug stack, publishes its Cloudflare URL in a PR comment, and
-cleans up on PR close. Synchronizing a PR redeploys and resets its debug data after
-approval; approve the final head only after the other applicable checks succeed.
-It is not the production publication or persisted-upgrade test.
+cleans up only that PR's tunnel, Compose stack and volumes on close or merge.
+Cleanup is idempotent and reports failures; it does not sweep deployments for
+other PRs. Synchronizing a PR redeploys and resets its debug data after approval;
+approve the final head only after the other applicable checks succeed. It is not
+the production publication or persisted-upgrade test.
 
 See [the detailed operator reference](docs/operations.md) for audit privacy/failure
 semantics, retention, relative template dates, guiding-thread rollout and upgrade
