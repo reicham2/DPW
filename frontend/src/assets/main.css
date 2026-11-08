@@ -3172,11 +3172,6 @@ img[data-program-image-error] {
 	white-space: nowrap;
 }
 
-.template-overview-row-actions .template-overview-row-action {
-	min-height: 0;
-	font-size: 0.78rem;
-}
-
 @media (max-width: 599px) {
 	.template-overview-header {
 		align-items: stretch;
