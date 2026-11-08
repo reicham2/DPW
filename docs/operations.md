@@ -124,8 +124,10 @@ Pfadi-Eigennamen können abweichen. Für den initialen Image-Pull ist Internetzu
 nötig; der laufende Korrekturdienst sendet keine Texte an externe Anbieter. Es
 gibt keinen gespeicherten Prüfverlauf oder LanguageTool-Datenträger. Die Compose-
 Ressourcenbegrenzung beträgt 2 CPUs und 1,5 GiB RAM; der Java-Heap ist auf 768 MiB
-begrenzt. Ist der Dienst nicht verfügbar, bleibt die Bearbeitung nutzbar und die
-Prüfung zeigt einen Fehler; nach einer weiteren Textänderung versucht sie es erneut.
+begrenzt. Ist der Dienst nicht verfügbar, bleibt die Bearbeitung nutzbar; der
+Fehler wird nicht im Editor angezeigt. Nach einer weiteren Textänderung versucht
+die Prüfung es erneut. Nach einer Korrektur bleiben unveränderte Markierungen
+während der erneuten Prüfung erhalten; überlappende Markierungen werden entfernt.
 
 ## Audit Log
 
