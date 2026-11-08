@@ -107,6 +107,7 @@ compose up -d --force-recreate --wait --wait-timeout 180
 [ "$(sql -c 'SELECT system_identifier FROM pg_control_system()')" = "$old_cluster" ]
 assert_services
 assert_data
+sql -c "INSERT INTO proofreading_dictionary(user_id, word) VALUES ('15500000-0000-0000-0000-000000000001', 'Pfadihüttli')"
 
 # Independent fresh environment is an oracle only, never the upgrade under test.
 project="$reference"
@@ -122,6 +123,19 @@ compose up -d --wait --wait-timeout 180
 assert_services
 assert_data
 assert_schema
+[ "$(sql -c "SELECT count(*) FROM proofreading_dictionary WHERE user_id='15500000-0000-0000-0000-000000000001' AND word='Pfadihüttli'")" = 1 ]
+sql <<'SQL'
+BEGIN;
+DELETE FROM users WHERE id='15500000-0000-0000-0000-000000000001';
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM proofreading_dictionary WHERE user_id='15500000-0000-0000-0000-000000000001') THEN
+        RAISE EXCEPTION 'Dictionary entries survived user deletion';
+    END IF;
+END;
+$$;
+ROLLBACK;
+SQL
 
 echo "Checking that the oracles detect data loss, schema drift and a stopped service"
 if {
