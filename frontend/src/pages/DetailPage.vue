@@ -4371,10 +4371,11 @@ function copyShareLink() {
 													:key="`${replacement.value}-${replacementIndex}`"
 													type="button"
 													class="program-proofreading__suggestion"
+													:aria-label="`${replacement.value} übernehmen`"
 													:disabled="isLockedByOther(`program_${i}`)"
 													@mousedown.prevent
 													@click="applyProgProofreadingSuggestion(i, match, replacement.value)"
-												>{{ replacement.value }} <span>übernehmen</span></button>
+												>{{ replacement.value }}</button>
 											</div>
 											<button v-if="dictionaryWord(i, match)" type="button"
 												class="program-proofreading__suggestion"
