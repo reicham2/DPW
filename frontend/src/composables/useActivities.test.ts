@@ -169,7 +169,9 @@ describe('Activity WebSocket event handler', () => {
 			event: 'template_updated',
 			template: {
 				id: 't1',
+				name: 'Standard',
 				department: 'Pfadi',
+				is_default: true,
 				subject: 'S',
 				body: 'B',
 				recipients: [],

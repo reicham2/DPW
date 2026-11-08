@@ -246,6 +246,39 @@ VITE_BACKEND_URL=http://127.0.0.1:<backend-port> VITE_ENABLE_DEBUG_AUTH=1 npm ru
 Replace `<backend-port>` before running; use `VITE_ENABLE_DEBUG_AUTH=1` only with a
 debug-enabled backend. Vite proxies `/api` and `/ws`; it does not start the backend.
 
+## Vorlagenvariablen und Mail-Vorlagen
+
+Die vorhandenen Variablen (z. B. `{{titel}}`, `{{datum_kurz}}`, `{{ort}}`
+und `{{abteilung}}`) funktionieren auch im Mail-Betreff, im Formular-Titel
+und im Event-Titel.
+
+- Unter **Admin > Vorlagen > Mail** koennen pro Abteilung mehrere benannte
+  Vorlagen mit Empfaengern und CC verwaltet werden. Eine Vorlage kann als
+  Standard gesetzt werden; sie wird beim Oeffnen des Mailversands automatisch
+  geladen. Die Vorlagen erscheinen als Liste mit Standardstatus und Vorschau;
+  neue Vorlagen oeffnen direkt den Editor und werden erst mit **Speichern**
+  angelegt. Aenderungen an bestehenden Vorlagen werden gespeichert, bevor
+  **Zurueck** zur Liste fuehrt. Im Mailversand kann zwischen Vorlagen gewechselt
+  werden.
+  Wenn dabei eigene Aenderungen ueberschrieben wuerden, wird vorher nachgefragt.
+  Bestehende Mailvorlagen bleiben beim Datenbank-Upgrade als Standard erhalten.
+- Unter **Admin > Vorlagen > Events** kann pro Stufe eine Event-Vorlage
+  bearbeitet werden. Die Stufenauswahl bleibt auch im Editor verfuegbar;
+  ausstehende Aenderungen werden vor einem Stufenwechsel gespeichert.
+- Mail-Betreff und Event-Titel werden beim Laden der Vorlage als Klartext
+  aufgeloest; `{{formular_link}}` und `{{formular_link|Anmelden}}` ergeben
+  dort die Formular-URL statt HTML. Die Vorschau kann vor dem Versand bzw.
+  Publizieren bearbeitet werden.
+- Der Name einer Formularvorlage wird beim Erstellen als Formular-Titel
+  uebernommen. Ein selbst eingegebener Titel bleibt beim Vorlagenwechsel
+  erhalten. In Vorlagen und Entwuerfen bleiben die Variablen stehen.
+  Beim Erstellen wird der Titel mit den aktuellen Aktivitaetsdaten
+  aufgeloest und gespeichert, sodass auch Verwaltung und Editor sofort
+  den fertigen Titel anzeigen. Variablen in den Fragen werden weiterhin
+  erst im oeffentlichen Formular ersetzt.
+- Unbekannte Variablen bleiben unveraendert. Rich-Text-Inhalte behalten
+  ihre bisherige Formatierung und Linkdarstellung.
+
 ## Tests
 
 | Command (repository root) | Coverage |

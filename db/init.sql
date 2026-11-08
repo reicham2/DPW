@@ -410,17 +410,42 @@ BEGIN
 END;
 $$;
 
--- Mail templates (one per department)
+-- Mail templates
 CREATE TABLE IF NOT EXISTS mail_templates (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    department  TEXT        NOT NULL UNIQUE REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    name        TEXT        NOT NULL DEFAULT 'Standard',
+    department  TEXT        NOT NULL REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
     subject     TEXT        NOT NULL DEFAULT '',
     body        TEXT        NOT NULL DEFAULT '',
     recipients  TEXT[]      NOT NULL DEFAULT '{}',
     cc          TEXT[]      NOT NULL DEFAULT '{}',
+    is_default  BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE mail_templates ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Standard';
+ALTER TABLE mail_templates ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Migrate the former one-template-per-department rows to the department default.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'mail_templates_department_key'
+          AND conrelid = 'mail_templates'::regclass
+    ) THEN
+        UPDATE mail_templates SET is_default = TRUE;
+        ALTER TABLE mail_templates DROP CONSTRAINT mail_templates_department_key;
+    END IF;
+END;
+$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_templates_default
+    ON mail_templates (department)
+    WHERE is_default = TRUE;
+CREATE INDEX IF NOT EXISTS idx_mail_templates_department ON mail_templates(department);
 
 DROP TRIGGER IF EXISTS trg_mail_templates_updated_at ON mail_templates;
 CREATE TRIGGER trg_mail_templates_updated_at
@@ -428,9 +453,11 @@ CREATE TRIGGER trg_mail_templates_updated_at
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- Seed default (empty) template for default department
-INSERT INTO mail_templates (department, subject, body, recipients, cc) VALUES
-    ('Allgemein', '', '', '{}', '{}')
-ON CONFLICT (department) DO NOTHING;
+INSERT INTO mail_templates (name, department, subject, body, recipients, cc, is_default)
+SELECT 'Standard', 'Allgemein', '', '', '{}', '{}', TRUE
+WHERE NOT EXISTS (
+    SELECT 1 FROM mail_templates WHERE department = 'Allgemein' AND is_default = TRUE
+);
 
 -- Event templates (one per department, for WordPress event publishing)
 CREATE TABLE IF NOT EXISTS event_templates (

@@ -50,13 +50,13 @@ INSERT INTO event_templates (department, title, body) VALUES
     ('Biber',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>')
 ON CONFLICT (department) DO NOTHING;
 
-INSERT INTO mail_templates (department, subject, body, recipients, cc) VALUES
-    ('Leiter', '', '', '{}', '{}'),
-    ('Pio',    '', '', '{}', '{}'),
-    ('Pfadi',  '', '', '{}', '{}'),
-    ('Wölfe',  '', '', '{}', '{}'),
-    ('Biber',  '', '', '{}', '{}')
-ON CONFLICT (department) DO NOTHING;
+INSERT INTO mail_templates (name, department, subject, body, recipients, cc, is_default)
+SELECT 'Standard', d.department, '', '', '{}', '{}', TRUE
+FROM (VALUES ('Leiter'), ('Pio'), ('Pfadi'), ('Wölfe'), ('Biber')) AS d(department)
+WHERE NOT EXISTS (
+    SELECT 1 FROM mail_templates t
+    WHERE t.department = d.department AND t.is_default = TRUE
+);
 
 -- ── Test-Benutzer ───────────────────────────────────────────────────────────
 INSERT INTO users (id, microsoft_oid, email, display_name, department, role, avatar_color) VALUES
@@ -415,13 +415,13 @@ UPDATE mail_templates SET
     subject = 'Einladung zur Pfadi-Aktivität: {{titel}}',
     body = '<p>Liebe Eltern</p><p>Wir laden herzlich zur nächsten Aktivität ein:</p><p>📅 Datum: {{datum}}<br>🕐 Zeit: {{startzeit}} – {{endzeit}}<br>📍 Ort: {{ort}}</p><p>Ziel: {{ziel}}</p><p>Bei Schlechtwetter: {{schlechtwetter}}</p><p>Freundliche Grüsse<br>{{absender_name}}<br>{{absender_email}}</p>',
     recipients = ARRAY['eltern-pfadi@pfadihue.ch']
-WHERE department = 'Pfadi';
+WHERE department = 'Pfadi' AND is_default = TRUE;
 
 UPDATE mail_templates SET
     subject = 'Wölfe-Aktivität: {{titel}}',
     body = '<p>Liebe Eltern</p><p>Die nächste Wölfe-Aktivität steht an:</p><p>📅 {{datum_kurz}}<br>🕐 {{startzeit}} – {{endzeit}}<br>📍 {{ort}}</p><p>Mitbringen: wetterfeste Kleidung, Zvieri</p><p>Bis bald!<br>Das Wölfe-Team<br>{{absender_name}}</p>',
     recipients = ARRAY['eltern-woelfe@pfadihue.ch']
-WHERE department = 'Wölfe';
+WHERE department = 'Wölfe' AND is_default = TRUE;
 
 -- ── Formular-Vorlagen ───────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ import { wsSend, wsRegister, wsJoin, wsLeave, useWebSocket } from '../composable
 import { Save, Check, Users, Lock, X } from 'lucide-vue-next'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue'
-import type { Department, EditSection } from '../types'
+import type { Department, EditSection, MailTemplate } from '../types'
 
 const { departments: deptRecords, fetchDepartments, myPermissions, fetchMyPermissions } = usePermissions()
 
@@ -22,7 +22,15 @@ const MAIL_EXTRA_VARS = [
   { var: '{{formular_link|Anmelden}}', desc: 'Link zum Formular mit eigenem Linktext' },
 ]
 
-const { fetchTemplates, saveTemplate, templates, loading, error } = useMailTemplates()
+const {
+  fetchTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  templates,
+  loading,
+  error,
+} = useMailTemplates()
 import ErrorAlert from '../components/ErrorAlert.vue'
 
 const canEditAll = computed(() => myPermissions.value?.mail_templates_scope === 'all')
@@ -46,6 +54,11 @@ const activeDept = ref<Department>(
     : '' as Department
 )
 
+const selectedTemplateId = ref('')
+const showTemplateEditor = ref(false)
+const isCreatingTemplate = ref(false)
+const templateName = ref('')
+const templateIsDefault = ref(false)
 const subject = ref('')
 const body = ref('')
 const recipients = ref<string[]>([''])
@@ -92,7 +105,31 @@ const activeEditors = ref<string[]>([])
 const sectionLocks = ref<Map<EditSection, string>>(new Map())
 const myLockedSection = ref<EditSection | null>(null)
 
-function tplId() { return `tpl_${activeDept.value}` }
+const departmentTemplates = computed(() =>
+  templates.value
+    .filter((template) => template.department === activeDept.value)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' })),
+)
+const selectedTemplate = computed(() =>
+  departmentTemplates.value.find((template) => template.id === selectedTemplateId.value) ?? null,
+)
+
+function upsertTemplate(updated: MailTemplate) {
+  let found = false
+  templates.value = templates.value.flatMap((template) => {
+    if (template.id !== updated.id) return [template]
+    if (found) return []
+    found = true
+    return [updated]
+  })
+  if (!found) templates.value.push(updated)
+}
+
+function tplId() {
+  return selectedTemplateId.value
+    ? `tpl_${activeDept.value}:${selectedTemplateId.value}`
+    : `tpl_${activeDept.value}`
+}
 
 function isLockedByOther(section: EditSection): boolean {
   const locker = sectionLocks.value.get(section)
@@ -141,7 +178,10 @@ let hasPendingChanges = false
 interface LocalMailTemplateDraft {
   version: 1;
   department: Department;
+  templateId?: string;
   savedAt: number;
+  name?: string;
+  isDefault?: boolean;
   subject: string;
   body: string;
   recipients: string[];
@@ -153,15 +193,24 @@ const localDraftRestoredAt = ref<number | null>(null)
 let localDraftWriteTimer: ReturnType<typeof setTimeout> | null = null
 const LOCAL_DRAFT_WRITE_DEBOUNCE_MS = 350
 
-function localDraftKey(dept = activeDept.value) {
-  return `dpw:mail-template-draft:${dept}`
+function localDraftKey(dept = activeDept.value, templateId = selectedTemplateId.value) {
+  return templateId
+    ? `dpw:mail-template-draft:${dept}:${templateId}`
+    : `dpw:mail-template-draft:${dept}`
+}
+
+function newLocalDraftKey(dept = activeDept.value) {
+  return `dpw:mail-template-new-draft:${dept}`
 }
 
 function buildLocalDraft(dept = activeDept.value): LocalMailTemplateDraft {
   return {
     version: 1,
     department: dept,
+    templateId: selectedTemplateId.value || undefined,
     savedAt: Date.now(),
+    name: templateName.value,
+    isDefault: templateIsDefault.value,
     subject: subject.value,
     body: body.value,
     recipients: recipients.value.map(r => r.trim()).filter(Boolean),
@@ -169,22 +218,41 @@ function buildLocalDraft(dept = activeDept.value): LocalMailTemplateDraft {
   }
 }
 
-function clearLocalDraft(dept = activeDept.value) {
+function clearLocalDraft(
+  dept = activeDept.value,
+  templateId = selectedTemplateId.value,
+  includeLegacy = !templateId || templateIsDefault.value,
+) {
   if (localDraftWriteTimer) {
     clearTimeout(localDraftWriteTimer)
     localDraftWriteTimer = null
   }
   try {
-    window.localStorage.removeItem(localDraftKey(dept))
+    if (templateId) window.localStorage.removeItem(localDraftKey(dept, templateId))
+    if (includeLegacy) window.localStorage.removeItem(localDraftKey(dept, ''))
+    window.localStorage.removeItem(newLocalDraftKey(dept))
   } catch {
     /* ignore unavailable storage */
   }
 }
 
 function writeLocalDraftNow() {
-  if (!activeDept.value) return
+  if (!activeDept.value || (!selectedTemplateId.value && !isCreatingTemplate.value)) return
+  if (
+    isCreatingTemplate.value &&
+    !templateName.value.trim() &&
+    !subject.value.trim() &&
+    !body.value.trim() &&
+    recipients.value.every(value => !value.trim()) &&
+    cc.value.every(value => !value.trim())
+  ) return
   try {
-    window.localStorage.setItem(localDraftKey(), JSON.stringify(buildLocalDraft()))
+    window.localStorage.setItem(
+      isCreatingTemplate.value
+        ? newLocalDraftKey(activeDept.value)
+        : localDraftKey(activeDept.value, selectedTemplateId.value),
+      JSON.stringify(buildLocalDraft()),
+    )
   } catch {
     /* ignore unavailable storage */
   }
@@ -198,33 +266,45 @@ function scheduleLocalDraftWrite() {
   }, LOCAL_DRAFT_WRITE_DEBOUNCE_MS)
 }
 
-function loadPendingLocalDraft(dept: Department) {
+function loadPendingLocalDraft(template: MailTemplate | null, dept = activeDept.value) {
   try {
-    const raw = window.localStorage.getItem(localDraftKey(dept))
+    const raw = template
+      ? window.localStorage.getItem(localDraftKey(template.department, template.id))
+        ?? (template.is_default ? window.localStorage.getItem(localDraftKey(template.department, '')) : null)
+      : window.localStorage.getItem(newLocalDraftKey(dept))
     if (!raw) {
       pendingLocalDraft.value = null
       return
     }
     const parsed = JSON.parse(raw) as Partial<LocalMailTemplateDraft>
-    if (parsed.version !== 1 || parsed.department !== dept) {
+    if (parsed.version !== 1 || parsed.department !== dept ||
+        (template && parsed.templateId && parsed.templateId !== template.id)) {
       pendingLocalDraft.value = null
       return
     }
     const draft = parsed as LocalMailTemplateDraft
+    if (!template) {
+      pendingLocalDraft.value = draft
+      return
+    }
     const currentSnapshot = JSON.stringify({
+      name: templateName.value,
+      isDefault: templateIsDefault.value,
       subject: subject.value,
       body: body.value,
       recipients: recipients.value.map(r => r.trim()).filter(Boolean),
       cc: cc.value.map(r => r.trim()).filter(Boolean),
     })
     const draftSnapshot = JSON.stringify({
+      name: draft.name ?? template.name,
+      isDefault: draft.isDefault ?? template.is_default,
       subject: draft.subject,
       body: draft.body,
       recipients: draft.recipients,
       cc: draft.cc,
     })
     if (currentSnapshot === draftSnapshot) {
-      clearLocalDraft(dept)
+      clearLocalDraft(template.department, template.id, template.is_default)
       pendingLocalDraft.value = null
       return
     }
@@ -237,6 +317,8 @@ function loadPendingLocalDraft(dept: Department) {
 function applyLocalDraft() {
   if (!pendingLocalDraft.value) return
   suppressDirtyTracking = true
+  templateName.value = pendingLocalDraft.value.name ?? templateName.value
+  templateIsDefault.value = pendingLocalDraft.value.isDefault ?? templateIsDefault.value
   subject.value = pendingLocalDraft.value.subject
   body.value = pendingLocalDraft.value.body
   recipients.value = pendingLocalDraft.value.recipients.length ? [...pendingLocalDraft.value.recipients] : ['']
@@ -261,6 +343,7 @@ function scheduleAutoSave() {
   if (suppressDirtyTracking) return
   if (applyingRemote) return
   scheduleLocalDraftWrite()
+  if (isCreatingTemplate.value) return
   if (autosaveDebounce()) {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     autoSaveTimer = setTimeout(doSave, autosaveInterval())
@@ -288,24 +371,71 @@ function stopAutoSaveInterval() {
   hasPendingChanges = false
 }
 
-async function doSave() {
+async function doSave(): Promise<boolean> {
+  if (!templateName.value.trim()) {
+    error.value = 'Name der Vorlage erforderlich.'
+    return false
+  }
+  if (isCreatingTemplate.value) {
+    error.value = null
+    const created = await createTemplate(
+      templateName.value.trim(),
+      activeDept.value,
+      subject.value,
+      body.value,
+      recipients.value.map(value => value.trim()).filter(Boolean),
+      cc.value.map(value => value.trim()).filter(Boolean),
+      templateIsDefault.value,
+    )
+    if (!created) return false
+    upsertTemplate(created)
+    selectedTemplateId.value = created.id
+    isCreatingTemplate.value = false
+    clearLocalDraft(activeDept.value, '', false)
+    dirtyFields.clear()
+    hasPendingChanges = false
+    await nextTick()
+    if (editorRef.value) editorRef.value.innerHTML = body.value
+    return true
+  }
+  if (!selectedTemplateId.value) return false
   error.value = null
   writeLocalDraftNow()
   const validRecipients = recipients.value.map(r => r.trim()).filter(Boolean)
   const validCc = cc.value.map(r => r.trim()).filter(Boolean)
-  const result = await saveTemplate(activeDept.value, subject.value, body.value, validRecipients, validCc)
+  const wasDefault = selectedTemplate.value?.is_default ?? false
+  const result = await updateTemplate(
+    selectedTemplateId.value,
+    templateName.value.trim(),
+    subject.value,
+    body.value,
+    validRecipients,
+    validCc,
+    templateIsDefault.value,
+  )
   if (result) {
     showSavedIndicator()
-    clearLocalDraft()
+    clearLocalDraft(result.department, result.id, result.is_default || wasDefault)
     pendingLocalDraft.value = null
     localDraftRestoredAt.value = null
-    const idx = templates.value.findIndex(t => t.department === activeDept.value)
+    if (result.is_default || wasDefault) {
+      templates.value.forEach((template) => {
+        if (template.department === result.department && template.id !== result.id) {
+          template.is_default = false
+        }
+      })
+    }
+    const idx = templates.value.findIndex((template) => template.id === result.id)
     if (idx >= 0) templates.value[idx] = result
     else templates.value.push(result)
+    return true
   }
+  return false
 }
 
 // Watchers for auto-save + dirty tracking
+watch([templateName], () => { markDirty('name'); scheduleAutoSave() })
+watch([templateIsDefault], () => { markDirty('default'); scheduleAutoSave() })
 watch([subject], () => { markDirty('subject'); scheduleAutoSave() })
 watch([recipients], () => { markDirty('recipients'); scheduleAutoSave() }, { deep: true })
 watch([cc], () => { markDirty('cc'); scheduleAutoSave() }, { deep: true })
@@ -330,13 +460,25 @@ useWebSocket((e) => {
     sectionLocks.value = m
   } else if (e.event === 'template_updated') {
     const tpl = e.template
-    if (tpl.department !== activeDept.value) return
-    // Update local templates cache
-    const idx = templates.value.findIndex(t => t.department === tpl.department)
-    if (idx >= 0) templates.value[idx] = tpl
-    else templates.value.push(tpl)
+    const idx = templates.value.findIndex(template => template.id === tpl.id)
+    const wasDefault = idx >= 0 && templates.value[idx].is_default
+    upsertTemplate(tpl)
+    if (tpl.department !== activeDept.value || tpl.id !== selectedTemplateId.value) return
+    if (tpl.is_default || wasDefault) {
+      templates.value.forEach((template) => {
+        if (template.department === tpl.department && template.id !== tpl.id) {
+          template.is_default = false
+        }
+      })
+    }
     // Merge remote changes into edit fields
     applyingRemote = true
+    if (tpl.name !== templateName.value && !myLockedSection.value?.startsWith('tpl_name')) {
+      templateName.value = tpl.name
+    }
+    if (tpl.is_default !== templateIsDefault.value && !myLockedSection.value?.startsWith('tpl_default')) {
+      templateIsDefault.value = tpl.is_default
+    }
     if (tpl.subject !== subject.value && !myLockedSection.value?.startsWith('tpl_subject')) {
       subject.value = tpl.subject
     }
@@ -373,11 +515,10 @@ onMounted(async () => {
   if (visDepts.length && !visDepts.includes(activeDept.value)) {
     activeDept.value = visDepts[0]
   }
-  loadDept(activeDept.value)
   if (user.value) {
     wsRegister(user.value.display_name, user.value.microsoft_oid)
-    wsJoin(tplId())
   }
+  await loadDept(activeDept.value)
   startAutoSaveInterval()
 })
 
@@ -393,8 +534,26 @@ onUnmounted(() => {
   wsLeave()
 })
 
-function loadDept(dept: Department) {
-  // Leave previous template room
+async function flushCurrentTemplate(): Promise<boolean> {
+  if (!showTemplateEditor.value) return true
+  const needsSave = dirtyFields.size > 0 || hasPendingChanges || autoSaveTimer !== null
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  }
+  hasPendingChanges = false
+  if (isCreatingTemplate.value) {
+    if (needsSave) {
+      writeLocalDraftNow()
+      dirtyFields.clear()
+    }
+    return true
+  }
+  writeLocalDraftNow()
+  return needsSave ? doSave() : true
+}
+
+function activateTemplate(dept: Department, template: MailTemplate | null, edit = true) {
   wsLeave()
   myLockedSection.value = null
   sectionLocks.value = new Map()
@@ -403,20 +562,95 @@ function loadDept(dept: Department) {
 
   suppressDirtyTracking = true
   activeDept.value = dept
-  const tpl = templates.value.find(t => t.department === dept)
-  subject.value = tpl?.subject ?? ''
-  body.value    = tpl?.body ?? ''
-  recipients.value = tpl?.recipients?.length ? [...tpl.recipients] : ['']
-  cc.value = tpl?.cc?.length ? [...tpl.cc] : ['']
-  loadPendingLocalDraft(dept)
+  showTemplateEditor.value = edit
+  isCreatingTemplate.value = false
+  selectedTemplateId.value = template?.id ?? ''
+  templateName.value = template?.name ?? ''
+  templateIsDefault.value = template?.is_default ?? false
+  subject.value = template?.subject ?? ''
+  body.value = template?.body ?? ''
+  recipients.value = template?.recipients.length ? [...template.recipients] : ['']
+  cc.value = template?.cc.length ? [...template.cc] : ['']
+  pendingLocalDraft.value = null
+  if (template) loadPendingLocalDraft(template)
   nextTick(() => {
     if (editorRef.value) editorRef.value.innerHTML = body.value
     suppressDirtyTracking = false
     dirtyFields.clear()
   })
+  if (template && edit) wsJoin(tplId())
+}
 
-  // Join new template room
-  wsJoin(tplId())
+async function loadDept(dept: Department) {
+  if (dept === activeDept.value && selectedTemplateId.value) return
+  if (dept !== activeDept.value && showTemplateEditor.value && !(await flushCurrentTemplate())) return
+  const templatesForDepartment = templates.value.filter(template => template.department === dept)
+  const template = templatesForDepartment.find(item => item.is_default) ?? templatesForDepartment[0] ?? null
+  activateTemplate(dept, template, false)
+}
+
+async function editTemplate(template: MailTemplate) {
+  if (showTemplateEditor.value && !(await flushCurrentTemplate())) return
+  activateTemplate(activeDept.value, template)
+}
+
+async function showTemplateList() {
+  if (!(await flushCurrentTemplate())) return
+  showTemplateEditor.value = false
+  wsLeave()
+  myLockedSection.value = null
+  sectionLocks.value = new Map()
+  activeEditors.value = []
+}
+
+async function saveTemplateNow() {
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  }
+  hasPendingChanges = false
+  return doSave()
+}
+
+async function createNewTemplate() {
+  if (showTemplateEditor.value && !(await flushCurrentTemplate())) return
+  activateTemplate(activeDept.value, null)
+  isCreatingTemplate.value = true
+  templateIsDefault.value = departmentTemplates.value.length === 0
+  loadPendingLocalDraft(null, activeDept.value)
+}
+
+async function deleteCurrentTemplate(template = selectedTemplate.value) {
+  if (!template || !window.confirm(`Vorlage „${template.name}" wirklich löschen?`)) return
+  const isEditingDeletedTemplate = showTemplateEditor.value && selectedTemplateId.value === template.id
+  if (isEditingDeletedTemplate && !(await flushCurrentTemplate())) return
+  clearLocalDraft(template.department, template.id, template.is_default)
+  if (!(await deleteTemplate(template.id))) return
+  if (!isEditingDeletedTemplate && selectedTemplateId.value !== template.id) return
+  const remaining = departmentTemplates.value
+  activateTemplate(
+    activeDept.value,
+    remaining.find(item => item.is_default) ?? remaining[0] ?? null,
+    false,
+  )
+}
+
+async function toggleDefault(template: MailTemplate) {
+  const updated = await updateTemplate(
+    template.id,
+    template.name,
+    template.subject,
+    template.body,
+    template.recipients,
+    template.cc,
+    !template.is_default,
+  )
+  if (!updated) return
+  await fetchTemplates(activeDept.value)
+}
+
+function templatePreview(template: MailTemplate): string {
+  return template.body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function onEditorInput() {
@@ -705,7 +939,7 @@ function onCcKeydown(e: KeyboardEvent) {
 
   <main class="main">
     <!-- Department tabs -->
-    <div class="filter-tabs" style="margin-bottom: 24px">
+    <div class="filter-tabs template-department-tabs">
       <button
         v-for="dept in visibleDepartments"
         :key="dept"
@@ -718,7 +952,55 @@ function onCcKeydown(e: KeyboardEvent) {
 
     <p v-if="loading" class="loading">Laden...</p>
 
-    <div v-else class="detail-form">
+    <div v-else :class="{ 'detail-form': showTemplateEditor }">
+      <template v-if="!showTemplateEditor">
+        <div class="template-overview-header">
+          <h2 class="template-overview-title">Vorlagen für {{ activeDept || '—' }}</h2>
+          <button v-if="activeDept" type="button" class="btn-primary template-overview-create" @click="createNewTemplate">
+            + Neue Vorlage
+          </button>
+        </div>
+
+        <div v-if="departmentTemplates.length === 0" class="mt-empty-state">
+          Noch keine Mail-Vorlagen in dieser Stufe.
+        </div>
+
+        <div v-for="template in departmentTemplates" :key="template.id" class="mt-row template-overview-row">
+          <div class="mt-row-main">
+            <div class="mt-row-name">
+              {{ template.name }}
+              <span v-if="template.is_default" class="default-badge">Standard</span>
+            </div>
+            <div class="mt-row-meta">
+              <span>{{ template.subject || 'Kein Betreff' }}</span>
+              <span class="mt-meta-divider">·</span>
+              <span>{{ template.recipients.length }} Empfänger</span>
+              <span v-if="templatePreview(template)" class="mt-preview">
+                {{ templatePreview(template) }}
+              </span>
+            </div>
+          </div>
+          <div class="mt-row-actions template-overview-row-actions">
+            <button
+              type="button"
+              :class="['btn-sm', 'template-overview-row-action', template.is_default ? 'active-default' : '']"
+              :title="template.is_default ? 'Standard entfernen' : 'Als Standard setzen'"
+              @click="toggleDefault(template)"
+            >
+              {{ template.is_default ? '⭐ Standard' : '☆ Standard' }}
+            </button>
+            <button type="button" class="btn-sm template-overview-row-action" @click="editTemplate(template)">Bearbeiten</button>
+            <button type="button" class="btn-sm template-overview-row-action danger" @click="deleteCurrentTemplate(template)">Löschen</button>
+          </div>
+        </div>
+        <ErrorAlert :error="error" />
+      </template>
+
+      <template v-else>
+      <div class="template-editor-header">
+        <button type="button" class="btn-secondary template-editor-back" @click="showTemplateList">← Zurück zu Vorlagen</button>
+        <h2 class="template-overview-title">{{ selectedTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage' }}</h2>
+      </div>
       <div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
         <span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
         <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
@@ -734,6 +1016,25 @@ function onCcKeydown(e: KeyboardEvent) {
       <div v-if="activeEditors.length" class="editors-banner">
         <span class="editors-banner-icon"><Users :size="16" aria-hidden="true" /></span>
         <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
+      </div>
+
+      <div class="default-toggle-section lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_default') }"
+        @focusin="lockSection('tpl_default')" @focusout="unlockSection('tpl_default', $event)">
+        <div v-if="lockedBy('tpl_default')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_default') }}</div>
+        <label class="checkbox-label">
+          <input v-model="templateIsDefault" type="checkbox" :disabled="isLockedByOther('tpl_default')" />
+          <span>Als Standard-Vorlage für diese Stufe setzen</span>
+        </label>
+        <p class="default-hint">Die Standard-Vorlage wird beim Mailversand automatisch ausgewählt.</p>
+      </div>
+
+      <div class="template-editor-card lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_name') }"
+        @focusin="lockSection('tpl_name')" @focusout="unlockSection('tpl_name', $event)">
+        <div v-if="lockedBy('tpl_name')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_name') }}</div>
+        <label class="template-editor-field-label" for="mail-template-name">Name der Vorlage</label>
+        <div class="input-save-wrap">
+          <input id="mail-template-name" v-model="templateName" class="template-editor-field-input" type="text" required :disabled="isLockedByOther('tpl_name')" />
+        </div>
       </div>
 
       <!-- Recipients -->
@@ -880,7 +1181,13 @@ function onCcKeydown(e: KeyboardEvent) {
       <!-- Variable reference -->
       <TemplateVarsDropdown :extra-vars="MAIL_EXTRA_VARS" hint="Variablen können im Betreff und im Inhalt verwendet werden. Im Betreff werden Links als URL eingefügt." />
 
+      <div class="mt-editor-actions">
+        <button type="button" class="btn-secondary" @click="showTemplateList">Zurück</button>
+        <button type="button" class="btn-primary" @click="saveTemplateNow">Speichern</button>
+      </div>
+
       <ErrorAlert :error="error" />
+      </template>
     </div>
   </main>
 
@@ -904,3 +1211,185 @@ function onCcKeydown(e: KeyboardEvent) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.mt-empty-state {
+	text-align: center;
+	color: var(--text-subtle);
+	padding: 2rem;
+	font-size: 0.875rem;
+	border: 1px dashed var(--border);
+	border-radius: 0.5rem;
+}
+
+.mt-row-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.mt-row-name {
+	font-weight: 600;
+	color: var(--text-primary);
+	font-size: 0.95rem;
+}
+
+.mt-row-meta {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 0.25rem;
+	font-size: 0.78rem;
+	color: var(--text-muted);
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.mt-meta-divider {
+	color: var(--text-subtle);
+}
+
+.mt-preview {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: min(34rem, 55vw);
+}
+
+.btn-sm {
+	padding: 0.25rem 0.65rem;
+	background: var(--bg-surface);
+	color: var(--text-secondary);
+	border: 1px solid var(--border-strong);
+	border-radius: 0.25rem;
+	font-size: 0.78rem;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.btn-sm:hover {
+	background: var(--bg-hover);
+}
+
+.btn-sm.danger {
+	color: var(--error-color);
+	border-color: var(--error-border);
+}
+
+.btn-sm.danger:hover {
+	background: var(--error-bg);
+}
+
+.default-badge {
+	display: inline-block;
+	font-size: 0.7rem;
+	font-weight: 600;
+	background: #fef3c7;
+	color: #92400e;
+	padding: 0.1rem 0.4rem;
+	border-radius: 0.25rem;
+	margin-left: 0.4rem;
+	vertical-align: middle;
+}
+
+.active-default {
+	background: #fef3c7 !important;
+	border-color: #f59e0b !important;
+	color: #92400e !important;
+}
+
+.default-toggle-section {
+	margin-bottom: 1rem;
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	background: var(--bg-elevated);
+}
+
+.checkbox-label {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.checkbox-label input {
+	width: 1rem;
+	height: 1rem;
+	accent-color: #6366f1;
+}
+
+.default-hint {
+	margin: 0.25rem 0 0 1.5rem;
+	font-size: 0.75rem;
+	color: var(--text-subtle);
+}
+
+@media (max-width: 599px) {
+	.default-toggle-section {
+		padding: 0.7rem 0.75rem;
+	}
+
+	.checkbox-label {
+		align-items: flex-start;
+		font-size: 0.83rem;
+	}
+
+	.default-hint {
+		margin-left: 1.35rem;
+		font-size: 0.72rem;
+	}
+}
+
+.mt-editor-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.75rem;
+	margin-top: 1.5rem;
+}
+
+.mt-editor-actions .btn-secondary,
+.mt-editor-actions .btn-primary {
+	padding: 0.5rem 1.25rem;
+	border-radius: 0.375rem;
+	font-size: 0.875rem;
+	cursor: pointer;
+}
+
+.mt-editor-actions .btn-secondary {
+	background: var(--btn-secondary-bg);
+	color: var(--text-secondary);
+	border: 1px solid var(--border-strong);
+}
+
+.mt-editor-actions .btn-primary {
+	background: var(--btn-primary-bg);
+	color: var(--btn-primary-color, #fff);
+	border: none;
+	font-weight: 600;
+}
+
+.mt-editor-actions .btn-secondary:hover {
+	background: var(--bg-elevated);
+}
+
+.mt-editor-actions .btn-primary:hover {
+	background: var(--btn-primary-bg-hover);
+}
+
+@media (max-width: 599px) {
+	.mt-preview {
+		max-width: 100%;
+	}
+
+	.mt-editor-actions {
+		justify-content: stretch;
+	}
+
+	.mt-editor-actions button {
+		flex: 1;
+		min-height: 42px;
+	}
+}
+</style>

@@ -1,0 +1,321 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, shallowMount } from '@vue/test-utils';
+import type { MailTemplate } from '../types';
+
+const mocks = vi.hoisted(() => ({
+	templates: [] as MailTemplate[],
+	updateTemplate: vi.fn(),
+	fetchTemplates: vi.fn(),
+	createTemplate: vi.fn(),
+	deleteTemplate: vi.fn(),
+	webSocketHandler: null as ((event: any) => void) | null,
+}));
+
+vi.mock('vue-router', () => ({
+	useRouter: () => ({ replace: vi.fn() }),
+}));
+
+vi.mock('../composables/useAuth', async () => {
+	const { ref } = await vi.importActual<typeof import('vue')>('vue');
+	return {
+		user: ref({ department: 'Pfadi', display_name: 'Anna', microsoft_oid: 'anna' }),
+	};
+});
+
+vi.mock('../composables/usePermissions', async () => {
+	const { ref } = await vi.importActual<typeof import('vue')>('vue');
+	return {
+		usePermissions: () => ({
+			departments: ref([{ name: 'Pfadi' }]),
+			myPermissions: ref({ mail_templates_scope: 'all' }),
+			fetchDepartments: vi.fn().mockResolvedValue(undefined),
+			fetchMyPermissions: vi.fn().mockResolvedValue(undefined),
+		}),
+	};
+});
+
+vi.mock('../composables/useMailTemplates', async () => {
+	const { ref } = await vi.importActual<typeof import('vue')>('vue');
+	return {
+		useMailTemplates: () => ({
+			templates: ref(mocks.templates),
+			loading: ref(false),
+			error: ref(null),
+			fetchTemplates: mocks.fetchTemplates,
+			createTemplate: mocks.createTemplate,
+			updateTemplate: mocks.updateTemplate,
+			deleteTemplate: mocks.deleteTemplate,
+		}),
+	};
+});
+
+vi.mock('../composables/useContactSearch', async () => {
+	const { ref } = await vi.importActual<typeof import('vue')>('vue');
+	return {
+		useContactSearch: () => ({
+			results: ref([]),
+			searching: ref(false),
+			search: vi.fn(),
+			clear: vi.fn(),
+		}),
+	};
+});
+
+vi.mock('../composables/useWebSocket', () => ({
+	wsSend: vi.fn(),
+	wsRegister: vi.fn(),
+	wsJoin: vi.fn(),
+	wsLeave: vi.fn(),
+	useWebSocket: (handler: (event: any) => void) => {
+		mocks.webSocketHandler = handler;
+	},
+}));
+
+import MailTemplatePage from './MailTemplatePage.vue';
+
+function template(overrides: Partial<MailTemplate> = {}): MailTemplate {
+	return {
+		id: 'template-standard',
+		name: 'Standard',
+		department: 'Pfadi',
+		is_default: true,
+		subject: 'Einladung',
+		body: '<p>Hallo zusammen</p>',
+		recipients: ['eltern@example.com'],
+		cc: [],
+		created_at: '',
+		updated_at: '',
+		...overrides,
+	};
+}
+
+describe('MailTemplatePage template list', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.webSocketHandler = null;
+		mocks.templates = [
+			template(),
+			template({
+				id: 'template-alternative',
+				name: 'Alternative',
+				is_default: false,
+				subject: 'Alternative Einladung',
+				recipients: [],
+			}),
+		];
+		mocks.fetchTemplates.mockResolvedValue(undefined);
+		mocks.createTemplate.mockImplementation(async (name, department, subject, body, recipients, cc, isDefault) => ({
+			...template({
+				id: 'template-created',
+				name,
+				department,
+				subject,
+				body,
+				recipients,
+				cc,
+				is_default: isDefault,
+			}),
+		}));
+		mocks.updateTemplate.mockImplementation(async (id, name, subject, body, recipients, cc, isDefault) => {
+			const current = mocks.templates.find((item) => item.id === id);
+			return current
+				? { ...current, name, subject, body, recipients, cc, is_default: isDefault }
+				: null;
+		});
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('shows templates as actionable rows instead of a selector', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+
+		expect(wrapper.find('#mail-template-admin-selector').exists()).toBe(false);
+		expect(wrapper.find('.template-overview-header').exists()).toBe(true);
+		expect(wrapper.find('.template-overview-create').exists()).toBe(true);
+		expect(wrapper.findAll('.template-overview-row')).toHaveLength(2);
+		expect(wrapper.findAll('.template-overview-row-actions')).toHaveLength(2);
+		expect(wrapper.findAll('.mt-row')).toHaveLength(2);
+		expect(wrapper.find('.template-department-tabs').exists()).toBe(true);
+		expect(wrapper.findAll('.mt-row-name').map((row) => row.text().trim())).toEqual([
+			'Alternative',
+			'Standard Standard',
+		]);
+		expect(wrapper.text()).toContain('Standard');
+		expect(wrapper.text()).toContain('Alternative Einladung');
+		expect(wrapper.text()).toContain('⭐ Standard');
+		expect(wrapper.text()).toContain('1 Empfänger');
+		wrapper.unmount();
+	});
+
+	it('opens a row for editing and returns to the list', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+
+		await wrapper.findAll('.mt-row')[1].findAll('.btn-sm')[1].trigger('click');
+		await flushPromises();
+		expect(wrapper.find('#mail-template-name').exists()).toBe(true);
+
+		await wrapper.get('.template-editor-back').trigger('click');
+		await flushPromises();
+		expect(wrapper.findAll('.mt-row')).toHaveLength(2);
+		expect(wrapper.find('#mail-template-name').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('shows a newly created template once when its websocket update arrives before the save response', async () => {
+		let resolveCreate!: (created: MailTemplate | null) => void;
+		mocks.createTemplate.mockReturnValue(new Promise<MailTemplate | null>((resolve) => {
+			resolveCreate = resolve;
+		}));
+		const created = template({
+			id: 'template-created',
+			name: 'Elterninfo',
+			is_default: false,
+		});
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+		await wrapper.get('.template-overview-create').trigger('click');
+		await wrapper.get('#mail-template-name').setValue('Elterninfo');
+		await wrapper.get('.mt-editor-actions .btn-primary').trigger('click');
+		await flushPromises();
+
+		expect(mocks.createTemplate).toHaveBeenCalledOnce();
+		mocks.webSocketHandler?.({ event: 'template_updated', template: created });
+		resolveCreate(created);
+		await flushPromises();
+		await wrapper.get('.template-editor-back').trigger('click');
+		await flushPromises();
+
+		const rows = wrapper.findAll('.mt-row');
+		expect(rows).toHaveLength(3);
+		expect(rows.filter((row) => row.find('.mt-row-name').text().includes('Elterninfo'))).toHaveLength(1);
+		expect(rows.map((row) => row.find('.mt-row-name').text().trim())).toEqual([
+			'Alternative',
+			'Elterninfo',
+			'Standard Standard',
+		]);
+		wrapper.unmount();
+	});
+
+	it('opens a new mail template directly in the editor without creating an empty persisted template', async () => {
+		const prompt = vi.fn(() => 'Unexpected browser prompt');
+		vi.stubGlobal('prompt', prompt);
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+
+		await wrapper.get('.template-overview-create').trigger('click');
+		await flushPromises();
+
+		expect(prompt).not.toHaveBeenCalled();
+		expect(wrapper.get('.template-editor-header h2').text()).toBe('Neue Vorlage');
+		expect((wrapper.get('#mail-template-name').element as HTMLInputElement).value).toBe('');
+		expect(mocks.createTemplate).not.toHaveBeenCalled();
+
+		await wrapper.get('#mail-template-name').setValue('Elterninfo');
+		expect(mocks.createTemplate).not.toHaveBeenCalled();
+		await wrapper.get('.mt-editor-actions .btn-primary').trigger('click');
+		await flushPromises();
+
+		expect(mocks.createTemplate).toHaveBeenCalledWith(
+			'Elterninfo',
+			'Pfadi',
+			'',
+			'',
+			[],
+			[],
+			false,
+		);
+		expect((wrapper.get('#mail-template-name').element as HTMLInputElement).value).toBe('Elterninfo');
+		wrapper.unmount();
+	});
+
+	it('matches the form-template editor heading, default panel, and template-name card without a mode control', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+		await wrapper.findAll('.mt-row')[1].findAll('.btn-sm')[1].trigger('click');
+		await flushPromises();
+
+		expect(wrapper.get('.template-editor-header h2').text()).toBe('Vorlage bearbeiten');
+		expect(wrapper.get('.default-toggle-section').text()).toContain(
+			'Als Standard-Vorlage für diese Stufe setzen',
+		);
+		expect(wrapper.get('.default-toggle-section').text()).toContain(
+			'Die Standard-Vorlage wird beim Mailversand automatisch ausgewählt.',
+		);
+		expect(wrapper.get('.template-editor-card .template-editor-field-label').text()).toBe(
+			'Name der Vorlage',
+		);
+		expect(wrapper.get('.template-editor-card #mail-template-name').exists()).toBe(true);
+		expect(wrapper.find('.mode-toggle').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('saves from the editor and stays on the editor', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+		await wrapper.findAll('.mt-row')[1].findAll('.btn-sm')[1].trigger('click');
+		await flushPromises();
+
+		await wrapper.get('#mail-template-name').setValue('Standard aktualisiert');
+		await wrapper.get('.mt-editor-actions .btn-primary').trigger('click');
+		await flushPromises();
+
+		expect(mocks.updateTemplate).toHaveBeenCalledWith(
+			'template-standard',
+			'Standard aktualisiert',
+			'Einladung',
+			'<p>Hallo zusammen</p>',
+			['eltern@example.com'],
+			[],
+			true,
+		);
+		expect(wrapper.find('#mail-template-name').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('flushes pending edits before returning to the list', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+		await wrapper.findAll('.mt-row')[1].findAll('.btn-sm')[1].trigger('click');
+		await flushPromises();
+
+		await wrapper.get('#mail-template-name').setValue('Zurück mit Speichern');
+		await wrapper.get('.mt-editor-actions .btn-secondary').trigger('click');
+		await flushPromises();
+
+		expect(mocks.updateTemplate).toHaveBeenCalledWith(
+			'template-standard',
+			'Zurück mit Speichern',
+			'Einladung',
+			'<p>Hallo zusammen</p>',
+			['eltern@example.com'],
+			[],
+			true,
+		);
+		expect(wrapper.findAll('.mt-row')).toHaveLength(2);
+		wrapper.unmount();
+	});
+
+	it('lets a list row become the default', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+
+		await wrapper.findAll('.mt-row')[0].findAll('.btn-sm')[0].trigger('click');
+		await flushPromises();
+
+		expect(mocks.updateTemplate).toHaveBeenCalledWith(
+			'template-alternative',
+			'Alternative',
+			'Alternative Einladung',
+			'<p>Hallo zusammen</p>',
+			[],
+			[],
+			true,
+		);
+		expect(mocks.fetchTemplates).toHaveBeenCalled();
+		wrapper.unmount();
+	});
+});

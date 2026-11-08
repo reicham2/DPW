@@ -125,7 +125,24 @@ public:
 
     // Mail templates
     std::vector<MailTemplate> list_mail_templates();
+    std::vector<MailTemplate> list_mail_templates(const std::string &department);
     std::optional<MailTemplate> get_mail_template_by_department(const std::string &department);
+    std::optional<MailTemplate> get_mail_template_by_id(const std::string &id);
+    std::optional<MailTemplate> create_mail_template(const std::string &name,
+                                                     const std::string &department,
+                                                     const std::string &subject,
+                                                     const std::string &body,
+                                                     const std::vector<std::string> &recipients,
+                                                     const std::vector<std::string> &cc,
+                                                     bool is_default = false);
+    std::optional<MailTemplate> update_mail_template(const std::string &id,
+                                                     const std::string &name,
+                                                     const std::string &subject,
+                                                     const std::string &body,
+                                                     const std::vector<std::string> &recipients,
+                                                     const std::vector<std::string> &cc,
+                                                     bool is_default = false);
+    bool delete_mail_template(const std::string &id);
     std::optional<MailTemplate> upsert_mail_template(const std::string &department,
                                                      const std::string &subject,
                                                      const std::string &body,
