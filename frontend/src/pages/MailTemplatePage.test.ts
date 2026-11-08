@@ -141,7 +141,7 @@ describe('MailTemplatePage template list', () => {
 		expect(wrapper.find('.template-department-tabs').exists()).toBe(true);
 		expect(wrapper.findAll('.mt-row-name').map((row) => row.text().trim())).toEqual([
 			'Alternative',
-			'StandardStandard',
+			'Standard Standard',
 		]);
 		expect(wrapper.text()).toContain('Standard');
 		expect(wrapper.text()).toContain('Alternative Einladung');
@@ -195,7 +195,7 @@ describe('MailTemplatePage template list', () => {
 		expect(rows.map((row) => row.find('.mt-row-name').text().trim())).toEqual([
 			'Alternative',
 			'Elterninfo',
-			'StandardStandard',
+			'Standard Standard',
 		]);
 		wrapper.unmount();
 	});

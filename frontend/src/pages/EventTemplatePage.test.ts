@@ -123,15 +123,15 @@ describe('EventTemplatePage template overview and editor', () => {
 		const wrapper = shallowMount(EventTemplatePage);
 		await flushPromises();
 
+		expect(wrapper.get('.event-template-overview-row .template-overview-row-action').classes()).toEqual(
+			expect.arrayContaining(['btn-sm', 'template-overview-row-action']),
+		);
 		await wrapper.find('.event-template-overview-row .template-overview-row-action').trigger('click');
 		await flushPromises();
 
 		expect(wrapper.get('.template-editor-header h2').text()).toBe('Vorlage bearbeiten');
 		expect(wrapper.get('.template-editor-back').text()).toBe('← Zurück zu Vorlagen');
 		expect(wrapper.findAll('.filter-tab--badge')).toHaveLength(2);
-		expect(wrapper.get('.event-template-overview-row .template-overview-row-action').classes()).toEqual(
-			expect.arrayContaining(['btn-sm', 'template-overview-row-action']),
-		);
 		expect(wrapper.get('.event-template-default').text()).toContain('Eine Event-Vorlage pro Stufe');
 		expect(wrapper.get('#event-template-title').classes()).toContain('template-editor-field-input');
 		expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
