@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import type { User } from '../types';
 
-const { userRef, apiFetchMock } = vi.hoisted(() => ({
+const { userRef, apiFetchMock, fetchPermissionsMock } = vi.hoisted(() => ({
 	userRef: { value: null as Partial<User> | null },
 	apiFetchMock: vi.fn(),
+	fetchPermissionsMock: vi.fn(),
 }));
 
 vi.mock('../composables/useAuth', () => ({ user: userRef }));
@@ -13,7 +14,7 @@ vi.mock('../composables/usePermissions', () => ({
 	usePermissions: () => ({
 		myPermissions: { value: null },
 		departments: { value: [] },
-		fetchMyPermissions: vi.fn().mockResolvedValue(undefined),
+		fetchMyPermissions: fetchPermissionsMock,
 		fetchDepartments: vi.fn().mockResolvedValue(undefined),
 	}),
 }));
@@ -33,6 +34,7 @@ describe('activity reminder profile settings', () => {
 		vi.useFakeTimers();
 		userRef.value = { id: 'user', display_name: 'Test', department: 'Pfadi' };
 		apiFetchMock.mockReset();
+		fetchPermissionsMock.mockReset().mockResolvedValue(undefined);
 		apiFetchMock.mockImplementation(async (_path, options) => ({
 			ok: true,
 			json: async () => ({ ...userRef.value, ...JSON.parse(options.body) }),
@@ -101,5 +103,18 @@ describe('activity reminder profile settings', () => {
 		await vi.advanceTimersByTimeAsync(500);
 		expect(userRef.value?.proofreading_enabled).toBe(true);
 		reloaded.unmount();
+	});
+
+	it('saves a proofreading change while profile permissions are still loading', async () => {
+		fetchPermissionsMock.mockReturnValue(new Promise(() => {}));
+		const wrapper = mount(ProfilePage);
+		await wrapper.vm.$nextTick();
+		const checkbox = wrapper.findAll('label.notify-option').find(label =>
+			label.text().includes('Integrierte Rechtschreibprüfung'))!.get('input');
+		await checkbox.setValue(false);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(JSON.parse(apiFetchMock.mock.calls[0][1].body).proofreading_enabled).toBe(false);
+		expect(userRef.value?.proofreading_enabled).toBe(false);
+		wrapper.unmount();
 	});
 });
