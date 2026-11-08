@@ -106,7 +106,7 @@ describe('EventTemplatePage template overview and editor', () => {
 		expect(wrapper.find('.template-overview-header').text()).toContain('Vorlagen für Events');
 		expect(wrapper.findAll('.event-template-overview-row')).toHaveLength(2);
 		expect(wrapper.findAll('.template-overview-row-actions .template-overview-row-action')).toHaveLength(2);
-		expect(wrapper.text()).toContain('Eine Event-Vorlage pro Stufe');
+		expect(wrapper.text()).toContain('Pro Stufe gibt es eine Event-Vorlage.');
 		expect(wrapper.text()).toContain('Leiter: {{titel}}');
 		wrapper.unmount();
 	});
