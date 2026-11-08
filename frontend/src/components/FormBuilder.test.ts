@@ -35,6 +35,16 @@ describe('FormBuilder template titles', () => {
 		fetchTemplates.mockResolvedValue(templates.value);
 	});
 
+	it('marks the template title card for shared template-editor styling', async () => {
+		const wrapper = mount(FormBuilder, { props: { department: 'Pfadi' } });
+		await flushPromises();
+
+		expect(wrapper.find('.builder-section.template-editor-card .field-label').text()).toBe(
+			'Formular-Titel',
+		);
+		wrapper.unmount();
+	});
+
 	it('copies the default template title and saves its variables unexpanded', async () => {
 		const wrapper = mount(FormBuilder, { props: { department: 'Pfadi' } });
 		await flushPromises();

@@ -938,7 +938,7 @@ function onCcKeydown(e: KeyboardEvent) {
       <template v-else>
       <div class="template-editor-header">
         <button type="button" class="btn-sm template-editor-back" @click="showTemplateList">← Zurück zu Vorlagen</button>
-        <h2 class="template-overview-title">{{ templateName || 'Mail-Vorlage bearbeiten' }}</h2>
+        <h2 class="template-overview-title">{{ selectedTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage' }}</h2>
       </div>
       <div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
         <span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
@@ -957,14 +957,7 @@ function onCcKeydown(e: KeyboardEvent) {
         <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
       </div>
 
-      <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_name') }"
-        @focusin="lockSection('tpl_name')" @focusout="unlockSection('tpl_name', $event)">
-        <div v-if="lockedBy('tpl_name')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_name') }}</div>
-        <label for="mail-template-name">Name der Vorlage</label>
-        <input id="mail-template-name" v-model="templateName" type="text" required :disabled="isLockedByOther('tpl_name')" />
-      </div>
-
-      <div class="default-template-control lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_default') }"
+      <div class="default-toggle-section lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_default') }"
         @focusin="lockSection('tpl_default')" @focusout="unlockSection('tpl_default', $event)">
         <div v-if="lockedBy('tpl_default')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_default') }}</div>
         <label class="checkbox-label">
@@ -972,6 +965,15 @@ function onCcKeydown(e: KeyboardEvent) {
           <span>Als Standard-Vorlage für diese Stufe setzen</span>
         </label>
         <p class="default-hint">Die Standard-Vorlage wird beim Mailversand automatisch ausgewählt.</p>
+      </div>
+
+      <div class="template-editor-card lock-wrapper" :class="{ 'is-locked': isLockedByOther('tpl_name') }"
+        @focusin="lockSection('tpl_name')" @focusout="unlockSection('tpl_name', $event)">
+        <div v-if="lockedBy('tpl_name')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('tpl_name') }}</div>
+        <label class="template-editor-field-label" for="mail-template-name">Name der Vorlage</label>
+        <div class="input-save-wrap">
+          <input id="mail-template-name" v-model="templateName" class="template-editor-field-input" type="text" required :disabled="isLockedByOther('tpl_name')" />
+        </div>
       </div>
 
       <!-- Recipients -->
@@ -1233,7 +1235,7 @@ function onCcKeydown(e: KeyboardEvent) {
 	color: #92400e !important;
 }
 
-.default-template-control {
+.default-toggle-section {
 	margin-bottom: 1rem;
 	padding: 0.75rem 1rem;
 	border: 1px solid var(--border);
@@ -1261,6 +1263,22 @@ function onCcKeydown(e: KeyboardEvent) {
 	margin: 0.25rem 0 0 1.5rem;
 	font-size: 0.75rem;
 	color: var(--text-subtle);
+}
+
+@media (max-width: 599px) {
+	.default-toggle-section {
+		padding: 0.7rem 0.75rem;
+	}
+
+	.checkbox-label {
+		align-items: flex-start;
+		font-size: 0.83rem;
+	}
+
+	.default-hint {
+		margin-left: 1.35rem;
+		font-size: 0.72rem;
+	}
 }
 
 .mt-editor-actions {

@@ -144,6 +144,27 @@ describe('MailTemplatePage template list', () => {
 		wrapper.unmount();
 	});
 
+	it('matches the form-template editor heading, default panel, and template-name card without a mode control', async () => {
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+		await wrapper.findAll('.mt-row .btn-sm')[1].trigger('click');
+		await flushPromises();
+
+		expect(wrapper.get('.template-editor-header h2').text()).toBe('Vorlage bearbeiten');
+		expect(wrapper.get('.default-toggle-section').text()).toContain(
+			'Als Standard-Vorlage für diese Stufe setzen',
+		);
+		expect(wrapper.get('.default-toggle-section').text()).toContain(
+			'Die Standard-Vorlage wird beim Mailversand automatisch ausgewählt.',
+		);
+		expect(wrapper.get('.template-editor-card .template-editor-field-label').text()).toBe(
+			'Name der Vorlage',
+		);
+		expect(wrapper.get('.template-editor-card #mail-template-name').exists()).toBe(true);
+		expect(wrapper.find('.mode-toggle').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
 	it('saves from the editor and stays on the editor', async () => {
 		const wrapper = shallowMount(MailTemplatePage);
 		await flushPromises();

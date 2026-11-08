@@ -21,7 +21,7 @@
 		</div>
 
 		<!-- Form Header -->
-		<div class="builder-section">
+		<div class="builder-section template-editor-card">
 			<label class="field-label">{{ titleLabel }}</label>
 			<div class="input-save-wrap">
 				<input

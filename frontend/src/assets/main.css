@@ -3173,7 +3173,8 @@ img[data-program-image-error] {
 }
 
 .template-overview-row-actions .template-overview-row-action {
-	min-height: 40px;
+	min-height: 0;
+	font-size: 0.78rem;
 }
 
 @media (max-width: 599px) {
@@ -3209,6 +3210,11 @@ img[data-program-image-error] {
 		white-space: nowrap;
 	}
 
+	.template-overview-row-actions .template-overview-row-action {
+		min-height: 40px;
+		font-size: 0.75rem;
+	}
+
 	.template-editor-header {
 		align-items: flex-start;
 		flex-direction: column;
@@ -3217,6 +3223,41 @@ img[data-program-image-error] {
 	.template-editor-back {
 		min-height: 40px;
 	}
+}
+
+.template-editor-card {
+	position: relative;
+	padding: 1rem 1.25rem;
+	border: 1px solid var(--border);
+	border-radius: 0.5rem;
+	background: var(--card-bg);
+}
+
+.template-editor-field-label {
+	display: block;
+	margin-bottom: 0.35rem;
+	color: var(--text-secondary);
+	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.template-editor-field-input {
+	width: 100%;
+	padding: 0.45rem 0.65rem;
+	border: 1px solid var(--input-border);
+	border-radius: 0.375rem;
+	outline: none;
+	background: var(--input-bg);
+	color: var(--input-color);
+	font-size: 0.9rem;
+	box-sizing: border-box;
+}
+
+.template-editor-field-input:focus {
+	border-color: var(--focus-border);
+	box-shadow: var(--focus-ring);
 }
 
 .tpl-var-desc {
