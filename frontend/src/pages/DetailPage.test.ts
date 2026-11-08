@@ -465,9 +465,10 @@ describe('DetailPage activity access', () => {
 			return new Response(JSON.stringify({ language: 'de-CH', matches }), { status: 200 });
 		});
 
-		const wrapper = shallowMount(DetailPage);
+		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
 		await flushPromises();
 		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.program-card__toggle').trigger('click');
 		await flushPromises();
 		const editor = wrapper.get('.rich-editor').element as HTMLElement;
 		const execCommand = stubInsertTextCommand(editor);
@@ -565,6 +566,7 @@ describe('DetailPage activity access', () => {
 		const wrapper = shallowMount(DetailPage);
 		await flushPromises();
 		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.program-card__toggle').trigger('click');
 		await flushPromises();
 		const editor = wrapper.get('.rich-editor').element as HTMLElement;
 		const execCommand = stubInsertTextCommand(editor);
@@ -716,6 +718,7 @@ describe('DetailPage activity access', () => {
 		const wrapper = shallowMount(DetailPage);
 		await flushPromises();
 		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.program-card__toggle').trigger('click');
 		await flushPromises();
 		const editor = wrapper.get('.rich-editor');
 		vi.useFakeTimers();
@@ -888,15 +891,19 @@ describe('DetailPage activity access', () => {
 
 	it('ignores late responses for old text and opens the inline suggestion at the clicked range', async () => {
 		allowEditing();
+		const imageId = '12345678-1234-1234-1234-123456789abc';
+		const imagePath = `/api/program-images/${imageId}`;
+		const imageHtml = `<img src="blob:program-image" data-program-image="${imageId}">`;
 		mocks.fetchActivity.mockResolvedValue(makeActivity({
 			programs: [{
 				id: 'program-1', activity_id: 'activity-1', duration_minutes: 10,
-				title: 'Start', description: '<strong>🐾 ein Fehler</strong><img src="/image.png">',
+				title: 'Start', description: `<strong>🐾 ein Fehler</strong><img src="${imagePath}">`,
 				responsible: [],
 			}],
 		}));
 		const pending: Array<(response: Response) => void> = [];
 		vi.mocked(apiFetch).mockImplementation((url) => {
+			if (url === imagePath) return Promise.resolve(new Response('image', { headers: { 'Content-Type': 'image/png' } }));
 			if (url !== '/api/proofreading/check') return Promise.resolve(new Response('{}', { status: 200 }));
 			return new Promise<Response>(resolve => pending.push(resolve));
 		});
@@ -908,9 +915,10 @@ describe('DetailPage activity access', () => {
 			}],
 		}), { status: 200 });
 
-		const wrapper = shallowMount(DetailPage);
+		const wrapper = shallowMount(DetailPage, { attachTo: document.body });
 		await flushPromises();
 		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.program-card__toggle').trigger('click');
 		await flushPromises();
 		const editor = wrapper.get('.rich-editor').element as HTMLElement;
 		const command = stubInsertTextCommand(editor);
@@ -927,11 +935,11 @@ describe('DetailPage activity access', () => {
 		});
 		try {
 			vi.useFakeTimers();
-			editor.innerHTML = '<strong>🐾 ein Fehler geändert</strong><img src="/image.png">';
+			editor.innerHTML = `<strong>🐾 ein Fehler geändert</strong>${imageHtml}`;
 			editor.dispatchEvent(new Event('input', { bubbles: true }));
 			await vi.advanceTimersByTimeAsync(1500);
 			expect(pending).toHaveLength(1);
-			editor.innerHTML = '<strong>🐾 ein Fehler nochmals geändert</strong><img src="/image.png">';
+			editor.innerHTML = `<strong>🐾 ein Fehler nochmals geändert</strong>${imageHtml}`;
 			editor.dispatchEvent(new Event('input', { bubbles: true }));
 			await vi.advanceTimersByTimeAsync(1500);
 			expect(pending).toHaveLength(2);
@@ -948,8 +956,14 @@ describe('DetailPage activity access', () => {
 			await wrapper.get('.rich-editor').trigger('click', { clientX: 20, clientY: 20 });
 			expect(wrapper.find('.program-proofreading__popover').exists()).toBe(true);
 			await wrapper.get('.program-proofreading__suggestion').trigger('click');
+			expect(command.command).toHaveBeenCalled();
 			expect(editor.innerHTML).toContain('<strong>🐾 einen Fehler nochmals geändert</strong>');
-			expect(editor.querySelector('img')?.getAttribute('src')).toBe('/image.png');
+			expect(editor.querySelector('img')?.getAttribute('data-program-image')).toBe(imageId);
+			await vi.advanceTimersByTimeAsync(config.AUTOSAVE_INTERVAL);
+			const saved = mocks.updateActivity.mock.lastCall?.[1].programs[0].description as string;
+			expect(saved).toContain(imagePath);
+			expect(saved).toContain('einen Fehler');
+			expect(saved).not.toContain('blob:');
 		} finally {
 			if (descriptor) Object.defineProperty(Range.prototype, 'getClientRects', descriptor);
 			else Reflect.deleteProperty(Range.prototype, 'getClientRects');

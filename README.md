@@ -47,6 +47,7 @@ the startup scheduler and the SQL schema. Regenerate it with
 | `backend` | `ghcr.io/reicham2/dpw-backend:latest` | `backend/Dockerfile (context: .)` | not published | `127.0.0.1:<random> -> 8080/tcp` |
 | `db` | `postgres:16-alpine` | `postgres:16-alpine` | not published | not published |
 | `frontend` | `ghcr.io/reicham2/dpw-frontend:latest` | `Dockerfile (context: ./frontend)` | `0.0.0.0:8000 -> 80/tcp` | `0.0.0.0:8000 -> 80/tcp` |
+| `languagetool` | `erikvl87/languagetool:6.8@sha256:ef8fa12cbd485166c9ceeb7139d76d56d07707a624da6bb1fc1fbb5411750527` | `erikvl87/languagetool:6.8@sha256:ef8fa12cbd485166c9ceeb7139d76d56d07707a624da6bb1fc1fbb5411750527` | not published | not published |
 | `redis` | `redis:7-alpine` | `redis:7-alpine` | not published | not published |
 
 Default browser URL: http://localhost:8000.
