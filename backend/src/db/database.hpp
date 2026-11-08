@@ -94,6 +94,9 @@ public:
                                           bool force_role = false);
     std::optional<UserRecord> get_user_by_oid(const std::string &oid);
     std::optional<UserRecord> get_user_by_id(const std::string &id);
+    std::string add_proofreading_word(const std::string &user_id, const std::string &word);
+    bool delete_proofreading_word(const std::string &user_id, const std::string &word);
+    std::vector<int> known_proofreading_words(const std::string &user_id, const nlohmann::json &words);
     std::vector<UserRecord> get_users_by_ids(const std::vector<std::string> &ids);
     // Update own profile (display_name only; department blocked by role on handler level).
     std::optional<UserRecord> update_user(const std::string &oid,

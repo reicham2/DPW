@@ -138,4 +138,5 @@ void handle_get_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
-void handle_post_proofreading_check(HttpRes *res, HttpReq *req);
+void handle_post_proofreading_check(HttpRes *res, HttpReq *req, Database &db);
+void handle_proofreading_dictionary(HttpRes *res, HttpReq *req, Database &db, bool remove);

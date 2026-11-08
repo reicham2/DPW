@@ -394,6 +394,13 @@ CREATE TRIGGER trg_users_updated_at
 
 CREATE INDEX IF NOT EXISTS idx_users_microsoft_oid ON users (microsoft_oid);
 
+CREATE TABLE IF NOT EXISTS proofreading_dictionary (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    word TEXT NOT NULL CHECK (char_length(word) BETWEEN 1 AND 100 AND octet_length(word) <= 256),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, word)
+);
+
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_color TEXT NOT NULL DEFAULT '#4f8cff';
 
 DO $$

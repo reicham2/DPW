@@ -103,28 +103,12 @@ URI in Entra ID; the frontend uses `window.location.origin`. Login requests use
 
 ## Selbst gehostete Rechtschreibprüfung
 
-Die Produktions- und Entwicklungs-Compose-Stacks starten einen internen
-LanguageTool-Server (Version 6.8 aus dem Community-Image
-[`erikvl87/languagetool`](https://github.com/Erikvl87/docker-languagetool);
-der Digest ist in Compose fixiert).
-Der Dienst ist nur im privaten Compose-Netz erreichbar und hat keinen
-veröffentlichten Host-Port. Der Backend-Endpunkt akzeptiert nur angemeldete
-Anfragen; geänderte Programm-Beschreibungen werden nach einer kurzen Schreibpause
-an diesen lokalen Dienst gesendet. Die kompakte Prüftaste startet bei Bedarf eine
-erneute Prüfung. Erkannte Stellen werden in unterstützten Browsern im Text
-markiert; ein Klick darauf oder auf die Stelle in der Ergebnisliste zeigt die
-Vorschläge. Vorschläge werden nur auf Klick übernommen. Änderungen laufen danach
-wie gewohnt durch den Editor und dessen Autospeicherung.
-
-Die Prüfung verwendet Schweizer Standarddeutsch (`de-CH`) und die im
-LanguageTool-Open-Source-Server enthaltenen Regeln. Sie ersetzt weder eine
-Prüfung von Dialekt/Pfadi-Eigennamen noch die cloudbasierten AI-Regeln von
-LanguageTool. Für den initialen Image-Pull ist Internetzugriff nötig; der
-laufende Korrekturdienst sendet keine Texte an einen externen Anbieter. Es gibt
-keinen gespeicherten Prüfverlauf oder LanguageTool-Datenträger. Die Compose-
-Ressourcenbegrenzung beträgt 2 CPUs und 1,5 GiB RAM; der Java-Heap ist auf
-768 MiB begrenzt. Ist der Dienst nicht verfügbar, bleibt die normale Bearbeitung
-nutzbar und die Prüfung zeigt einen Fehler.
+Geänderte Programmpunkt-Beschreibungen werden nach einer kurzen Schreibpause
+lokal geprüft. Erkannte Stellen werden in unterstützten Browsern markiert; ein
+Klick darauf zeigt Vorschläge, die nur auf Klick übernommen werden.
+Als falsch markierte Wörter lassen sich per Klick ins persönliche Wörterbuch
+aufnehmen. Details zu Dienst, Ressourcen und Datenschutz
+stehen in der [Betriebsreferenz](docs/operations.md#selbst-gehostete-rechtschreibprüfung).
 
 ## Geteilte Aktivitäten und öffentliche Formulare
 
