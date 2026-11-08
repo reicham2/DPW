@@ -67,7 +67,7 @@ if (expectUnavailable) {
 	test('personal words persist, filter only spelling matches, and remain isolated between users', async () => {
 		const word = 'einfahcer';
 		const otherUser = 'debug:a0000000-0000-0000-0000-000000000003';
-		const text = `🐾 Ich habe ein Fehler und ein ${word} Tset.`;
+		const text = `Ich habe ein Fehler gemacht. 🐾 Das ist ein ${word} Tset.`;
 		const spelling = (payload) => payload.matches.filter(match =>
 			match.rule.issueType === 'misspelling' && text.slice(match.offset, match.offset + match.length) === word);
 		assert.equal((await dictionary(word, { token: null })).response.status, 401);
