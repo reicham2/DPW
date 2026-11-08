@@ -100,6 +100,18 @@ describe('MailTemplatePage template list', () => {
 			}),
 		];
 		mocks.fetchTemplates.mockResolvedValue(undefined);
+		mocks.createTemplate.mockImplementation(async (name, department, subject, body, recipients, cc, isDefault) => ({
+			...template({
+				id: 'template-created',
+				name,
+				department,
+				subject,
+				body,
+				recipients,
+				cc,
+				is_default: isDefault,
+			}),
+		}));
 		mocks.updateTemplate.mockImplementation(async (id, name, subject, body, recipients, cc, isDefault) => {
 			const current = mocks.templates.find((item) => item.id === id);
 			return current
@@ -141,6 +153,38 @@ describe('MailTemplatePage template list', () => {
 		await flushPromises();
 		expect(wrapper.findAll('.mt-row')).toHaveLength(2);
 		expect(wrapper.find('#mail-template-name').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('opens a new mail template directly in the editor without creating an empty persisted template', async () => {
+		const prompt = vi.fn(() => 'Unexpected browser prompt');
+		vi.stubGlobal('prompt', prompt);
+		const wrapper = shallowMount(MailTemplatePage);
+		await flushPromises();
+
+		await wrapper.get('.template-overview-create').trigger('click');
+		await flushPromises();
+
+		expect(prompt).not.toHaveBeenCalled();
+		expect(wrapper.get('.template-editor-header h2').text()).toBe('Neue Vorlage');
+		expect((wrapper.get('#mail-template-name').element as HTMLInputElement).value).toBe('');
+		expect(mocks.createTemplate).not.toHaveBeenCalled();
+
+		await wrapper.get('#mail-template-name').setValue('Elterninfo');
+		expect(mocks.createTemplate).not.toHaveBeenCalled();
+		await wrapper.get('.mt-editor-actions .btn-primary').trigger('click');
+		await flushPromises();
+
+		expect(mocks.createTemplate).toHaveBeenCalledWith(
+			'Elterninfo',
+			'Pfadi',
+			'',
+			'',
+			[],
+			[],
+			false,
+		);
+		expect((wrapper.get('#mail-template-name').element as HTMLInputElement).value).toBe('Elterninfo');
 		wrapper.unmount();
 	});
 

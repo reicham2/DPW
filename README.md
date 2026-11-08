@@ -256,10 +256,15 @@ und im Event-Titel.
   Vorlagen mit Empfaengern und CC verwaltet werden. Eine Vorlage kann als
   Standard gesetzt werden; sie wird beim Oeffnen des Mailversands automatisch
   geladen. Die Vorlagen erscheinen als Liste mit Standardstatus und Vorschau;
-  im Editor koennen Aenderungen gespeichert oder mit **Zurueck** zur Liste
-  uebernommen werden. Im Mailversand kann zwischen Vorlagen gewechselt werden.
+  neue Vorlagen oeffnen direkt den Editor und werden erst mit **Speichern**
+  angelegt. Aenderungen an bestehenden Vorlagen werden gespeichert, bevor
+  **Zurueck** zur Liste fuehrt. Im Mailversand kann zwischen Vorlagen gewechselt
+  werden.
   Wenn dabei eigene Aenderungen ueberschrieben wuerden, wird vorher nachgefragt.
   Bestehende Mailvorlagen bleiben beim Datenbank-Upgrade als Standard erhalten.
+- Unter **Admin > Vorlagen > Events** kann pro Stufe eine Event-Vorlage
+  bearbeitet werden. Die Stufenauswahl bleibt auch im Editor verfuegbar;
+  ausstehende Aenderungen werden vor einem Stufenwechsel gespeichert.
 - Mail-Betreff und Event-Titel werden beim Laden der Vorlage als Klartext
   aufgeloest; `{{formular_link}}` und `{{formular_link|Anmelden}}` ergeben
   dort die Formular-URL statt HTML. Die Vorschau kann vor dem Versand bzw.

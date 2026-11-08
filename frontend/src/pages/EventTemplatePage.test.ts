@@ -99,15 +99,22 @@ describe('EventTemplatePage template overview and editor', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('shows one consistently styled overview row per permitted department', async () => {
+	it('shows the active department in the shared overview layout with a Stufe switcher', async () => {
 		const wrapper = shallowMount(EventTemplatePage);
 		await flushPromises();
 
 		expect(wrapper.find('.template-overview-header').text()).toContain('Vorlagen für Events');
-		expect(wrapper.findAll('.event-template-overview-row')).toHaveLength(2);
-		expect(wrapper.findAll('.template-overview-row-actions .template-overview-row-action')).toHaveLength(2);
+		expect(wrapper.findAll('.filter-tab--badge')).toHaveLength(2);
+		expect(wrapper.findAll('.event-template-overview-row')).toHaveLength(1);
 		expect(wrapper.text()).toContain('Pro Stufe gibt es eine Event-Vorlage.');
+		expect(wrapper.text()).toContain('{{abteilung}}: {{titel}}');
+
+		await wrapper.findAll('.filter-tab--badge')[1].trigger('click');
+		await flushPromises();
+
+		expect(wrapper.findAll('.event-template-overview-row')).toHaveLength(1);
 		expect(wrapper.text()).toContain('Leiter: {{titel}}');
+		expect(wrapper.text()).not.toContain('{{abteilung}}: {{titel}}');
 		wrapper.unmount();
 	});
 
@@ -120,6 +127,7 @@ describe('EventTemplatePage template overview and editor', () => {
 
 		expect(wrapper.get('.template-editor-header h2').text()).toBe('Vorlage bearbeiten');
 		expect(wrapper.get('.template-editor-back').text()).toBe('← Zurück zu Vorlagen');
+		expect(wrapper.findAll('.filter-tab--badge')).toHaveLength(2);
 		expect(wrapper.get('.event-template-default').text()).toContain('Eine Event-Vorlage pro Stufe');
 		expect(wrapper.get('#event-template-title').classes()).toContain('template-editor-field-input');
 		expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
@@ -143,7 +151,27 @@ describe('EventTemplatePage template overview and editor', () => {
 			'Neuer Eventtitel',
 			'<p>Eventbeschreibung</p>',
 		);
-		expect(wrapper.findAll('.event-template-overview-row')).toHaveLength(2);
+		expect(wrapper.findAll('.event-template-overview-row')).toHaveLength(1);
+		wrapper.unmount();
+	});
+
+	it('saves before switching Stufe while editing and stays in the editor', async () => {
+		const wrapper = shallowMount(EventTemplatePage);
+		await flushPromises();
+
+		await wrapper.find('.event-template-overview-row .template-overview-row-action').trigger('click');
+		await flushPromises();
+		await wrapper.get('#event-template-title').setValue('Aktualisierter Titel');
+		await wrapper.findAll('.filter-tab--badge')[1].trigger('click');
+		await flushPromises();
+
+		expect(mocks.saveTemplate).toHaveBeenCalledWith(
+			'Pfadi',
+			'Aktualisierter Titel',
+			'<p>Eventbeschreibung</p>',
+		);
+		expect(wrapper.get('#event-template-title').element).toHaveProperty('value', 'Leiter: {{titel}}');
+		expect(wrapper.find('.template-editor-header').exists()).toBe(true);
 		wrapper.unmount();
 	});
 });

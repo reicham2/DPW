@@ -39,10 +39,12 @@ const activeDept = ref<Department>(
 )
 const showEditor = ref(false)
 const eventTemplateRows = computed(() =>
-  visibleDepartments.value.map(department => ({
-    department,
-    template: templates.value.find(template => template.department === department),
-  }))
+  activeDept.value
+    ? [{
+        department: activeDept.value,
+        template: templates.value.find(template => template.department === activeDept.value),
+      }]
+    : []
 )
 
 const title = ref('')
@@ -263,7 +265,15 @@ watch(title, () => { markDirty('title'); scheduleAutoSave() }, { flush: 'sync' }
 // body changes are triggered by onEditorInput which calls scheduleAutoSave directly
 
 // ---- Load template for department -------------------------------------------
-function loadDept(dept: Department) {
+async function loadDept(dept: Department, force = false) {
+  if (dept === activeDept.value && !force) return
+  if (showEditor.value) {
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer)
+      autoSaveTimer = null
+    }
+    if ((dirtyFields.size || hasPendingChanges) && !(await doSave())) return
+  }
   wsLeave()
   myLockedSection.value = null
   sectionLocks.value = new Map()
@@ -282,12 +292,15 @@ function loadDept(dept: Department) {
   dirtyFields.clear()
   hasPendingChanges = false
 
-  wsJoin(tplId())
+  if (showEditor.value) wsJoin(tplId())
 }
 
 function openEditor(dept: Department) {
-  showEditor.value = true
-  loadDept(dept)
+  void loadDept(dept, true).then(() => {
+    if (activeDept.value !== dept) return
+    showEditor.value = true
+    wsJoin(tplId())
+  })
   startAutoSaveInterval()
   nextTick(() => {
     if (editorRef.value) editorRef.value.innerHTML = body.value
@@ -305,7 +318,6 @@ async function backToOverview() {
   myLockedSection.value = null
   sectionLocks.value = new Map()
   activeEditors.value = []
-  activeDept.value = '' as Department
   stopAutoSaveInterval()
   showEditor.value = false
 }
@@ -474,7 +486,8 @@ onMounted(async () => {
     return
   }
 
-  activeDept.value = '' as Department
+  const firstVisibleDepartment = visibleDepartments.value[0]
+  activeDept.value = firstVisibleDepartment ?? '' as Department
 })
 
 onUnmounted(() => {
@@ -499,7 +512,19 @@ onUnmounted(() => {
   <main class="main">
     <p v-if="loading" class="loading">Laden...</p>
 
-    <template v-else-if="showEditor">
+    <template v-else>
+    <div class="filter-tabs" style="margin-bottom: 24px">
+      <button
+        v-for="dept in visibleDepartments"
+        :key="dept"
+        class="filter-tab filter-tab--badge"
+        @click="loadDept(dept)"
+      >
+        <DepartmentBadge :department="dept" :active="activeDept === dept" />
+      </button>
+    </div>
+
+    <template v-if="showEditor">
       <div class="template-editor-header">
         <button type="button" class="btn-secondary template-editor-back" @click="backToOverview">← Zurück zu Vorlagen</button>
         <h2 class="template-overview-title">Vorlage bearbeiten</h2>
@@ -643,6 +668,7 @@ onUnmounted(() => {
           <button type="button" class="btn-sm template-overview-row-action" @click="openEditor(row.department)">Bearbeiten</button>
         </div>
       </div>
+    </template>
     </template>
 
     <div v-if="showLinkDialog" class="modal-backdrop" @click.self="cancelLink">

@@ -56,6 +56,7 @@ const activeDept = ref<Department>(
 
 const selectedTemplateId = ref('')
 const showTemplateEditor = ref(false)
+const isCreatingTemplate = ref(false)
 const templateName = ref('')
 const templateIsDefault = ref(false)
 const subject = ref('')
@@ -185,6 +186,10 @@ function localDraftKey(dept = activeDept.value, templateId = selectedTemplateId.
     : `dpw:mail-template-draft:${dept}`
 }
 
+function newLocalDraftKey(dept = activeDept.value) {
+  return `dpw:mail-template-new-draft:${dept}`
+}
+
 function buildLocalDraft(dept = activeDept.value): LocalMailTemplateDraft {
   return {
     version: 1,
@@ -212,16 +217,27 @@ function clearLocalDraft(
   try {
     if (templateId) window.localStorage.removeItem(localDraftKey(dept, templateId))
     if (includeLegacy) window.localStorage.removeItem(localDraftKey(dept, ''))
+    window.localStorage.removeItem(newLocalDraftKey(dept))
   } catch {
     /* ignore unavailable storage */
   }
 }
 
 function writeLocalDraftNow() {
-  if (!activeDept.value || !selectedTemplateId.value) return
+  if (!activeDept.value || (!selectedTemplateId.value && !isCreatingTemplate.value)) return
+  if (
+    isCreatingTemplate.value &&
+    !templateName.value.trim() &&
+    !subject.value.trim() &&
+    !body.value.trim() &&
+    recipients.value.every(value => !value.trim()) &&
+    cc.value.every(value => !value.trim())
+  ) return
   try {
     window.localStorage.setItem(
-      localDraftKey(activeDept.value, selectedTemplateId.value),
+      isCreatingTemplate.value
+        ? newLocalDraftKey(activeDept.value)
+        : localDraftKey(activeDept.value, selectedTemplateId.value),
       JSON.stringify(buildLocalDraft()),
     )
   } catch {
@@ -237,23 +253,27 @@ function scheduleLocalDraftWrite() {
   }, LOCAL_DRAFT_WRITE_DEBOUNCE_MS)
 }
 
-function loadPendingLocalDraft(template: MailTemplate) {
+function loadPendingLocalDraft(template: MailTemplate | null, dept = activeDept.value) {
   try {
-    const raw = window.localStorage.getItem(localDraftKey(template.department, template.id))
-      ?? (template.is_default
-        ? window.localStorage.getItem(localDraftKey(template.department, ''))
-        : null)
+    const raw = template
+      ? window.localStorage.getItem(localDraftKey(template.department, template.id))
+        ?? (template.is_default ? window.localStorage.getItem(localDraftKey(template.department, '')) : null)
+      : window.localStorage.getItem(newLocalDraftKey(dept))
     if (!raw) {
       pendingLocalDraft.value = null
       return
     }
     const parsed = JSON.parse(raw) as Partial<LocalMailTemplateDraft>
-    if (parsed.version !== 1 || parsed.department !== template.department ||
-        (parsed.templateId && parsed.templateId !== template.id)) {
+    if (parsed.version !== 1 || parsed.department !== dept ||
+        (template && parsed.templateId && parsed.templateId !== template.id)) {
       pendingLocalDraft.value = null
       return
     }
     const draft = parsed as LocalMailTemplateDraft
+    if (!template) {
+      pendingLocalDraft.value = draft
+      return
+    }
     const currentSnapshot = JSON.stringify({
       name: templateName.value,
       isDefault: templateIsDefault.value,
@@ -310,6 +330,7 @@ function scheduleAutoSave() {
   if (suppressDirtyTracking) return
   if (applyingRemote) return
   scheduleLocalDraftWrite()
+  if (isCreatingTemplate.value) return
   if (autosaveDebounce()) {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     autoSaveTimer = setTimeout(doSave, autosaveInterval())
@@ -338,11 +359,33 @@ function stopAutoSaveInterval() {
 }
 
 async function doSave(): Promise<boolean> {
-  if (!selectedTemplateId.value) return false
   if (!templateName.value.trim()) {
     error.value = 'Name der Vorlage erforderlich.'
     return false
   }
+  if (isCreatingTemplate.value) {
+    error.value = null
+    const created = await createTemplate(
+      templateName.value.trim(),
+      activeDept.value,
+      subject.value,
+      body.value,
+      recipients.value.map(value => value.trim()).filter(Boolean),
+      cc.value.map(value => value.trim()).filter(Boolean),
+      templateIsDefault.value,
+    )
+    if (!created) return false
+    templates.value.push(created)
+    selectedTemplateId.value = created.id
+    isCreatingTemplate.value = false
+    clearLocalDraft(activeDept.value, '', false)
+    dirtyFields.clear()
+    hasPendingChanges = false
+    await nextTick()
+    if (editorRef.value) editorRef.value.innerHTML = body.value
+    return true
+  }
+  if (!selectedTemplateId.value) return false
   error.value = null
   writeLocalDraftNow()
   const validRecipients = recipients.value.map(r => r.trim()).filter(Boolean)
@@ -487,6 +530,13 @@ async function flushCurrentTemplate(): Promise<boolean> {
     autoSaveTimer = null
   }
   hasPendingChanges = false
+  if (isCreatingTemplate.value) {
+    if (needsSave) {
+      writeLocalDraftNow()
+      dirtyFields.clear()
+    }
+    return true
+  }
   writeLocalDraftNow()
   return needsSave ? doSave() : true
 }
@@ -501,6 +551,7 @@ function activateTemplate(dept: Department, template: MailTemplate | null, edit 
   suppressDirtyTracking = true
   activeDept.value = dept
   showTemplateEditor.value = edit
+  isCreatingTemplate.value = false
   selectedTemplateId.value = template?.id ?? ''
   templateName.value = template?.name ?? ''
   templateIsDefault.value = template?.is_default ?? false
@@ -550,13 +601,11 @@ async function saveTemplateNow() {
 }
 
 async function createNewTemplate() {
-  const name = window.prompt('Name der neuen Mail-Vorlage:')
-  if (!name?.trim() || !(await flushCurrentTemplate())) return
-  const isDefault = departmentTemplates.value.length === 0
-  const template = await createTemplate(name.trim(), activeDept.value, '', '', [], [], isDefault)
-  if (!template) return
-  templates.value.push(template)
-  activateTemplate(activeDept.value, template)
+  if (showTemplateEditor.value && !(await flushCurrentTemplate())) return
+  activateTemplate(activeDept.value, null)
+  isCreatingTemplate.value = true
+  templateIsDefault.value = departmentTemplates.value.length === 0
+  loadPendingLocalDraft(null, activeDept.value)
 }
 
 async function deleteCurrentTemplate(template = selectedTemplate.value) {

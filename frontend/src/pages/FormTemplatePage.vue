@@ -288,7 +288,7 @@ function typeLabel(t: string): string {
 		<!-- Builder -->
 		<template v-if="showBuilder">
 			<div class="template-editor-header">
-				<button type="button" class="btn-sm template-editor-back" @click="backToTemplateList">← Zurück zu Vorlagen</button>
+				<button type="button" class="btn-secondary template-editor-back" @click="backToTemplateList">← Zurück zu Vorlagen</button>
 				<h2 class="template-overview-title">{{ editingTemplate ? 'Vorlage bearbeiten' : 'Neue Vorlage' }}</h2>
 			</div>
 			<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">

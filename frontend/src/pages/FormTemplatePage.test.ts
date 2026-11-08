@@ -145,6 +145,7 @@ describe('FormTemplatePage overview and editor navigation', () => {
 		await wrapper.findAll('.ft-row .btn-sm')[1].trigger('click');
 		await flushPromises();
 
+		expect(wrapper.get('.template-editor-back').classes()).toContain('btn-secondary');
 		await wrapper.get('.emit-autosave').trigger('click');
 		await wrapper.get('.template-editor-back').trigger('click');
 		await flushPromises();
