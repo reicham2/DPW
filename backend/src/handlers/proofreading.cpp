@@ -232,6 +232,75 @@ namespace
     }
 }
 
+void handle_proofreading_dictionary(HttpRes *res, HttpReq *req, Database &db, bool remove)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+    std::optional<UserRecord> user;
+    try { user = resolve_user(db, claims); }
+    catch (const std::exception &e) { send_internal_error(res, "proofreading user", e); return; }
+    if (!user)
+    {
+        send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    for (auto it = dictionary_rates.begin(); it != dictionary_rates.end(); )
+        if (now - it->second.first >= std::chrono::minutes(1)) it = dictionary_rates.erase(it);
+        else ++it;
+    auto &rate = dictionary_rates[user->id];
+    if (rate.second == 0) rate.first = now;
+    if (++rate.second > 30)
+    {
+        send_json(res, 429, R"({"error":"Zu viele Wörterbuchanfragen. Bitte später erneut versuchen."})");
+        return;
+    }
+    auto body = std::make_shared<std::string>();
+    auto handled = std::make_shared<bool>(false);
+    res->onAborted([]() {});
+    res->onData([res, body, handled, &db, user_id = user->id, remove](std::string_view chunk, bool last) {
+        if (*handled) return;
+        if (chunk.size() > 2048 - body->size())
+        {
+            *handled = true;
+            send_json(res, 413, R"({"error":"Der Anfrageinhalt ist zu gross."})");
+            return;
+        }
+        body->append(chunk.data(), chunk.size());
+        if (!last) return;
+        *handled = true;
+        const auto parsed = nlohmann::json::parse(*body, nullptr, false);
+        if (parsed.is_discarded() || !parsed.is_object() || !parsed.contains("word") || !parsed["word"].is_string())
+        {
+            send_json(res, 400, R"({"error":"Erwarte ein einzelnes Wort."})");
+            return;
+        }
+        const auto word = parsed["word"].get<std::string>();
+        if (word.empty() || word.size() > 256 || word.find('\0') != std::string::npos)
+        {
+            send_json(res, 400, R"({"error":"Ungültiges Wort."})");
+            return;
+        }
+        try
+        {
+            if (remove)
+            {
+                send_json(res, 200, nlohmann::json{{"removed", db.delete_proofreading_word(user_id, word)}}.dump());
+                return;
+            }
+            const auto result = db.add_proofreading_word(user_id, word);
+            if (result == "invalid")
+                send_json(res, 400, R"({"error":"Nur einzelne Wörter mit Buchstaben sind erlaubt."})");
+            else if (result == "limit")
+                send_json(res, 409, R"({"error":"Das persönliche Wörterbuch ist voll (maximal 500 Wörter)."})");
+            else
+                send_json(res, 200, R"({"added":true})");
+        }
+        catch (const std::exception &e) { send_internal_error(res, "proofreading dictionary", e); }
+    });
+}
+
 void handle_post_proofreading_check(HttpRes *res, HttpReq *req, Database &db)
 {
     TokenClaims claims;
@@ -299,74 +368,6 @@ void handle_post_proofreading_check(HttpRes *res, HttpReq *req, Database &db)
                         check_text(res, loop, aborted, text, db, user_id);
                 }
 
-                void handle_proofreading_dictionary(HttpRes *res, HttpReq *req, Database &db, bool remove)
-                {
-                    TokenClaims claims;
-                    if (!require_auth(res, req, claims))
-                        return;
-                    std::optional<UserRecord> user;
-                    try { user = resolve_user(db, claims); }
-                    catch (const std::exception &e) { send_internal_error(res, "proofreading user", e); return; }
-                    if (!user)
-                    {
-                        send_json(res, 404, R"({"error":"Benutzer nicht gefunden"})");
-                        return;
-                    }
-                    const auto now = std::chrono::steady_clock::now();
-                    for (auto it = dictionary_rates.begin(); it != dictionary_rates.end(); )
-                        if (now - it->second.first >= std::chrono::minutes(1)) it = dictionary_rates.erase(it);
-                        else ++it;
-                    auto &rate = dictionary_rates[user->id];
-                    if (rate.second == 0) rate.first = now;
-                    if (++rate.second > 30)
-                    {
-                        send_json(res, 429, R"({"error":"Zu viele Wörterbuchanfragen. Bitte später erneut versuchen."})");
-                        return;
-                    }
-                    auto body = std::make_shared<std::string>();
-                    auto handled = std::make_shared<bool>(false);
-                    res->onAborted([]() {});
-                    res->onData([res, body, handled, &db, user_id = user->id, remove](std::string_view chunk, bool last) {
-                        if (*handled) return;
-                        if (chunk.size() > 2048 - body->size())
-                        {
-                            *handled = true;
-                            send_json(res, 413, R"({"error":"Der Anfrageinhalt ist zu gross."})");
-                            return;
-                        }
-                        body->append(chunk.data(), chunk.size());
-                        if (!last) return;
-                        *handled = true;
-                        const auto parsed = nlohmann::json::parse(*body, nullptr, false);
-                        if (parsed.is_discarded() || !parsed.is_object() || !parsed.contains("word") || !parsed["word"].is_string())
-                        {
-                            send_json(res, 400, R"({"error":"Erwarte ein einzelnes Wort."})");
-                            return;
-                        }
-                        const auto word = parsed["word"].get<std::string>();
-                        if (word.empty() || word.size() > 256 || word.find('\0') != std::string::npos)
-                        {
-                            send_json(res, 400, R"({"error":"Ungültiges Wort."})");
-                            return;
-                        }
-                        try
-                        {
-                            if (remove)
-                            {
-                                send_json(res, 200, nlohmann::json{{"removed", db.delete_proofreading_word(user_id, word)}}.dump());
-                                return;
-                            }
-                            const auto result = db.add_proofreading_word(user_id, word);
-                            if (result == "invalid")
-                                send_json(res, 400, R"({"error":"Nur einzelne Wörter mit Buchstaben sind erlaubt."})");
-                            else if (result == "limit")
-                                send_json(res, 409, R"({"error":"Das persönliche Wörterbuch ist voll (maximal 500 Wörter)."})");
-                            else
-                                send_json(res, 200, R"({"added":true})");
-                        }
-                        catch (const std::exception &e) { send_internal_error(res, "proofreading dictionary", e); }
-                    });
-                }
                 catch (const std::exception &e)
                 {
                     std::fprintf(stderr, "[proofreading] Request processing failed: %s\n", e.what());
@@ -379,6 +380,7 @@ void handle_post_proofreading_check(HttpRes *res, HttpReq *req, Database &db)
                         });
                     });
                 }
+
                 catch (...)
                 {
                     std::fprintf(stderr, "[proofreading] Request processing failed unexpectedly\n");
