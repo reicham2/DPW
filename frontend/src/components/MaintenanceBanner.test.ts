@@ -37,7 +37,7 @@ describe('MaintenanceBanner', () => {
 		const signedInUser: User = {
 			id: 'admin-1', microsoft_oid: 'oid-1', email: 'admin@example.com',
 			display_name: 'Admin', department: null, role,
-			time_display_mode: 'minutes', avatar_color: '#123456',
+			time_display_mode: 'minutes', proofreading_enabled: true, avatar_color: '#123456',
 			notify_material_assigned: true, notify_activity_assigned: true,
 			notify_program_assigned: true, notify_mail_own_activity: true,
 			notify_mail_department: true, notify_channel_websocket: true,

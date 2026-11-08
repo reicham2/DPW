@@ -46,6 +46,7 @@ const userRecord = {
 	department: null,
 	role: 'Mitglied',
 	time_display_mode: 'minutes',
+	proofreading_enabled: true,
 	notify_material_assigned: true,
 	notify_activity_assigned: true,
 	notify_program_assigned: true,

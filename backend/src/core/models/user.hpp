@@ -11,6 +11,7 @@ struct UserRecord
     std::optional<std::string> department;
     std::string role;
     std::string time_display_mode{"minutes"};
+    bool proofreading_enabled{true};
     bool notify_material_assigned{true};
     bool notify_activity_assigned{true};
     bool notify_activity_reminder{true};

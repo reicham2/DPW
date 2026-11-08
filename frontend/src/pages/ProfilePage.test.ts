@@ -77,4 +77,29 @@ describe('activity reminder profile settings', () => {
 		expect(wrapper.find('#activity-reminder-hours').element).toHaveProperty('value', '48');
 		wrapper.unmount();
 	});
+
+	it('defaults proofreading on and persists changes in the profile', async () => {
+		const wrapper = mount(ProfilePage);
+		await flushPromises();
+		const proofreading = wrapper.findAll('label.notify-option').find(label =>
+			label.text().includes('Integrierte Rechtschreibprüfung'));
+		expect(proofreading).toBeDefined();
+		const checkbox = proofreading!.get('input');
+		expect((checkbox.element as HTMLInputElement).checked).toBe(true);
+		await checkbox.setValue(false);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(JSON.parse(apiFetchMock.mock.calls[0][1].body).proofreading_enabled).toBe(false);
+		expect(userRef.value?.proofreading_enabled).toBe(false);
+		wrapper.unmount();
+
+		const reloaded = mount(ProfilePage);
+		await flushPromises();
+		const saved = reloaded.findAll('label.notify-option').find(label =>
+			label.text().includes('Integrierte Rechtschreibprüfung'))!.get('input');
+		expect((saved.element as HTMLInputElement).checked).toBe(false);
+		await saved.setValue(true);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(userRef.value?.proofreading_enabled).toBe(true);
+		reloaded.unmount();
+	});
 });

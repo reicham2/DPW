@@ -108,6 +108,7 @@ const testUser: User = {
 	department: null,
 	role: 'admin',
 	time_display_mode: 'minutes',
+	proofreading_enabled: true,
 	notify_material_assigned: true,
 	notify_activity_assigned: true,
 	notify_activity_reminder: true,

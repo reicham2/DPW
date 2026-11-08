@@ -100,6 +100,7 @@ nlohmann::json audit_change_details(const std::string &resource_type,
     static const std::unordered_map<std::string, std::vector<Field>> fields = {
         {"user", {{"display_name", "Anzeigename"}, {"department", "Stufe"}, {"role", "Rolle"},
                   {"time_display_mode", "Zeitanzeige"}, {"avatar_color", "Avatarfarbe"},
+                  {"proofreading_enabled", "Integrierte Rechtschreibprüfung"},
                   {"notify_material_assigned", "Materialbenachrichtigungen"},
                   {"notify_activity_assigned", "Aktivitätsbenachrichtigungen"},
                   {"notify_program_assigned", "Programmbenachrichtigungen"},

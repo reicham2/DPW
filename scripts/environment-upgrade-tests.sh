@@ -107,6 +107,22 @@ compose up -d --force-recreate --wait --wait-timeout 180
 [ "$(sql -c 'SELECT system_identifier FROM pg_control_system()')" = "$old_cluster" ]
 assert_services
 assert_data
+sql <<'SQL'
+INSERT INTO users (id, microsoft_oid, email, display_name)
+VALUES ('15500000-0000-0000-0000-000000000009', 'upgrade-proofreading-user',
+        'proofreading@example.invalid', 'Proofreading upgrade user');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE id='15500000-0000-0000-0000-000000000001' AND proofreading_enabled
+    ) OR NOT EXISTS (
+        SELECT 1 FROM users WHERE id='15500000-0000-0000-0000-000000000009' AND proofreading_enabled
+    ) THEN
+        RAISE EXCEPTION 'Existing and new users must default to enabled proofreading after upgrade';
+    END IF;
+END $$;
+UPDATE users SET proofreading_enabled=false WHERE id='15500000-0000-0000-0000-000000000009';
+SQL
 sql -c "INSERT INTO proofreading_dictionary(user_id, word) VALUES ('15500000-0000-0000-0000-000000000001', 'Pfadihüttli')"
 
 # Independent fresh environment is an oracle only, never the upgrade under test.
@@ -125,6 +141,16 @@ assert_data
 assert_schema
 [ "$(sql -c "SELECT count(*) FROM proofreading_dictionary WHERE user_id='15500000-0000-0000-0000-000000000001' AND word='Pfadihüttli'")" = 1 ]
 sql <<'SQL'
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE id='15500000-0000-0000-0000-000000000009' AND NOT proofreading_enabled
+    ) OR NOT EXISTS (
+        SELECT 1 FROM users WHERE id='15500000-0000-0000-0000-000000000001' AND proofreading_enabled
+    ) THEN
+        RAISE EXCEPTION 'Backend restart changed or leaked persisted proofreading preferences';
+    END IF;
+END $$;
 BEGIN;
 DELETE FROM users WHERE id='15500000-0000-0000-0000-000000000001';
 DO $$

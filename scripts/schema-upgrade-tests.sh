@@ -112,6 +112,12 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Legacy schema already contains the new column';
     END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'proofreading_enabled'
+    ) THEN
+        RAISE EXCEPTION 'Legacy schema already contains the proofreading preference';
+    END IF;
 END $$;
 SQL
     cat db/init.sql
@@ -152,11 +158,37 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Existing mail template content was not preserved as the default';
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE microsoft_oid = 'legacy-reminder-user'
+            AND display_name = 'Existing user' AND email = 'legacy@example.invalid'
+            AND proofreading_enabled
+    ) THEN
+        RAISE EXCEPTION 'Existing user did not receive the enabled proofreading default';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'proofreading_enabled'
+            AND data_type = 'boolean' AND is_nullable = 'NO' AND column_default = 'true'
+    ) THEN
+        RAISE EXCEPTION 'Proofreading preference must be a non-null boolean with a true default';
+    END IF;
 END $$;
+INSERT INTO users (id, microsoft_oid, email, display_name)
+VALUES ('00000000-0000-0000-0000-000000000004', 'new-proofreading-user',
+        'new@example.invalid', 'New user');
 UPDATE activities SET guiding_thread = E'Erste Zeile\nZweite Zeile'
 WHERE id = '00000000-0000-0000-0000-000000000001';
-UPDATE users SET activity_reminder_hours = 2, notify_activity_reminder = false
+UPDATE users SET activity_reminder_hours = 2, notify_activity_reminder = false, proofreading_enabled = false
 WHERE microsoft_oid = 'legacy-reminder-user';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE users SET proofreading_enabled = NULL WHERE microsoft_oid = 'legacy-reminder-user';
+        RAISE EXCEPTION 'A null proofreading preference was accepted';
+    EXCEPTION WHEN not_null_violation THEN
+        NULL;
+    END;
+END $$;
 SQL
     cat db/init.sql
     cat <<'SQL'
@@ -187,6 +219,13 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Repeated schema sync changed the existing mail template';
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE microsoft_oid = 'legacy-reminder-user' AND NOT proofreading_enabled
+    ) OR NOT EXISTS (
+        SELECT 1 FROM users WHERE microsoft_oid = 'new-proofreading-user' AND proofreading_enabled
+    ) THEN
+        RAISE EXCEPTION 'Repeated schema sync changed or leaked proofreading preferences';
+    END IF;
 END $$;
 ROLLBACK;
 SQL
@@ -197,7 +236,30 @@ SQL
 {
     printf 'BEGIN;\n'
     cat db/init.sql
+    cat <<'SQL'
+INSERT INTO users (microsoft_oid, email, display_name)
+VALUES ('fresh-proofreading-user', 'fresh@example.invalid', 'Fresh user');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE microsoft_oid = 'fresh-proofreading-user' AND proofreading_enabled
+    ) THEN
+        RAISE EXCEPTION 'Fresh users did not receive the enabled proofreading default';
+    END IF;
+END $$;
+UPDATE users SET proofreading_enabled = false WHERE microsoft_oid = 'fresh-proofreading-user';
+SQL
     cat db/init.sql
+    cat <<'SQL'
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM users WHERE microsoft_oid = 'fresh-proofreading-user' AND NOT proofreading_enabled
+    ) THEN
+        RAISE EXCEPTION 'Fresh-database repeated schema sync changed the proofreading preference';
+    END IF;
+END $$;
+SQL
     printf 'ROLLBACK;\n'
 } | docker exec -i -e PGPASSWORD=temporary-test-password \
     -e 'PGOPTIONS=-c client_min_messages=warning' "$container" \

@@ -216,6 +216,7 @@ function allowEditing() {
 		department: null,
 		role: 'leader',
 		time_display_mode: 'minutes',
+		proofreading_enabled: true,
 		notify_material_assigned: false,
 		notify_activity_assigned: false,
 		notify_activity_reminder: false,
@@ -608,6 +609,102 @@ describe('DetailPage activity access', () => {
 		}
 	});
 
+	it('switches browser spellcheck and rejects a pending result when proofreading is disabled', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			programs: [{
+				id: 'program-1', activity_id: 'activity-1', duration_minutes: 10,
+				title: 'Start', description: '<b>Ein Tset</b>', responsible: [],
+			}],
+		}));
+		let resolveFirst: ((response: Response) => void) | undefined;
+		vi.mocked(apiFetch).mockImplementation((url) => {
+			if (url !== '/api/proofreading/check') return Promise.resolve(new Response('{}', { status: 200 }));
+			if (!resolveFirst) return new Promise<Response>(resolve => { resolveFirst = resolve; });
+			return Promise.resolve(new Response(JSON.stringify({ matches: [] }), { status: 200 }));
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.program-card__toggle').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get('.rich-editor');
+		vi.useFakeTimers();
+		try {
+			expect(editor.attributes('spellcheck')).toBe('false');
+			editor.element.innerHTML = '<b>Ein Tset!</b>';
+			await editor.trigger('input');
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(resolveFirst).toBeDefined();
+			const first = vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')[0];
+			const signal = first[1]?.signal as AbortSignal;
+			user.value!.proofreading_enabled = false;
+			await wrapper.vm.$nextTick();
+			expect(signal.aborted).toBe(true);
+			expect(editor.attributes('spellcheck')).toBe('true');
+			resolveFirst!(new Response(JSON.stringify({ matches: [{
+				offset: 4, length: 4, message: 'Fehler', replacements: [{ value: 'Test' }], rule: { id: 'TEST' },
+			}] }), { status: 200 }));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(wrapper.find('.program-proofreading__popover').exists()).toBe(false);
+			expect(wrapper.find('.program-proofreading__results').exists()).toBe(false);
+			editor.element.innerHTML = '<b>Ein Tset!!</b>';
+			await editor.trigger('input');
+			await vi.advanceTimersByTimeAsync(3000);
+			expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')).toHaveLength(1);
+			user.value!.proofreading_enabled = true;
+			await wrapper.vm.$nextTick();
+			expect(editor.attributes('spellcheck')).toBe('false');
+			await vi.advanceTimersByTimeAsync(1499);
+			expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')).toHaveLength(1);
+			await vi.advanceTimersByTimeAsync(1);
+			const checks = vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check');
+			expect(checks).toHaveLength(2);
+			expect(JSON.parse(checks[1][1]?.body as string).text).toBe('Ein Tset!!');
+			expect(editor.element.innerHTML).toBe('<b>Ein Tset!!</b>');
+		} finally {
+			wrapper.unmount();
+		}
+	});
+
+	it('clears an open suggestion when proofreading is turned off', async () => {
+		allowEditing();
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			programs: [{
+				id: 'program-1', activity_id: 'activity-1', duration_minutes: 10,
+				title: 'Start', description: 'Ein Tset', responsible: [],
+			}],
+		}));
+		vi.mocked(apiFetch).mockImplementation(async (url) => new Response(JSON.stringify(
+			url === '/api/proofreading/check' ? { matches: [{
+				offset: 4, length: 4, message: 'Fehler', replacements: [{ value: 'Test' }], rule: { id: 'TEST' },
+			}] } : {},
+		), { status: 200 }));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Aktivität bearbeiten"]').trigger('click');
+		await wrapper.get('.program-card__toggle').trigger('click');
+		await flushPromises();
+		const editor = wrapper.get('.rich-editor');
+		const restoreRects = stubProofreadingRects();
+		vi.useFakeTimers();
+		try {
+			editor.element.textContent = 'Ein Tset!';
+			await editor.trigger('input');
+			await vi.advanceTimersByTimeAsync(1500);
+			await editor.trigger('click', { clientX: 20, clientY: 20 });
+			expect(wrapper.find('.program-proofreading__popover').exists()).toBe(true);
+			user.value!.proofreading_enabled = false;
+			await wrapper.vm.$nextTick();
+			expect(wrapper.find('.program-proofreading__popover').exists()).toBe(false);
+			expect(editor.attributes('spellcheck')).toBe('true');
+			expect(editor.element.textContent).toBe('Ein Tset!');
+		} finally {
+			restoreRects();
+			wrapper.unmount();
+		}
+	});
+
 	it('waits for composition to finish and cancels pending checks on editor close', async () => {
 		allowEditing();
 		mocks.fetchActivity.mockResolvedValue(makeActivity({
@@ -628,6 +725,8 @@ describe('DetailPage activity access', () => {
 			await editor.trigger('compositionstart');
 			editor.element.textContent = 'Text geändert';
 			await editor.trigger('input');
+			user.value!.proofreading_enabled = false;
+			user.value!.proofreading_enabled = true;
 			await vi.advanceTimersByTimeAsync(3000);
 			expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url === '/api/proofreading/check')).toHaveLength(0);
 			await editor.trigger('compositionend');

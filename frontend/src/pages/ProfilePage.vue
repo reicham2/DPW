@@ -118,6 +118,14 @@
         </div>
 
         <div class="form-group">
+          <label class="notify-option">
+            <input v-model="form.proofreading_enabled" type="checkbox" />
+            <span>Integrierte Rechtschreibprüfung für Programmpunkte</span>
+          </label>
+          <p class="form-hint">Wenn deaktiviert, wird die Rechtschreibprüfung des Browsers verwendet.</p>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Avatar-Farbe</label>
           <div class="color-picker-row">
             <button
@@ -239,6 +247,7 @@ const avatarColors = [
 const form = ref({
   department:   user.value?.department   ?? '',
   time_display_mode: (user.value?.time_display_mode ?? 'minutes') as TimeDisplayMode,
+  proofreading_enabled: user.value?.proofreading_enabled ?? true,
   avatar_color: user.value?.avatar_color ?? '#4f8cff',
   notify_material_assigned: user.value?.notify_material_assigned ?? true,
   notify_activity_assigned: user.value?.notify_activity_assigned ?? true,
@@ -277,6 +286,7 @@ onMounted(async () => {
   if (user.value) {
     form.value.department   = user.value.department ?? ''
     form.value.time_display_mode = user.value.time_display_mode ?? 'minutes'
+    form.value.proofreading_enabled = user.value.proofreading_enabled ?? true
     form.value.avatar_color = user.value.avatar_color ?? '#4f8cff'
     form.value.notify_material_assigned = user.value.notify_material_assigned ?? true
     form.value.notify_activity_assigned = user.value.notify_activity_assigned ?? true
@@ -311,6 +321,7 @@ async function save() {
       body: JSON.stringify({
         department:   form.value.department || null,
         time_display_mode: form.value.time_display_mode,
+        proofreading_enabled: form.value.proofreading_enabled,
         avatar_color: form.value.avatar_color,
         notify_material_assigned: form.value.notify_material_assigned,
         notify_activity_assigned: form.value.notify_activity_assigned,

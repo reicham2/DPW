@@ -101,6 +101,13 @@ markierte Stellen öffnet Vorschläge; übernommen wird nur auf Klick, über den
 normalen Editor und dessen Autospeicherung. Die Markierungen benötigen die
 CSS Custom Highlight API.
 
+Die integrierte Prüfung ist pro Benutzer im Profil ein- oder ausschaltbar und
+standardmässig aktiviert, auch für bestehende Konten nach dem Upgrade. Bei
+aktivierter Prüfung ist die Browser-Rechtschreibprüfung im Programmpunkt-Editor
+ausgeschaltet; bei deaktivierter integrierter Prüfung übernimmt der Browser,
+sofern er diese Funktion unterstützt. Die Einstellung wird in PostgreSQL beim
+Benutzerkonto gespeichert und verändert weder Beschreibung noch Wörterbuch.
+
 Einzelne als Rechtschreibfehler markierte Wörter können ausdrücklich zum
 persönlichen Wörterbuch hinzugefügt werden. Dieses liegt benutzergebunden in
 PostgreSQL (höchstens 500 Wörter, jeweils höchstens 100 Zeichen und 256 Bytes),

@@ -373,6 +373,7 @@ CREATE TABLE IF NOT EXISTS users (
     role          TEXT        NOT NULL DEFAULT 'Mitglied' REFERENCES roles(name) ON UPDATE CASCADE,
     time_display_mode TEXT    NOT NULL DEFAULT 'minutes'
         CHECK (time_display_mode IN ('minutes', 'clock')),
+    proofreading_enabled BOOLEAN NOT NULL DEFAULT true,
     notify_material_assigned BOOLEAN NOT NULL DEFAULT true,
     notify_activity_assigned BOOLEAN NOT NULL DEFAULT true,
     notify_activity_reminder BOOLEAN NOT NULL DEFAULT true,
@@ -853,6 +854,7 @@ EXCEPTION
 END $$;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_material_assigned BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS proofreading_enabled BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_activity_assigned BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_activity_reminder BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_reminder_hours INTEGER NOT NULL DEFAULT 24

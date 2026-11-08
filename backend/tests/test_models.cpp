@@ -2,6 +2,14 @@
 #include "test_harness.hpp"
 #include "test_fixtures.hpp"
 
+TEST(user_proofreading_enabled_defaults_to_true)
+{
+    UserRecord user;
+    ASSERT_TRUE(user.proofreading_enabled);
+    user.proofreading_enabled = false;
+    ASSERT_FALSE(user.proofreading_enabled);
+}
+
 TEST(program_to_json_fields)
 {
     Program p{"prog-1", "act-1", 45, "Block", "Beschreibung", {"Anna"}};
