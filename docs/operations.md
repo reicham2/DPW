@@ -60,7 +60,8 @@ A separate fresh PR environment supplies a canonical
 schema reference (tables, columns/defaults, constraints, indexes, views, triggers,
 functions, enums and sequences). The upgraded database must match it without
 manually replaying SQL. A backend restart checks schema-sync idempotence.
-Negative controls must detect changed data, schema drift and a stopped container.
+Negative controls must detect changed data (including Event-template metadata),
+schema drift and a stopped container.
 Logs, schema comparisons and expected negative-control failures are retained as
 the `upgrade-diagnostics` artifact, including on failure; test volumes are removed.
 
