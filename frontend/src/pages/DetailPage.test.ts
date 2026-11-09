@@ -1185,6 +1185,41 @@ describe('DetailPage activity access', () => {
 		wrapper.unmount();
 	});
 
+	it('keeps the evaluation entry point disabled until the activity date', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-07-01T12:00:00'));
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ date: '2026-07-02' }));
+
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+
+		const button = wrapper.get('button[title="Auswertung ist erst am Aktivitätstag verfügbar"]');
+		expect((button.element as HTMLButtonElement).disabled).toBe(true);
+		await button.trigger('click');
+		expect(wrapper.find('.detail-view--evaluation').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('opens the evaluation on the activity date regardless of its start time', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-07-01T00:01:00'));
+		mocks.fetchActivity.mockResolvedValue(makeActivity({
+			date: '2026-07-01',
+			start_time: '23:59',
+		}));
+
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+
+		const button = wrapper.get('button[title="Auswertung öffnen"]');
+		expect((button.element as HTMLButtonElement).disabled).toBe(false);
+		await button.trigger('click');
+		expect(wrapper.find('.detail-view--evaluation').exists()).toBe(true);
+		await wrapper.get('button[title="Zur Aktivität zurückkehren"]').trigger('click');
+		expect(wrapper.find('.detail-view--evaluation').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
 	it('keeps expansion attached to a program when adding, removing, and reordering cards', async () => {
 		allowEditing();
 		mocks.fetchActivity.mockResolvedValue(makeActivity({

@@ -130,9 +130,12 @@ die Prüfung es erneut. Nach einer Korrektur bleiben unveränderte Markierungen
 während der erneuten Prüfung erhalten; überlappende Markierungen werden entfernt.
 ## Aktivitätsauswertung
 
-Auf der Aktivitätsdetailseite sammelt **Auswertung** strukturierte Rückmeldungen
-zu dem, was gut lief, zu Verbesserungspunkten, vereinbarten Massnahmen und
-optionalem weiterem Feedback. Pro Aktivität und angemeldeter Person gibt es
+Die Schaltfläche **Auswertung** oben auf der Aktivität öffnet die separate
+Auswertungsansicht. Sie ist bis zum Aktivitätstag deaktiviert; am selben
+Kalenderdatum ist sie unabhängig von der Uhrzeit verfügbar. Dort sammelt die
+Aktivität strukturierte Rückmeldungen zu dem, was gut lief, zu
+Verbesserungspunkten, vereinbarten Massnahmen und optionalem weiterem Feedback.
+Pro Aktivität und angemeldeter Person gibt es
 höchstens einen Eintrag; erneutes Speichern aktualisiert den eigenen Eintrag,
 und das Leeren aller vier Textfelder entfernt nur den eigenen Eintrag. Die
 gesammelten Beiträge zeigen den Anzeigenamen und den letzten Änderungszeitpunkt.
