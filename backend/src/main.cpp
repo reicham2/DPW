@@ -342,6 +342,8 @@ int main()
               { handle_get_activity_evaluation(res, req, db); })
          .put("/activities/:id/evaluation", [&](auto *res, auto *req)
               { handle_put_activity_evaluation(res, req, db); })
+         .put("/activities/:id/evaluation/actuals", [&](auto *res, auto *req)
+              { handle_put_activity_actuals(res, req, db); })
 
          // Single activity CRUD
          .get("/activities/:id", [&](auto *res, auto *req)

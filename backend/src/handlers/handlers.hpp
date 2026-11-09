@@ -27,6 +27,7 @@ void handle_get_activities(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activity(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activity_evaluation(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_activity_evaluation(HttpRes *res, HttpReq *req, Database &db);
+void handle_put_activity_actuals(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activity_midata_children_count(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_midata_children_counts(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_activity_weather_location(HttpRes *res, HttpReq *req, Database &db);

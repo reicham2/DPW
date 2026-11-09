@@ -45,7 +45,8 @@ static size_t utf8_character_count(const std::string &value)
 }
 
 static nlohmann::json activity_evaluation_to_json(const ActivityEvaluation &evaluation,
-                                                  const std::string &current_user_id)
+                                                  const std::string &current_user_id,
+                                                  bool can_edit_actuals)
 {
     nlohmann::json feedback = nlohmann::json::array();
     nlohmann::json mine = nullptr;
@@ -53,6 +54,7 @@ static nlohmann::json activity_evaluation_to_json(const ActivityEvaluation &eval
     {
         nlohmann::json item = {
             {"author", entry.author_name},
+            {"rating", entry.rating ? nlohmann::json(*entry.rating) : nlohmann::json(nullptr)},
             {"positive", entry.positive},
             {"improvements", entry.improvements},
             {"action_items", entry.action_items},
@@ -71,8 +73,25 @@ static nlohmann::json activity_evaluation_to_json(const ActivityEvaluation &eval
 
     return {
         {"actual_participants", evaluation.actual_participants ? nlohmann::json(*evaluation.actual_participants) : nlohmann::json(nullptr)},
+        {"actual_start_time", evaluation.actual_start_time ? nlohmann::json(*evaluation.actual_start_time) : nlohmann::json(nullptr)},
+        {"actual_end_time", evaluation.actual_end_time ? nlohmann::json(*evaluation.actual_end_time) : nlohmann::json(nullptr)},
+        {"can_edit_actuals", can_edit_actuals},
         {"feedback", std::move(feedback)},
         {"mine", std::move(mine)}};
+}
+
+// Only people actually assigned as responsible (and admins) record the real values.
+static bool can_record_activity_actuals(const UserRecord &user, const Activity &activity, const std::string &email)
+{
+    return is_admin(user) || is_activity_responsible(activity, user, email);
+}
+
+static bool valid_clock_time(const std::string &value)
+{
+    return value.size() == 5 && value[2] == ':' &&
+           std::isdigit(static_cast<unsigned char>(value[0])) && std::isdigit(static_cast<unsigned char>(value[1])) &&
+           std::isdigit(static_cast<unsigned char>(value[3])) && std::isdigit(static_cast<unsigned char>(value[4])) &&
+           ((value[0] - '0') * 10 + (value[1] - '0')) < 24 && (value[3] - '0') < 6;
 }
 
 void handle_get_activity_evaluation(HttpRes *res, HttpReq *req, Database &db)
@@ -105,7 +124,8 @@ void handle_get_activity_evaluation(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
-        send_json(res, 200, activity_evaluation_to_json(*evaluation, access->user.id).dump());
+        send_json(res, 200, activity_evaluation_to_json(*evaluation, access->user.id,
+                                                        can_record_activity_actuals(access->user, *activity, claims.email)).dump());
     }
     catch (std::exception &e)
     {
@@ -122,17 +142,133 @@ void handle_put_activity_evaluation(HttpRes *res, HttpReq *req, Database &db)
     const std::string activity_id{req->getParameter(0)};
     try
     {
-        auto user = resolve_user(db, claims);
+        auto access = require_activity_access(res, db, claims);
+        if (!access)
+            return;
         auto activity = db.get_activity_by_id(activity_id);
-        auto permission = user ? db.get_role_permission(user->role) : std::optional<RolePermission>{};
         if (!activity)
         {
             send_json(res, 404, R"({"error":"Nicht gefunden"})");
             return;
         }
-        if (!user || !permission || !can_edit_activity(*permission, *user, *activity, claims.email))
+        if (!can_read_activity(access->permission, access->user, access->dept_access, *activity))
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        const bool can_actuals = can_record_activity_actuals(access->user, *activity, claims.email);
+
+        auto buffer = std::make_shared<std::string>();
+        res->onAborted([] {});
+        res->onData([res, buffer, activity_id, user = access->user, can_actuals, &db](std::string_view chunk, bool last) mutable
+                    {
+            buffer->append(chunk.data(), chunk.size());
+            if (!last)
+                return;
+
+            auto body = nlohmann::json::parse(*buffer, nullptr, false);
+            if (body.is_discarded() || !body.is_object())
+            {
+                send_json(res, 400, R"({"error":"Ungueltiges JSON"})");
+                return;
+            }
+
+            if (body.contains("actual_participants") || body.contains("actual_start_time") ||
+                body.contains("actual_end_time"))
+            {
+                send_json(res, 400, R"({"error":"Tatsächliche Werte werden separat gespeichert"})");
+                return;
+            }
+
+            std::optional<int> rating;
+            if (!body.contains("rating"))
+            {
+                send_json(res, 400, R"({"error":"Bewertung fehlt"})");
+                return;
+            }
+            if (!body["rating"].is_null())
+            {
+                if (!body["rating"].is_number_integer() && !body["rating"].is_number_unsigned())
+                {
+                    send_json(res, 400, R"({"error":"Bewertung muss eine ganze Zahl von 0 bis 10 sein"})");
+                    return;
+                }
+                const auto value = body["rating"].is_number_unsigned()
+                                       ? static_cast<int64_t>(std::min<uint64_t>(body["rating"].get<uint64_t>(), 1000))
+                                       : body["rating"].get<int64_t>();
+                if (value < 0 || value > 10)
+                {
+                    send_json(res, 400, R"({"error":"Bewertung muss zwischen 0 und 10 liegen"})");
+                    return;
+                }
+                rating = static_cast<int>(value);
+            }
+
+            const char *fields[] = {"positive", "improvements", "action_items", "notes"};
+            std::string values[4];
+            for (size_t i = 0; i < 4; ++i)
+            {
+                const std::string key = fields[i];
+                if (!body.contains(key) || !body[key].is_string())
+                {
+                    send_json(res, 400, R"({"error":"Feedback muss Text enthalten"})");
+                    return;
+                }
+                values[i] = trim_ascii(body[key].get<std::string>());
+                if (utf8_character_count(values[i]) > 4000)
+                {
+                    send_json(res, 400, R"({"error":"Feedback darf höchstens 4000 Zeichen pro Feld enthalten"})");
+                    return;
+                }
+            }
+
+            try
+            {
+                if (!db.save_activity_feedback(activity_id, user.id, user.display_name,
+                                               rating, values[0], values[1], values[2], values[3]))
+                {
+                    send_json(res, 404, R"({"error":"Nicht gefunden"})");
+                    return;
+                }
+                auto evaluation = db.get_activity_evaluation(activity_id);
+                if (!evaluation)
+                {
+                    send_json(res, 404, R"({"error":"Nicht gefunden"})");
+                    return;
+                }
+                send_json(res, 200, activity_evaluation_to_json(*evaluation, user.id, can_actuals).dump());
+            }
+            catch (std::exception &e)
+            {
+                send_internal_error(res, "activity evaluation", e);
+            }
+        });
+    }
+    catch (std::exception &e)
+    {
+        send_internal_error(res, "activity evaluation", e);
+    }
+}
+
+void handle_put_activity_actuals(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims))
+        return;
+
+    const std::string activity_id{req->getParameter(0)};
+    try
+    {
+        auto user = resolve_user(db, claims);
+        auto activity = db.get_activity_by_id(activity_id);
+        if (!activity)
+        {
+            send_json(res, 404, R"({"error":"Nicht gefunden"})");
+            return;
+        }
+        if (!user || !can_record_activity_actuals(*user, *activity, claims.email))
+        {
+            send_json(res, 403, R"({"error":"Nur Aktivitätsverantwortliche dürfen tatsächliche Werte erfassen"})");
             return;
         }
 
@@ -150,12 +286,15 @@ void handle_put_activity_evaluation(HttpRes *res, HttpReq *req, Database &db)
                 send_json(res, 400, R"({"error":"Ungueltiges JSON"})");
                 return;
             }
-
-            if (!body.contains("actual_participants"))
+            for (const char *key : {"actual_participants", "actual_start_time", "actual_end_time"})
             {
-                send_json(res, 400, R"({"error":"Ist-Teilnehmendenzahl fehlt"})");
-                return;
+                if (!body.contains(key))
+                {
+                    send_json(res, 400, R"({"error":"Tatsächliche Werte sind unvollständig"})");
+                    return;
+                }
             }
+
             std::optional<int> actual_participants;
             const auto &participant_value = body["actual_participants"];
             if (!participant_value.is_null())
@@ -187,28 +326,24 @@ void handle_put_activity_evaluation(HttpRes *res, HttpReq *req, Database &db)
                 }
             }
 
-            const char *fields[] = {"positive", "improvements", "action_items", "notes"};
-            std::string values[4];
-            for (size_t i = 0; i < 4; ++i)
+            std::optional<std::string> times[2];
+            const char *time_keys[] = {"actual_start_time", "actual_end_time"};
+            for (size_t i = 0; i < 2; ++i)
             {
-                const std::string key = fields[i];
-                if (!body.contains(key) || !body[key].is_string())
+                const auto &value = body[time_keys[i]];
+                if (value.is_null())
+                    continue;
+                if (!value.is_string() || !valid_clock_time(value.get<std::string>()))
                 {
-                    send_json(res, 400, R"({"error":"Feedback muss Text enthalten"})");
+                    send_json(res, 400, R"({"error":"Tatsächliche Zeiten müssen im Format HH:MM angegeben werden"})");
                     return;
                 }
-                values[i] = trim_ascii(body[key].get<std::string>());
-                if (utf8_character_count(values[i]) > 4000)
-                {
-                    send_json(res, 400, R"({"error":"Feedback darf höchstens 4000 Zeichen pro Feld enthalten"})");
-                    return;
-                }
+                times[i] = value.get<std::string>();
             }
 
             try
             {
-                if (!db.save_activity_evaluation(activity_id, user.id, user.display_name,
-                                                 actual_participants, values[0], values[1], values[2], values[3]))
+                if (!db.save_activity_actuals(activity_id, actual_participants, times[0], times[1]))
                 {
                     send_json(res, 404, R"({"error":"Nicht gefunden"})");
                     return;
@@ -219,17 +354,17 @@ void handle_put_activity_evaluation(HttpRes *res, HttpReq *req, Database &db)
                     send_json(res, 404, R"({"error":"Nicht gefunden"})");
                     return;
                 }
-                send_json(res, 200, activity_evaluation_to_json(*evaluation, user.id).dump());
+                send_json(res, 200, activity_evaluation_to_json(*evaluation, user.id, true).dump());
             }
             catch (std::exception &e)
             {
-                send_internal_error(res, "activity evaluation", e);
+                send_internal_error(res, "activity actuals", e);
             }
         });
     }
     catch (std::exception &e)
     {
-        send_internal_error(res, "activity evaluation", e);
+        send_internal_error(res, "activity actuals", e);
     }
 }
 

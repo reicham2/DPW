@@ -188,6 +188,8 @@ CREATE TABLE IF NOT EXISTS activities (
     bad_weather_info TEXT,
     planned_participants_estimate INTEGER CHECK (planned_participants_estimate >= 0),
     actual_participants INTEGER CHECK (actual_participants >= 0),
+    actual_start_time TEXT CHECK (actual_start_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+    actual_end_time TEXT CHECK (actual_end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
     midata_children_value INTEGER,
     midata_children_recorded_at TIMESTAMPTZ,
     weather_location TEXT,
@@ -203,6 +205,8 @@ ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_by UUID;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS tn_material JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS actual_participants INTEGER CHECK (actual_participants >= 0);
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS actual_start_time TEXT CHECK (actual_start_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS actual_end_time TEXT CHECK (actual_end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
 
 CREATE TABLE IF NOT EXISTS activity_feedback (
     activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
@@ -223,6 +227,8 @@ CREATE TABLE IF NOT EXISTS activity_feedback (
 
 CREATE INDEX IF NOT EXISTS idx_activity_feedback_activity
     ON activity_feedback (activity_id, created_at);
+
+ALTER TABLE activity_feedback ADD COLUMN IF NOT EXISTS rating SMALLINT CHECK (rating BETWEEN 0 AND 10);
 
 CREATE TABLE IF NOT EXISTS programs (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

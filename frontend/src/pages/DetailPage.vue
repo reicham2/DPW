@@ -3710,7 +3710,11 @@ function copyShareLink() {
 		<div v-else-if="mode === 'view' && showEvaluation" class="detail-view detail-view--evaluation">
 			<div class="detail-view-layout">
 				<div class="detail-view-main">
-					<ActivityEvaluationPanel :activity-id="activity.id" :can-edit="canEdit" />
+					<ActivityEvaluationPanel
+						:activity-id="activity.id"
+						:planned-start-time="activity.start_time"
+						:planned-end-time="activity.end_time"
+					/>
 				</div>
 			</div>
 		</div>

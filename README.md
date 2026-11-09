@@ -175,9 +175,11 @@ gemeinsam ein- und ausklappen. Änderungen bleiben beim Einklappen erhalten; die
 Reihenfolge kann weiterhin über den Ziehgriff angepasst werden.
 
 Die Schaltfläche **Auswertung** oben auf der Aktivität öffnet am Aktivitätstag
-(am selben Datum unabhängig von der Uhrzeit) eine Auswertung mit einzelnen
-Punkten zu Erfolgen, Verbesserungen und Massnahmen sowie allgemeinem Feedback.
-Sie erfasst auch die tatsächliche Teilnehmendenzahl getrennt von der Planung.
+(am selben Datum unabhängig von der Uhrzeit) eine rollenabhängige Auswertung:
+Verantwortliche erfassen tatsächliche Teilnehmendenzahl sowie Start- und Endzeit,
+alle anderen Personen bewerten die Aktivität von 0 bis 10 und ergänzen einzelne
+Punkte zu Erfolgen, Verbesserungen und Massnahmen sowie allgemeines Feedback.
+Die gesammelten Rückmeldungen erscheinen als Tabelle mit farbiger Bewertung.
 Details zu Zugriff und Speicherung stehen in der
 [Betriebsreferenz](docs/operations.md).
 

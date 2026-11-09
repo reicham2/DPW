@@ -55,6 +55,16 @@ TEST(audit_details_record_actual_attendance_without_feedback_text)
     ASSERT_TRUE(details.dump().find("private") == std::string::npos);
 }
 
+TEST(audit_details_record_actual_times_and_rating_without_feedback_text)
+{
+    auto details = audit_change_details("activity", nullptr,
+        {{"actual_start_time", "14:05"}, {"actual_end_time", "16:10"}, {"rating", 8},
+         {"notes", "private note"}});
+    ASSERT_EQ(details["changes"].size(), static_cast<size_t>(3));
+    ASSERT_TRUE(details.dump().find("private") == std::string::npos);
+    ASSERT_TRUE(audit_action("PUT", "/activities/:id/evaluation/actuals").has_value());
+}
+
 TEST(audit_details_show_actual_user_changes_without_credentials)
 {
     nlohmann::json before = {{"display_name", "Leiter"}, {"role", "Mitglied"}, {"department", "Pfadi"},
