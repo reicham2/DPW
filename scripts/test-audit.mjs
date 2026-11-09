@@ -185,42 +185,61 @@ try {
 
   const evaluationPath = `/activities/${activityId}/evaluation`
   assert.equal((await request(evaluationPath, 'GET', undefined, null)).status, 401)
-  assert.equal((await request(evaluationPath, 'PUT', {
-    actual_participants: 18, positive: '', improvements: '', action_items: '', notes: '',
-  }, null)).status, 401, 'evaluation writes always require authentication')
+  const emptyFeedback = { rating: null, positive: '', improvements: '', action_items: '', notes: '' }
+  const actualsPath = `${evaluationPath}/actuals`
+  assert.equal((await request(evaluationPath, 'PUT', emptyFeedback, null)).status, 401,
+    'evaluation writes always require authentication')
+  assert.equal((await request(actualsPath, 'PUT', {
+    actual_participants: 18, actual_start_time: null, actual_end_time: null,
+  }, null)).status, 401)
   assert.equal((await request(evaluationPath, 'GET', undefined, otherMember)).status, 403,
     'users without activity read access cannot see feedback')
-  assert.equal((await request(evaluationPath, 'PUT', {
-    actual_participants: 18, positive: '', improvements: '', action_items: '', notes: '',
-  }, otherMember)).status, 403, 'non-responsible readers cannot write activity feedback')
+  assert.equal((await request(evaluationPath, 'PUT', emptyFeedback, otherMember)).status, 403,
+    'users without activity access cannot write activity feedback')
   assert.equal((await request(evaluationPath, 'GET', undefined, member)).status, 200,
     'activity readers can see centrally collected feedback')
   for (const invalidCount of [-1, 1.5, 2147483648]) {
-    const invalid = await request(evaluationPath, 'PUT', {
-      actual_participants: invalidCount, positive: '', improvements: '', action_items: '', notes: '',
+    const invalid = await request(actualsPath, 'PUT', {
+      actual_participants: invalidCount, actual_start_time: null, actual_end_time: null,
     })
     assert.equal(invalid.status, 400, `invalid actual participant count ${invalidCount}`)
   }
+  for (const invalidTime of ['24:00', '9:5', 'abc']) {
+    assert.equal((await request(actualsPath, 'PUT', {
+      actual_participants: 18, actual_start_time: invalidTime, actual_end_time: null,
+    })).status, 400, `invalid actual time ${invalidTime}`)
+  }
+  for (const invalidRating of [-1, 11, 1.5]) {
+    assert.equal((await request(evaluationPath, 'PUT', { ...emptyFeedback, rating: invalidRating })).status,
+      400, `invalid rating ${invalidRating}`)
+  }
+  assert.equal((await request(evaluationPath, 'PUT', {
+    ...emptyFeedback, actual_participants: 18,
+  })).status, 400, 'feedback route must not accept responsible-only actual values')
   const tooLong = await request(evaluationPath, 'PUT', {
-    actual_participants: null, positive: '', improvements: 'é'.repeat(4001), action_items: '', notes: '',
+    ...emptyFeedback, rating: 5, improvements: 'é'.repeat(4001),
   })
   assert.equal(tooLong.status, 400, 'feedback field limits count Unicode characters')
 
+  const actuals = { actual_participants: 18, actual_start_time: '14:05', actual_end_time: '16:10' }
+  assert.equal((await request(actualsPath, 'PUT', actuals)).status, 200)
+  assert.equal(latest().resource_type, 'activity')
+  assert.equal(latest().details.changes.find(change => change.field === 'actual_participants').after, 18)
+  assert.equal(latest().details.changes.find(change => change.field === 'actual_start_time').after, '14:05')
   const adminFeedback = {
-    actual_participants: 18,
+    rating: 9,
     positive: 'Gute Stimmung',
     improvements: 'Mehr Zeit einplanen',
     action_items: 'Material früher bereitstellen',
     notes: 'private feedback',
   }
   assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200)
-  assert.equal(latest().resource_type, 'activity')
-  assert.equal(latest().details.changes.find(change => change.field === 'actual_participants').after, 18)
+  assert.equal(latest().details.changes.find(change => change.field === 'rating').after, 9)
   assert(!JSON.stringify(latest()).includes('private feedback'), 'feedback content must not enter audit details')
   assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200,
     'repeated saves update rather than duplicate one author entry')
   const memberFeedback = {
-    actual_participants: 20,
+    rating: 3,
     positive: '',
     improvements: 'Wegweiser besser markieren',
     action_items: 'Beschilderung vorbereiten',
@@ -228,28 +247,32 @@ try {
   }
   assert.equal((await request(evaluationPath, 'PUT', memberFeedback, member)).status, 200)
   let evaluation = (await request(evaluationPath, 'GET', undefined, member)).data
-  assert.equal(evaluation.actual_participants, 20)
+  assert.equal(evaluation.actual_participants, 18)
+  assert.equal(evaluation.actual_start_time, '14:05')
+  assert.equal(evaluation.can_edit_actuals, true)
   assert.equal(evaluation.feedback.length, 2)
   assert.equal(evaluation.mine.improvements, memberFeedback.improvements)
+  assert.equal(evaluation.mine.rating, 3)
 
   assert(activityId && activityShareToken)
   const sharedActivity = await request(`/shared/${activityShareToken}`, 'GET', undefined, null)
   assert.equal(sharedActivity.status, 200)
   assert(!JSON.stringify(sharedActivity.data).includes('Wegweiser besser markieren'),
     'public activity shares must not expose evaluation feedback')
-  const publicEvaluationWrite = await fetch(`${base}/shared/${activityShareToken}/evaluation`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(adminFeedback),
-  })
-  assert.equal(publicEvaluationWrite.status, 404,
-    'public share links must not expose writable evaluation routes')
+  for (const suffix of ['evaluation', 'evaluation/actuals']) {
+    const publicEvaluationWrite = await fetch(`${base}/shared/${activityShareToken}/${suffix}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(adminFeedback),
+    })
+    assert.equal(publicEvaluationWrite.status, 404,
+      'public share links must not expose writable evaluation routes')
+  }
 
-  const clearedMemberFeedback = { ...memberFeedback, improvements: '', action_items: '' }
-  assert.equal((await request(evaluationPath, 'PUT', clearedMemberFeedback, member)).status, 200)
+  assert.equal((await request(evaluationPath, 'PUT', emptyFeedback, member)).status, 200)
   evaluation = (await request(evaluationPath, 'GET')).data
   assert.equal(evaluation.feedback.length, 1, 'clearing a contribution removes only the current author entry')
-  assert.equal(evaluation.actual_participants, 20, 'attendance remains independent from clearing feedback')
+  assert.equal(evaluation.actual_participants, 18, 'attendance remains independent from clearing feedback')
 
   for (const [key, value] of [['wp.url', 'http://127.0.0.1:1'], ['wp.user', 'audit-test'], ['wp.app_password', 'audit-test-only']]) {
     assert.equal((await request(`/admin/app-settings/${key}`, 'PUT', { value })).status, 200)

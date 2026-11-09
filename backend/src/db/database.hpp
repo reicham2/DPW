@@ -39,10 +39,13 @@ public:
     std::optional<Activity> create_activity(const ActivityInput &input);
     std::optional<std::pair<Activity, Activity>> update_activity(const std::string &id, const ActivityInput &input);
     std::optional<ActivityEvaluation> get_activity_evaluation(const std::string &activity_id);
-    bool save_activity_evaluation(const std::string &activity_id, const std::string &author_id,
-                                  const std::string &author_name, const std::optional<int> &actual_participants,
-                                  const std::string &positive, const std::string &improvements,
-                                  const std::string &action_items, const std::string &notes);
+    bool save_activity_actuals(const std::string &activity_id, const std::optional<int> &actual_participants,
+                               const std::optional<std::string> &actual_start_time,
+                               const std::optional<std::string> &actual_end_time);
+    bool save_activity_feedback(const std::string &activity_id, const std::string &author_id,
+                                const std::string &author_name, const std::optional<int> &rating,
+                                const std::string &positive, const std::string &improvements,
+                                const std::string &action_items, const std::string &notes);
     bool delete_activity(const std::string &id);
     bool soft_delete_activity(const std::string &id, const std::string &deleted_by_user_id);
     bool restore_activity(const std::string &id);

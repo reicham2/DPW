@@ -73,6 +73,7 @@ struct ActivityFeedback
 {
     std::string author_id;
     std::string author_name;
+    std::optional<int> rating;
     std::string positive;
     std::string improvements;
     std::string action_items;
@@ -84,5 +85,7 @@ struct ActivityFeedback
 struct ActivityEvaluation
 {
     std::optional<int> actual_participants;
+    std::optional<std::string> actual_start_time;
+    std::optional<std::string> actual_end_time;
     std::vector<ActivityFeedback> feedback;
 };

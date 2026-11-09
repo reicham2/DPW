@@ -144,24 +144,34 @@ Rückmeldungen wird aus den vorhandenen Beiträgen berechnet.
 
 Pro Aktivität und angemeldeter Person gibt es
 höchstens einen Eintrag; erneutes Speichern aktualisiert den eigenen Eintrag,
-und das Leeren aller Feedbackfelder entfernt nur den eigenen Eintrag. Die
-gesammelten Beiträge zeigen den Anzeigenamen und den letzten Änderungszeitpunkt.
+und das Leeren aller Feedbackfelder (inklusive Bewertung) entfernt nur den
+eigenen Eintrag.
 
-Personen mit Leserecht für die Aktivität sehen die Auswertung und alle Beiträge.
-Schreiben ist auf Personen beschränkt, die dieselbe Aktivität bearbeiten dürfen
-(einschliesslich Admins). Jede schreibberechtigte Person kann nur ihren eigenen
-Feedbackbeitrag ändern oder entfernen; die tatsächliche Teilnehmendenzahl ist
-ein einzelner Aktivitätswert und kann von allen Schreibberechtigten aktualisiert
-oder geleert werden. Öffentliche Freigabelinks und öffentliche Formulare erhalten
-keinen Zugriff auf diese Daten.
+Die Rückmeldung unterscheidet nach Rolle:
+
+| Wer | Darf |
+| --- | --- |
+| Aktivitätsverantwortliche (Eintrag in der Verantwortlichenliste; Admins als Übersteuerung) | Tatsächliche Teilnehmendenzahl sowie tatsächliche Start- und Endzeit erfassen (`PUT /activities/:id/evaluation/actuals`) und zusätzlich eigenes Feedback abgeben |
+| Alle anderen angemeldeten Personen mit Leserecht auf die Aktivität | Eigenes Feedback abgeben: Bewertung 0–10 («Wie gut war die Aktivität?»), dann die drei Punktelisten und das allgemeine Feld (`PUT /activities/:id/evaluation`); Ist-Werte sind schreibgeschützt |
+| Personen ohne Zugriff, öffentliche Freigabelinks, Formulare, Gäste | Kein Zugriff |
+
+Der Feedback-Endpunkt verlangt den Schlüssel `rating` (ganze Zahl 0–10 oder
+`null` für Altbestand) und weist `actual_*`-Felder mit 400 zurück. Alle Personen
+mit Leserecht sehen die gesammelten Beiträge samt Anzeigename als Tabelle mit
+Bewertung (farbig, zusätzlich als Zahl mit Beschriftung «Bewertung N von 10»),
+kurzen Zitaten und Änderungszeitpunkt; Zeile oder Schaltfläche klappt alle Details
+auf, **Alle aufklappen** öffnet alle Zeilen.
 
 Die tatsächliche Teilnehmendenzahl ist eine nichtnegative ganze Zahl oder
-unbekannt, bis sie eingetragen wird; sie ist unabhängig von der geplanten
-Teilnehmendenzahl und Anmeldestatistiken. Feedback und Anzahl werden zusammen
-gespeichert. Rückmeldungen bleiben mit der Aktivität erhalten und werden beim
-endgültigen Löschen der Aktivität mitgelöscht. Das Audit Log erfasst
-Änderungszeitpunkt und tatsächliche Zahl, aber weder Feedbacktexte noch
-Massnahmen.
+unbekannt, bis sie eingetragen wird; Start- und Endzeit sind `HH:MM` oder leer
+und unabhängig voneinander (keine Reihenfolgeprüfung, damit Übernachtungen
+möglich bleiben). Alle Ist-Werte sind unabhängig von geplanter Zeit,
+Teilnehmendenzahl und Anmeldestatistiken und bleiben beim Löschen von Feedback
+erhalten. Bestehende Feedbackeinträge bleiben bei der Schemaerweiterung
+(`activities.actual_start_time/actual_end_time`, `activity_feedback.rating`)
+unverändert, die Bewertung ist dort leer. Rückmeldungen werden beim endgültigen
+Löschen der Aktivität mitgelöscht. Das Audit Log erfasst Änderungszeitpunkt,
+Ist-Zahl, Ist-Zeiten und Bewertung, aber weder Feedbacktexte noch Massnahmen.
 
 ## Audit Log
 
