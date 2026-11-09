@@ -3,7 +3,7 @@ import { flushPromises, shallowMount } from '@vue/test-utils';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Activity, ActivityInput, IdeenkisteItem, User, WsEvent } from '../types';
+import type { Activity, ActivityInput, EventTemplate, IdeenkisteItem, User, WsEvent } from '../types';
 import PublicPageHeader from '../components/PublicPageHeader.vue';
 
 const mocks = vi.hoisted(() => ({
@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
 	updateActivity: vi.fn(),
 	uploadAttachment: vi.fn(),
 	fetchForm: vi.fn(),
-	fetchEventTemplate: vi.fn(),
+	fetchActivityTemplates: vi.fn(),
+	publishEvent: vi.fn(),
 	fetchPublication: vi.fn(),
 	setLastUpdated: undefined as ((activity: Activity | null) => void) | undefined,
 	setActivityError: undefined as ((message: string | null) => void) | undefined,
@@ -122,14 +123,16 @@ vi.mock('../composables/useWebSocket', () => ({
 }));
 
 vi.mock('../composables/useForms', () => ({ useForms: () => ({ fetchForm: mocks.fetchForm }) }));
-vi.mock('../composables/useEventTemplates', () => ({
-	useEventTemplates: () => ({
-		fetchTemplate: mocks.fetchEventTemplate,
+vi.mock('../composables/useEventTemplates', async () => {
+	const { ref } = await vi.importActual<typeof import('vue')>('vue');
+	return { useEventTemplates: () => ({
+		fetchActivityTemplates: mocks.fetchActivityTemplates,
 		fetchPublication: mocks.fetchPublication,
-		publishEvent: vi.fn(),
+		publishEvent: mocks.publishEvent,
 		unpublishEvent: vi.fn(),
-	}),
-}));
+		error: ref<string | null>(null),
+	}) };
+});
 vi.mock('../composables/useApi', () => ({
 	apiFetch: vi.fn().mockResolvedValue(new Response('{}', { status: 200 })),
 	formatApiError: (error: unknown) => error instanceof Error ? error.message : String(error),
@@ -258,6 +261,14 @@ function allowEditing() {
 	user.value = editableUser;
 }
 
+function makeEventTemplate(overrides: Partial<EventTemplate> = {}): EventTemplate {
+	return {
+		id: 'template-default', name: 'Standard', department: 'Pfadi', is_default: true,
+		title: '{{abteilung}}: {{titel}}', body: '<p>{{datum_kurz|-7}} / {{formular_link|Anmelden}}</p>',
+		created_at: '', updated_at: '', ...overrides,
+	};
+}
+
 describe('DetailPage activity access', () => {
 	beforeEach(() => {
 		vi.stubGlobal('URL', class extends URL {
@@ -284,7 +295,8 @@ describe('DetailPage activity access', () => {
 		mocks.updateActivity.mockReset().mockResolvedValue(true);
 		mocks.uploadAttachment.mockReset().mockResolvedValue(null);
 		mocks.fetchForm.mockReset().mockResolvedValue(null);
-		mocks.fetchEventTemplate.mockReset().mockResolvedValue(null);
+		mocks.fetchActivityTemplates.mockReset().mockResolvedValue([]);
+		mocks.publishEvent.mockReset().mockResolvedValue(null);
 		mocks.fetchPublication.mockReset().mockResolvedValue(null);
 		mocks.setLastUpdated?.(null);
 		mocks.setActivityError?.(null);
@@ -2085,21 +2097,164 @@ describe('DetailPage activity access', () => {
 		const story = 'Erste Zeile\n<script>Beispiel</script>';
 		mocks.fetchActivity.mockResolvedValue(makeActivity({ department: 'Pfadi', guiding_thread: story }));
 		mocks.fetchForm.mockResolvedValue({ public_slug: 'form-1' });
-		mocks.fetchEventTemplate.mockResolvedValue({
+		mocks.fetchActivityTemplates.mockResolvedValue([makeEventTemplate({
 			title: 'Motto: {{roter_faden}}',
 			body: '<p>{{roter_faden}} / {{formular_link|Anmelden}}</p>',
-		});
+		})]);
 		const wrapper = shallowMount(DetailPage);
 		await flushPromises();
 		await wrapper.get('button[title="Als Event veröffentlichen"]').trigger('click');
 		await flushPromises();
-		expect((wrapper.get('.event-preview-input').element as HTMLInputElement).value).toContain('Erste Zeile');
-		expect((wrapper.get('.event-preview-input').element as HTMLInputElement).value).not.toContain('{{roter_faden}}');
+		expect((wrapper.get('input.event-preview-input').element as HTMLInputElement).value).toContain('Erste Zeile');
+		expect((wrapper.get('input.event-preview-input').element as HTMLInputElement).value).not.toContain('{{roter_faden}}');
 		const editor = wrapper.get('.event-preview-form .rich-editor');
 		expect(editor.element.textContent).toContain(story.replace('\n', ''));
 		expect(editor.find('br').exists()).toBe(true);
 		expect(editor.find('script').exists()).toBe(false);
 		expect(editor.get('a').attributes('href')).toBe('https://example.test/forms/form-1');
+		wrapper.unmount();
+	});
+
+	it('selects only the Stufe default and exposes alphabetically sorted alternatives in Event creation', async () => {
+		allowEditing();
+		config.WP_PUBLISHING_ENABLED = true;
+		config.PUBLIC_BASE_URL = 'https://example.test';
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ department: 'Pfadi' }));
+		mocks.fetchForm.mockResolvedValue({ public_slug: 'form-1' });
+		mocks.fetchActivityTemplates.mockResolvedValue([
+			makeEventTemplate(),
+			makeEventTemplate({ id: 'template-alt', name: 'Abend', is_default: false, title: 'Abend: {{titel}}' }),
+			makeEventTemplate({ id: 'other-dept', department: 'Leiter', name: 'Andere Stufe' }),
+		]);
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Als Event veröffentlichen"]').trigger('click');
+		await flushPromises();
+		expect(mocks.fetchActivityTemplates).toHaveBeenCalledWith('activity-1');
+		expect(wrapper.get('#event-template-selector').element).toHaveProperty('value', 'template-default');
+		expect(wrapper.findAll('#event-template-selector option').map(option => option.text()))
+			.toEqual(['Keine Vorlage', 'Abend', 'Standard (Standard)']);
+		expect(wrapper.get('.event-preview-input[placeholder="Event-Titel"]').element)
+			.toHaveProperty('value', 'Pfadi: Test activity');
+		expect(wrapper.get('.event-preview-form .rich-editor').text()).toContain('24.06.2026');
+		await wrapper.get('#event-template-selector').setValue('template-alt');
+		await flushPromises();
+		expect(wrapper.get('.event-preview-input[placeholder="Event-Titel"]').element)
+			.toHaveProperty('value', 'Abend: Test activity');
+		wrapper.unmount();
+	});
+
+	it('leaves Event creation without a template when no default exists', async () => {
+		allowEditing();
+		config.WP_PUBLISHING_ENABLED = true;
+		config.PUBLIC_BASE_URL = 'https://example.test';
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ department: 'Pfadi' }));
+		mocks.fetchForm.mockResolvedValue({ public_slug: 'form-1' });
+		mocks.fetchActivityTemplates.mockResolvedValue([makeEventTemplate({ is_default: false })]);
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Als Event veröffentlichen"]').trigger('click');
+		await flushPromises();
+		expect(wrapper.get('#event-template-selector').element).toHaveProperty('value', '');
+		expect(wrapper.get('.event-preview-input[placeholder="Event-Titel"]').element).toHaveProperty('value', 'Test activity');
+		expect(wrapper.get('.event-preview-form .rich-editor').text()).toBe('');
+		wrapper.unmount();
+	});
+
+	it('requires confirmation before a template replaces edited Event title or body and restores a cancelled selection', async () => {
+		allowEditing();
+		config.WP_PUBLISHING_ENABLED = true;
+		config.PUBLIC_BASE_URL = 'https://example.test';
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ department: 'Pfadi' }));
+		mocks.fetchForm.mockResolvedValue({ public_slug: 'form-1' });
+		mocks.fetchActivityTemplates.mockResolvedValue([
+			makeEventTemplate(),
+			makeEventTemplate({ id: 'alternate', name: 'Alternative', is_default: false, title: 'Alternative' }),
+		]);
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Als Event veröffentlichen"]').trigger('click');
+		await flushPromises();
+		await wrapper.get('.event-preview-input[placeholder="Event-Titel"]').setValue('Eigener Titel');
+		const editor = wrapper.get('.event-preview-form .rich-editor');
+		editor.element.innerHTML = '<p>Eigener Inhalt</p>';
+		await editor.trigger('input');
+		await wrapper.get('#event-template-selector').setValue('alternate');
+		expect(confirm).toHaveBeenCalledOnce();
+		expect(wrapper.get('#event-template-selector').element).toHaveProperty('value', 'template-default');
+		expect(wrapper.get('.event-preview-input[placeholder="Event-Titel"]').element).toHaveProperty('value', 'Eigener Titel');
+		expect(editor.element.innerHTML).toBe('<p>Eigener Inhalt</p>');
+		confirm.mockReturnValue(true);
+		await wrapper.get('#event-template-selector').setValue('alternate');
+		await flushPromises();
+		expect(wrapper.get('.event-preview-input[placeholder="Event-Titel"]').element).toHaveProperty('value', 'Alternative');
+		wrapper.unmount();
+	});
+
+	it('waits for templates before allowing edits and ignores a response after the preview is closed', async () => {
+		allowEditing();
+		config.WP_PUBLISHING_ENABLED = true;
+		config.PUBLIC_BASE_URL = 'https://example.test';
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ department: 'Pfadi' }));
+		mocks.fetchForm.mockResolvedValue({ public_slug: 'form-1' });
+		let resolveTemplates!: (value: EventTemplate[]) => void;
+		mocks.fetchActivityTemplates.mockImplementationOnce(() =>
+			new Promise<EventTemplate[]>(resolve => { resolveTemplates = resolve; }));
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Als Event veröffentlichen"]').trigger('click');
+		await flushPromises();
+		expect(wrapper.get('#event-template-selector').element).toHaveProperty('disabled', true);
+		expect(wrapper.get('.event-preview-form .rich-editor').attributes('contenteditable')).toBe('false');
+		await wrapper.get('.modal .btn-cancel').trigger('click');
+		resolveTemplates([makeEventTemplate()]);
+		await flushPromises();
+		expect(wrapper.find('#event-template-selector').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('publishes the selected template and the final edited preview instead of the template source', async () => {
+		allowEditing();
+		config.WP_PUBLISHING_ENABLED = true;
+		config.PUBLIC_BASE_URL = 'https://example.test';
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ department: 'Pfadi' }));
+		mocks.fetchForm.mockResolvedValue({ public_slug: 'form-1' });
+		mocks.fetchActivityTemplates.mockResolvedValue([makeEventTemplate()]);
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('button[title="Als Event veröffentlichen"]').trigger('click');
+		await flushPromises();
+		await wrapper.get('.event-preview-input[placeholder="Event-Titel"]').setValue('Fertiger Titel');
+		wrapper.get('.event-preview-form .rich-editor').element.innerHTML = '<p>Bearbeiteter Inhalt</p>';
+		await wrapper.get('.modal-actions .btn-primary').trigger('click');
+		await flushPromises();
+		expect(mocks.publishEvent).toHaveBeenCalledWith('activity-1', 'Fertiger Titel', '<p>Bearbeiteter Inhalt</p>');
+		wrapper.unmount();
+	});
+
+	it('retains saved Event content when opening, even without a configured form URL, and confirms replacing it', async () => {
+		allowEditing();
+		config.WP_PUBLISHING_ENABLED = true;
+		mocks.fetchActivity.mockResolvedValue(makeActivity({ department: 'Pfadi' }));
+		mocks.fetchForm.mockResolvedValue({ public_slug: 'form-1' });
+		mocks.fetchPublication.mockResolvedValue({
+			id: 'publication-1', activity_id: 'activity-1', published_by: 'user-1',
+			title: 'Gespeicherter eigener Titel', body_html: '<p>Gespeicherter Inhalt</p>',
+			wp_event_id: null, published_at: '',
+		});
+		mocks.fetchActivityTemplates.mockResolvedValue([makeEventTemplate()]);
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('.activity-actions-desktop .btn-mail--active').trigger('click');
+		await flushPromises();
+		expect(wrapper.get('input.event-preview-input').element).toHaveProperty('value', 'Gespeicherter eigener Titel');
+		expect(wrapper.get('.event-preview-form .rich-editor').element.innerHTML).toBe('<p>Gespeicherter Inhalt</p>');
+		await wrapper.get('#event-template-selector').setValue('template-default');
+		expect(confirm).toHaveBeenCalledOnce();
+		expect(wrapper.get('#event-template-selector').element).toHaveProperty('value', '');
+		expect(wrapper.get('input.event-preview-input').element).toHaveProperty('value', 'Gespeicherter eigener Titel');
 		wrapper.unmount();
 	});
 

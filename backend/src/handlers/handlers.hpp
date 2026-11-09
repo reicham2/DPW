@@ -87,7 +87,10 @@ void handle_post_push_payload(HttpRes *res, HttpReq *req, Database &db);
 
 void handle_get_event_templates(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_event_template(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_event_template_context(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_delete_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
 
 void handle_get_event_publication(HttpRes *res, HttpReq *req, Database &db);
 void handle_put_event_publication(HttpRes *res, HttpReq *req, Database &db);

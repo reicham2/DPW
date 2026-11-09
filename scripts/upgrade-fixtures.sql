@@ -31,6 +31,12 @@ VALUES ('15500000-0000-0000-0000-000000000007', '15500000-0000-0000-0000-0000000
 INSERT INTO response_answers (id, response_id, question_id, answer_value)
 VALUES ('15500000-0000-0000-0000-000000000008', '15500000-0000-0000-0000-000000000007',
         '15500000-0000-0000-0000-000000000006', 'Persisted answer');
+INSERT INTO event_templates (id, department, title, body)
+VALUES ('15500000-0000-0000-0000-000000000009', 'Upgrade CI',
+        'Persisted Event template', '<p>Original Event template content</p>');
+INSERT INTO event_publications (id, activity_id, published_by, title, body_html, wp_event_id)
+VALUES ('15500000-0000-0000-0000-000000000010', '15500000-0000-0000-0000-000000000002',
+        '15500000-0000-0000-0000-000000000001', 'Persisted Event', '<p>Keep published Event content</p>', '4242');
 UPDATE app_settings SET value_text = '2345' WHERE key = 'frontend.autosave_interval_ms';
 UPDATE app_settings SET value_text = NULL,
     value_secret = pgp_sym_encrypt('upgrade-test-secret', :'encryption_key')
@@ -46,7 +52,8 @@ DECLARE
 BEGIN
     FOREACH tbl IN ARRAY ARRAY[
         'departments', 'roles', 'role_permissions', 'users', 'activities', 'programs',
-        'attachments', 'signup_forms', 'form_questions', 'form_responses', 'response_answers'
+        'attachments', 'signup_forms', 'form_questions', 'form_responses', 'response_answers',
+        'event_templates', 'event_publications'
     ] LOOP
         EXECUTE format(
             'SELECT jsonb_agg(to_jsonb(t) - ''updated_at'') FROM public.%I t', tbl)

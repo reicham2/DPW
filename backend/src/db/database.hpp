@@ -166,7 +166,20 @@ public:
 
     // Event templates
     std::vector<EventTemplate> list_event_templates();
+    std::vector<EventTemplate> list_event_templates(const std::string &department);
     std::optional<EventTemplate> get_event_template_by_department(const std::string &department);
+    std::optional<EventTemplate> get_event_template_by_id(const std::string &id);
+    std::optional<EventTemplate> create_event_template(const std::string &name,
+                                                      const std::string &department,
+                                                      const std::string &title,
+                                                      const std::string &body,
+                                                      bool is_default = false);
+    std::optional<EventTemplate> update_event_template(const std::string &id,
+                                                      const std::optional<std::string> &name,
+                                                      const std::optional<std::string> &title,
+                                                      const std::optional<std::string> &body,
+                                                      const std::optional<bool> &is_default);
+    bool delete_event_template(const std::string &id);
     std::optional<EventTemplate> upsert_event_template(const std::string &department,
                                                        const std::string &title,
                                                        const std::string &body);

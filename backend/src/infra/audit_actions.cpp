@@ -50,6 +50,8 @@ std::optional<AuditAction> audit_action(const std::string &method, const std::st
         {"/activities/:id/weather-location", {"Wetterort", "activity"}},
         {"/mail-templates/:department", {"Mailvorlage", "template"}},
         {"/event-templates/:department", {"Eventvorlage", "template"}},
+        {"/event-templates", {"Eventvorlage", "template"}},
+        {"/event-templates/:id", {"Eventvorlage", "template"}},
         {"/activities/:id/event-publication", {"Eventveröffentlichung", "activity"}},
         {"/send-mail", {"Mailversand", "mail"}},
         {"/activities/:id/mail-draft", {"Mailentwurf", "activity"}},

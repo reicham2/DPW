@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import type { EventTemplate, EventPublication, Department } from '../types';
+import type { EventTemplate, EventTemplateChanges, EventPublication, Department } from '../types';
 import { apiFetch, formatApiError } from './useApi';
 
 const BASE = '/api';
@@ -62,6 +62,68 @@ export function useEventTemplates() {
 		}
 	}
 
+	async function createTemplate(
+		name: string,
+		department: Department,
+		title = '',
+		body = '',
+		isDefault = false,
+	): Promise<EventTemplate | null> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/event-templates`, {
+				method: 'POST',
+				body: JSON.stringify({ name, department, title, body, is_default: isDefault }),
+			});
+			if (!res.ok) throw new Error(await res.text());
+			return await res.json() as EventTemplate;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return null;
+		}
+	}
+
+	async function updateTemplate(id: string, changes: EventTemplateChanges): Promise<EventTemplate | null> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/event-templates/${encodeURIComponent(id)}`, {
+				method: 'PUT',
+				body: JSON.stringify(changes),
+			});
+			if (!res.ok) throw new Error(await res.text());
+			return await res.json() as EventTemplate;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return null;
+		}
+	}
+
+	async function deleteTemplate(id: string): Promise<boolean> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/event-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+			if (!res.ok) throw new Error(await res.text());
+			templates.value = templates.value.filter(template => template.id !== id);
+			return true;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return false;
+		}
+	}
+
+	async function fetchActivityTemplates(activityId: string): Promise<EventTemplate[] | null> {
+		error.value = null;
+		try {
+			const res = await apiFetch(`${BASE}/activities/${encodeURIComponent(activityId)}/event-template-context`);
+			if (!res.ok) throw new Error(await res.text());
+			const context = await res.json() as { templates: EventTemplate[] };
+			return context.templates;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return null;
+		}
+	}
+
 	async function fetchPublication(
 		activityId: string,
 	): Promise<EventPublication | null> {
@@ -117,6 +179,10 @@ export function useEventTemplates() {
 		fetchTemplates,
 		fetchTemplate,
 		saveTemplate,
+		createTemplate,
+		updateTemplate,
+		deleteTemplate,
+		fetchActivityTemplates,
 		fetchPublication,
 		publishEvent,
 		unpublishEvent,

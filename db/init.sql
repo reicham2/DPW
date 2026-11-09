@@ -495,25 +495,47 @@ WHERE NOT EXISTS (
     SELECT 1 FROM mail_templates WHERE department = 'Allgemein' AND is_default = TRUE
 );
 
--- Event templates (one per department, for WordPress event publishing)
+-- Named Event templates with an optional default per department.
 CREATE TABLE IF NOT EXISTS event_templates (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        TEXT        NOT NULL DEFAULT 'Standard',
     department  TEXT        NOT NULL UNIQUE REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
     title       TEXT        NOT NULL DEFAULT '',
     body        TEXT        NOT NULL DEFAULT '',
+    is_default  BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 DROP TRIGGER IF EXISTS trg_event_templates_updated_at ON event_templates;
+ALTER TABLE event_templates ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Standard';
+ALTER TABLE event_templates ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- The old uniqueness constraint also marks a fresh installation. Seed only once,
+-- so later restarts do not recreate deleted templates or a deliberately unset default.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'event_templates_department_key'
+          AND conrelid = 'event_templates'::regclass
+    ) THEN
+        INSERT INTO event_templates (department, title, body)
+        VALUES ('Allgemein', '', '')
+        ON CONFLICT (department) DO NOTHING;
+        UPDATE event_templates SET is_default = TRUE;
+        ALTER TABLE event_templates DROP CONSTRAINT event_templates_department_key;
+    END IF;
+END;
+$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_templates_default
+    ON event_templates (department) WHERE is_default = TRUE;
+CREATE INDEX IF NOT EXISTS idx_event_templates_department ON event_templates(department);
+
 CREATE TRIGGER trg_event_templates_updated_at
     BEFORE UPDATE ON event_templates
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
-
--- Seed default (empty) event template for default department
-INSERT INTO event_templates (department, title, body) VALUES
-    ('Allgemein', '', '')
-ON CONFLICT (department) DO NOTHING;
 
 -- Event publications (tracks which activities have been published to WordPress)
 CREATE TABLE IF NOT EXISTS event_publications (
