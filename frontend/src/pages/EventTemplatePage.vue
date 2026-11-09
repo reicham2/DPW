@@ -872,6 +872,12 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.active-default {
+  background: #fef3c7 !important;
+  border-color: #f59e0b !important;
+  color: #92400e !important;
+}
+
 .event-template-default {
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;
