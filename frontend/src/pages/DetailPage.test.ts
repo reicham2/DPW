@@ -1197,6 +1197,10 @@ describe('DetailPage activity access', () => {
 		expect((button.element as HTMLButtonElement).disabled).toBe(true);
 		await button.trigger('click');
 		expect(wrapper.find('.detail-view--evaluation').exists()).toBe(false);
+		vi.setSystemTime(new Date('2026-07-02T00:01:00'));
+		await vi.advanceTimersByTimeAsync(60_000);
+		const availableButton = wrapper.get('button[title="Auswertung öffnen"]');
+		expect((availableButton.element as HTMLButtonElement).disabled).toBe(false);
 		wrapper.unmount();
 	});
 
