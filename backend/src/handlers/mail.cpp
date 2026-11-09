@@ -411,9 +411,11 @@ static nlohmann::json event_template_to_json(const EventTemplate &t)
 {
     return {
         {"id", t.id},
+        {"name", t.name},
         {"department", t.department},
         {"title", t.title},
         {"body", t.body},
+        {"is_default", t.is_default},
         {"created_at", t.created_at},
         {"updated_at", t.updated_at}};
 }
@@ -458,38 +460,71 @@ void handle_get_event_templates(HttpRes *res, HttpReq *req, Database &db)
     if (!require_auth(res, req, claims))
         return;
 
-    auto current_user = resolve_user(db, claims);
-    if (!current_user)
+    try
     {
-        send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
-        return;
-    }
-
-    auto perm = db.get_role_permission(current_user->role);
-    if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
-    {
-        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-        return;
-    }
-
-    auto templates = db.list_event_templates();
-
-    // Filter by own department if scope is own_dept
-    if (!is_admin(*current_user) && perm && perm->event_templates_scope == "own_dept")
-    {
-        std::vector<EventTemplate> filtered;
-        for (auto &t : templates)
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
         {
-            if (current_user->department && t.department == *current_user->department)
-                filtered.push_back(std::move(t));
+            send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
+            return;
         }
-        templates = std::move(filtered);
-    }
 
-    nlohmann::json arr = nlohmann::json::array();
-    for (const auto &t : templates)
-        arr.push_back(event_template_to_json(t));
-    send_json(res, 200, arr.dump());
+        auto perm = db.get_role_permission(current_user->role);
+        if (!is_admin(*current_user) && (!perm || perm->event_templates_scope == "none"))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &tpl : db.list_event_templates())
+        {
+            if (can_manage_department_scope(*current_user, perm ? perm->event_templates_scope : "none", tpl.department))
+                arr.push_back(event_template_to_json(tpl));
+        }
+        send_json(res, 200, arr.dump());
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "event templates", e);
+    }
+}
+
+void handle_get_event_template_context(HttpRes *res, HttpReq *req, Database &db)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims)) return;
+    try
+    {
+        const auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        const auto activity = db.get_activity_by_id(std::string{req->getParameter(0)});
+        if (!activity)
+        {
+            send_json(res, 404, R"({"error":"Aktivität nicht gefunden"})");
+            return;
+        }
+        const auto permission = db.get_role_permission(current_user->role);
+        if (!is_admin(*current_user) &&
+            (!permission || !can_publish_event(*permission, *current_user, *activity, claims.email)))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung für diese Aktivität"})");
+            return;
+        }
+        nlohmann::json templates = nlohmann::json::array();
+        if (activity->department)
+            for (const auto &tpl : db.list_event_templates(*activity->department))
+                templates.push_back(event_template_to_json(tpl));
+        send_json(res, 200, nlohmann::json{{"templates", templates}}.dump());
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "event template context", e);
+    }
 }
 
 // ---- GET /event-templates/:department ---------------------------------------
@@ -500,42 +535,110 @@ void handle_get_event_template(HttpRes *res, HttpReq *req, Database &db)
     if (!require_auth(res, req, claims))
         return;
 
-    auto current_user = resolve_user(db, claims);
-    if (!current_user)
+    try
     {
-        send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
-        return;
-    }
+        auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 401, R"({"error":"Benutzer nicht gefunden"})");
+            return;
+        }
 
-    std::string department = url_decode(std::string{req->getParameter(0)});
+        std::string department = url_decode(std::string{req->getParameter(0)});
 
-    auto perm = db.get_role_permission(current_user->role);
-    bool can_templates = perm && perm->event_templates_scope != "none";
-    bool can_publish = perm && perm->event_publish_scope != "none";
-    if (!is_admin(*current_user) && !can_templates && !can_publish)
-    {
-        send_json(res, 403, R"({"error":"Keine Berechtigung"})");
-        return;
-    }
-    if (!is_admin(*current_user) && !can_publish && perm->event_templates_scope == "own_dept")
-    {
-        if (!current_user->department || *current_user->department != department)
+        auto perm = db.get_role_permission(current_user->role);
+        bool can_templates = perm && perm->event_templates_scope != "none";
+        bool can_publish = perm && perm->event_publish_scope != "none";
+        if (!is_admin(*current_user) && !can_templates && !can_publish)
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
             return;
         }
-    }
+        if (!is_admin(*current_user) && !can_publish &&
+            !can_manage_department_scope(*current_user, perm->event_templates_scope, department))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
 
-    auto tpl = db.get_event_template_by_department(department);
-    if (!tpl)
-    {
-        send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
-        return;
+        auto tpl = db.get_event_template_by_department(department);
+        if (!tpl)
+        {
+            send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
+            return;
+        }
+        send_json(res, 200, event_template_to_json(*tpl).dump());
     }
-    send_json(res, 200, event_template_to_json(*tpl).dump());
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "event template", e);
+    }
 }
 
-// ---- PUT /event-templates/:department ---------------------------------------
+static bool valid_event_template_input(const nlohmann::json &j, bool creating = false)
+{
+    if (!j.is_object()) return false;
+    for (const auto *key : {"name", "department", "title", "body"})
+        if (j.contains(key) && !j[key].is_string()) return false;
+    if (j.contains("is_default") && !j["is_default"].is_boolean()) return false;
+    if (j.contains("name") && trim_ascii(j["name"].get<std::string>()).empty()) return false;
+    return !creating || (j.contains("name") && j.contains("department") &&
+                         !trim_ascii(j["department"].get<std::string>()).empty());
+}
+
+void handle_post_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims)) return;
+    auto buf = std::make_shared<std::string>();
+    res->onAborted([] {});
+    res->onData([res, buf, claims, &db, &wm](std::string_view chunk, bool last)
+    {
+        buf->append(chunk.data(), chunk.size());
+        if (!last) return;
+        const auto j = nlohmann::json::parse(*buf, nullptr, false);
+        if (!valid_event_template_input(j, true))
+        {
+            send_json(res, 400, R"({"error":"Name, Stufe oder Vorlagenfelder ungültig"})");
+            return;
+        }
+        try
+        {
+            const auto current_user = resolve_user(db, claims);
+            const auto permission = current_user ? db.get_role_permission(current_user->role) : std::nullopt;
+            const std::string department = j["department"].get<std::string>();
+            if (!current_user || !can_manage_department_scope(*current_user,
+                    permission ? permission->event_templates_scope : "none", department))
+            {
+                send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+                return;
+            }
+            const auto departments = db.list_departments();
+            if (std::none_of(departments.begin(), departments.end(),
+                             [&](const auto &dept) { return dept.name == department; }))
+            {
+                send_json(res, 400, R"({"error":"Stufe nicht gefunden"})");
+                return;
+            }
+            const auto tpl = db.create_event_template(trim_ascii(j["name"].get<std::string>()),
+                department, j.value("title", ""), j.value("body", ""), j.value("is_default", false));
+            if (!tpl)
+            {
+                send_json(res, 500, R"({"error":"Datenbankfehler"})");
+                return;
+            }
+            wm.broadcast_template_update(TemplateKind::Event, department,
+                nlohmann::json{{"event", "event_template_updated"}, {"template", event_template_to_json(*tpl)}}.dump());
+            send_json(res, 201, event_template_to_json(*tpl).dump());
+        }
+        catch (const std::exception &e)
+        {
+            send_internal_error(res, "create event template", e);
+        }
+    });
+}
+
+// UUID updates patch only supplied fields; department PUT remains compatible.
 
 void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
 {
@@ -543,7 +646,9 @@ void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSock
     if (!require_auth(res, req, claims))
         return;
 
-    std::string department = url_decode(std::string{req->getParameter(0)});
+    const std::string target = url_decode(std::string{req->getParameter(0)});
+    std::optional<EventTemplate> existing;
+    std::string department = target;
 
     try
     {
@@ -554,6 +659,16 @@ void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSock
             return;
         }
         auto perm = db.get_role_permission(current_user->role);
+        if (is_uuid_path_segment(target))
+        {
+            existing = db.get_event_template_by_id(target);
+            if (!existing)
+            {
+                send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
+                return;
+            }
+            department = existing->department;
+        }
         if (!can_manage_department_scope(*current_user, perm ? perm->event_templates_scope : "none", department))
         {
             send_json(res, 403, R"({"error":"Keine Berechtigung"})");
@@ -567,24 +682,31 @@ void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSock
     }
     auto buf = std::make_shared<std::string>();
     res->onAborted([] {});
-    res->onData([res, buf, department, &db, &wm](std::string_view chunk, bool last)
+    res->onData([res, buf, target, existing, department, &db, &wm](std::string_view chunk, bool last)
                 {
         buf->append(chunk.data(), chunk.size());
         if (!last) return;
 
         auto j = nlohmann::json::parse(*buf, nullptr, false);
-        if (j.is_discarded()) {
-            send_json(res, 400, R"({"error":"Ungültiges JSON-Format"})");
+        if (!valid_event_template_input(j)) {
+            send_json(res, 400, R"({"error":"Ungültige Vorlagenfelder"})");
+            return;
+        }
+        if (existing && j.contains("department") && j["department"] != department) {
+            send_json(res, 400, R"({"error":"Die Stufe einer Vorlage kann nicht geändert werden"})");
             return;
         }
 
-        std::string title = j.value("title", "");
-        std::string body  = j.value("body", "");
-
         try {
-            auto tpl = db.upsert_event_template(department, title, body);
+            auto tpl = existing
+                ? db.update_event_template(target,
+                    j.contains("name") ? std::make_optional(trim_ascii(j["name"].get<std::string>())) : std::nullopt,
+                    j.contains("title") ? std::make_optional(j["title"].get<std::string>()) : std::nullopt,
+                    j.contains("body") ? std::make_optional(j["body"].get<std::string>()) : std::nullopt,
+                    j.contains("is_default") ? std::make_optional(j["is_default"].get<bool>()) : std::nullopt)
+                : db.upsert_event_template(department, j.value("title", ""), j.value("body", ""));
             if (!tpl) {
-                send_json(res, 500, R"({"error":"Datenbankfehler"})");
+                send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
                 return;
             }
             nlohmann::json msg = {{"event", "event_template_updated"}, {"template", event_template_to_json(*tpl)}};
@@ -593,6 +715,52 @@ void handle_put_event_template(HttpRes *res, HttpReq *req, Database &db, WebSock
         } catch (std::exception& e) {
             send_internal_error(res, "handler", e);
         } });
+}
+
+void handle_delete_event_template(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
+    TokenClaims claims;
+    if (!require_auth(res, req, claims)) return;
+    const std::string id{req->getParameter(0)};
+    if (!is_uuid_path_segment(id))
+    {
+        send_json(res, 400, R"({"error":"Ungültige Vorlagen-ID"})");
+        return;
+    }
+    try
+    {
+        const auto current_user = resolve_user(db, claims);
+        if (!current_user)
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        const auto tpl = db.get_event_template_by_id(id);
+        if (!tpl)
+        {
+            send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
+            return;
+        }
+        const auto permission = db.get_role_permission(current_user->role);
+        if (!can_manage_department_scope(*current_user,
+                permission ? permission->event_templates_scope : "none", tpl->department))
+        {
+            send_json(res, 403, R"({"error":"Keine Berechtigung"})");
+            return;
+        }
+        if (!db.delete_event_template(id))
+        {
+            send_json(res, 404, R"({"error":"Vorlage nicht gefunden"})");
+            return;
+        }
+        wm.broadcast_template_update(TemplateKind::Event, tpl->department,
+            nlohmann::json{{"event", "event_template_deleted"}, {"id", id}, {"department", tpl->department}}.dump());
+        send_json(res, 204, "");
+    }
+    catch (const std::exception &e)
+    {
+        send_internal_error(res, "delete event template", e);
+    }
 }
 
 // ---- GET /activities/:id/event-publication -----------------------------------

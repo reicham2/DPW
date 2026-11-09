@@ -19,9 +19,11 @@ struct MailTemplate
 struct EventTemplate
 {
     std::string id;
+    std::string name;
     std::string department;
     std::string title;
     std::string body;
+    bool is_default{false};
     std::string created_at;
     std::string updated_at;
 };

@@ -270,6 +270,65 @@ Quellen: [Audit-Handler/Journal](../backend/src/infra/audit.cpp),
 [DB-Retention](../backend/src/db/db_audit.cpp),
 [Regressionstest](../scripts/test-audit.mjs).
 
+## Event-Vorlagen
+
+**Admin > Vorlagen > Events** verwaltet mehrere benannte Vorlagen je Stufe,
+alphabetisch nach Namen, mit Titel, Rich-Text-Inhalt und einem optionalen
+Standard. Anlegen, Bearbeiten, Standardwahl und Loeschen verwenden weiterhin
+`event_templates_scope` (`none`, `own_dept`, `all`); die API prueft diese
+Berechtigungen unabhaengig von der UI. Neue Vorlagen werden erst durch
+**Speichern** angelegt. Bestehende Vorlagen speichern automatisch und vor
+**Zurueck** oder einem Stufenwechsel. Schlaegt das Speichern fehl, bleibt der
+Editor mit den lokalen Aenderungen offen. Lokale Entwuerfe sind je Vorlage
+getrennt, neue Entwuerfe je Stufe; auch bisherige Stufen-Entwuerfe sind
+wiederherstellbar. Nicht verfuegbarer Browserspeicher wird als Fehler angezeigt.
+
+Beim Erstellen eines Events oeffnet **Als Event veroeffentlichen** die
+Vorschau mit der Standard-Vorlage der Aktivitaetsstufe. Ohne Standard bleibt
+die Auswahl **Keine Vorlage**, der Aktivitaetstitel wird uebernommen und der
+Inhalt bleibt leer. Alternativen sind alphabetisch auswaehlbar; geaenderter
+Titel/Inhalt wird erst nach Bestaetigung ersetzt. Bei bereits gespeicherten
+Events bleibt der gespeicherte Inhalt beim Oeffnen erhalten, unabhaengig von
+spaeteren Vorlagenaenderungen. Vorlage und Variablen werden nur in die Vorschau
+uebernommen; gespeichert/veroeffentlicht wird der abschliessend bearbeitete
+Event-Inhalt. Formularlinks, relative Datumsvariablen, `{{roter_faden}}` und
+die bestehende WordPress/EventON-Synchronisierung bleiben erhalten.
+Publizierende Benutzer laden die Auswahl ueber
+`GET /activities/:id/event-template-context`, das die konkrete Aktivitaet mit
+`event_publish_scope` prueft; Vorlagenverwaltung ist dafuer nicht erforderlich.
+
+Der Schema-Sync ergaenzt `event_templates.name` und `is_default`, entfernt
+die bisherige Eindeutigkeit der Stufe und erhaelt bestehende IDs, Zeitstempel,
+Titel/Inhalte sowie Event-Veröffentlichungen. Alte Vorlagen heissen
+**Standard** und werden zum Standard ihrer Stufe. Ein partieller eindeutiger
+Index erlaubt hoechstens einen Standard pro Stufe; Standardwechsel werden
+transaktional ueber die Stufenzeile serialisiert. Loeschen oder Aufheben des
+Standards befoerdert keine Alternative und wiederholter Schema-Sync legt
+geloeschte Event-Vorlagen/Standards nicht erneut an.
+
+`POST /event-templates` legt benannte Vorlagen an, `PUT /event-templates/:id`
+aendert nur uebermittelte Felder, `DELETE /event-templates/:id` loescht eine
+Vorlage. Kollaborative Editorraeume verwenden Stufe **und** Vorlagen-ID;
+Sperren und Updates verschiedener Vorlagen sind getrennt. Nicht geaenderte
+Felder werden beim Speichern nicht mit aelteren Clientwerten ueberschrieben.
+Wird die geoeffnete Vorlage von jemand anderem geloescht, bleibt der eigene
+Inhalt als explizit speicherbarer neuer Entwurf erhalten.
+Die bisherigen Stufen-APIs bleiben kompatibel: `GET /event-templates/:department`
+liefert den Standard, andernfalls die alphabetisch erste Vorlage;
+der entsprechende `PUT` aktualisiert diese Vorlage und setzt sie zum Standard
+(oder legt **Standard** an, wenn keine existiert). Diese Kompatibilitaetswahl
+ist kein automatischer Standard fuer die neue Event-Vorschau.
+
+Regressionen: [SQL](../backend/tests/test_event_templates.sql),
+[Schema-Upgrade](../scripts/schema-upgrade-tests.sh),
+[Event-API](../scripts/api-event-template-tests.mjs) und
+[WebSocket-Berechtigungen](../scripts/api-websocket-tests.mjs).
+CI fuehrt sie im isolierten Teststack aus. Fuer die Event-API lokal nur
+einen **wegwerfbaren Debug-Stack** mit `db/seed.sql` und
+`scripts/api-auth-fixtures.sql` verwenden:
+`DPW_API_BASE_URL=http://127.0.0.1:<frontend-port>/api node --test scripts/api-event-template-tests.mjs`.
+Der Test aendert Standardauswahl und Testdaten; niemals gegen Produktion ausfuehren.
+
 ## Relative Datumsvariablen in Vorlagen
 
 Formular-, Mail- und Event-Vorlagen unterstützen `{{datum|-7}}` (langes deutsches

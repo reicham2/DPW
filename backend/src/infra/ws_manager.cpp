@@ -364,7 +364,20 @@ bool WebSocketManager::can_access_room(WsHandle ws, const std::string &room, boo
         auto permission = db_.get_role_permission(user->role);
 
         if (room.rfind("evt_tpl_", 0) == 0)
-            return can_manage_department_scope(*user, permission ? permission->event_templates_scope : "none", room.substr(8));
+        {
+            const std::string template_room = room.substr(8);
+            const auto separator = template_room.rfind(':');
+            if (separator != std::string::npos)
+            {
+                const std::string department = template_room.substr(0, separator);
+                const auto event_template = db_.get_event_template_by_id(template_room.substr(separator + 1));
+                return event_template && event_template->department == department &&
+                       can_manage_department_scope(*user,
+                           permission ? permission->event_templates_scope : "none", department);
+            }
+            return can_manage_department_scope(*user,
+                permission ? permission->event_templates_scope : "none", template_room);
+        }
         if (room.rfind("tpl_", 0) == 0)
         {
             const std::string template_room = room.substr(4);

@@ -13,7 +13,7 @@ import { useIdeaBox } from '../composables/useIdeaBox';
 import { useActivityExport } from '../composables/useActivityExport';
 import { useUserResolver } from '../composables/useUserResolver';
 import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText, ChevronDown, ChevronRight } from 'lucide-vue-next';
-import type { Activity, ActivityInput, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication, WsEvent } from '../types';
+import type { Activity, ActivityInput, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication, EventTemplate, WsEvent } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import ActivityEvaluationPanel from '../components/ActivityEvaluationPanel.vue';
@@ -83,7 +83,7 @@ const guestEditPeople = ref<GuestEditPerson[]>([]);
 const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper, canIdeenkiste, canIdeenkisteAdd } = usePermissions();
 
 const { fetchForm } = useForms();
-const { fetchTemplate: fetchEventTemplate, fetchPublication, publishEvent, unpublishEvent } = useEventTemplates();
+const { fetchActivityTemplates, fetchPublication, publishEvent, unpublishEvent, error: eventError } = useEventTemplates();
 const { exportToWord, error: exportError } = useActivityExport();
 const { resolveResponsibleName } = useUserResolver();
 
@@ -147,6 +147,14 @@ const eventPublication = ref<EventPublication | null>(null);
 const showEventPreview = ref(false);
 const eventPreviewTitle = ref('');
 const eventPreviewBody = ref('');
+const eventTemplates = ref<EventTemplate[]>([]);
+const selectedEventTemplateId = ref('');
+const eventTemplatesLoading = ref(false);
+const eventTemplateOptions = computed(() =>
+	[...eventTemplates.value].sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }) || a.id.localeCompare(b.id)),
+);
+let eventPreviewBaseline = { title: '', body: '' };
+let eventPreviewRequest = 0;
 const eventPublishing = ref(false);
 const eventPreviewEditorRef = ref<HTMLElement | null>(null);
 const evtPreviewToolbar = ref<RichTextToolbarState | null>(null);
@@ -893,63 +901,94 @@ function evtSubstituteVarsHtml(text: string, act: Activity, formUrl = ''): strin
 	return container.innerHTML;
 }
 
-// Cache for the event template so we only fetch it once
-let cachedEventTemplate: { dept: string; tpl: import('../types').EventTemplate | null } | null = null;
-
 function setEvtPreviewEditorHtml(html: string) {
+	eventPreviewBody.value = html;
 	nextTick(() => {
 		if (eventPreviewEditorRef.value) eventPreviewEditorRef.value.innerHTML = html;
 	});
 }
 
-async function openEventPreviewModal() {
+function applyEventTemplate(template: EventTemplate | null) {
 	if (!activity.value) return;
-	eventPreviewTitle.value = activity.value.title;
+	selectedEventTemplateId.value = template?.id ?? '';
+	if (!template && eventPublication.value) {
+		eventPreviewTitle.value = eventPublication.value.title;
+		setEvtPreviewEditorHtml(eventPublication.value.body_html);
+		eventPreviewBaseline = { title: eventPreviewTitle.value, body: eventPublication.value.body_html };
+		return;
+	}
+	eventPreviewTitle.value = template?.title
+		? evtSubstituteVarsPlain(replaceDateOffsets(template.title, activity.value.date), activity.value, eventFormUrl.value)
+		: activity.value.title;
+	const html = template ? evtSubstituteVarsHtml(template.body, activity.value, eventFormUrl.value) : '';
+	setEvtPreviewEditorHtml(html);
+	eventPreviewBaseline = { title: eventPreviewTitle.value, body: html };
+}
+
+function onEventTemplateChange(event: Event) {
+	const select = event.target as HTMLSelectElement;
+	if (select.value === selectedEventTemplateId.value) return;
+	const currentBody = eventPreviewEditorRef.value?.innerHTML ?? eventPreviewBody.value;
+	if ((eventPublication.value || eventPreviewTitle.value !== eventPreviewBaseline.title || currentBody !== eventPreviewBaseline.body) &&
+		!window.confirm('Deine bisherigen Änderungen werden durch die gewählte Vorlage ersetzt. Möchtest du fortfahren?')) {
+		select.value = selectedEventTemplateId.value;
+		return;
+	}
+	applyEventTemplate(eventTemplates.value.find(template => template.id === select.value) ?? null);
+}
+
+async function openEventPreviewModal(publication: EventPublication | null = null) {
+	if (!activity.value || eventTemplatesLoading.value) return;
+	const request = ++eventPreviewRequest;
+	eventTemplatesLoading.value = true;
+	eventTemplates.value = [];
+	selectedEventTemplateId.value = '';
+	eventError.value = null;
 	showEventPreview.value = true;
-	setEvtPreviewEditorHtml('');
-
-	const dept = activity.value.department;
-	if (!dept) return;
-
-	let tpl: import('../types').EventTemplate | null = null;
-	if (cachedEventTemplate && cachedEventTemplate.dept === dept) {
-		tpl = cachedEventTemplate.tpl;
+	if (publication) {
+		eventPreviewTitle.value = publication.title;
+		setEvtPreviewEditorHtml(publication.body_html);
+		eventPreviewBaseline = { title: publication.title, body: publication.body_html };
 	} else {
-		tpl = await fetchEventTemplate(dept);
-		cachedEventTemplate = { dept, tpl };
+		applyEventTemplate(null);
 	}
+	const templates = await fetchActivityTemplates(id);
+	if (request !== eventPreviewRequest) return;
+	eventTemplatesLoading.value = false;
+	if (!showEventPreview.value || !templates) return;
+	eventTemplates.value = templates.filter(template => template.department === activity.value?.department);
+	if (!publication) {
+		applyEventTemplate(eventTemplates.value.find(template => template.is_default) ?? null);
+	}
+}
 
-	if (tpl && (tpl.title || tpl.body) && activity.value) {
-		const title = replaceDateOffsets(tpl.title, activity.value.date);
-		eventPreviewTitle.value = evtSubstituteVarsPlain(title, activity.value, eventFormUrl.value);
-		setEvtPreviewEditorHtml(evtSubstituteVarsHtml(tpl.body, activity.value, eventFormUrl.value));
-	}
+function closeEventPreview() {
+	showEventPreview.value = false;
+	eventPreviewRequest++;
+	eventTemplatesLoading.value = false;
 }
 
 async function handlePublishEventClick() {
 	if (!activity.value) return;
 
-	// If already published, show existing publication data
-	if (eventPublication.value) {
-		eventPreviewTitle.value = eventPublication.value.title;
-		showEventPreview.value = true;
-		setEvtPreviewEditorHtml(eventPublication.value.body_html);
-		return;
-	}
-
 	// Check if a form exists for this activity
 	const existingForm = await fetchForm(id);
+	const baseUrl = configuredPublicBaseUrl();
+	if (eventPublication.value) {
+		eventFormUrl.value = existingForm && baseUrl ? `${baseUrl}/forms/${existingForm.public_slug}` : '';
+		await openEventPreviewModal(eventPublication.value);
+		return;
+	}
 	if (!existingForm) {
 		showNoFormForEventDialog.value = true;
 		return;
 	}
-	const baseUrl = configuredPublicBaseUrl();
 	if (!baseUrl) {
 		error.value = 'Öffentliche Basis-URL ist nicht konfiguriert.';
 		return;
 	}
 	eventFormUrl.value = `${baseUrl}/forms/${existingForm.public_slug}`;
-	await openEventPreviewModal();
+	await openEventPreviewModal(eventPublication.value);
 }
 
 async function publishWithoutForm() {
@@ -959,7 +998,7 @@ async function publishWithoutForm() {
 }
 
 async function confirmPublishEvent() {
-	if (!activity.value) return;
+	if (!activity.value || eventTemplatesLoading.value) return;
 	// Sync editor content before publishing
 	if (eventPreviewEditorRef.value) eventPreviewBody.value = eventPreviewEditorRef.value.innerHTML;
 	eventPublishing.value = true;
@@ -967,7 +1006,7 @@ async function confirmPublishEvent() {
 	eventPublishing.value = false;
 	if (result) {
 		eventPublication.value = result;
-		showEventPreview.value = false;
+		closeEventPreview();
 	}
 }
 
@@ -5321,7 +5360,7 @@ function closeShareDialog() {
 	</div>
 
 	<!-- Event publish preview modal -->
-	<div v-if="showEventPreview" class="modal-backdrop" @click.self="showEventPreview = false">
+	<div v-if="showEventPreview" class="modal-backdrop" @click.self="closeEventPreview">
 		<div class="modal" style="max-width: 640px;">
 			<div style="display: flex; align-items: center; justify-content: space-between;">
 				<h2 class="modal-title" style="margin: 0;">Event-Vorschau</h2>
@@ -5345,11 +5384,22 @@ function closeShareDialog() {
 					<span v-if="activity?.date" class="event-preview-meta-item">{{ evtFormatDateLong(activity.date) }}</span>
 					<span v-if="activity?.start_time || activity?.end_time" class="event-preview-meta-item">{{ activity.start_time }}{{ activity.end_time ? ' – ' + activity.end_time : '' }}</span>
 				</div>
+				<ErrorAlert :error="eventError" />
+				<label class="event-preview-label" for="event-template-selector">Vorlage</label>
+				<select id="event-template-selector" class="event-preview-input" :value="selectedEventTemplateId"
+					:disabled="eventTemplatesLoading || eventPublishing" @change="onEventTemplateChange">
+					<option value="">{{ eventPublication ? 'Gespeicherter Event-Inhalt / keine Vorlage' : 'Keine Vorlage' }}</option>
+					<option v-for="template in eventTemplateOptions" :key="template.id" :value="template.id">
+						{{ template.name }}{{ template.is_default ? ' (Standard)' : '' }}
+					</option>
+				</select>
+				<p v-if="eventTemplatesLoading" class="loading">Vorlagen laden…</p>
 				<label class="event-preview-label">Titel</label>
 				<input
 					v-model="eventPreviewTitle"
 					class="event-preview-input"
 					placeholder="Event-Titel"
+					:disabled="eventTemplatesLoading || eventPublishing"
 				/>
 				<label class="event-preview-label" style="margin-top: 12px;">Beschreibung</label>
 				<div class="rich-editor-toolbar">
@@ -5390,7 +5440,7 @@ function closeShareDialog() {
 				<div
 					ref="eventPreviewEditorRef"
 					class="rich-editor"
-					contenteditable="true"
+					:contenteditable="!eventTemplatesLoading && !eventPublishing"
 					@input="onEvtPreviewInput"
 					@focus="updateEvtPreviewToolbar"
 					@mouseup="updateEvtPreviewToolbar"
@@ -5399,7 +5449,7 @@ function closeShareDialog() {
 				></div>
 			</div>
 			<div class="modal-actions">
-				<button class="btn-cancel" @click="showEventPreview = false">Abbrechen</button>
+				<button class="btn-cancel" :disabled="eventPublishing" @click="closeEventPreview">Abbrechen</button>
 				<button
 					v-if="eventPublication"
 					class="btn-danger"
@@ -5411,7 +5461,7 @@ function closeShareDialog() {
 				</button>
 				<button
 					class="btn-primary"
-					:disabled="eventPublishing || eventUnpublishing || !eventPreviewTitle.trim()"
+					:disabled="eventPublishing || eventUnpublishing || eventTemplatesLoading || !eventPreviewTitle.trim()"
 					@click="confirmPublishEvent"
 				>
 					{{ eventPublishing ? 'Wird veröffentlicht…' : (eventPublication ? 'Aktualisieren' : 'Veröffentlichen') }}

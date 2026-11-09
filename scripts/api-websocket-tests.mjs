@@ -309,7 +309,7 @@ test('live activity and template updates follow the same permissions', async () 
 	assert.ok(!admin.messages.slice(guestAdminStart).some((message) => message.event === 'lock' && message.section === 'program_0'),
 		'revoked guest sockets cannot acquire locks');
 
-	for (const room of ['tpl_Pfadi', 'evt_tpl_Pfadi']) {
+	for (const room of ['tpl_Pfadi', 'evt_tpl_Pfadi', `evt_tpl_Pfadi:${originalEventTemplate.id}`]) {
 		const adminRoomStart = admin.messages.length;
 		const leaderRoomStart = leader.messages.length;
 		outsiderStart = outsider.messages.length;
@@ -326,6 +326,17 @@ test('live activity and template updates follow the same permissions', async () 
 		await waitForMessage(admin, (message) => message.event === 'lock' && message.section === 'subject', adminRoomStart);
 		sendSocket(leader, { type: 'unlock', activity_id: room, section: 'subject' });
 	}
+
+	const mismatchedRoom = `evt_tpl_Leiter:${originalEventTemplate.id}`;
+	adminStart = admin.messages.length;
+	leaderStart = leader.messages.length;
+	for (const client of [admin, leader]) {
+		sendSocket(client, { type: 'join', activity_id: mismatchedRoom });
+		sendSocket(client, { type: 'lock', activity_id: mismatchedRoom, section: 'mismatched-template' });
+	}
+	await settleMessages();
+	assert.ok(!admin.messages.slice(adminStart).some(message => message.activity_id === mismatchedRoom));
+	assert.ok(!leader.messages.slice(leaderStart).some(message => message.activity_id === mismatchedRoom));
 
 	leaderStart = leader.messages.length;
 	outsiderStart = outsider.messages.length;

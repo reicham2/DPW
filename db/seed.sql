@@ -41,14 +41,19 @@ INSERT INTO role_permissions (role, can_read_own_dept, can_write_own_dept, can_r
     ('Pio',           true, false, false, false, 'same_dept', 'none',     'none',      'none',      'none',     'none',     'none',     'none',     'none',     'none', 'none')
 ON CONFLICT (role) DO NOTHING;
 
-INSERT INTO event_templates (department, title, body) VALUES
+INSERT INTO event_templates (name, department, title, body, is_default)
+SELECT 'Standard', d.department, d.title, d.body, TRUE
+FROM (VALUES
     ('Allgemein', '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
     ('Leiter',    '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
     ('Pio',       '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
     ('Pfadi',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
     ('Wölfe',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>'),
     ('Biber',     '{{abteilung}}: {{titel}}', '<p><strong>{{datum}}</strong> | {{startzeit}} – {{endzeit}}</p><p><strong>Ort:</strong> {{ort}}</p><p><strong>Ziel:</strong> {{ziel}}</p><p><strong>Verantwortlich:</strong> {{verantwortlich}}</p><p><strong>TN-Material:</strong> {{tn_material}}</p><p><strong>Schlechtwetter:</strong> {{schlechtwetter}}</p>')
-ON CONFLICT (department) DO NOTHING;
+) AS d(department, title, body)
+WHERE NOT EXISTS (
+    SELECT 1 FROM event_templates t WHERE t.department = d.department
+);
 
 INSERT INTO mail_templates (name, department, subject, body, recipients, cc, is_default)
 SELECT 'Standard', d.department, '', '', '{}', '{}', TRUE

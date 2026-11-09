@@ -104,6 +104,30 @@ INSERT INTO mail_templates (id, department, subject, body, recipients, cc)
 VALUES ('00000000-0000-0000-0000-000000000004', 'Legacy mail department',
         'Custom legacy subject', '<p>Custom legacy body</p>',
         ARRAY['legacy@example.invalid'], ARRAY['copy@example.invalid']);
+CREATE TABLE event_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    department TEXT NOT NULL UNIQUE REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO event_templates (id, department, title, body, created_at, updated_at)
+VALUES ('00000000-0000-0000-0000-000000000005', 'Legacy mail department',
+        'Custom legacy Event title', '<p>Custom legacy Event body</p>',
+        '2026-01-01 00:00:00+00', '2026-01-02 00:00:00+00');
+CREATE TABLE event_publications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id UUID NOT NULL UNIQUE REFERENCES activities(id) ON DELETE CASCADE,
+    published_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    body_html TEXT NOT NULL,
+    wp_event_id TEXT,
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO event_publications (id, activity_id, published_by, title, body_html, wp_event_id)
+VALUES ('00000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000003', 'Published custom Event', '<p>Published content</p>', '123');
 DO $$
 BEGIN
     IF EXISTS (
@@ -172,10 +196,26 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Proofreading preference must be a non-null boolean with a true default';
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM event_templates WHERE id = '00000000-0000-0000-0000-000000000005'
+          AND name = 'Standard' AND is_default AND department = 'Legacy mail department'
+          AND title = 'Custom legacy Event title' AND body = '<p>Custom legacy Event body</p>'
+          AND created_at = '2026-01-01 00:00:00+00' AND updated_at = '2026-01-02 00:00:00+00'
+    ) THEN
+        RAISE EXCEPTION 'The legacy Event template, identity, timestamps or default was not preserved';
+    END IF;
 END $$;
 INSERT INTO users (id, microsoft_oid, email, display_name)
 VALUES ('00000000-0000-0000-0000-000000000004', 'new-proofreading-user',
         'new@example.invalid', 'New user');
+INSERT INTO event_templates (id, name, department, title, body, is_default)
+VALUES ('00000000-0000-0000-0000-000000000006', 'Abend', 'Legacy mail department',
+        'Alternate title', '<p>Alternate body</p>', FALSE);
+UPDATE event_templates SET name = 'Umbenannt', is_default = FALSE
+WHERE id = '00000000-0000-0000-0000-000000000005';
+UPDATE event_templates SET is_default = TRUE
+WHERE id = '00000000-0000-0000-0000-000000000006';
+DELETE FROM event_templates WHERE department = 'Allgemein';
 UPDATE activities SET guiding_thread = E'Erste Zeile\nZweite Zeile'
 WHERE id = '00000000-0000-0000-0000-000000000001';
 UPDATE users SET activity_reminder_hours = 2, notify_activity_reminder = false, proofreading_enabled = false
@@ -225,6 +265,36 @@ BEGIN
         SELECT 1 FROM users WHERE microsoft_oid = 'new-proofreading-user' AND proofreading_enabled
     ) THEN
         RAISE EXCEPTION 'Repeated schema sync changed or leaked proofreading preferences';
+     END IF;
+    IF (SELECT count(*) FROM event_templates WHERE department = 'Legacy mail department') <> 2
+       OR NOT EXISTS (SELECT 1 FROM event_templates
+           WHERE id = '00000000-0000-0000-0000-000000000006' AND name = 'Abend' AND is_default)
+       OR NOT EXISTS (SELECT 1 FROM event_templates
+           WHERE id = '00000000-0000-0000-0000-000000000005' AND name = 'Umbenannt' AND NOT is_default
+             AND title = 'Custom legacy Event title' AND body = '<p>Custom legacy Event body</p>')
+       OR EXISTS (SELECT 1 FROM event_templates WHERE department = 'Allgemein')
+    THEN
+        RAISE EXCEPTION 'Repeated schema sync changed multiple Event templates or recreated a deleted default';
+    END IF;
+END $$;
+DELETE FROM event_templates WHERE id = '00000000-0000-0000-0000-000000000006';
+SQL
+    cat db/init.sql
+    cat <<'SQL'
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM event_templates WHERE is_default)
+       OR (SELECT count(*) FROM event_templates) <> 1
+    THEN
+        RAISE EXCEPTION 'Repeated sync recreated or promoted a deleted Event default';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM event_publications WHERE id = '00000000-0000-0000-0000-000000000007'
+          AND activity_id = '00000000-0000-0000-0000-000000000001'
+          AND published_by = '00000000-0000-0000-0000-000000000003'
+          AND title = 'Published custom Event' AND body_html = '<p>Published content</p>' AND wp_event_id = '123'
+    ) THEN
+        RAISE EXCEPTION 'Schema sync changed existing published Event content or relationships';
     END IF;
 END $$;
 ROLLBACK;
@@ -260,7 +330,8 @@ BEGIN
     END IF;
 END $$;
 SQL
-    printf 'ROLLBACK;\n'
+    printf 'COMMIT;\n'
+    cat backend/tests/test_event_templates.sql
 } | docker exec -i -e PGPASSWORD=temporary-test-password \
     -e 'PGOPTIONS=-c client_min_messages=warning' "$container" \
     psql -X -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d postgres

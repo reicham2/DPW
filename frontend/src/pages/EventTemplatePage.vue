@@ -9,13 +9,14 @@ import { CheckCircle2, Lock, Save, Users } from 'lucide-vue-next'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
-import type { Department, EditSection, EventTemplate } from '../types'
+import type { Department, EditSection, EventTemplate, EventTemplateChanges } from '../types'
+import { formatApiError } from '../composables/useApi'
 import { config } from '../config'
 
 const router = useRouter()
 const { departments: deptRecords, fetchDepartments, myPermissions, fetchMyPermissions } = usePermissions()
 const ALL_DEPARTMENTS = computed<Department[]>(() => deptRecords.value.map(d => d.name))
-const { fetchTemplates, saveTemplate, templates, loading, error } = useEventTemplates()
+const { fetchTemplates, createTemplate, updateTemplate, deleteTemplate, templates, loading, error } = useEventTemplates()
 
 const canEditAll = computed(() => myPermissions.value?.event_templates_scope === 'all')
 const canEditOwnDept = computed(() => {
@@ -38,13 +39,17 @@ const activeDept = ref<Department>(
     : '' as Department
 )
 const showEditor = ref(false)
-const eventTemplateRows = computed(() =>
-  activeDept.value
-    ? [{
-        department: activeDept.value,
-        template: templates.value.find(template => template.department === activeDept.value),
-      }]
-    : []
+const selectedTemplateId = ref('')
+const isCreatingTemplate = ref(false)
+const templateName = ref('')
+const templateIsDefault = ref(false)
+const saving = ref(false)
+const departmentTemplates = computed(() =>
+  templates.value.filter(template => template.department === activeDept.value)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }) || a.id.localeCompare(b.id))
+)
+const selectedTemplate = computed(() =>
+  departmentTemplates.value.find(template => template.id === selectedTemplateId.value) ?? null
 )
 
 const title = ref('')
@@ -66,22 +71,22 @@ const linkUrl = ref('')
 const linkInputRef = ref<HTMLInputElement | null>(null)
 
 // ---- Dirty tracking & save indicator ----------------------------------------
-const dirtyFields = new Set<string>()
+type TemplateField = keyof EventTemplateChanges
+const dirtyFields = new Set<TemplateField>()
 const savedFields = ref<Record<string, number>>({})
 let savedTimer: ReturnType<typeof setTimeout> | null = null
 let suppressDirtyTracking = true
 let applyingRemote = false
 
-function markDirty(...fields: string[]) {
+function markDirty(...fields: TemplateField[]) {
   if (suppressDirtyTracking || applyingRemote) return
   for (const f of fields) dirtyFields.add(f)
 }
 
-function showSavedIndicator() {
+function showSavedIndicator(fields: TemplateField[]) {
   if (savedTimer) clearTimeout(savedTimer)
   const snap: Record<string, number> = {}
-  for (const f of dirtyFields) snap[f] = Date.now()
-  dirtyFields.clear()
+  for (const f of fields) snap[f] = Date.now()
   savedFields.value = snap
   savedTimer = setTimeout(() => { savedFields.value = {} }, 2000)
 }
@@ -91,7 +96,7 @@ const activeEditors = ref<string[]>([])
 const sectionLocks = ref<Map<EditSection, string>>(new Map())
 const myLockedSection = ref<EditSection | null>(null)
 
-function tplId() { return `evt_tpl_${activeDept.value}` }
+function tplId() { return `evt_tpl_${activeDept.value}:${selectedTemplateId.value}` }
 
 function isLockedByOther(section: EditSection): boolean {
   const locker = sectionLocks.value.get(section)
@@ -103,6 +108,7 @@ function lockedBy(section: EditSection): string | null {
 }
 
 function lockSection(section: EditSection) {
+  if (!selectedTemplateId.value || isCreatingTemplate.value) return
   if (isLockedByOther(section)) return
   if (myLockedSection.value === section) return
   if (myLockedSection.value) {
@@ -134,11 +140,15 @@ const autosaveDebounce = () => config.AUTOSAVE_DEBOUNCE
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 let autoSaveInterval: ReturnType<typeof setInterval> | null = null
-let hasPendingChanges = false
+let saveQueue: Promise<boolean> = Promise.resolve(true)
+let editorGeneration = 0
 
 interface LocalEventTemplateDraft {
   version: 1;
   department: Department;
+  templateId?: string;
+  name?: string;
+  isDefault?: boolean;
   savedAt: number;
   title: string;
   body: string;
@@ -149,28 +159,59 @@ const localDraftRestoredAt = ref<number | null>(null)
 let localDraftWriteTimer: ReturnType<typeof setTimeout> | null = null
 const LOCAL_DRAFT_WRITE_DEBOUNCE_MS = 350
 
-function localDraftKey(dept = activeDept.value) {
-  return `dpw:event-template-draft:${dept}`
+function localDraftKey(dept = activeDept.value, templateId = selectedTemplateId.value) {
+  return templateId ? `dpw:event-template-draft:${dept}:${templateId}` : `dpw:event-template-draft:${dept}`
+}
+
+function newLocalDraftKey(dept = activeDept.value) {
+  return `dpw:event-template-new-draft:${dept}`
+}
+
+function isLegacyTemplate(template: EventTemplate) {
+  const first = templates.value.filter(t => t.department === template.department)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))[0]
+  return first?.id === template.id
 }
 
 function buildLocalDraft(dept = activeDept.value): LocalEventTemplateDraft {
   return {
     version: 1,
     department: dept,
+    templateId: selectedTemplateId.value || undefined,
+    name: templateName.value,
+    isDefault: templateIsDefault.value,
     savedAt: Date.now(),
     title: title.value,
     body: body.value,
   }
 }
 
-function clearLocalDraft(dept = activeDept.value) {
+function clearLocalDraft(template = selectedTemplate.value, creating = isCreatingTemplate.value,
+                         includeLegacy = template ? isLegacyTemplate(template) : false) {
   if (localDraftWriteTimer) { clearTimeout(localDraftWriteTimer); localDraftWriteTimer = null }
-  try { window.localStorage.removeItem(localDraftKey(dept)) } catch { /* ignore */ }
+  try {
+    if (creating) window.localStorage.removeItem(newLocalDraftKey())
+    if (template) {
+      window.localStorage.removeItem(localDraftKey(template.department, template.id))
+      if (includeLegacy) window.localStorage.removeItem(localDraftKey(template.department, ''))
+    }
+  } catch (e) {
+    error.value = `Lokaler Entwurf konnte nicht entfernt werden: ${formatApiError(e)}`
+  }
 }
 
-function writeLocalDraftNow() {
-  if (!activeDept.value) return
-  try { window.localStorage.setItem(localDraftKey(), JSON.stringify(buildLocalDraft())) } catch { /* ignore */ }
+function writeLocalDraftNow(): boolean {
+  if (!showEditor.value || !activeDept.value || (!dirtyFields.size && !isCreatingTemplate.value)) return true
+  if (isCreatingTemplate.value && !templateName.value && !title.value && !body.value) return true
+  try {
+    window.localStorage.setItem(
+      isCreatingTemplate.value ? newLocalDraftKey() : localDraftKey(), JSON.stringify(buildLocalDraft())
+    )
+    return true
+  } catch (e) {
+    error.value = `Lokaler Entwurf konnte nicht gespeichert werden: ${formatApiError(e)}`
+    return false
+  }
 }
 
 function scheduleLocalDraftWrite() {
@@ -179,31 +220,40 @@ function scheduleLocalDraftWrite() {
   localDraftWriteTimer = setTimeout(writeLocalDraftNow, LOCAL_DRAFT_WRITE_DEBOUNCE_MS)
 }
 
-function loadPendingLocalDraft(dept: Department) {
+function loadPendingLocalDraft(template: EventTemplate | null) {
   try {
-    const raw = window.localStorage.getItem(localDraftKey(dept))
+    const raw = template
+      ? window.localStorage.getItem(localDraftKey(template.department, template.id))
+        ?? (isLegacyTemplate(template) ? window.localStorage.getItem(localDraftKey(template.department, '')) : null)
+      : window.localStorage.getItem(newLocalDraftKey())
     if (!raw) { pendingLocalDraft.value = null; return }
     const d: LocalEventTemplateDraft = JSON.parse(raw)
-    if (!d || d.version !== 1 || d.department !== dept) { pendingLocalDraft.value = null; return }
-    const match = templates.value.find(t => t.department === dept)
-    if (match && d.title === match.title && d.body === match.body) {
-      clearLocalDraft(dept); pendingLocalDraft.value = null; return
+    if (!d || d.version !== 1 || d.department !== activeDept.value ||
+        (template && d.templateId && d.templateId !== template.id)) { pendingLocalDraft.value = null; return }
+    if (template && d.title === template.title && d.body === template.body &&
+        (d.name ?? template.name) === template.name && (d.isDefault ?? template.is_default) === template.is_default) {
+      clearLocalDraft(template, false); pendingLocalDraft.value = null; return
     }
     pendingLocalDraft.value = d
-  } catch { pendingLocalDraft.value = null }
+  } catch (e) {
+    pendingLocalDraft.value = null
+    error.value = `Lokaler Entwurf konnte nicht gelesen werden: ${formatApiError(e)}`
+  }
 }
 
 function restoreLocalDraft() {
   const d = pendingLocalDraft.value
   if (!d) return
   suppressDirtyTracking = true
+  templateName.value = d.name ?? templateName.value
+  templateIsDefault.value = d.isDefault ?? templateIsDefault.value
   title.value = d.title
   body.value = d.body
   if (editorRef.value) editorRef.value.innerHTML = d.body
   pendingLocalDraft.value = null
   localDraftRestoredAt.value = Date.now()
   suppressDirtyTracking = false
-  hasPendingChanges = true
+  markDirty('name', 'is_default', 'title', 'body')
   scheduleAutoSave()
 }
 
@@ -213,41 +263,107 @@ function discardLocalDraft() {
   localDraftRestoredAt.value = null
 }
 
-async function doSave(): Promise<EventTemplate | null> {
-  if (!activeDept.value) return null
-  const result = await saveTemplate(activeDept.value, title.value, body.value)
-  if (result) {
-    clearLocalDraft()
-    localDraftRestoredAt.value = null
-    showSavedIndicator()
-    const idx = templates.value.findIndex(t => t.department === activeDept.value)
-    if (idx >= 0) templates.value[idx] = result
-    else templates.value.push(result)
-    hasPendingChanges = false
-  } else {
-    hasPendingChanges = true
+function upsertTemplate(template: EventTemplate) {
+  if (template.is_default) {
+    for (const other of templates.value) {
+      if (other.department === template.department && other.id !== template.id) other.is_default = false
+    }
+    if (selectedTemplateId.value !== template.id && template.department === activeDept.value &&
+        !dirtyFields.has('is_default') && !isCreatingTemplate.value) {
+      applyingRemote = true
+      templateIsDefault.value = false
+      applyingRemote = false
+    }
   }
-  return result
+  const index = templates.value.findIndex(t => t.id === template.id)
+  if (index >= 0) templates.value[index] = template
+  else templates.value.push(template)
+}
+
+function currentChanges(): Required<EventTemplateChanges> {
+  return { name: templateName.value, is_default: templateIsDefault.value, title: title.value, body: body.value }
+}
+
+function mergeTemplateIntoEditor(template: EventTemplate) {
+  if (!showEditor.value || template.id !== selectedTemplateId.value || isCreatingTemplate.value) return
+  applyingRemote = true
+  if (!dirtyFields.has('name') && myLockedSection.value !== 'evt_tpl_name') templateName.value = template.name
+  if (!dirtyFields.has('is_default') && myLockedSection.value !== 'evt_tpl_default') templateIsDefault.value = template.is_default
+  if (!dirtyFields.has('title') && myLockedSection.value !== 'evt_tpl_title') title.value = template.title
+  if (!dirtyFields.has('body') && myLockedSection.value !== 'evt_tpl_body') {
+    body.value = template.body
+    if (editorRef.value) editorRef.value.innerHTML = template.body
+  }
+  applyingRemote = false
+}
+
+async function persistTemplate(): Promise<boolean> {
+  if (!showEditor.value || !activeDept.value) return false
+  if (!templateName.value.trim()) {
+    error.value = 'Name der Vorlage erforderlich.'
+    return false
+  }
+  if (!isCreatingTemplate.value && !dirtyFields.size) return true
+  const snapshot = currentChanges()
+  const fields = [...dirtyFields]
+  const changes: EventTemplateChanges = {}
+  for (const field of fields) {
+    if (field === 'is_default') changes.is_default = snapshot.is_default
+    else changes[field] = snapshot[field]
+  }
+  writeLocalDraftNow()
+  const creating = isCreatingTemplate.value
+  const generation = editorGeneration
+  saving.value = true
+  const result = creating
+    ? await createTemplate(snapshot.name.trim(), activeDept.value, snapshot.title, snapshot.body, snapshot.is_default)
+    : await updateTemplate(selectedTemplateId.value, changes)
+  saving.value = false
+  if (generation !== editorGeneration) return false
+  if (!result) return false
+  upsertTemplate(result)
+  if (creating) {
+    clearLocalDraft(null, true)
+    selectedTemplateId.value = result.id
+    isCreatingTemplate.value = false
+    wsJoin(tplId())
+    startAutoSaveInterval()
+  }
+  const saved = fields.filter(field => currentChanges()[field] === snapshot[field])
+  for (const field of saved) dirtyFields.delete(field)
+  mergeTemplateIntoEditor(result)
+  showSavedIndicator(saved)
+  if (!dirtyFields.size) {
+    clearLocalDraft(result, false)
+    pendingLocalDraft.value = null
+    localDraftRestoredAt.value = null
+  } else {
+    writeLocalDraftNow()
+    scheduleAutoSave()
+  }
+  return true
+}
+
+function doSave(): Promise<boolean> {
+  const generation = editorGeneration
+  saveQueue = saveQueue.then(() => generation === editorGeneration ? persistTemplate() : false)
+  return saveQueue
 }
 
 function scheduleAutoSave() {
   if (suppressDirtyTracking || applyingRemote) return
   scheduleLocalDraftWrite()
+  if (isCreatingTemplate.value) return
   if (autosaveDebounce()) {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
-    autoSaveTimer = setTimeout(doSave, autosaveInterval())
-  } else {
-    hasPendingChanges = true
+    autoSaveTimer = setTimeout(() => { autoSaveTimer = null; void doSave() }, autosaveInterval())
   }
 }
 
 function startAutoSaveInterval() {
   if (!autosaveDebounce() && !autoSaveInterval) {
     autoSaveInterval = setInterval(() => {
-      if (hasPendingChanges) {
-        hasPendingChanges = false
-        doSave()
-      }
+      if (dirtyFields.size && !isCreatingTemplate.value) void doSave()
     }, autosaveInterval())
   }
 }
@@ -257,63 +373,73 @@ function stopAutoSaveInterval() {
     clearInterval(autoSaveInterval)
     autoSaveInterval = null
   }
-  hasPendingChanges = false
 }
 
 // ---- Watch fields -----------------------------------------------------------
 watch(title, () => { markDirty('title'); scheduleAutoSave() }, { flush: 'sync' })
+watch(templateName, () => { markDirty('name'); scheduleAutoSave() }, { flush: 'sync' })
+watch(templateIsDefault, () => { markDirty('is_default'); scheduleAutoSave() }, { flush: 'sync' })
 // body changes are triggered by onEditorInput which calls scheduleAutoSave directly
 
 // ---- Load template for department -------------------------------------------
-async function loadDept(dept: Department, force = false) {
-  if (dept === activeDept.value && !force) return
-  if (showEditor.value) {
-    if (autoSaveTimer) {
-      clearTimeout(autoSaveTimer)
-      autoSaveTimer = null
-    }
-    if ((dirtyFields.size || hasPendingChanges) && !(await doSave())) return
-  }
+async function flushCurrentTemplate(): Promise<boolean> {
+  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
+  if (!showEditor.value) return true
+  if (isCreatingTemplate.value) return writeLocalDraftNow()
+  return doSave()
+}
+
+function activateTemplate(dept: Department, template: EventTemplate | null, edit: boolean) {
+  editorGeneration++
+  if (localDraftWriteTimer) { clearTimeout(localDraftWriteTimer); localDraftWriteTimer = null }
+  if (unlockTimer) { clearTimeout(unlockTimer); unlockTimer = null }
+  stopAutoSaveInterval()
   wsLeave()
   myLockedSection.value = null
   sectionLocks.value = new Map()
   activeEditors.value = []
   localDraftRestoredAt.value = null
-
+  savedFields.value = {}
   suppressDirtyTracking = true
   activeDept.value = dept
-  const tpl = templates.value.find(t => t.department === dept)
-  title.value = tpl?.title ?? ''
-  body.value = tpl?.body ?? ''
-  loadPendingLocalDraft(dept)
-
-  if (editorRef.value) editorRef.value.innerHTML = body.value
-  suppressDirtyTracking = false
+  selectedTemplateId.value = template?.id ?? ''
+  showEditor.value = edit
+  isCreatingTemplate.value = edit && !template
+  templateName.value = template?.name ?? ''
+  templateIsDefault.value = template?.is_default ?? !departmentTemplates.value.length
+  title.value = template?.title ?? ''
+  body.value = template?.body ?? ''
+  pendingLocalDraft.value = null
+  if (edit) loadPendingLocalDraft(template)
   dirtyFields.clear()
-  hasPendingChanges = false
-
-  if (showEditor.value) wsJoin(tplId())
+  suppressDirtyTracking = false
+  nextTick(() => { if (editorRef.value) editorRef.value.innerHTML = body.value })
+  if (edit && template) {
+    wsJoin(tplId())
+    startAutoSaveInterval()
+  }
 }
 
-function openEditor(dept: Department) {
-  void loadDept(dept, true).then(() => {
-    if (activeDept.value !== dept) return
-    showEditor.value = true
-    wsJoin(tplId())
-  })
-  startAutoSaveInterval()
-  nextTick(() => {
-    if (editorRef.value) editorRef.value.innerHTML = body.value
-  })
+async function loadDept(dept: Department) {
+  if (dept === activeDept.value) return
+  if (!(await flushCurrentTemplate())) return
+  const available = templates.value.filter(t => t.department === dept)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }) || a.id.localeCompare(b.id))
+  activateTemplate(dept, available.find(t => t.is_default) ?? available[0] ?? null, showEditor.value)
+}
+
+async function openEditor(template: EventTemplate) {
+  if (!(await flushCurrentTemplate())) return
+  activateTemplate(template.department, template, true)
+}
+
+async function createNewTemplate() {
+  if (!(await flushCurrentTemplate())) return
+  activateTemplate(activeDept.value, null, true)
 }
 
 async function backToOverview() {
-  if (autoSaveTimer) {
-    clearTimeout(autoSaveTimer)
-    autoSaveTimer = null
-  }
-  if ((dirtyFields.size || hasPendingChanges) && !(await doSave())) return
-
+  if (!(await flushCurrentTemplate())) return
   wsLeave()
   myLockedSection.value = null
   sectionLocks.value = new Map()
@@ -322,8 +448,29 @@ async function backToOverview() {
   showEditor.value = false
 }
 
+async function saveTemplateNow() {
+  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
+  return doSave()
+}
+
+async function toggleDefault(template: EventTemplate) {
+  const updated = await updateTemplate(template.id, { is_default: !template.is_default })
+  if (updated) upsertTemplate(updated)
+}
+
+async function removeTemplate(template: EventTemplate) {
+  if (!window.confirm(`Vorlage „${template.name}" wirklich löschen?`)) return
+  const legacy = isLegacyTemplate(template)
+  if (!(await deleteTemplate(template.id))) return
+  clearLocalDraft(template, false, legacy)
+}
+
+function templatePreview(template: EventTemplate) {
+  return template.body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 // ---- WebSocket events -------------------------------------------------------
-useWebSocket((e: any) => {
+useWebSocket((e) => {
   const id = tplId()
   if (e.event === 'lock' && e.activity_id === id) {
     sectionLocks.value.set(e.section, e.user)
@@ -335,24 +482,32 @@ useWebSocket((e: any) => {
     activeEditors.value = (e.users as string[]).filter((u: string) => u !== user.value?.display_name)
   } else if (e.event === 'locks_state' && e.activity_id === id) {
     const m = new Map<EditSection, string>()
-    if (e.locks && typeof e.locks === 'object') {
-      for (const [k, v] of Object.entries(e.locks)) m.set(k as EditSection, v as string)
-    }
+    for (const lock of e.locks) m.set(lock.section, lock.user)
     sectionLocks.value = m
   } else if (e.event === 'event_template_updated') {
-    const tpl = e.template as EventTemplate
-    if (!tpl) return
-    const idx = templates.value.findIndex(t => t.department === tpl.department)
-    if (idx >= 0) templates.value[idx] = tpl
-    else templates.value.push(tpl)
-    if (tpl.department === activeDept.value) {
+    const tpl = e.template
+    upsertTemplate(tpl)
+    mergeTemplateIntoEditor(tpl)
+  } else if (e.event === 'event_template_deleted') {
+    const deleted = templates.value.find(t => t.id === e.id)
+    templates.value = templates.value.filter(t => t.id !== e.id)
+    if (showEditor.value && e.id === selectedTemplateId.value) {
+      editorGeneration++
+      if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null }
+      stopAutoSaveInterval()
+      writeLocalDraftNow()
+      wsLeave()
+      myLockedSection.value = null
+      sectionLocks.value = new Map()
+      activeEditors.value = []
+      selectedTemplateId.value = ''
+      isCreatingTemplate.value = true
       applyingRemote = true
-      if (myLockedSection.value !== ('evt_tpl_title' as EditSection)) title.value = tpl.title
-      if (myLockedSection.value !== ('evt_tpl_body' as EditSection)) {
-        body.value = tpl.body
-        if (editorRef.value) editorRef.value.innerHTML = tpl.body
-      }
+      templateIsDefault.value = false
       applyingRemote = false
+      pendingLocalDraft.value = null
+      writeLocalDraftNow()
+      if (deleted) error.value = 'Diese Vorlage wurde gelöscht. Dein Inhalt bleibt erhalten und kann als neue Vorlage gespeichert werden.'
     }
   }
 })
@@ -487,16 +642,17 @@ onMounted(async () => {
   }
 
   const firstVisibleDepartment = visibleDepartments.value[0]
-  activeDept.value = firstVisibleDepartment ?? '' as Department
+  if (!visibleDepartments.value.includes(activeDept.value)) activeDept.value = firstVisibleDepartment ?? '' as Department
 })
 
 onUnmounted(() => {
+  editorGeneration++
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
   if (savedTimer) clearTimeout(savedTimer)
   if (localDraftWriteTimer) clearTimeout(localDraftWriteTimer)
-  stopAutoSaveInterval()
+  if (unlockTimer) clearTimeout(unlockTimer)
   writeLocalDraftNow()
-  if (hasPendingChanges && activeDept.value) doSave()
+  stopAutoSaveInterval()
   if (myLockedSection.value) {
     wsSend({ type: 'unlock', activity_id: tplId(), section: myLockedSection.value })
   }
@@ -527,12 +683,21 @@ onUnmounted(() => {
     <template v-if="showEditor">
       <div class="template-editor-header">
         <button type="button" class="btn-secondary template-editor-back" @click="backToOverview">← Zurück zu Vorlagen</button>
-        <h2 class="template-overview-title">Vorlage bearbeiten</h2>
+        <h2 class="template-overview-title">{{ isCreatingTemplate ? 'Neue Vorlage' : 'Vorlage bearbeiten' }}</h2>
+        <button type="button" class="btn-primary" :disabled="saving" @click="saveTemplateNow">
+          <Save :size="16" aria-hidden="true" /> {{ saving ? 'Speichern…' : 'Speichern' }}
+        </button>
       </div>
 
-      <div class="default-toggle-section event-template-default">
-        <p class="event-template-default-title">Eine Event-Vorlage pro Stufe</p>
-        <p class="default-hint">Für {{ activeDept }} ist nur eine Event-Vorlage vorgesehen.</p>
+      <div class="default-toggle-section event-template-default lock-wrapper"
+        :class="{ 'is-locked': isLockedByOther('evt_tpl_default') }"
+        @focusin="lockSection('evt_tpl_default')" @focusout="unlockSection('evt_tpl_default', $event)">
+        <div v-if="lockedBy('evt_tpl_default')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('evt_tpl_default') }}</div>
+        <label class="checkbox-label">
+          <input v-model="templateIsDefault" type="checkbox" :disabled="isLockedByOther('evt_tpl_default')" />
+          <span>Als Standard-Vorlage für diese Stufe setzen</span>
+        </label>
+        <p class="default-hint">Die Standard-Vorlage wird beim Erstellen eines Events automatisch ausgewählt.</p>
       </div>
 
       <!-- Local-draft recovery banner -->
@@ -554,6 +719,13 @@ onUnmounted(() => {
       </div>
 
       <div class="template-editor-card event-template-title-card">
+      <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_name') }"
+        @focusin="lockSection('evt_tpl_name')" @focusout="unlockSection('evt_tpl_name', $event)">
+        <div v-if="lockedBy('evt_tpl_name')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('evt_tpl_name') }}</div>
+        <label class="template-editor-field-label" for="event-template-name">Name der Vorlage</label>
+        <input id="event-template-name" v-model="templateName" class="template-editor-field-input"
+          placeholder="z. B. Standard-Event Pfadi" :disabled="isLockedByOther('evt_tpl_name')" />
+      </div>
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_title' as EditSection) }"
         @focusin="lockSection('evt_tpl_title' as EditSection)" @focusout="unlockSection('evt_tpl_title' as EditSection, $event)">
         <div v-if="lockedBy('evt_tpl_title' as EditSection)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('evt_tpl_title' as EditSection) }}</div>
@@ -642,30 +814,36 @@ onUnmounted(() => {
 
     <template v-else>
       <div class="template-overview-header">
-        <h2 class="template-overview-title">Vorlagen für Events</h2>
+        <h2 class="template-overview-title">Vorlagen für {{ activeDept || '—' }}</h2>
+        <button v-if="activeDept" type="button" class="btn-primary template-overview-create" @click="createNewTemplate">+ Neue Vorlage</button>
       </div>
 
-      <div class="event-template-overview-note">
-        Pro Stufe gibt es eine Event-Vorlage.
+      <div v-if="activeDept && !departmentTemplates.length" class="empty-state">
+        Noch keine Vorlagen in dieser Stufe.
       </div>
       <ErrorAlert :error="error" />
 
       <div
-        v-for="row in eventTemplateRows"
-        :key="row.department"
+        v-for="template in departmentTemplates"
+        :key="template.id"
         class="template-overview-row event-template-overview-row"
       >
         <div class="event-template-overview-main">
           <div class="event-template-overview-name">
-            <DepartmentBadge :department="row.department" :active="true" />
-            <span>{{ row.template?.title || 'Titel-Vorlage' }}</span>
+            <span>{{ template.name }}</span>
+            <span v-if="template.is_default" class="default-badge">Standard</span>
           </div>
           <div class="event-template-overview-meta">
-            {{ row.template ? 'Event-Vorlage' : 'Noch nicht konfiguriert' }}
+            {{ template.title || 'Kein Titel' }}
           </div>
+          <div v-if="templatePreview(template)" class="event-template-overview-meta">{{ templatePreview(template) }}</div>
         </div>
         <div class="template-overview-row-actions">
-          <button type="button" class="btn-sm template-overview-row-action" @click="openEditor(row.department)">Bearbeiten</button>
+          <button type="button" :class="['btn-sm', 'template-overview-row-action', template.is_default ? 'active-default' : '']"
+            :title="template.is_default ? 'Standard entfernen' : 'Als Standard setzen'"
+            @click="toggleDefault(template)">{{ template.is_default ? '★' : '☆' }} Standard</button>
+          <button type="button" class="btn-sm template-overview-row-action" @click="openEditor(template)">Bearbeiten</button>
+          <button type="button" class="btn-sm btn-sm--danger template-overview-row-action" @click="removeTemplate(template)">Löschen</button>
         </div>
       </div>
     </template>
@@ -702,13 +880,6 @@ onUnmounted(() => {
   background: var(--bg-elevated);
 }
 
-.event-template-default-title {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
 .event-template-default .default-hint {
   margin: 0.25rem 0 0 1.5rem;
   color: var(--text-subtle);
@@ -723,10 +894,8 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.event-template-overview-note {
-  margin: 0 0 0.75rem;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+.event-template-title-card .form-group + .form-group {
+  margin-top: 1rem;
 }
 
 .event-template-overview-main {
@@ -747,6 +916,9 @@ onUnmounted(() => {
   margin-top: 0.25rem;
   color: var(--text-muted);
   font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 599px) {

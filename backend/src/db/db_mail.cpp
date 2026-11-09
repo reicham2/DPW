@@ -5,6 +5,7 @@
 #include <cstring>
 #include <sstream>
 #include <cstdlib>
+#include <memory>
 #include <curl/curl.h>
 #include "json.hpp"
 
@@ -274,6 +275,23 @@ std::optional<MailTemplate> Database::upsert_mail_template(const std::string &de
 
 // ---- Event templates ---------------------------------------------------------
 
+static auto event_template_query(PGconn *conn, const char *sql, int count = 0,
+                                  const char *const *params = nullptr)
+{
+    std::unique_ptr<PGresult, decltype(&PQclear)> result(
+        PQexecParams(conn, sql, count, nullptr, params, nullptr, nullptr, 0), PQclear);
+    if (PQresultStatus(result.get()) != PGRES_TUPLES_OK &&
+        PQresultStatus(result.get()) != PGRES_COMMAND_OK)
+        throw std::runtime_error("event templates: " + std::string(PQresultErrorMessage(result.get())));
+    return result;
+}
+
+static void lock_event_template_department(PGconn *conn, const std::string &department)
+{
+    const char *params[] = {department.c_str()};
+    event_template_query(conn, "SELECT name FROM departments WHERE name = $1 FOR UPDATE", 1, params);
+}
+
 EventTemplate Database::row_to_event_template(PGresult *res, int row)
 {
     auto col = [&](const char *name) -> const char *
@@ -285,9 +303,11 @@ EventTemplate Database::row_to_event_template(PGresult *res, int row)
     };
     EventTemplate t;
     t.id = col("id") ? col("id") : "";
+    t.name = col("name") ? col("name") : "";
     t.department = col("department") ? col("department") : "";
     t.title = col("title") ? col("title") : "";
     t.body = col("body") ? col("body") : "";
+    t.is_default = col("is_default") && std::string(col("is_default")) == "t";
     t.created_at = col("created_at") ? col("created_at") : "";
     t.updated_at = col("updated_at") ? col("updated_at") : "";
     return t;
@@ -296,37 +316,132 @@ EventTemplate Database::row_to_event_template(PGresult *res, int row)
 std::vector<EventTemplate> Database::list_event_templates()
 {
     ensure_connected();
-    PGresult *res = PQexec(conn_,
-                           "SELECT id, department, title, body, created_at, updated_at "
-                           "FROM event_templates ORDER BY department");
-    if (PQresultStatus(res) != PGRES_TUPLES_OK)
-    {
-        PQclear(res);
-        return {};
-    }
+    auto res = event_template_query(conn_,
+        "SELECT * FROM event_templates ORDER BY department, lower(name), name, id");
     std::vector<EventTemplate> out;
-    for (int i = 0; i < PQntuples(res); ++i)
-        out.push_back(row_to_event_template(res, i));
-    PQclear(res);
+    for (int i = 0; i < PQntuples(res.get()); ++i)
+        out.push_back(row_to_event_template(res.get(), i));
+    return out;
+}
+
+std::vector<EventTemplate> Database::list_event_templates(const std::string &department)
+{
+    ensure_connected();
+    const char *params[] = {department.c_str()};
+    auto res = event_template_query(conn_,
+        "SELECT * FROM event_templates WHERE department = $1 ORDER BY lower(name), name, id", 1, params);
+    std::vector<EventTemplate> out;
+    for (int i = 0; i < PQntuples(res.get()); ++i)
+        out.push_back(row_to_event_template(res.get(), i));
     return out;
 }
 
 std::optional<EventTemplate> Database::get_event_template_by_department(const std::string &department)
 {
     ensure_connected();
-    const char *params[1] = {department.c_str()};
-    PGresult *res = PQexecParams(conn_,
-                                 "SELECT id, department, title, body, created_at, updated_at "
-                                 "FROM event_templates WHERE department = $1",
-                                 1, nullptr, params, nullptr, nullptr, 0);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    const char *params[] = {department.c_str()};
+    auto res = event_template_query(conn_,
+        "SELECT * FROM event_templates WHERE department = $1 "
+        "ORDER BY is_default DESC, lower(name), name, id LIMIT 1", 1, params);
+    if (PQntuples(res.get()) == 0) return std::nullopt;
+    return row_to_event_template(res.get(), 0);
+}
+
+std::optional<EventTemplate> Database::get_event_template_by_id(const std::string &id)
+{
+    ensure_connected();
+    const char *params[] = {id.c_str()};
+    auto res = event_template_query(conn_, "SELECT * FROM event_templates WHERE id = $1", 1, params);
+    if (PQntuples(res.get()) == 0) return std::nullopt;
+    return row_to_event_template(res.get(), 0);
+}
+
+std::optional<EventTemplate> Database::create_event_template(const std::string &name,
+                                                              const std::string &department,
+                                                              const std::string &title,
+                                                              const std::string &body,
+                                                              bool is_default)
+{
+    ensure_connected();
+    event_template_query(conn_, "BEGIN");
+    try
     {
-        PQclear(res);
-        return std::nullopt;
+        lock_event_template_department(conn_, department);
+        if (is_default)
+        {
+            const char *params[] = {department.c_str()};
+            event_template_query(conn_,
+                "UPDATE event_templates SET is_default = FALSE WHERE department = $1 AND is_default", 1, params);
+        }
+        const char *params[] = {name.c_str(), department.c_str(), title.c_str(), body.c_str(),
+                                 is_default ? "true" : "false"};
+        auto res = event_template_query(conn_,
+            "INSERT INTO event_templates (name, department, title, body, is_default) "
+            "VALUES ($1, $2, $3, $4, $5::boolean) RETURNING *", 5, params);
+        auto tpl = row_to_event_template(res.get(), 0);
+        event_template_query(conn_, "COMMIT");
+        return tpl;
     }
-    EventTemplate t = row_to_event_template(res, 0);
-    PQclear(res);
-    return t;
+    catch (...)
+    {
+        event_template_query(conn_, "ROLLBACK");
+        throw;
+    }
+}
+
+std::optional<EventTemplate> Database::update_event_template(const std::string &id,
+                                                              const std::optional<std::string> &name,
+                                                              const std::optional<std::string> &title,
+                                                              const std::optional<std::string> &body,
+                                                              const std::optional<bool> &is_default)
+{
+    ensure_connected();
+    event_template_query(conn_, "BEGIN");
+    try
+    {
+        const auto existing = get_event_template_by_id(id);
+        if (!existing)
+        {
+            event_template_query(conn_, "ROLLBACK");
+            return std::nullopt;
+        }
+        lock_event_template_department(conn_, existing->department);
+        if (is_default.value_or(false))
+        {
+            const char *params[] = {existing->department.c_str(), id.c_str()};
+            event_template_query(conn_,
+                "UPDATE event_templates SET is_default = FALSE WHERE department = $1 AND id != $2 AND is_default",
+                2, params);
+        }
+        const char *params[] = {id.c_str(), name ? name->c_str() : nullptr,
+                                 title ? title->c_str() : nullptr, body ? body->c_str() : nullptr,
+                                 is_default ? (*is_default ? "true" : "false") : nullptr};
+        auto res = event_template_query(conn_,
+            "UPDATE event_templates SET name = COALESCE($2, name), title = COALESCE($3, title), "
+            "body = COALESCE($4, body), is_default = COALESCE($5::boolean, is_default) WHERE id = $1 RETURNING *",
+            5, params);
+        if (PQntuples(res.get()) == 0)
+        {
+            event_template_query(conn_, "ROLLBACK");
+            return std::nullopt;
+        }
+        auto tpl = row_to_event_template(res.get(), 0);
+        event_template_query(conn_, "COMMIT");
+        return tpl;
+    }
+    catch (...)
+    {
+        event_template_query(conn_, "ROLLBACK");
+        throw;
+    }
+}
+
+bool Database::delete_event_template(const std::string &id)
+{
+    ensure_connected();
+    const char *params[] = {id.c_str()};
+    auto res = event_template_query(conn_, "DELETE FROM event_templates WHERE id = $1 RETURNING id", 1, params);
+    return PQntuples(res.get()) != 0;
 }
 
 std::optional<EventTemplate> Database::upsert_event_template(const std::string &department,
@@ -334,21 +449,30 @@ std::optional<EventTemplate> Database::upsert_event_template(const std::string &
                                                              const std::string &body)
 {
     ensure_connected();
-    const char *params[3] = {department.c_str(), title.c_str(), body.c_str()};
-    PGresult *res = PQexecParams(conn_,
-                                 "INSERT INTO event_templates (department, title, body) "
-                                 "VALUES ($1, $2, $3) "
-                                 "ON CONFLICT (department) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body "
-                                 "RETURNING id, department, title, body, created_at, updated_at",
-                                 3, nullptr, params, nullptr, nullptr, 0);
-    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    event_template_query(conn_, "BEGIN");
+    try
     {
-        PQclear(res);
-        return std::nullopt;
+        lock_event_template_department(conn_, department);
+        const auto existing = get_event_template_by_department(department);
+        const char *params[] = {existing ? existing->id.c_str() : department.c_str(), title.c_str(), body.c_str()};
+        auto res = event_template_query(conn_, existing
+            ? "UPDATE event_templates SET title = $2, body = $3, is_default = TRUE WHERE id = $1::uuid RETURNING *"
+            : "INSERT INTO event_templates (name, department, title, body, is_default) "
+              "VALUES ('Standard', $1, $2, $3, TRUE) RETURNING *", 3, params);
+        if (PQntuples(res.get()) == 0)
+        {
+            event_template_query(conn_, "ROLLBACK");
+            return std::nullopt;
+        }
+        auto tpl = row_to_event_template(res.get(), 0);
+        event_template_query(conn_, "COMMIT");
+        return tpl;
     }
-    EventTemplate t = row_to_event_template(res, 0);
-    PQclear(res);
-    return t;
+    catch (...)
+    {
+        event_template_query(conn_, "ROLLBACK");
+        throw;
+    }
 }
 
 // ---- Event publications -----------------------------------------------------

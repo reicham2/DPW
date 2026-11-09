@@ -86,7 +86,11 @@ export type EditSection =
 	| 'tpl_name'
 	| 'tpl_default'
 	| 'tpl_subject'
-	| 'tpl_body';
+	| 'tpl_body'
+	| 'evt_tpl_name'
+	| 'evt_tpl_default'
+	| 'evt_tpl_title'
+	| 'evt_tpl_body';
 
 export interface SectionLock {
 	section: EditSection;
@@ -99,6 +103,8 @@ export type WsEvent =
 	| { event: 'updated'; activity: Activity }
 	| { event: 'deleted'; id: string }
 	| { event: 'template_updated'; template: MailTemplate }
+	| { event: 'event_template_updated'; template: EventTemplate }
+	| { event: 'event_template_deleted'; id: string; department: Department }
 	| { event: 'notification'; notification: NotificationRecord }
 	| { event: 'department_deleted'; name: string }
 	| { event: 'role_deleted'; name: string }
@@ -176,12 +182,16 @@ export interface MailTemplate {
 
 export interface EventTemplate {
 	id: string;
+	name: string;
 	department: Department;
 	title: string;
 	body: string;
+	is_default: boolean;
 	created_at: string;
 	updated_at: string;
 }
+
+export type EventTemplateChanges = Partial<Pick<EventTemplate, 'name' | 'title' | 'body' | 'is_default'>>;
 
 export interface EventPublication {
 	id: string;

@@ -296,7 +296,7 @@ VITE_BACKEND_URL=http://127.0.0.1:<backend-port> VITE_ENABLE_DEBUG_AUTH=1 npm ru
 Replace `<backend-port>` before running; use `VITE_ENABLE_DEBUG_AUTH=1` only with a
 debug-enabled backend. Vite proxies `/api` and `/ws`; it does not start the backend.
 
-## Vorlagenvariablen und Mail-Vorlagen
+## Vorlagenvariablen, Mail- und Event-Vorlagen
 
 Die vorhandenen Variablen (z. B. `{{titel}}`, `{{datum_kurz}}`, `{{ort}}`
 und `{{abteilung}}`) funktionieren auch im Mail-Betreff, im Formular-Titel
@@ -312,9 +312,23 @@ und im Event-Titel.
   werden.
   Wenn dabei eigene Aenderungen ueberschrieben wuerden, wird vorher nachgefragt.
   Bestehende Mailvorlagen bleiben beim Datenbank-Upgrade als Standard erhalten.
-- Unter **Admin > Vorlagen > Events** kann pro Stufe eine Event-Vorlage
-  bearbeitet werden. Die Stufenauswahl bleibt auch im Editor verfuegbar;
-  ausstehende Aenderungen werden vor einem Stufenwechsel gespeichert.
+- Unter **Admin > Vorlagen > Events** koennen pro Stufe mehrere benannte
+  Event-Vorlagen angelegt, bearbeitet, geloescht und alphabetisch aufgelistet
+  werden. Eine optionale Standard-Vorlage wird in der Event-Vorschau beim
+  Erstellen automatisch ausgewaehlt; andere Vorlagen lassen sich dort
+  bewusst auswaehlen. Ohne Standard beginnt die Vorschau mit dem
+  Aktivitaetstitel und leerem Inhalt. Vor dem Ersetzen eigener Aenderungen
+  oder eines gespeicherten Events wird nachgefragt.
+  Bestehende Event-Vorlagen bleiben beim Upgrade mit gleichem Inhalt als
+  **Standard** erhalten; bereits veroeffentlichte Events werden nicht geaendert.
+  Die Stufenauswahl bleibt im Editor verfuegbar; ausstehende Aenderungen
+  bestehender Vorlagen werden vor einem Stufenwechsel oder **Zurueck**
+  gespeichert. Neue Vorlagen entstehen erst mit **Speichern**; ungespeicherte
+  neue Entwuerfe bleiben lokal wiederherstellbar.
+- Das Entfernen oder Loeschen einer Standard-Vorlage bestimmt bei Mail und
+  Events nicht automatisch einen neuen Standard. Die vorhandenen Alternativen
+  bleiben auswaehlbar. Details zu Berechtigungen, Upgrade und den
+  kompatiblen APIs stehen in der [Betriebsreferenz](docs/operations.md#event-vorlagen).
 - Mail-Betreff und Event-Titel werden beim Laden der Vorlage als Klartext
   aufgeloest; `{{formular_link}}` und `{{formular_link|Anmelden}}` ergeben
   dort die Formular-URL statt HTML. Die Vorschau kann vor dem Versand bzw.
