@@ -147,7 +147,7 @@ describe('App authentication lifecycle', () => {
 		expect(mocks.route.path).toBe('/activities/activity-1');
 	});
 
-	it('links to legal pages from the login screen and authenticated app footer', async () => {
+	it('links to legal pages from the public login screen only', async () => {
 		wrapper = shallowMount(App, {
 			global: {
 				stubs: {
@@ -165,8 +165,8 @@ describe('App authentication lifecycle', () => {
 
 		user.value = testUser;
 		await nextTick();
-		expect(wrapper.findAll('.app-footer a').map((link) => link.attributes('href')))
-			.toEqual(['/impressum', '/datenschutz']);
+		expect(wrapper.find('.app-footer').exists()).toBe(false);
+		expect(wrapper.find('.auth-legal-links').exists()).toBe(false);
 	});
 
 	it('keeps an existing admin session in the app when maintenance starts', async () => {

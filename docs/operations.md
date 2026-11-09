@@ -547,7 +547,8 @@ Anmeldeformulare bleiben unabhängig davon ohne Anmeldung erreichbar.
 ## Impressum und Datenschutzhinweise
 
 `/impressum` und `/datenschutz` sind öffentliche Routen und von den
-Anmelde-, Freigabe- und Formularseiten erreichbar. Die Hinweise beschreiben
+Anmelde-, Freigabe- und Formularseiten erreichbar; sie werden nicht in der
+angemeldeten App angezeigt. Die Hinweise beschreiben
 DPWeb-Datenflüsse aus dem Quellcode, darunter die öffentliche Anzeige von
 Freigaben, Formularantworten einschliesslich gespeicherter IP-/User-Agent-Daten,
 das Audit-Log und konfigurierbare externe Integrationen. Die Standardfrist des

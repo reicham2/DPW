@@ -113,12 +113,6 @@
     <div v-else class="app" :class="{ 'app--force-drawer-stats': statsDisplayMode === 'always-drawer' }">
       <MaintenanceBanner />
       <router-view />
-      <footer class="app-footer">
-        <nav aria-label="Rechtliche Informationen">
-          <router-link to="/impressum">Impressum</router-link>
-          <router-link to="/datenschutz">Datenschutzerklärung</router-link>
-        </nav>
-      </footer>
       <BugReportButton v-if="config.GITHUB_BUG_REPORT_ENABLED" />
     </div>
     </template>
@@ -365,8 +359,7 @@ watch(
   gap: 12px;
   text-align: center;
 }
-.auth-legal-links,
-.app-footer nav {
+.auth-legal-links {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -375,20 +368,15 @@ watch(
 .auth-legal-links {
   margin-top: 16px;
 }
-.auth-legal-links a,
-.app-footer a {
+.auth-legal-links a {
   color: var(--text-muted);
   font-size: 0.85rem;
   text-underline-offset: 0.16em;
 }
-.auth-legal-links a:focus-visible,
-.app-footer a:focus-visible {
+.auth-legal-links a:focus-visible {
   outline: 2px solid var(--text-primary);
   outline-offset: 3px;
   border-radius: 2px;
-}
-.app-footer {
-  padding: 18px 24px 24px;
 }
 .auth-logo {
   width: 56px;
