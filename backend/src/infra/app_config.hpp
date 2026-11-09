@@ -68,6 +68,7 @@ namespace app_config
     inline constexpr const char *kAutosaveDebounce = "frontend.autosave_debounce";
     inline constexpr const char *kCacheVersionLocalTtlMs = "backend.cache_version_ttl_ms";
     inline constexpr const char *kAuditRetentionDays = "audit.retention_days";
+    inline constexpr const char *kGuestEditMaxDays = "guest_edit.max_days";
     inline constexpr const char *kMidataWeatherRefreshIntervalMs = "midata.weather_refresh_interval_ms";
     inline constexpr const char *kMaintenanceEnabled = "maintenance.enabled";
     inline constexpr const char *kMaintenanceMessage = "maintenance.message";

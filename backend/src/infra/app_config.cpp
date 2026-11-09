@@ -263,6 +263,7 @@ namespace app_config
             {kAutosaveDebounce, "AUTOSAVE_DEBOUNCE", "true", false, true, ValueType::Boolean, 0, 0},
             {kCacheVersionLocalTtlMs, "DPW_CACHE_VERSION_TTL_MS", "1500", false, true, ValueType::Integer, 0, 60000},
             {kAuditRetentionDays, "DPW_AUDIT_RETENTION_DAYS", "14", false, true, ValueType::Integer, 1, 3650},
+            {kGuestEditMaxDays, "DPW_GUEST_EDIT_MAX_DAYS", "30", false, true, ValueType::Integer, 1, 30},
             {kMidataWeatherRefreshIntervalMs, "MIDATA_WEATHER_REFRESH_INTERVAL", "900000", false, true, ValueType::Integer, 10000, 86400000},
             {kGitHubToken, "GITHUB_TOKEN", "", true, false, ValueType::Text, 0, 0},
             {kGitHubRepo, "GITHUB_REPO", "reicham2/DPW", false, true, ValueType::Slug, 0, 0},

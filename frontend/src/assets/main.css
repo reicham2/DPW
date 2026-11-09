@@ -548,7 +548,8 @@ video {
 	margin: 12px 0;
 }
 
-.guest-link-manager__expiry select {
+.guest-link-manager__expiry input[type="number"] {
+	width: 5.5rem;
 	padding: 6px 8px;
 	border: 1px solid var(--border-strong);
 	border-radius: 6px;
