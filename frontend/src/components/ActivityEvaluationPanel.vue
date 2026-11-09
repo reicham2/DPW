@@ -25,21 +25,42 @@ const props = defineProps<{
 
 const evaluation = ref<EvaluationResponse | null>(null);
 const actualParticipants = ref('');
-const positive = ref('');
-const improvements = ref('');
-const actionItems = ref('');
+const positiveItems = ref(['']);
+const improvementItems = ref(['']);
+const actionItems = ref(['']);
 const notes = ref('');
 const loading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const saved = ref(false);
 
+function parseFeedbackItems(value: string | null | undefined): string[] {
+	return value ? value.split('\n') : [''];
+}
+
+function serializeFeedbackItems(items: string[]): string {
+	return items.filter((item) => item.trim().length > 0).join('\n');
+}
+
+function displayFeedbackItems(value: string): string[] {
+	return value.split('\n').filter((item) => item.trim().length > 0);
+}
+
+function addItem(items: string[]) {
+	items.push('');
+}
+
+function removeItem(items: string[], index: number) {
+	items.splice(index, 1);
+	if (items.length === 0) items.push('');
+}
+
 function applyEvaluation(data: EvaluationResponse) {
 	evaluation.value = data;
 	actualParticipants.value = data.actual_participants === null ? '' : String(data.actual_participants);
-	positive.value = data.mine?.positive ?? '';
-	improvements.value = data.mine?.improvements ?? '';
-	actionItems.value = data.mine?.action_items ?? '';
+	positiveItems.value = parseFeedbackItems(data.mine?.positive);
+	improvementItems.value = parseFeedbackItems(data.mine?.improvements);
+	actionItems.value = parseFeedbackItems(data.mine?.action_items);
 	notes.value = data.mine?.notes ?? '';
 }
 
@@ -73,16 +94,24 @@ async function saveEvaluation() {
 		}
 	}
 
+	const feedbackFields = {
+		positive: serializeFeedbackItems(positiveItems.value),
+		improvements: serializeFeedbackItems(improvementItems.value),
+		action_items: serializeFeedbackItems(actionItems.value),
+		notes: notes.value,
+	};
+	if (Object.values(feedbackFields).some((value) => Array.from(value).length > 4000)) {
+		error.value = 'Feedback darf höchstens 4000 Zeichen pro Bereich enthalten.';
+		return;
+	}
+
 	saving.value = true;
 	try {
 		const response = await apiFetch(`/api/activities/${props.activityId}/evaluation`, {
 			method: 'PUT',
 			body: JSON.stringify({
 				actual_participants: participantCount,
-				positive: positive.value,
-				improvements: improvements.value,
-				action_items: actionItems.value,
-				notes: notes.value,
+				...feedbackFields,
 			}),
 		});
 		if (!response.ok) throw new Error(await response.text());
@@ -115,6 +144,7 @@ onMounted(() => { void loadEvaluation(); });
 				<input
 					v-if="canEdit"
 					id="actual-participants"
+					class="evaluation-count-input"
 					v-model="actualParticipants"
 					type="number"
 					min="0"
@@ -126,20 +156,77 @@ onMounted(() => { void loadEvaluation(); });
 				<strong v-else>{{ evaluation.actual_participants ?? 'Noch nicht erfasst' }}</strong>
 				<p class="evaluation-muted">Getrennt von der geplanten Teilnehmendenzahl.</p>
 			</div>
+			<p class="evaluation-summary">
+				{{ evaluation.feedback.length }} {{ evaluation.feedback.length === 1 ? 'Rückmeldung' : 'Rückmeldungen' }} gesammelt
+			</p>
 
 			<form v-if="canEdit" class="evaluation-form" @submit.prevent="saveEvaluation">
-				<label>
-					Was lief gut?
-					<textarea v-model="positive" maxlength="4000" rows="3" />
-				</label>
-				<label>
-					Was kann verbessert werden?
-					<textarea v-model="improvements" maxlength="4000" rows="3" />
-				</label>
-				<label>
-					Welche Massnahmen nehmen wir mit?
-					<textarea v-model="actionItems" maxlength="4000" rows="3" />
-				</label>
+				<fieldset class="evaluation-group">
+					<legend>Was lief gut?</legend>
+					<div v-for="(item, index) in positiveItems" :key="`positive-${index}`" class="evaluation-item-row">
+						<label class="evaluation-item-label" :for="`positive-${index}`">Punkt {{ index + 1 }}</label>
+						<input
+							:id="`positive-${index}`"
+							v-model="positiveItems[index]"
+							class="evaluation-item-input"
+							type="text"
+							maxlength="4000"
+						>
+						<button
+							class="btn-secondary evaluation-remove-button"
+							type="button"
+							:aria-label="`Punkt ${index + 1} bei Was lief gut entfernen`"
+							@click="removeItem(positiveItems, index)"
+						>Entfernen</button>
+					</div>
+					<button class="btn-secondary evaluation-add-button" type="button" @click="addItem(positiveItems)">
+						Weiteren Punkt hinzufügen
+					</button>
+				</fieldset>
+				<fieldset class="evaluation-group">
+					<legend>Was kann verbessert werden?</legend>
+					<div v-for="(item, index) in improvementItems" :key="`improvement-${index}`" class="evaluation-item-row">
+						<label class="evaluation-item-label" :for="`improvement-${index}`">Punkt {{ index + 1 }}</label>
+						<input
+							:id="`improvement-${index}`"
+							v-model="improvementItems[index]"
+							class="evaluation-item-input"
+							type="text"
+							maxlength="4000"
+						>
+						<button
+							class="btn-secondary evaluation-remove-button"
+							type="button"
+							:aria-label="`Punkt ${index + 1} bei Was kann verbessert werden entfernen`"
+							@click="removeItem(improvementItems, index)"
+						>Entfernen</button>
+					</div>
+					<button class="btn-secondary evaluation-add-button" type="button" @click="addItem(improvementItems)">
+						Weiteren Punkt hinzufügen
+					</button>
+				</fieldset>
+				<fieldset class="evaluation-group">
+					<legend>Welche Massnahmen nehmen wir mit?</legend>
+					<div v-for="(item, index) in actionItems" :key="`action-${index}`" class="evaluation-item-row">
+						<label class="evaluation-item-label" :for="`action-${index}`">Punkt {{ index + 1 }}</label>
+						<input
+							:id="`action-${index}`"
+							v-model="actionItems[index]"
+							class="evaluation-item-input"
+							type="text"
+							maxlength="4000"
+						>
+						<button
+							class="btn-secondary evaluation-remove-button"
+							type="button"
+							:aria-label="`Punkt ${index + 1} bei Welche Massnahmen nehmen wir mit entfernen`"
+							@click="removeItem(actionItems, index)"
+						>Entfernen</button>
+					</div>
+					<button class="btn-secondary evaluation-add-button" type="button" @click="addItem(actionItems)">
+						Weiteren Punkt hinzufügen
+					</button>
+				</fieldset>
 				<label>
 					Weitere Rückmeldung (optional)
 					<textarea v-model="notes" maxlength="4000" rows="3" />
@@ -160,17 +247,35 @@ onMounted(() => { void loadEvaluation(); });
 				<article v-for="(entry, index) in evaluation.feedback" :key="`${entry.author}-${index}`" class="evaluation-entry">
 					<h4>{{ entry.author }}</h4>
 					<dl>
-						<div v-if="entry.positive">
+						<div v-if="displayFeedbackItems(entry.positive).length">
 							<dt>Was lief gut?</dt>
-							<dd>{{ entry.positive }}</dd>
+							<dd>
+								<ul>
+									<li v-for="(item, itemIndex) in displayFeedbackItems(entry.positive)" :key="itemIndex">
+										{{ item }}
+									</li>
+								</ul>
+							</dd>
 						</div>
-						<div v-if="entry.improvements">
+						<div v-if="displayFeedbackItems(entry.improvements).length">
 							<dt>Verbesserungspunkte</dt>
-							<dd>{{ entry.improvements }}</dd>
+							<dd>
+								<ul>
+									<li v-for="(item, itemIndex) in displayFeedbackItems(entry.improvements)" :key="itemIndex">
+										{{ item }}
+									</li>
+								</ul>
+							</dd>
 						</div>
-						<div v-if="entry.action_items">
+						<div v-if="displayFeedbackItems(entry.action_items).length">
 							<dt>Massnahmen</dt>
-							<dd>{{ entry.action_items }}</dd>
+							<dd>
+								<ul>
+									<li v-for="(item, itemIndex) in displayFeedbackItems(entry.action_items)" :key="itemIndex">
+										{{ item }}
+									</li>
+								</ul>
+							</dd>
 						</div>
 						<div v-if="entry.notes">
 							<dt>Weitere Rückmeldung</dt>
@@ -210,16 +315,34 @@ onMounted(() => { void loadEvaluation(); });
 
 .evaluation-count label,
 .evaluation-label,
-.evaluation-form label {
+.evaluation-group legend,
+.evaluation-form > label {
 	font-weight: 600;
 }
 
-.evaluation-count input,
+.evaluation-count-input {
+	max-width: 100%;
+	width: 9rem;
+}
+
+.evaluation-count-input,
+.evaluation-item-input,
 .evaluation-form textarea {
 	box-sizing: border-box;
+	border: 1.5px solid var(--input-border, #d1d5db);
+	border-radius: 6px;
+	background: var(--input-bg, #fff);
+	color: var(--input-color, #1a202c);
 	font: inherit;
-	padding: 0.55rem 0.65rem;
-	width: 100%;
+	padding: 0.45rem 0.6rem;
+}
+
+.evaluation-count-input:focus,
+.evaluation-item-input:focus,
+.evaluation-form textarea:focus {
+	border-color: var(--focus-border, #0080ff);
+	box-shadow: var(--focus-ring, 0 0 0 3px rgba(0, 128, 255, 0.15));
+	outline: none;
 }
 
 .evaluation-form textarea {
@@ -227,6 +350,56 @@ onMounted(() => { void loadEvaluation(); });
 	font-weight: 400;
 	margin-top: 0.35rem;
 	resize: vertical;
+	width: 100%;
+}
+
+.evaluation-summary {
+	color: var(--text-secondary, #374151);
+	font-size: 0.9rem;
+	margin: 0;
+}
+
+.evaluation-group {
+	border: 0;
+	display: grid;
+	gap: 0.6rem;
+	margin: 0;
+	min-width: 0;
+	padding: 0;
+}
+
+.evaluation-group legend {
+	margin-bottom: 0.35rem;
+	padding: 0;
+}
+
+.evaluation-item-row {
+	align-items: center;
+	display: grid;
+	gap: 0.5rem;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.evaluation-item-label {
+	color: var(--text-muted, #6b7280);
+	font-size: 0.82rem;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.evaluation-item-input {
+	min-width: 0;
+	width: 100%;
+}
+
+.evaluation-add-button,
+.evaluation-remove-button {
+	font: inherit;
+	padding: 0.4rem 0.65rem;
+}
+
+.evaluation-add-button {
+	justify-self: start;
 }
 
 .evaluation-submissions h3,
@@ -251,8 +424,16 @@ onMounted(() => { void loadEvaluation(); });
 
 .evaluation-entry dd {
 	margin: 0.2rem 0 0;
-	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+.evaluation-entry ul {
+	margin: 0;
+	padding-left: 1.25rem;
+}
+
+.evaluation-entry li + li {
+	margin-top: 0.2rem;
 }
 
 .evaluation-actions {
@@ -269,6 +450,14 @@ onMounted(() => { void loadEvaluation(); });
 @media (max-width: 640px) {
 	.evaluation-actions button {
 		width: 100%;
+	}
+
+	.evaluation-item-row {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.evaluation-item-label {
+		grid-column: 1 / -1;
 	}
 }
 </style>
