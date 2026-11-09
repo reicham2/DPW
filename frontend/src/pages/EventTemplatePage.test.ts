@@ -169,21 +169,39 @@ describe('EventTemplatePage template overview and editor', () => {
 		expect(wrapper.findAll('.filter-tab--badge')).toHaveLength(2);
 		expect(wrapper.get('.event-template-default').text()).toContain('Standard-Vorlage');
 		expect(wrapper.get('#event-template-name').element).toHaveProperty('value', 'Standard');
-		expect(wrapper.get('#event-template-title').classes()).toContain('template-editor-field-input');
+		expect(wrapper.get('#event-template-name').classes()).toContain('template-editor-field-input');
+		expect(wrapper.get('.template-editor-card').find('#event-template-title').exists()).toBe(false);
+		expect(wrapper.get('.detail-form > .form-group label').text()).toBe('Titel-Vorlage');
+		expect(wrapper.find('.template-editor-header .btn-primary').exists()).toBe(false);
+		expect(wrapper.get('.event-template-editor-actions .btn-secondary').text()).toBe('Zurück');
+		expect(wrapper.get('.event-template-editor-actions .btn-primary').text()).toBe('Speichern');
 		expect(wrapper.get('input[type="checkbox"]').element).toHaveProperty('checked', true);
 		expect(wrapper.find('.rich-editor').exists()).toBe(true);
 
 		wrapper.unmount();
 	});
 
-	it('saves pending title edits before returning to the overview', async () => {
+	it('shows the same empty-list and create affordances as other template pages', async () => {
+		mocks.templates = [];
+		const wrapper = shallowMount(EventTemplatePage);
+		await flushPromises();
+		expect(wrapper.get('.empty-state').text()).toBe('Noch keine Vorlagen in dieser Stufe.');
+		expect(wrapper.get('.template-overview-create').text()).toBe('+ Neue Vorlage');
+		await wrapper.get('.template-overview-create').trigger('click');
+		await flushPromises();
+		expect(wrapper.get('.event-template-editor-actions .btn-primary').text()).toBe('Speichern');
+		expect(wrapper.get('input[type="checkbox"]').element).toHaveProperty('checked', true);
+		wrapper.unmount();
+	});
+
+	it('saves pending title edits before returning through the editor footer', async () => {
 		const wrapper = shallowMount(EventTemplatePage);
 		await flushPromises();
 
 		await wrapper.get('.event-template-overview-row button:nth-child(2)').trigger('click');
 		await flushPromises();
 		await wrapper.get('#event-template-title').setValue('Neuer Eventtitel');
-		await wrapper.get('.template-editor-back').trigger('click');
+		await wrapper.get('.event-template-editor-actions .btn-secondary').trigger('click');
 		await flushPromises();
 
 		expect(mocks.updateTemplate).toHaveBeenCalledWith(
@@ -221,6 +239,10 @@ describe('EventTemplatePage template overview and editor', () => {
 		expect(rows).toHaveLength(2);
 		expect(rows[0].text()).toContain('Abend');
 		expect(rows[1].get('.default-badge').text()).toBe('Standard');
+		expect(rows[1].get('.event-template-overview-meta').text()).toContain('{{abteilung}}: {{titel}}');
+		expect(rows[1].get('.event-template-overview-meta .event-template-preview').text()).toBe('Eventbeschreibung');
+		expect(rows[1].get('button[title="Standard entfernen"]').text()).toBe('⭐ Standard');
+		expect(rows[1].get('.template-overview-row-action.danger').text()).toBe('Löschen');
 		expect(mocks.join).not.toHaveBeenCalled();
 		wrapper.unmount();
 	});
@@ -236,7 +258,7 @@ describe('EventTemplatePage template overview and editor', () => {
 		expect(mocks.createTemplate).not.toHaveBeenCalled();
 		expect(mocks.updateTemplate).not.toHaveBeenCalled();
 		expect(localStorage.getItem('dpw:event-template-new-draft:Pfadi')).toContain('Abend');
-		await wrapper.get('.template-editor-header .btn-primary').trigger('click');
+		await wrapper.get('.event-template-editor-actions .btn-primary').trigger('click');
 		await flushPromises();
 		expect(mocks.createTemplate).toHaveBeenCalledWith('Abend', 'Pfadi', '{{titel}} am Abend', '', false);
 		expect(mocks.join).toHaveBeenCalledWith('evt_tpl_Pfadi:new-template');
@@ -281,10 +303,10 @@ describe('EventTemplatePage template overview and editor', () => {
 		const confirm = vi.mocked(window.confirm);
 		const wrapper = shallowMount(EventTemplatePage);
 		await flushPromises();
-		await wrapper.get('.event-template-overview-row .btn-sm--danger').trigger('click');
+		await wrapper.get('.event-template-overview-row .danger').trigger('click');
 		expect(mocks.deleteTemplate).not.toHaveBeenCalled();
 		confirm.mockReturnValue(true);
-		await wrapper.get('.event-template-overview-row .btn-sm--danger').trigger('click');
+		await wrapper.get('.event-template-overview-row .danger').trigger('click');
 		await flushPromises();
 		expect(mocks.deleteTemplate).toHaveBeenCalledWith('event-template-pfadi');
 		expect(wrapper.findAll('.event-template-overview-row')).toHaveLength(1);
