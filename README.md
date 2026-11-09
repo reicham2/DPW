@@ -174,6 +174,10 @@ unabhängig voneinander öffnen oder mit **Alle öffnen / Alle schliessen**
 gemeinsam ein- und ausklappen. Änderungen bleiben beim Einklappen erhalten; die
 Reihenfolge kann weiterhin über den Ziehgriff angepasst werden.
 
+Die **Auswertung** einer Aktivität sammelt Rückmeldungen und Verbesserungspunkte
+direkt in der Aktivität und kann die tatsächliche Teilnehmendenzahl getrennt von
+der Planung erfassen. Details zu Zugriff und Speicherung stehen in der
+[Betriebsreferenz](docs/operations.md).
 
 **Do not expose an unfinished setup publicly:** missing setup fields can be set
 without login while setup is incomplete. The first login is **not** a generic

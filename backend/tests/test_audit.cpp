@@ -25,6 +25,9 @@ TEST(audit_covers_bulk_indirect_and_sensitive_setting_actions_without_values)
 {
     ASSERT_TRUE(audit_action("DELETE", "/admin/roles/:name").has_value());
     ASSERT_TRUE(audit_action("PATCH", "/activities/:id").has_value());
+    auto evaluation = audit_action("PUT", "/activities/:id/evaluation");
+    ASSERT_TRUE(evaluation.has_value());
+    ASSERT_STR_EQ(evaluation->resource_type, "activity");
     ASSERT_TRUE(audit_action("POST", "/send-mail").has_value());
     auto setting = audit_action("PUT", "/admin/app-settings/:key");
     ASSERT_TRUE(setting.has_value());
@@ -40,6 +43,16 @@ TEST(audit_details_show_proofreading_preference_changes)
     ASSERT_STR_EQ(details["changes"][0]["field"].get<std::string>(), "proofreading_enabled");
     ASSERT_TRUE(details["changes"][0]["before"].get<bool>());
     ASSERT_FALSE(details["changes"][0]["after"].get<bool>());
+}
+
+TEST(audit_details_record_actual_attendance_without_feedback_text)
+{
+    auto details = audit_change_details("activity", nullptr,
+        {{"actual_participants", 18}, {"improvements", "private feedback text"},
+         {"action_items", "private action"}});
+    ASSERT_EQ(details["changes"].size(), static_cast<size_t>(1));
+    ASSERT_STR_EQ(details["changes"][0]["label"].get<std::string>(), "Tatsächliche Teilnehmendenzahl");
+    ASSERT_TRUE(details.dump().find("private") == std::string::npos);
 }
 
 TEST(audit_details_show_actual_user_changes_without_credentials)

@@ -12,6 +12,7 @@ const container = process.env.AUDIT_DB_CONTAINER
 assert(base && container, 'Explicit disposable AUDIT_BASE_URL and AUDIT_DB_CONTAINER are required')
 const admin = 'a0000000-0000-0000-0000-000000000001'
 const member = 'a0000000-0000-0000-0000-000000000003'
+const otherMember = 'a0000000-0000-0000-0000-000000000004'
 const sql = query => execFileSync('docker', [
   'exec', '-i', container, 'psql', '-U', process.env.AUDIT_DB_USER || 'postgres', '-d', 'activities', '-v', 'ON_ERROR_STOP=1', '-Atc', query,
 ], { encoding: 'utf8' }).trim()
@@ -26,7 +27,7 @@ async function request(path, method = 'GET', body, actor = admin) {
 }
 const locationName = `audit-test-${randomUUID()}`
 const materialName = `audit-material-${randomUUID()}`
-let locationId, materialId, activityId, fixtureUserId
+let locationId, materialId, activityId, activityShareToken, fixtureUserId
 const count = () => Number(sql('SELECT count(*) FROM audit_events'))
 const latest = () => JSON.parse(sql("SELECT row_to_json(a) FROM audit_events a ORDER BY id DESC LIMIT 1"))
 const failTrigger = condition => sql(`
@@ -153,19 +154,84 @@ try {
   // Success for a compound activity mutation represents one whole request.
   result = await request('/activities', 'POST', {
     title: locationName, date: '2027-01-01', start_time: '14:00', end_time: '16:00',
-    department: 'Pfadi', responsible: [admin], programs: [],
+    department: 'Pfadi', responsible: [admin, member], programs: [],
   })
   assert.equal(result.status, 201, result.text)
   activityId = result.data.id
+  activityShareToken = result.data.share_token
   result = await request(`/activities/${activityId}`, 'PATCH', {
     title: `${locationName}-updated`, date: '2027-01-02', start_time: '14:00', end_time: '16:00',
-    department: 'Pfadi', responsible: [admin], programs: [], goal: secret,
+    department: 'Pfadi', responsible: [admin, member], programs: [], goal: secret,
   })
   assert.equal(result.status, 200, result.text)
   assert.equal(latest().details.changes.find(change => change.field === 'title').before, locationName)
   assert.equal(latest().details.changes.find(change => change.field === 'title').after, `${locationName}-updated`)
   assert.equal(latest().details.changes.find(change => change.field === 'goal').redacted, true)
   assert(!JSON.stringify(latest()).includes(secret), 'activity free text must be protected')
+
+  const evaluationPath = `/activities/${activityId}/evaluation`
+  assert.equal((await request(evaluationPath, 'GET', undefined, null)).status, 401)
+  assert.equal((await request(evaluationPath, 'PUT', {
+    actual_participants: 18, positive: '', improvements: '', action_items: '', notes: '',
+  }, null)).status, 401, 'evaluation writes always require authentication')
+  assert.equal((await request(evaluationPath, 'GET', undefined, otherMember)).status, 403,
+    'users without activity read access cannot see feedback')
+  assert.equal((await request(evaluationPath, 'PUT', {
+    actual_participants: 18, positive: '', improvements: '', action_items: '', notes: '',
+  }, otherMember)).status, 403, 'non-responsible readers cannot write activity feedback')
+  assert.equal((await request(evaluationPath, 'GET', undefined, member)).status, 200,
+    'activity readers can see centrally collected feedback')
+  for (const invalidCount of [-1, 1.5, 2147483648]) {
+    const invalid = await request(evaluationPath, 'PUT', {
+      actual_participants: invalidCount, positive: '', improvements: '', action_items: '', notes: '',
+    })
+    assert.equal(invalid.status, 400, `invalid actual participant count ${invalidCount}`)
+  }
+  const tooLong = await request(evaluationPath, 'PUT', {
+    actual_participants: null, positive: '', improvements: 'é'.repeat(4001), action_items: '', notes: '',
+  })
+  assert.equal(tooLong.status, 400, 'feedback field limits count Unicode characters')
+
+  const adminFeedback = {
+    actual_participants: 18,
+    positive: 'Gute Stimmung',
+    improvements: 'Mehr Zeit einplanen',
+    action_items: 'Material früher bereitstellen',
+    notes: 'private feedback',
+  }
+  assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200)
+  assert.equal(latest().resource_type, 'activity')
+  assert.equal(latest().details.changes.find(change => change.field === 'actual_participants').after, 18)
+  assert(!JSON.stringify(latest()).includes('private feedback'), 'feedback content must not enter audit details')
+  assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200,
+    'repeated saves update rather than duplicate one author entry')
+  const memberFeedback = {
+    actual_participants: 20,
+    positive: '',
+    improvements: 'Wegweiser besser markieren',
+    action_items: 'Beschilderung vorbereiten',
+    notes: '',
+  }
+  assert.equal((await request(evaluationPath, 'PUT', memberFeedback, member)).status, 200)
+  let evaluation = (await request(evaluationPath, 'GET', undefined, member)).data
+  assert.equal(evaluation.actual_participants, 20)
+  assert.equal(evaluation.feedback.length, 2)
+  assert.equal(evaluation.mine.improvements, memberFeedback.improvements)
+
+  assert(activityId && activityShareToken)
+  const sharedActivity = await request(`/shared/${activityShareToken}`, 'GET', undefined, null)
+  assert.equal(sharedActivity.status, 200)
+  assert(!JSON.stringify(sharedActivity.data).includes('Wegweiser besser markieren'),
+    'public activity shares must not expose evaluation feedback')
+  assert.equal((await request(`/shared/${activityShareToken}/evaluation`, 'PUT', adminFeedback, null)).status, 404,
+    'public share links must not expose writable evaluation routes')
+
+  const clearedMemberFeedback = { ...memberFeedback, improvements: '', action_items: '' }
+  assert.equal((await request(evaluationPath, 'PUT', clearedMemberFeedback, member)).status, 200)
+  evaluation = (await request(evaluationPath, 'GET')).data
+  assert.equal(evaluation.feedback.length, 1, 'clearing a contribution removes only the current author entry')
+  assert.equal(evaluation.actual_participants, 20, 'attendance remains independent from clearing feedback')
+
   for (const [key, value] of [['wp.url', 'http://127.0.0.1:1'], ['wp.user', 'audit-test'], ['wp.app_password', 'audit-test-only']]) {
     assert.equal((await request(`/admin/app-settings/${key}`, 'PUT', { value })).status, 200)
   }

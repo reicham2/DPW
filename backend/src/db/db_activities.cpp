@@ -640,6 +640,7 @@ std::optional<std::pair<Activity, Activity>> Database::update_activity(const std
             PQclear(previous_result);
             throw std::runtime_error("update_activity previous state: " + err);
         }
+
         if (PQntuples(previous_result) == 0)
         {
             PQclear(previous_result);
@@ -700,6 +701,136 @@ std::optional<std::pair<Activity, Activity>> Database::update_activity(const std
         attach_programs_single(a);
         exec_or_throw(conn_, "COMMIT", "update_activity COMMIT");
         return std::make_pair(std::move(previous), std::move(a));
+    }
+    catch (...)
+    {
+        PQexec(conn_, "ROLLBACK");
+        throw;
+    }
+}
+
+std::optional<ActivityEvaluation> Database::get_activity_evaluation(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *activity_params[1] = {activity_id.c_str()};
+    PGresult *activity_result = PQexecParams(conn_,
+        "SELECT actual_participants FROM activities WHERE id=$1 AND deleted_at IS NULL",
+        1, nullptr, activity_params, nullptr, nullptr, 0);
+    if (PQresultStatus(activity_result) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(activity_result);
+        PQclear(activity_result);
+        throw std::runtime_error("get_activity_evaluation activity: " + err);
+    }
+    if (PQntuples(activity_result) == 0)
+    {
+        PQclear(activity_result);
+        return std::nullopt;
+    }
+
+    ActivityEvaluation evaluation;
+    if (!PQgetisnull(activity_result, 0, 0))
+        evaluation.actual_participants = std::atoi(PQgetvalue(activity_result, 0, 0));
+    PQclear(activity_result);
+
+    PGresult *feedback_result = PQexecParams(conn_,
+        "SELECT author_id::text, author_name, positive, improvements, action_items, notes, "
+        "       created_at::text, updated_at::text "
+        "FROM activity_feedback WHERE activity_id=$1 ORDER BY created_at, author_name",
+        1, nullptr, activity_params, nullptr, nullptr, 0);
+    if (PQresultStatus(feedback_result) != PGRES_TUPLES_OK)
+    {
+        std::string err = PQresultErrorMessage(feedback_result);
+        PQclear(feedback_result);
+        throw std::runtime_error("get_activity_evaluation feedback: " + err);
+    }
+    for (int i = 0; i < PQntuples(feedback_result); ++i)
+    {
+        ActivityFeedback entry;
+        entry.author_id = PQgetvalue(feedback_result, i, 0);
+        entry.author_name = PQgetvalue(feedback_result, i, 1);
+        entry.positive = PQgetvalue(feedback_result, i, 2);
+        entry.improvements = PQgetvalue(feedback_result, i, 3);
+        entry.action_items = PQgetvalue(feedback_result, i, 4);
+        entry.notes = PQgetvalue(feedback_result, i, 5);
+        entry.created_at = PQgetvalue(feedback_result, i, 6);
+        entry.updated_at = PQgetvalue(feedback_result, i, 7);
+        evaluation.feedback.push_back(std::move(entry));
+    }
+    PQclear(feedback_result);
+    return evaluation;
+}
+
+bool Database::save_activity_evaluation(const std::string &activity_id, const std::string &author_id,
+                                        const std::string &author_name, const std::optional<int> &actual_participants,
+                                        const std::string &positive, const std::string &improvements,
+                                        const std::string &action_items, const std::string &notes)
+{
+    ensure_connected();
+    exec_or_throw(conn_, "BEGIN", "save_activity_evaluation BEGIN");
+    try
+    {
+        std::string participants = actual_participants ? std::to_string(*actual_participants) : "";
+        const char *activity_params[2] = {activity_id.c_str(), actual_participants ? participants.c_str() : nullptr};
+        PGresult *activity_result = PQexecParams(conn_,
+            "UPDATE activities SET actual_participants=$2::int "
+            "WHERE id=$1 AND deleted_at IS NULL RETURNING id",
+            2, nullptr, activity_params, nullptr, nullptr, 0);
+        if (PQresultStatus(activity_result) != PGRES_TUPLES_OK)
+        {
+            std::string err = PQresultErrorMessage(activity_result);
+            PQclear(activity_result);
+            throw std::runtime_error("save_activity_evaluation activity: " + err);
+        }
+        bool activity_exists = PQntuples(activity_result) > 0;
+        PQclear(activity_result);
+        if (!activity_exists)
+        {
+            exec_or_throw(conn_, "ROLLBACK", "save_activity_evaluation missing activity");
+            return false;
+        }
+
+        const bool has_feedback = !positive.empty() || !improvements.empty() ||
+                                  !action_items.empty() || !notes.empty();
+        if (has_feedback)
+        {
+            const char *feedback_params[7] = {
+                activity_id.c_str(), author_id.c_str(), author_name.c_str(),
+                positive.c_str(), improvements.c_str(), action_items.c_str(), notes.c_str()};
+            PGresult *feedback_result = PQexecParams(conn_,
+                "INSERT INTO activity_feedback "
+                "(activity_id, author_id, author_name, positive, improvements, action_items, notes) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7) "
+                "ON CONFLICT (activity_id, author_id) DO UPDATE SET "
+                "author_name=EXCLUDED.author_name, positive=EXCLUDED.positive, "
+                "improvements=EXCLUDED.improvements, action_items=EXCLUDED.action_items, "
+                "notes=EXCLUDED.notes, updated_at=NOW()",
+                7, nullptr, feedback_params, nullptr, nullptr, 0);
+            if (PQresultStatus(feedback_result) != PGRES_COMMAND_OK)
+            {
+                std::string err = PQresultErrorMessage(feedback_result);
+                PQclear(feedback_result);
+                throw std::runtime_error("save_activity_evaluation feedback: " + err);
+            }
+            PQclear(feedback_result);
+        }
+        else
+        {
+            const char *feedback_params[2] = {activity_id.c_str(), author_id.c_str()};
+            PGresult *feedback_result = PQexecParams(conn_,
+                "DELETE FROM activity_feedback WHERE activity_id=$1 AND author_id=$2",
+                2, nullptr, feedback_params, nullptr, nullptr, 0);
+            if (PQresultStatus(feedback_result) != PGRES_COMMAND_OK)
+            {
+                std::string err = PQresultErrorMessage(feedback_result);
+                PQclear(feedback_result);
+                throw std::runtime_error("save_activity_evaluation clear feedback: " + err);
+            }
+            PQclear(feedback_result);
+        }
+
+        exec_or_throw(conn_, "COMMIT", "save_activity_evaluation COMMIT");
+        return true;
     }
     catch (...)
     {

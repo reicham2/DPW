@@ -128,6 +128,30 @@ begrenzt. Ist der Dienst nicht verfügbar, bleibt die Bearbeitung nutzbar; der
 Fehler wird nicht im Editor angezeigt. Nach einer weiteren Textänderung versucht
 die Prüfung es erneut. Nach einer Korrektur bleiben unveränderte Markierungen
 während der erneuten Prüfung erhalten; überlappende Markierungen werden entfernt.
+## Aktivitätsauswertung
+
+Auf der Aktivitätsdetailseite sammelt **Auswertung** strukturierte Rückmeldungen
+zu dem, was gut lief, zu Verbesserungspunkten, vereinbarten Massnahmen und
+optionalem weiterem Feedback. Pro Aktivität und angemeldeter Person gibt es
+höchstens einen Eintrag; erneutes Speichern aktualisiert den eigenen Eintrag,
+und das Leeren aller vier Textfelder entfernt nur den eigenen Eintrag. Die
+gesammelten Beiträge zeigen den Anzeigenamen und den letzten Änderungszeitpunkt.
+
+Personen mit Leserecht für die Aktivität sehen die Auswertung und alle Beiträge.
+Schreiben ist auf Personen beschränkt, die dieselbe Aktivität bearbeiten dürfen
+(einschliesslich Admins). Jede schreibberechtigte Person kann nur ihren eigenen
+Feedbackbeitrag ändern oder entfernen; die tatsächliche Teilnehmendenzahl ist
+ein einzelner Aktivitätswert und kann von allen Schreibberechtigten aktualisiert
+oder geleert werden. Öffentliche Freigabelinks und öffentliche Formulare erhalten
+keinen Zugriff auf diese Daten.
+
+Die tatsächliche Teilnehmendenzahl ist eine nichtnegative ganze Zahl oder
+unbekannt, bis sie eingetragen wird; sie ist unabhängig von der geplanten
+Teilnehmendenzahl und Anmeldestatistiken. Feedback und Anzahl werden zusammen
+gespeichert. Rückmeldungen bleiben mit der Aktivität erhalten und werden beim
+endgültigen Löschen der Aktivität mitgelöscht. Das Audit Log erfasst
+Änderungszeitpunkt und tatsächliche Zahl, aber weder Feedbacktexte noch
+Massnahmen.
 
 ## Audit Log
 
