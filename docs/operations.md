@@ -652,12 +652,18 @@ die Grenze bei jeder Linkerstellung. Wird sie geändert oder gesenkt, behalten
 bereits ausgestellte Links ihr bisheriges Ablaufdatum; die neue Grenze gilt
 nur für neue Links. Das Backend prüft den Token und den Ablaufzeitpunkt bei
 jeder Gast-Lese- und Schreiboperation. Widerruf oder Ablauf sperren auch
-Datei- und Bildzugriffe. Der Gast darf den Inhalt ab **Roter Faden** bearbeiten:
-Programmpunkte samt formatierten Beschreibungen und Bildern, Material,
-Teilnehmermaterial, Sicherheitskonzept, Ziel, Schlechtwetter-Information und
-Anhänge. Aktivitätstitel, Datum/Uhrzeit, Ort, Verantwortliche, Abteilung und
-Teilnehmerschätzung bleiben unverändert. Formulare und Veröffentlichungen
-stehen Gästen weder in der Oberfläche noch über die Gast-API zur Verfügung.
+Datei- und Bildzugriffe. Die Gastansicht verwendet dieselben Bearbeitungsfelder
+und Rich-Text-/Bildfunktionen wie der normale Aktivitätseditor und bietet eine
+Sprungnavigation durch die freigegebenen Bereiche. Änderungen werden wie im
+normalen Editor automatisch gespeichert. Der Gast darf den Inhalt ab
+**Roter Faden** bearbeiten: Programmpunkte samt formatierten Beschreibungen und
+Bildern, Material, Teilnehmermaterial, Sicherheitskonzept, Ziel,
+Schlechtwetter-Information und Anhänge. Aktivitätstitel, Datum/Uhrzeit, Ort,
+Verantwortliche, Abteilung und Teilnehmerschätzung bleiben unverändert und
+werden nicht als bearbeitbare Felder angeboten. Nicht zum Gastzugriff gehörende
+Statistiken und Wetter-Einstellungen werden ausgeblendet. Formulare und
+Veröffentlichungen stehen Gästen weder in der Oberfläche noch über die Gast-API
+zur Verfügung.
 Schreibvorgänge prüfen die letzte Änderungszeit; bei konkurrierenden Änderungen
 muss der Gast neu laden, statt neuere Daten zu überschreiben.
 
