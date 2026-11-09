@@ -16,6 +16,7 @@ import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users
 import type { Activity, ActivityInput, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
+import ActivityEvaluationPanel from '../components/ActivityEvaluationPanel.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import BadgeSelect from '../components/BadgeSelect.vue';
 import ResponsibleAvatars from '../components/ResponsibleAvatars.vue';
@@ -3828,6 +3829,8 @@ function copyShareLink() {
 				</div>
 				<span v-else class="detail-value detail-value--muted">—</span>
 					</div>
+
+					<ActivityEvaluationPanel :activity-id="activity.id" :can-edit="canEdit" />
 
 					<!-- Meta -->
 					<div class="detail-meta">

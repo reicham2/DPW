@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS activities (
     siko_text        TEXT,
     bad_weather_info TEXT,
     planned_participants_estimate INTEGER CHECK (planned_participants_estimate >= 0),
+    actual_participants INTEGER CHECK (actual_participants >= 0),
     midata_children_value INTEGER,
     midata_children_recorded_at TIMESTAMPTZ,
     weather_location TEXT,
@@ -201,6 +202,27 @@ CREATE TABLE IF NOT EXISTS activities (
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS deleted_by UUID;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS tn_material JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS actual_participants INTEGER CHECK (actual_participants >= 0);
+
+CREATE TABLE IF NOT EXISTS activity_feedback (
+    activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    author_id UUID NOT NULL,
+    author_name TEXT NOT NULL,
+    positive TEXT NOT NULL DEFAULT '',
+    improvements TEXT NOT NULL DEFAULT '',
+    action_items TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (activity_id, author_id),
+    CHECK (char_length(positive) <= 4000),
+    CHECK (char_length(improvements) <= 4000),
+    CHECK (char_length(action_items) <= 4000),
+    CHECK (char_length(notes) <= 4000)
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_feedback_activity
+    ON activity_feedback (activity_id, created_at);
 
 CREATE TABLE IF NOT EXISTS programs (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

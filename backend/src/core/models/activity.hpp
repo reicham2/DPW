@@ -68,3 +68,21 @@ struct ActivityInput
     std::optional<int> planned_participants_estimate;
     std::vector<ProgramInput> programs;
 };
+
+struct ActivityFeedback
+{
+    std::string author_id;
+    std::string author_name;
+    std::string positive;
+    std::string improvements;
+    std::string action_items;
+    std::string notes;
+    std::string created_at;
+    std::string updated_at;
+};
+
+struct ActivityEvaluation
+{
+    std::optional<int> actual_participants;
+    std::vector<ActivityFeedback> feedback;
+};

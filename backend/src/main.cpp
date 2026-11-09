@@ -338,6 +338,10 @@ int main()
               { handle_put_activity_weather_location(res, req, db); })
          .get("/activities/:id/weather-expected", [&](auto *res, auto *req)
               { handle_get_activity_expected_weather(res, req, db); })
+         .get("/activities/:id/evaluation", [&](auto *res, auto *req)
+              { handle_get_activity_evaluation(res, req, db); })
+         .put("/activities/:id/evaluation", [&](auto *res, auto *req)
+              { handle_put_activity_evaluation(res, req, db); })
 
          // Single activity CRUD
          .get("/activities/:id", [&](auto *res, auto *req)
