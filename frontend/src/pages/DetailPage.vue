@@ -42,6 +42,15 @@ const router = useRouter();
 let id = route.params.id as string;
 const isGuestEdit = computed(() => route.path === '/guest-edit');
 const guestToken = computed(() => isGuestEdit.value ? route.hash.slice(1) : '');
+const guestEditSections = [
+	{ id: 'guest-edit-guiding-thread', label: 'Roter Faden' },
+	{ id: 'guest-edit-programs', label: 'Programmpunkte' },
+	{ id: 'guest-edit-material', label: 'Material' },
+	{ id: 'guest-edit-tn-material', label: 'TN-Material' },
+	{ id: 'guest-edit-safety', label: 'Sicherheit' },
+	{ id: 'guest-edit-goal-weather', label: 'Ziel & Wetter' },
+	{ id: 'guest-edit-attachments', label: 'Anhänge' },
+] as const;
 
 const {
 	activities,
@@ -1927,6 +1936,11 @@ async function closeGuestEdit() {
 	await Promise.all(pendingProgramImageUploads);
 	await flushAutoSave({ skipFuzzyCheck: true });
 	router.push('/');
+}
+
+function scrollToGuestSection(sectionId: string) {
+	if (!isGuestEdit.value) return;
+	document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function cancelEdit() {
@@ -3956,9 +3970,32 @@ function closeShareDialog() {
 		</div>
 	</div>
 
-	<div v-if="isGuestEdit && activity && guestAccessExpiresAt" class="guest-edit-banner" role="status">
-		Gastbearbeitung für „{{ activity.title }}“ — dieser Link ist bis {{ formatGuestExpiry(guestAccessExpiresAt) }} gültig.
+	<div v-if="isGuestEdit && activity" class="guest-edit-intro">
+		<div class="guest-edit-intro__activity">
+			<span class="guest-edit-intro__badge"><Pencil :size="14" aria-hidden="true" /> Gastbearbeitung</span>
+			<h2 class="detail-hero-title">{{ activity.title }}</h2>
+			<p class="detail-hero-time">
+				{{ formatDate(activity.date) }} · {{ activity.start_time }}–{{ activity.end_time }}
+			</p>
+		</div>
+		<div class="guest-edit-intro__access">
+			<strong>Änderungen werden automatisch gespeichert</strong>
+			<span v-if="guestAccessExpiresAt">Link gültig bis {{ formatGuestExpiry(guestAccessExpiresAt) }}</span>
+			<span v-else>Bearbeitbar sind die Aktivitätsinhalte ab Roter Faden.</span>
+		</div>
 	</div>
+	<nav v-if="isGuestEdit && activity" class="guest-edit-sections" aria-label="Bearbeitbare Bereiche">
+		<span class="guest-edit-sections__label">Direkt zu</span>
+		<button
+			v-for="section in guestEditSections"
+			:key="section.id"
+			type="button"
+			class="guest-edit-sections__item"
+			@click="scrollToGuestSection(section.id)"
+		>
+			{{ section.label }}
+		</button>
+	</nav>
 
 	<button
 		v-if="activity && !isGuestEdit"
@@ -4353,7 +4390,7 @@ function closeShareDialog() {
 		</div>
 
 		<!-- =============================================================== EDIT -->
-		<div v-else class="detail-form">
+		<div v-else class="detail-form" :class="{ 'detail-form--guest': isGuestEdit }">
 			<div v-if="pendingLocalDraft" class="editors-banner" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
 				<span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
 				<span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
@@ -4513,7 +4550,7 @@ function closeShareDialog() {
 				</div>
 			</div>
 
-			<div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('guiding_thread') }"
+			<div id="guest-edit-guiding-thread" class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('guiding_thread') }"
 				@focusin="lockSection('guiding_thread')" @focusout="unlockSection('guiding_thread', $event)">
 				<div v-if="lockedBy('guiding_thread')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('guiding_thread') }}</div>
 				<label for="edit-guiding-thread">Roter Faden</label>
@@ -4535,7 +4572,7 @@ function closeShareDialog() {
 			</div>
 
 			<!-- Programmpunkte -->
-			<div class="form-section">
+			<div id="guest-edit-programs" class="form-section">
 				<div class="program-section-heading">
 					<p class="form-section-title">Programmpunkte</p>
 					<button
@@ -4814,7 +4851,7 @@ function closeShareDialog() {
 			</div>
 
 			<!-- Material -->
-			<div class="form-section">
+			<div id="guest-edit-material" class="form-section">
 				<p class="form-section-title">Material</p>
 				<div class="material-list">
 					<div v-for="(_, i) in editMaterial" :key="i" class="material-card lock-wrapper"
@@ -4884,7 +4921,7 @@ function closeShareDialog() {
 			</div>
 
 				<!-- TN-Material -->
-				<div class="form-section">
+				<div id="guest-edit-tn-material" class="form-section">
 					<p class="form-section-title">TN-Material</p>
 					<div class="material-list">
 						<div v-for="(_, i) in editTnMaterial" :key="i" class="material-card material-card--tn lock-wrapper"
@@ -4922,7 +4959,7 @@ function closeShareDialog() {
 				</div>
 
 			<!-- SiKo -->
-			<div class="form-section lock-wrapper" :class="{ 'is-locked': isLockedByOther('siko') }"
+			<div id="guest-edit-safety" class="form-section lock-wrapper" :class="{ 'is-locked': isLockedByOther('siko') }"
 				@focusin="lockSection('siko')" @focusout="unlockSection('siko', $event)">
 				<div v-if="lockedBy('siko')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('siko') }}</div>
 				<p class="form-section-title">Sicherheitskonzept</p>
@@ -4940,7 +4977,7 @@ function closeShareDialog() {
 			</div>
 
 			<!-- Ziel + Schlechtwetter -->
-			<div class="form-row lock-wrapper" :class="{ 'is-locked': isLockedByOther('goal_weather') }"
+			<div id="guest-edit-goal-weather" class="form-row lock-wrapper" :class="{ 'is-locked': isLockedByOther('goal_weather') }"
 				@focusin="lockSection('goal_weather')" @focusout="unlockSection('goal_weather', $event)">
 				<div v-if="lockedBy('goal_weather')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('goal_weather') }}</div>
 				<div class="form-group">
@@ -4972,7 +5009,7 @@ function closeShareDialog() {
 			</div>
 
 			<!-- Anhänge -->
-			<div class="form-section">
+			<div id="guest-edit-attachments" class="form-section">
 				<p class="form-section-title">Anhänge</p>
 				<div
 					class="drop-zone"
@@ -5040,7 +5077,7 @@ function closeShareDialog() {
 			<div v-if="!isGuestEdit" class="detail-stats-popout" :class="{ 'is-open': isStatsDrawerOpen }" @click.self="closeStatsDrawer">
 				<div class="detail-stats-popout__panel">
 					<button type="button" class="detail-stats-popout__close" @click="closeStatsDrawer" aria-label="Schliessen"><X :size="16" aria-hidden="true" /></button>
-			<aside class="detail-stats-sidebar detail-stats-sidebar--edit">
+			<aside v-if="!isGuestEdit" class="detail-stats-sidebar detail-stats-sidebar--edit">
 				<div class="detail-stats-card">
 					<p class="detail-stats-card-title">Aktuelle Informationen</p>
 					<div class="detail-stats-list">

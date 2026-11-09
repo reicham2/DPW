@@ -18,12 +18,19 @@ const mocks = vi.hoisted(() => ({
 	setConnected: undefined as ((connected: boolean) => void) | undefined,
 	onMessage: undefined as ((event: WsEvent) => void) | undefined,
 	editable: false,
+	isGuestEdit: false,
+	guestToken: '',
 	activities: [] as Activity[],
 	ideaItems: [] as IdeenkisteItem[],
 }));
 
 vi.mock('vue-router', () => ({
-	useRoute: () => ({ params: { id: 'activity-1' }, query: {} }),
+	useRoute: () => ({
+		params: { id: 'activity-1' },
+		query: {},
+		path: mocks.isGuestEdit ? '/guest-edit' : '/activities/activity-1',
+		hash: mocks.isGuestEdit ? `#${mocks.guestToken}` : '',
+	}),
 	useRouter: () => ({ replace: mocks.replace, push: vi.fn() }),
 }));
 
@@ -244,6 +251,8 @@ describe('DetailPage activity access', () => {
 		config.WP_PUBLISHING_ENABLED = false;
 		config.PUBLIC_BASE_URL = '';
 		mocks.editable = false;
+		mocks.isGuestEdit = false;
+		mocks.guestToken = '';
 		mocks.activities = [];
 		mocks.ideaItems = [];
 		user.value = null;
@@ -275,6 +284,56 @@ describe('DetailPage activity access', () => {
 		config.AUTOSAVE_DEBOUNCE = initialAutosaveDebounce;
 		user.value = null;
 		localStorage.removeItem('dpw:activity-edit-draft:activity-1');
+	});
+
+	it('uses the normal editor language for guests while showing only scoped editing controls', async () => {
+		mocks.isGuestEdit = true;
+		mocks.guestToken = 'a'.repeat(64);
+		const activity = makeActivity({
+			title: 'Sommerlager',
+			date: '2026-07-01',
+			start_time: '10:00',
+			end_time: '11:00',
+			guiding_thread: 'Gemeinsam unterwegs',
+		});
+		const guestFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+			activity,
+			expires_at: '2030-07-08T12:00:00Z',
+		}), { status: 200 }));
+		vi.stubGlobal('fetch', guestFetch);
+
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+
+		expect(wrapper.get('.guest-edit-intro').text()).toContain('Sommerlager');
+		expect(wrapper.get('.guest-edit-intro').text()).toContain('Änderungen werden automatisch gespeichert');
+		expect(wrapper.get('.guest-edit-intro').text()).toContain('Link gültig bis');
+		expect(wrapper.find('#edit-title').exists()).toBe(false);
+		expect(wrapper.find('#edit-guiding-thread').exists()).toBe(true);
+		expect(wrapper.find('#edit-goal').exists()).toBe(true);
+		expect(wrapper.find('#edit-attachment').exists()).toBe(true);
+		expect(wrapper.find('.program-section-heading').exists()).toBe(true);
+		expect(wrapper.get('.detail-form').classes()).toContain('detail-form--guest');
+		expect(wrapper.find('.detail-stats-sidebar--edit').exists()).toBe(false);
+		expect(wrapper.find('.detail-stats-popout__panel').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain('Veröffentlichen');
+		expect(wrapper.text()).not.toContain('Formular');
+		expect(wrapper.findAll('.guest-edit-sections__item').map((button) => button.text())).toEqual([
+			'Roter Faden',
+			'Programmpunkte',
+			'Material',
+			'TN-Material',
+			'Sicherheit',
+			'Ziel & Wetter',
+			'Anhänge',
+		]);
+		expect(guestFetch).toHaveBeenCalledWith('/api/guest-edit/activity', expect.objectContaining({
+			headers: expect.any(Headers),
+			cache: 'no-store',
+		}));
+		const guestRequestOptions = guestFetch.mock.calls[0]?.[1] as RequestInit;
+		expect(new Headers(guestRequestOptions.headers).get('X-Guest-Edit-Token')).toBe(mocks.guestToken);
+		wrapper.unmount();
 	});
 
 	it('opens one sharing dialog with the read-only link selected by default and guest editing as an explicit option', async () => {
