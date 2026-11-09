@@ -449,6 +449,65 @@ video {
 	white-space: nowrap;
 }
 
+.guest-link-manager {
+	margin: 12px auto;
+	padding: 16px;
+	max-width: 1200px;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-radius: 10px;
+}
+
+.guest-link-manager__heading,
+.guest-link-manager__actions,
+.guest-link-manager__expiry {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.guest-link-manager__heading {
+	justify-content: space-between;
+}
+
+.guest-link-manager__expiry {
+	flex-wrap: wrap;
+	margin: 12px 0;
+}
+
+.guest-link-manager__expiry select {
+	padding: 6px 8px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: #fff;
+}
+
+.guest-link-manager__expiry span,
+.guest-link-manager__status {
+	color: #4b5563;
+	font-size: 0.9rem;
+}
+
+.guest-link-manager__actions {
+	flex-wrap: wrap;
+}
+
+.guest-link-manager__url {
+	margin: 12px 0 0;
+	overflow-wrap: anywhere;
+	font-size: 0.85rem;
+}
+
+.guest-edit-banner {
+	margin: 12px auto;
+	padding: 10px 16px;
+	max-width: 1200px;
+	border: 1px solid #93c5fd;
+	border-radius: 8px;
+	background: #eff6ff;
+	color: #1e3a8a;
+}
+
 /* ---- Main ---- */
 .main {
 	padding-top: 4px;

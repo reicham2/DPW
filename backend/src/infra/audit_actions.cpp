@@ -6,6 +6,10 @@
 
 std::optional<AuditAction> audit_action(const std::string &method, const std::string &route)
 {
+    // Guest edits authenticate with scoped link tokens in their handlers.
+    if (route.rfind("/guest-edit/", 0) == 0)
+        return std::nullopt;
+
     // Public submissions and routine notification traffic are not journaled.
     if (route.rfind("/notifications", 0) == 0 || route.rfind("/push/", 0) == 0 ||
         route == "/forms/:slug/submit")

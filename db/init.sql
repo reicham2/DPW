@@ -651,6 +651,19 @@ CREATE TABLE IF NOT EXISTS activity_share_links (
 CREATE INDEX IF NOT EXISTS idx_activity_share_links_token ON activity_share_links (share_token);
 CREATE INDEX IF NOT EXISTS idx_activity_share_links_activity ON activity_share_links (activity_id);
 
+-- Scoped external guest editing links are independent of public read-only shares.
+CREATE TABLE IF NOT EXISTS activity_guest_edit_links (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id   UUID        NOT NULL UNIQUE REFERENCES activities(id) ON DELETE CASCADE,
+    token_hash    TEXT        NOT NULL UNIQUE,
+    expires_at    TIMESTAMPTZ NOT NULL,
+    created_by    UUID        REFERENCES users(id) ON DELETE SET NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_guest_edit_links_expiry
+    ON activity_guest_edit_links (expires_at);
+
 CREATE INDEX IF NOT EXISTS idx_attachments_activity_id ON attachments (activity_id);
 
 -- Inline description images have their own parent, independent of replaced program rows.

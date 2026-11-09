@@ -39,7 +39,9 @@ import type { ProofreadingMatch } from '../utils/programProofreading';
 
 const route = useRoute();
 const router = useRouter();
-const id = route.params.id as string;
+let id = route.params.id as string;
+const isGuestEdit = computed(() => route.path === '/guest-edit');
+const guestToken = computed(() => isGuestEdit.value ? route.hash.slice(1) : '');
 
 const {
 	activities,
@@ -49,6 +51,7 @@ const {
 	fetchLocations,
 	fetchMaterials,
 	updateActivity,
+	updateGuestActivity,
 	deleteActivity,
 	fetchAttachments,
 	uploadAttachment,
@@ -104,6 +107,13 @@ let expectedWeatherRequestSeq = 0;
 const WEATHER_EXPECTED_TIMEOUT_MS = 30000;
 const WEATHER_EXPECTED_CACHE_TTL_MS = 10 * 60 * 1000;
 const mode = ref<'view' | 'edit'>('view');
+const guestLinkDays = ref(7);
+const guestLinkExpiresAt = ref<string | null>(null);
+const guestLinkUrl = ref<string | null>(null);
+const guestLinkCopied = ref(false);
+const guestLinkLoading = ref(false);
+const showGuestLinkManager = ref(false);
+const guestAccessExpiresAt = ref<string | null>(null);
 const isStatsDrawerOpen = ref(false);
 const activityActionsMenuOpen = ref(false);
 const activityActionsMenuRef = ref<HTMLElement | null>(null);
@@ -139,6 +149,25 @@ const shareButtonTitle = computed(() => {
 	if (!shareToken.value) return 'Share-Link nicht verfügbar'
 	return 'Share-Link kopieren'
 })
+
+async function guestEditFetch(path: string, options: RequestInit = {}): Promise<Response> {
+	const headers = new Headers(options.headers);
+	headers.set('X-Guest-Edit-Token', guestToken.value);
+	if (options.body && !(options.body instanceof FormData)) {
+		headers.set('Content-Type', 'application/json');
+	}
+	return fetch(`/api/guest-edit${path}`, {
+		...options,
+		headers,
+		cache: 'no-store',
+	});
+}
+
+function formatGuestExpiry(value: string | null): string {
+	if (!value) return 'unbekannt';
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? value : date.toLocaleString('de-DE');
+}
 
 function onEvtPreviewInput() {
 	updateEvtPreviewToolbar();
@@ -502,7 +531,7 @@ function clearLocalDraft() {
 }
 
 function writeLocalDraftNow(): boolean {
-	if (mode.value !== 'edit' || pendingLocalDraft.value) return false;
+	if (isGuestEdit.value || mode.value !== 'edit' || pendingLocalDraft.value) return false;
 	const draft: LocalEditDraft = {
 		version: 1,
 		activityId: id,
@@ -523,7 +552,7 @@ function retainCurrentGuidingThreadDraft(): boolean {
 }
 
 function scheduleLocalDraftWrite() {
-	if (mode.value !== 'edit' || suppressDirtyTracking || applyingRemote) return;
+	if (isGuestEdit.value || mode.value !== 'edit' || suppressDirtyTracking || applyingRemote) return;
 	if (localDraftWriteTimer) clearTimeout(localDraftWriteTimer);
 	localDraftWriteTimer = setTimeout(() => {
 		writeLocalDraftNow();
@@ -592,7 +621,9 @@ async function openPreview(att: Attachment) {
 	if (!isPreviewable(att)) return;
 	previewAttachment.value = att;
 	previewLoading.value = true;
-	const url = await getAttachmentBlobUrl(att.id);
+	const url = isGuestEdit.value
+		? await getAttachmentBlobUrl(att.id, guestToken.value)
+		: await getAttachmentBlobUrl(att.id);
 	previewBlobUrl.value = url;
 	previewLoading.value = false;
 }
@@ -606,7 +637,9 @@ function closePreview() {
 }
 
 async function downloadAttachment(att: Attachment) {
-	const url = await getAttachmentBlobUrl(att.id);
+	const url = isGuestEdit.value
+		? await getAttachmentBlobUrl(att.id, guestToken.value)
+		: await getAttachmentBlobUrl(att.id);
 	if (!url) return;
 	const a = document.createElement('a');
 	a.href = url;
@@ -662,11 +695,13 @@ function unlockSection(section: EditSection, event?: FocusEvent) {
 
 // ---- Load ------------------------------------------------------------------
 const canView = computed(() => {
+	if (isGuestEdit.value) return true;
 	if (!user.value || !activity.value) return true; // don't block during loading
 	return canReadActivity(activity.value, user.value.display_name, user.value.department);
 });
 
 function canEditByScope(scope: 'none' | 'own' | 'same_dept' | 'all') {
+	if (isGuestEdit.value) return true;
 	if (!user.value || !activity.value) return false;
 	const isOwnResponsible = () => {
 		if (!user.value || !activity.value) return false;
@@ -688,6 +723,7 @@ const canEdit = computed(() => {
 });
 
 const canDelete = computed(() => {
+	if (isGuestEdit.value) return false;
 	const scope = myPermissions.value?.activity_edit_scope ?? 'none';
 	return canEditByScope(scope);
 });
@@ -1514,6 +1550,39 @@ const estimateSourceActivities = computed(() => {
 });
 
 onMounted(async () => {
+	if (isGuestEdit.value) {
+		try {
+			if (!/^[0-9a-f]{64}$/i.test(guestToken.value)) {
+				throw new Error('Gastlink ungültig oder abgelaufen.');
+			}
+			const res = await guestEditFetch('/activity');
+			if (!res.ok) {
+				const payload = await res.json().catch(() => null) as { error?: unknown } | null;
+				throw new Error(typeof payload?.error === 'string' ? payload.error : 'Gastlink ungültig oder abgelaufen.');
+			}
+			const payload = await res.json() as { activity: Activity; expires_at: string };
+			activity.value = payload.activity;
+			id = payload.activity.id;
+			guestAccessExpiresAt.value = payload.expires_at;
+			document.title = `${activity.value.title} – DPWeb`;
+			syncEditFields(activity.value);
+			captureEditSnapshot();
+			editAttachmentIdsSnapshot.value = [];
+			mode.value = 'edit';
+			attachments.value = await fetchAttachments(id, guestToken.value);
+			editAttachmentIdsSnapshot.value = attachments.value.map((item) => item.id);
+			await nextTick();
+			initProgEditors();
+			suppressDirtyTracking = false;
+		} catch (e) {
+			error.value = e instanceof Error ? e.message : 'Gastlink ungültig oder abgelaufen.';
+			activityMissingConfirmed.value = true;
+		} finally {
+			loading.value = false;
+		}
+		return;
+	}
+
 	const permissionTask = fetchMyPermissions().catch(() => null);
 	try {
 		await Promise.race([
@@ -1549,6 +1618,7 @@ onMounted(async () => {
 		if (activity.value && myPermissions.value && !canView.value) {
 			router.replace('/');
 		}
+		if (activity.value && canEdit.value) void loadGuestEditLink();
 	});
 
 	if (activity.value) {
@@ -1628,7 +1698,7 @@ watch(activityActionsMenuOpen, async (open) => {
 });
 
 watch(() => config.MIDATA_ENABLED, () => {
-	if (activity.value) void refreshActivityMidataChildren();
+	if (!isGuestEdit.value && activity.value) void refreshActivityMidataChildren();
 });
 
 onUnmounted(() => {
@@ -1643,7 +1713,7 @@ onUnmounted(() => {
 		expectedWeatherRequestController = null;
 	}
 	similarActivityEstimateRequestId += 1;
-	if (mode.value === 'edit' && !pendingLocalDraft.value) writeLocalDraftNow();
+	if (!isGuestEdit.value && mode.value === 'edit' && !pendingLocalDraft.value) writeLocalDraftNow();
 	detailUnmounted = true;
 	expectedGuidingThreadEchoes.clear();
 	if (localDraftWriteTimer) {
@@ -1668,7 +1738,7 @@ onUnmounted(() => {
 	window.removeEventListener('dragover', onWindowProgramDragOver);
 	stopProgramDragAutoScroll();
 	// Leave the activity and unlock any held section
-	wsLeave();
+	if (!isGuestEdit.value) wsLeave();
 	document.title = 'DPWeb Aktivitäten';
 });
 
@@ -1701,7 +1771,7 @@ function syncEditFields(a: typeof activity.value) {
 // Only fields that changed remotely are patched into the edit form,
 // so Tab B's own uncommitted edits in other fields are never overwritten.
 watch(lastUpdatedActivity, (updated) => {
-	if (!updated || updated.id !== id) return;
+	if (isGuestEdit.value || !updated || updated.id !== id) return;
 
 	const ownGuidingThreadEcho = updated.guiding_thread === undefined
 		? undefined
@@ -1849,6 +1919,12 @@ async function leaveEdit() {
 	mode.value = 'view';
 }
 
+async function closeGuestEdit() {
+	await Promise.all(pendingProgramImageUploads);
+	await flushAutoSave({ skipFuzzyCheck: true });
+	router.push('/');
+}
+
 async function cancelEdit() {
 	await Promise.all(pendingProgramImageUploads);
 	if (autoSaveTimer) {
@@ -1863,7 +1939,8 @@ async function cancelEdit() {
 	const snapshot = new Set(editAttachmentIdsSnapshot.value);
 	const addedDuringEdit = attachments.value.filter(a => !snapshot.has(a.id));
 	for (const att of addedDuringEdit) {
-		await deleteAttachment(att.id);
+		if (isGuestEdit.value) await deleteAttachment(att.id, guestToken.value);
+		else await deleteAttachment(att.id);
 	}
 	attachments.value = attachments.value.filter(a => snapshot.has(a.id));
 
@@ -2533,7 +2610,9 @@ function programEditorKey(program: ProgramInput): string {
 function setProgEditorRef(el: unknown, program: ProgramInput) {
 	if (el instanceof HTMLElement) {
 		progEditorElements.set(program, el);
-		if (!progImageRenderers.has(el)) progImageRenderers.set(el, new ProgramImageRenderer());
+		if (!progImageRenderers.has(el)) {
+			progImageRenderers.set(el, new ProgramImageRenderer(undefined, isGuestEdit.value ? guestToken.value : undefined));
+		}
 		syncProgEditor(el, program);
 		const index = editPrograms.value.indexOf(program);
 		if (index >= 0 && !proofreadObservedText.has(index)) {
@@ -2798,7 +2877,9 @@ function syncProgEditor(el: HTMLElement, program: ProgramInput) {
 }
 
 async function deleteUnusedProgramImage(imageId: string) {
-	const response = await apiFetch(`/api/program-images/${imageId}`, { method: 'DELETE' });
+	const response = isGuestEdit.value
+		? await guestEditFetch(`/program-images/${imageId}`, { method: 'DELETE' })
+		: await apiFetch(`/api/program-images/${imageId}`, { method: 'DELETE' });
 	if (!response.ok && response.status !== 404) throw new Error(await response.text());
 }
 
@@ -2826,7 +2907,9 @@ function insertProgPaste(program: ProgramInput, el: HTMLElement, paste: ProgramP
 		for (const upload of paste.uploads) {
 			const marker = el.querySelector(`[data-program-image-upload="${upload.marker}"]`);
 			try {
-				const image = await uploadAttachment(id, upload.file, true);
+				const image = isGuestEdit.value
+					? await uploadAttachment(id, upload.file, true, guestToken.value)
+					: await uploadAttachment(id, upload.file, true);
 				if (!image) throw new Error(error.value || 'Bild konnte nicht hochgeladen werden. Bitte erneut versuchen.');
 				const index = editPrograms.value.indexOf(program);
 				if (!marker || !el.contains(marker) || index < 0 || !el.isConnected || mode.value !== 'edit') {
@@ -3131,7 +3214,9 @@ async function processNextUpload() {
 			showDuplicateDialog.value = true;
 			return; // wait for user decision
 		}
-		const att = await uploadAttachment(id, file);
+		const att = isGuestEdit.value
+			? await uploadAttachment(id, file, false, guestToken.value)
+			: await uploadAttachment(id, file);
 		if (att) attachments.value.push(att);
 		pendingUploadIndex++;
 	}
@@ -3140,11 +3225,14 @@ async function processNextUpload() {
 
 async function onDuplicateReplace() {
 	if (duplicateAttId.value) {
-		await deleteAttachment(duplicateAttId.value);
+		if (isGuestEdit.value) await deleteAttachment(duplicateAttId.value, guestToken.value);
+		else await deleteAttachment(duplicateAttId.value);
 		attachments.value = attachments.value.filter(a => a.id !== duplicateAttId.value);
 	}
 	if (duplicateFile.value) {
-		const att = await uploadAttachment(id, duplicateFile.value);
+		const att = isGuestEdit.value
+			? await uploadAttachment(id, duplicateFile.value, false, guestToken.value)
+			: await uploadAttachment(id, duplicateFile.value);
 		if (att) attachments.value.push(att);
 	}
 	showDuplicateDialog.value = false;
@@ -3162,7 +3250,10 @@ function onDuplicateSkip() {
 	processNextUpload();
 }
 async function removeAttachment(attId: string) {
-	if (await deleteAttachment(attId)) {
+	const deleted = isGuestEdit.value
+		? await deleteAttachment(attId, guestToken.value)
+		: await deleteAttachment(attId);
+	if (deleted) {
 		attachments.value = attachments.value.filter(a => a.id !== attId);
 	}
 }
@@ -3387,11 +3478,18 @@ async function doSave(opts: { skipFuzzyCheck?: boolean } = {}) {
 	const update = (async () => {
 		if (previousUpdate) await previousUpdate;
 		lastSavedProgramsJson = programsSignature(input.programs);
-		const expectedEcho = !detailUnmounted && input.guiding_thread !== undefined && connected.value
+		const expectedEcho = !isGuestEdit.value && !detailUnmounted && input.guiding_thread !== undefined && connected.value
 			? { value: input.guiding_thread }
 			: null;
 		if (expectedEcho) expectedGuidingThreadEchoes.add(expectedEcho);
-		const saved = await updateActivity(id, input);
+		let saved: boolean;
+		if (isGuestEdit.value) {
+			const updated = await updateGuestActivity(input, guestToken.value, activity.value?.updated_at ?? '');
+			saved = !!updated;
+			if (updated) activity.value = updated;
+		} else {
+			saved = await updateActivity(id, input);
+		}
 		if (!saved && expectedEcho) expectedGuidingThreadEchoes.delete(expectedEcho);
 		return saved;
 	})();
@@ -3462,6 +3560,61 @@ async function fetchShareLink() {
 	}
 }
 
+async function loadGuestEditLink() {
+	if (!activity.value || isGuestEdit.value || !canEdit.value) return;
+	try {
+		const res = await apiFetch(`/api/activities/${id}/guest-edit-link`);
+		if (!res.ok) throw new Error(await res.text());
+		const data = await res.json() as { expires_at?: string | null };
+		guestLinkExpiresAt.value = data.expires_at ?? null;
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : 'Gastlink konnte nicht geladen werden.';
+	}
+}
+
+async function createGuestEditLink() {
+	if (!activity.value || !canEdit.value) return;
+	guestLinkLoading.value = true;
+	try {
+		const res = await apiFetch(`/api/activities/${id}/guest-edit-link`, {
+			method: 'POST',
+			body: JSON.stringify({ expires_in_days: guestLinkDays.value }),
+		});
+		if (!res.ok) throw new Error(await res.text());
+		const data = await res.json() as { share_url: string; expires_at: string };
+		guestLinkUrl.value = data.share_url;
+		guestLinkExpiresAt.value = data.expires_at;
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : 'Gastlink konnte nicht erstellt werden.';
+	} finally {
+		guestLinkLoading.value = false;
+	}
+}
+
+async function copyGuestEditLink() {
+	if (!guestLinkUrl.value) return;
+	try {
+		await navigator.clipboard.writeText(guestLinkUrl.value);
+		guestLinkCopied.value = true;
+		setTimeout(() => { guestLinkCopied.value = false; }, 2000);
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : 'Link konnte nicht kopiert werden.';
+	}
+}
+
+async function revokeGuestEditLink() {
+	if (!guestLinkExpiresAt.value || !canEdit.value
+		|| !confirm('Der Gast-Editierlink wird sofort ungültig. Fortfahren?')) return;
+	try {
+		const res = await apiFetch(`/api/activities/${id}/guest-edit-link`, { method: 'DELETE' });
+		if (!res.ok) throw new Error(await res.text());
+		guestLinkUrl.value = null;
+		guestLinkExpiresAt.value = null;
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : 'Gastlink konnte nicht widerrufen werden.';
+	}
+}
+
 function copyShareLink() {
 	if (!canShareActivity.value || !shareToken.value) return;
 	const baseUrl = configuredPublicBaseUrl();
@@ -3475,12 +3628,16 @@ function copyShareLink() {
 
 <template>
 	<header class="header">
-		<button class="btn-back" @click="flushAutoSave(); router.push('/')">
+		<button v-if="!isGuestEdit" class="btn-back" @click="flushAutoSave(); router.push('/')">
 			<ArrowLeft class="btn-icon" :size="16" aria-hidden="true" />
 			Zurück
 		</button>
+		<button v-else class="btn-back" @click="closeGuestEdit">
+			<ArrowLeft class="btn-icon" :size="16" aria-hidden="true" />
+			Gastzugriff schliessen
+		</button>
 		<div class="header-right">
-			<div v-if="activity && mode === 'view' && !showEvaluation" ref="activityActionsMenuRef" class="activity-actions-mobile">
+			<div v-if="!isGuestEdit && activity && mode === 'view' && !showEvaluation" ref="activityActionsMenuRef" class="activity-actions-mobile">
 				<button
 					type="button"
 					class="activity-actions-mobile-toggle"
@@ -3566,6 +3723,15 @@ function copyShareLink() {
 						<Share2 v-else class="btn-icon" :size="16" aria-hidden="true" />
 						<span>{{ shareCopied ? 'Kopiert' : (shareLoading ? 'Teilen…' : 'Teilen') }}</span>
 					</button>
+					<button
+						v-if="canEdit"
+						type="button"
+						class="activity-actions-mobile-item"
+						@click="closeActivityActionsMenu(); showGuestLinkManager = !showGuestLinkManager"
+					>
+						<Share2 class="btn-icon" :size="16" aria-hidden="true" />
+						<span>Gast-Editierlink</span>
+					</button>
 				</div>
 			</div>
 			<div v-if="!showEvaluation" class="activity-actions-desktop">
@@ -3645,6 +3811,15 @@ function copyShareLink() {
 						{{ shareCopied ? 'Kopiert' : (shareLoading ? 'Teilen…' : 'Teilen') }}
 					</button>
 				</div>
+				<button
+					v-if="activity && mode === 'view' && canEdit && !isGuestEdit"
+					type="button"
+					class="btn-mail"
+					:aria-expanded="showGuestLinkManager"
+					@click="showGuestLinkManager = !showGuestLinkManager"
+				>
+					Gast-Editierlink
+				</button>
 			</div>
 			<button
 				v-if="activity && mode === 'view' && !showEvaluation"
@@ -3668,7 +3843,7 @@ function copyShareLink() {
 				Aktivität
 			</button>
 			<button
-				v-if="activity && mode === 'view' && !showEvaluation"
+				v-if="activity && mode === 'view' && !showEvaluation && !isGuestEdit"
 				class="btn-toggle"
 				:class="'btn-primary'"
 				:disabled="!canEdit"
@@ -3677,6 +3852,13 @@ function copyShareLink() {
 			>
 				<Pencil class="btn-icon" :size="16" aria-hidden="true" />
 				Bearbeiten
+			</button>
+			<button
+				v-if="activity && mode === 'edit' && isGuestEdit"
+				class="btn-toggle btn-mail"
+				@click="closeGuestEdit"
+			>
+				Schliessen
 			</button>
 			<button
 				v-else-if="activity && mode === 'edit'"
@@ -3689,8 +3871,41 @@ function copyShareLink() {
 		</div>
 	</header>
 
+	<section v-if="showGuestLinkManager && activity && mode === 'view' && canEdit && !isGuestEdit" class="guest-link-manager">
+		<div class="guest-link-manager__heading">
+			<strong>Externer Gast-Editierlink</strong>
+			<button type="button" class="btn-icon-only" aria-label="Schliessen" @click="showGuestLinkManager = false"><X :size="16" aria-hidden="true" /></button>
+		</div>
+		<p>Der Gast kann den Roten Faden und die folgenden Aktivitätsbereiche bearbeiten, aber keine Formulare verwalten oder veröffentlichen.</p>
+		<label class="guest-link-manager__expiry">
+			Gültigkeit
+			<select v-model.number="guestLinkDays">
+				<option v-for="days in 30" :key="days" :value="days">{{ days }} {{ days === 1 ? 'Tag' : 'Tage' }}</option>
+			</select>
+			<span>(Standard: 7 Tage, höchstens 30)</span>
+		</label>
+		<p v-if="guestLinkExpiresAt" class="guest-link-manager__status">
+			Aktueller Link läuft ab: {{ formatGuestExpiry(guestLinkExpiresAt) }}.
+			<span v-if="!guestLinkUrl">Der vorhandene Link kann hier nicht erneut angezeigt werden; ein neuer Link ersetzt ihn.</span>
+		</p>
+		<div class="guest-link-manager__actions">
+			<button type="button" class="btn-primary" :disabled="guestLinkLoading" @click="createGuestEditLink">
+				{{ guestLinkLoading ? 'Wird erstellt…' : (guestLinkExpiresAt ? 'Neuen Link erstellen' : 'Link erstellen') }}
+			</button>
+			<button v-if="guestLinkUrl" type="button" class="btn-secondary" @click="copyGuestEditLink">
+				{{ guestLinkCopied ? 'Kopiert' : 'Link kopieren' }}
+			</button>
+			<button v-if="guestLinkExpiresAt" type="button" class="btn-danger" @click="revokeGuestEditLink">Widerrufen</button>
+		</div>
+		<p v-if="guestLinkUrl" class="guest-link-manager__url" aria-live="polite">{{ guestLinkUrl }}</p>
+	</section>
+
+	<div v-if="isGuestEdit && activity && guestAccessExpiresAt" class="guest-edit-banner" role="status">
+		Gastbearbeitung für „{{ activity.title }}“ — dieser Link ist bis {{ formatGuestExpiry(guestAccessExpiresAt) }} gültig.
+	</div>
+
 	<button
-		v-if="activity"
+		v-if="activity && !isGuestEdit"
 		type="button"
 		class="detail-stats-drawer-handle"
 		:class="{ 'is-open': isStatsDrawerOpen }"
@@ -3771,6 +3986,7 @@ function copyShareLink() {
 										</ul>
 									</div>
 								</template>
+
 							</div>
 							<div class="detail-field">
 								<span class="detail-label">Verantwortlich</span>
@@ -4100,7 +4316,7 @@ function copyShareLink() {
 			</div>
 
 			<!-- Titel -->
-			<div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('title') }"
+			<div v-if="!isGuestEdit" class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('title') }"
 				@focusin="lockSection('title')" @focusout="unlockSection('title', $event)">
 				<div v-if="lockedBy('title')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('title') }}</div>
 				<label for="edit-title">Titel</label>
@@ -4118,7 +4334,7 @@ function copyShareLink() {
 			</div>
 
 			<!-- Datum + Zeiten -->
-			<div class="form-row form-row--3 lock-wrapper" :class="{ 'is-locked': isLockedByOther('datetime') }"
+			<div v-if="!isGuestEdit" class="form-row form-row--3 lock-wrapper" :class="{ 'is-locked': isLockedByOther('datetime') }"
 				@focusin="lockSection('datetime')" @focusout="unlockSection('datetime', $event)">
 				<div v-if="lockedBy('datetime')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('datetime') }}</div>
 				<div class="form-group">
@@ -4145,7 +4361,7 @@ function copyShareLink() {
 			</div>
 
 			<!-- Ort + Verantwortlich + Stufe -->
-			<div class="form-row form-row--3 lock-wrapper" :class="{ 'is-locked': isLockedByOther('location') }"
+			<div v-if="!isGuestEdit" class="form-row form-row--3 lock-wrapper" :class="{ 'is-locked': isLockedByOther('location') }"
 				@focusin="lockSection('location')" @focusout="unlockSection('location', $event)">
 				<div v-if="lockedBy('location')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('location') }}</div>
 				<div class="form-group">
@@ -4321,7 +4537,7 @@ function copyShareLink() {
 						</button>
 						<div class="program-card__top-actions">
 							<button
-								v-if="canIdeenkisteAdd()"
+								v-if="!isGuestEdit && canIdeenkisteAdd()"
 								type="button"
 								class="program-card__save-idee"
 								:class="{ 'program-card__save-idee--saved': savedToIdeen.has(prog) }"
@@ -4494,16 +4710,16 @@ function copyShareLink() {
 							</div>
 						</div>
 					</div>
-					<div :class="canIdeenkiste() ? 'btn-add-split' : 'btn-add-single'">
+					<div :class="!isGuestEdit && canIdeenkiste() ? 'btn-add-split' : 'btn-add-single'">
 						<button
 							type="button"
 							class="btn-add"
-							:class="{ 'btn-add-split__main': canIdeenkiste() }"
+							:class="{ 'btn-add-split__main': !isGuestEdit && canIdeenkiste() }"
 							@click="addProgram"
 						>
 							+ Programmpunkt
 						</button>
-						<div v-if="canIdeenkiste()" class="btn-add-split__dropdown-wrap">
+						<div v-if="!isGuestEdit && canIdeenkiste()" class="btn-add-split__dropdown-wrap">
 							<button type="button" class="btn-add btn-add-split__caret" @click="openIdeenDropdown" title="Aus Ideenkiste">
 								<BookMarked :size="14" aria-hidden="true" />
 							</button>
@@ -4757,15 +4973,15 @@ function copyShareLink() {
 				>
 					In Papierkorb
 				</button>
-				<button type="button" class="btn-secondary" @click="cancelEdit">
+				<button v-if="!isGuestEdit" type="button" class="btn-secondary" @click="cancelEdit">
 					Abbrechen
 				</button>
-				<button type="button" class="btn-secondary" @click="leaveEdit">
+				<button type="button" class="btn-secondary" @click="isGuestEdit ? closeGuestEdit() : leaveEdit()">
 					Schliessen
 				</button>
 			</div>
 
-			<div class="detail-stats-popout" :class="{ 'is-open': isStatsDrawerOpen }" @click.self="closeStatsDrawer">
+			<div v-if="!isGuestEdit" class="detail-stats-popout" :class="{ 'is-open': isStatsDrawerOpen }" @click.self="closeStatsDrawer">
 				<div class="detail-stats-popout__panel">
 					<button type="button" class="detail-stats-popout__close" @click="closeStatsDrawer" aria-label="Schliessen"><X :size="16" aria-hidden="true" /></button>
 			<aside class="detail-stats-sidebar detail-stats-sidebar--edit">

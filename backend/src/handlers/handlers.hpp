@@ -136,6 +136,18 @@ void handle_post_share_link(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_share_link(HttpRes *res, HttpReq *req, Database &db);
 void handle_delete_share_link(HttpRes *res, HttpReq *req, Database &db);
 void handle_get_shared_activity(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_guest_edit_link(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_guest_edit_link(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_guest_edit_link(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_guest_edit_activity(HttpRes *res, HttpReq *req, Database &db);
+void handle_patch_guest_edit_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm);
+void handle_get_guest_edit_attachments(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &db);
+void handle_get_guest_edit_program_image(HttpRes *res, HttpReq *req, Database &db);
+void handle_post_guest_edit_program_image(HttpRes *res, HttpReq *req, Database &db);
+void handle_delete_guest_edit_program_image(HttpRes *res, HttpReq *req, Database &db);
 
 void handle_get_ideenkiste(HttpRes *res, HttpReq *req, Database &db);
 void handle_post_ideenkiste(HttpRes *res, HttpReq *req, Database &db);

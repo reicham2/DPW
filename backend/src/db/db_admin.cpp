@@ -897,6 +897,99 @@ std::optional<Activity> Database::get_activity_by_share_token(const std::string 
     return a;
 }
 
+std::optional<ActivityGuestEditLink> Database::create_guest_edit_link(const std::string &activity_id,
+                                                                       const std::string &created_by,
+                                                                       const std::string &token_hash,
+                                                                       int expires_in_days)
+{
+    ensure_connected();
+    const std::string days = std::to_string(expires_in_days);
+    const char *params[4] = {activity_id.c_str(), created_by.c_str(), token_hash.c_str(), days.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "INSERT INTO activity_guest_edit_links "
+                                 "(activity_id, created_by, token_hash, expires_at) "
+                                 "VALUES ($1, NULLIF($2, '')::uuid, $3, NOW() + make_interval(days => $4::int)) "
+                                 "ON CONFLICT (activity_id) DO UPDATE SET "
+                                 "created_by = EXCLUDED.created_by, token_hash = EXCLUDED.token_hash, "
+                                 "expires_at = EXCLUDED.expires_at, created_at = NOW() "
+                                 "RETURNING id, activity_id, expires_at::text, created_by::text, created_at::text",
+                                 4, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        std::string error = PQresultErrorMessage(res);
+        PQclear(res);
+        throw std::runtime_error("create_guest_edit_link: " + error);
+    }
+    ActivityGuestEditLink link{
+        PQgetvalue(res, 0, 0),
+        PQgetvalue(res, 0, 1),
+        PQgetvalue(res, 0, 2),
+        PQgetisnull(res, 0, 3) ? "" : PQgetvalue(res, 0, 3),
+        PQgetvalue(res, 0, 4)};
+    PQclear(res);
+    return link;
+}
+
+std::optional<ActivityGuestEditLink> Database::get_guest_edit_link(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT id, activity_id, expires_at::text, created_by::text, created_at::text "
+                                 "FROM activity_guest_edit_links WHERE activity_id = $1 AND expires_at > NOW()",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    ActivityGuestEditLink link{
+        PQgetvalue(res, 0, 0),
+        PQgetvalue(res, 0, 1),
+        PQgetvalue(res, 0, 2),
+        PQgetisnull(res, 0, 3) ? "" : PQgetvalue(res, 0, 3),
+        PQgetvalue(res, 0, 4)};
+    PQclear(res);
+    return link;
+}
+
+std::optional<ActivityGuestEditLink> Database::get_guest_edit_link_by_token_hash(const std::string &token_hash)
+{
+    ensure_connected();
+    const char *params[1] = {token_hash.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "SELECT l.id, l.activity_id, l.expires_at::text, l.created_by::text, l.created_at::text "
+                                 "FROM activity_guest_edit_links l "
+                                 "JOIN activities a ON a.id = l.activity_id AND a.deleted_at IS NULL "
+                                 "WHERE l.token_hash = $1 AND l.expires_at > NOW()",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0)
+    {
+        PQclear(res);
+        return std::nullopt;
+    }
+    ActivityGuestEditLink link{
+        PQgetvalue(res, 0, 0),
+        PQgetvalue(res, 0, 1),
+        PQgetvalue(res, 0, 2),
+        PQgetisnull(res, 0, 3) ? "" : PQgetvalue(res, 0, 3),
+        PQgetvalue(res, 0, 4)};
+    PQclear(res);
+    return link;
+}
+
+bool Database::delete_guest_edit_link(const std::string &activity_id)
+{
+    ensure_connected();
+    const char *params[1] = {activity_id.c_str()};
+    PGresult *res = PQexecParams(conn_,
+                                 "DELETE FROM activity_guest_edit_links WHERE activity_id = $1",
+                                 1, nullptr, params, nullptr, nullptr, 0);
+    bool ok = PQresultStatus(res) == PGRES_COMMAND_OK && PQcmdTuples(res)[0] != '0';
+    PQclear(res);
+    return ok;
+}
+
 // ── App settings ─────────────────────────────────────────────────────────────
 
 bool Database::set_app_setting(const std::string &key,

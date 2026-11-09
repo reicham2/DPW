@@ -130,6 +130,15 @@ zur freigegebenen Aktivität gehören, werden über den bestehenden Freigabelink
 geladen. Freigabelinks und öffentliche Formularantworten bleiben ohne Anmeldung
 nutzbar.
 
+Aktivitätsbearbeiter können zusätzlich einen zeitlich begrenzten Gastlink
+erstellen. Er erlaubt Gästen Änderungen ab **Roter Faden** (einschließlich
+Programmpunkten, Material, Sicherheitskonzept und Anhängen), aber keine
+Änderungen an den Aktivitätsstammdaten, Formularen oder Veröffentlichungen.
+Die Laufzeit beträgt standardmäßig **7 Tage** und kann auf höchstens **30 Tage**
+gesetzt werden; ein neuer Link ersetzt den bisherigen. Details zu Zugriff,
+Widerruf und Sicherheit stehen in der
+[Betriebsreferenz](docs/operations.md#aktivitäten-extern-bearbeiten).
+
 ## Bilder in Programmpunkten
 
 In der Beschreibung eines Programmpunkts lassen sich Bilder **zwischen Text**

@@ -37,7 +37,10 @@ public:
     std::vector<Activity> list_activities();
     std::optional<Activity> get_activity_by_id(const std::string &id);
     std::optional<Activity> create_activity(const ActivityInput &input);
-    std::optional<std::pair<Activity, Activity>> update_activity(const std::string &id, const ActivityInput &input);
+    std::optional<std::pair<Activity, Activity>> update_activity(
+        const std::string &id, const ActivityInput &input,
+        const std::optional<std::string> &expected_updated_at = std::nullopt,
+        bool preserve_non_guest_fields = false, bool *conflict = nullptr);
     std::optional<ActivityEvaluation> get_activity_evaluation(const std::string &activity_id);
     bool save_activity_actuals(const std::string &activity_id, const std::optional<int> &actual_participants,
                                const std::optional<std::string> &actual_start_time,
@@ -354,6 +357,13 @@ public:
     std::optional<ActivityShareLink> get_share_link(const std::string &activity_id);
     bool delete_share_link(const std::string &activity_id);
     std::optional<Activity> get_activity_by_share_token(const std::string &token);
+    std::optional<ActivityGuestEditLink> create_guest_edit_link(const std::string &activity_id,
+                                                                 const std::string &created_by,
+                                                                 const std::string &token_hash,
+                                                                 int expires_in_days);
+    std::optional<ActivityGuestEditLink> get_guest_edit_link(const std::string &activity_id);
+    std::optional<ActivityGuestEditLink> get_guest_edit_link_by_token_hash(const std::string &token_hash);
+    bool delete_guest_edit_link(const std::string &activity_id);
 
     // App settings (supports encrypted secret values)
     bool set_app_setting(const std::string &key,
