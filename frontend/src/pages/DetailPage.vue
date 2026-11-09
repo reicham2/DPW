@@ -70,6 +70,12 @@ const { exportToWord, error: exportError } = useActivityExport();
 const { resolveResponsibleName } = useUserResolver();
 
 const activity = ref<Activity | null>(null);
+const showEvaluation = ref(false);
+const todayLocalDate = ref(localCalendarDate());
+let todayLocalDateTimer: number | null = null;
+const canOpenEvaluation = computed(() =>
+	!!activity.value && activity.value.date <= todayLocalDate.value,
+);
 const activityMissingConfirmed = ref(false);
 const loading = ref(true);
 const showNoFormDialog = ref(false);
@@ -1603,6 +1609,13 @@ onMounted(() => {
 	document.addEventListener('pointerdown', onDocumentPointerDown);
 	window.addEventListener('resize', onWindowResize);
 	window.addEventListener('dpw:before-maintenance-redirect', onBeforeMaintenanceRedirect);
+	todayLocalDateTimer = window.setInterval(() => {
+		todayLocalDate.value = localCalendarDate();
+	}, 60_000);
+});
+
+watch(canOpenEvaluation, (available) => {
+	if (!available) showEvaluation.value = false;
 });
 
 watch(activityActionsMenuOpen, async (open) => {
@@ -1620,6 +1633,10 @@ watch(() => config.MIDATA_ENABLED, () => {
 
 onUnmounted(() => {
 	resetProgProofreading();
+	if (todayLocalDateTimer !== null) {
+		window.clearInterval(todayLocalDateTimer);
+		todayLocalDateTimer = null;
+	}
 	expectedWeatherRequestSeq += 1;
 	if (expectedWeatherRequestController) {
 		expectedWeatherRequestController.abort();
@@ -1776,6 +1793,26 @@ function formatDate(d: string): string {
 		month: 'long',
 		year: 'numeric',
 	});
+}
+
+function localCalendarDate(): string {
+	const now = new Date();
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, '0');
+	const day = String(now.getDate()).padStart(2, '0');
+	return `${year}-${month}-${day}`;
+}
+
+function openEvaluation() {
+	todayLocalDate.value = localCalendarDate();
+	if (!canOpenEvaluation.value) return;
+	closeActivityActionsMenu();
+	showEvaluation.value = true;
+}
+
+function closeEvaluation() {
+	showEvaluation.value = false;
+	closeActivityActionsMenu();
 }
 
 // ---- Enter edit mode -------------------------------------------------------
@@ -3443,7 +3480,7 @@ function copyShareLink() {
 			Zurück
 		</button>
 		<div class="header-right">
-			<div v-if="activity && mode === 'view'" ref="activityActionsMenuRef" class="activity-actions-mobile">
+			<div v-if="activity && mode === 'view' && !showEvaluation" ref="activityActionsMenuRef" class="activity-actions-mobile">
 				<button
 					type="button"
 					class="activity-actions-mobile-toggle"
@@ -3531,7 +3568,7 @@ function copyShareLink() {
 					</button>
 				</div>
 			</div>
-			<div class="activity-actions-desktop">
+			<div v-if="!showEvaluation" class="activity-actions-desktop">
 				<router-link
 					v-if="activity && mode === 'view' && canForms"
 					:to="`/activities/${id}/forms`"
@@ -3610,7 +3647,28 @@ function copyShareLink() {
 				</div>
 			</div>
 			<button
-				v-if="activity && mode === 'view'"
+				v-if="activity && mode === 'view' && !showEvaluation"
+				type="button"
+				class="btn-mail"
+				:disabled="!canOpenEvaluation"
+				:title="canOpenEvaluation ? 'Auswertung öffnen' : 'Auswertung ist erst am Aktivitätstag verfügbar'"
+				@click="openEvaluation"
+			>
+				<ClipboardList class="btn-icon" :size="16" aria-hidden="true" />
+				Auswertung
+			</button>
+			<button
+				v-else-if="activity && mode === 'view' && showEvaluation"
+				type="button"
+				class="btn-mail"
+				title="Zur Aktivität zurückkehren"
+				@click="closeEvaluation"
+			>
+				<ArrowLeft class="btn-icon" :size="16" aria-hidden="true" />
+				Aktivität
+			</button>
+			<button
+				v-if="activity && mode === 'view' && !showEvaluation"
 				class="btn-toggle"
 				:class="'btn-primary'"
 				:disabled="!canEdit"
@@ -3648,6 +3706,14 @@ function copyShareLink() {
 		<ErrorAlert v-else-if="!activity && !!error" :error="error" />
 		<p v-else-if="activityMissingConfirmed" class="error">Aktivität nicht gefunden.</p>
 		<p v-else-if="!activity" class="loading">Aktivität wird geladen…</p>
+
+		<div v-else-if="mode === 'view' && showEvaluation" class="detail-view detail-view--evaluation">
+			<div class="detail-view-layout">
+				<div class="detail-view-main">
+					<ActivityEvaluationPanel :activity-id="activity.id" :can-edit="canEdit" />
+				</div>
+			</div>
+		</div>
 
 		<!-- ================================================================ VIEW -->
 		<div v-else-if="mode === 'view'" class="detail-view">
@@ -3829,8 +3895,6 @@ function copyShareLink() {
 				</div>
 				<span v-else class="detail-value detail-value--muted">—</span>
 					</div>
-
-					<ActivityEvaluationPanel :activity-id="activity.id" :can-edit="canEdit" />
 
 					<!-- Meta -->
 					<div class="detail-meta">
