@@ -12,6 +12,7 @@ project="dpw-upgrade-${GITHUB_RUN_ID:-local}-$$"
 upgraded_project="$project"
 reference="${project}-reference"
 compose_file="$BASELINE_COMPOSE_FILE"
+upgraded=false
 output="${UPGRADE_RESULTS_DIR:-$(mktemp -d)}"
 mkdir -p "$output"
 output="$(cd "$output" && pwd)"
@@ -21,7 +22,7 @@ compose() {
         -f "$compose_file" -f scripts/upgrade-compose.yml "$@"
 }
 sql() {
-    compose exec -T db psql -X -qAt -v ON_ERROR_STOP=1 \
+    compose exec -T db psql -X -qAt -v ON_ERROR_STOP=1 -v upgraded="$upgraded" \
         -U activities_user -d activities "$@"
 }
 use_images() {
@@ -101,6 +102,7 @@ sql < scripts/upgrade-schema.sql > "$output/baseline-schema.txt"
 compose stop
 compose_file=docker-compose.yml
 use_images "$CANDIDATE_BACKEND_IMAGE" "$CANDIDATE_FRONTEND_IMAGE"
+upgraded=true
 echo "Upgrading persisted environment to the PR images"
 compose up -d --force-recreate --wait --wait-timeout 180
 [ "$(volume)" = "$old_volume" ]
@@ -172,6 +174,14 @@ if {
     exit 1
 fi
 # The rejected transaction above is rolled back when psql exits.
+assert_data
+if {
+    printf "BEGIN; UPDATE event_templates SET name = 'CORRUPTED' WHERE id = '15500000-0000-0000-0000-000000000009';\n"
+    cat scripts/upgrade-assert-data.sql
+} | sql > "$output/expected-event-template-failure.txt" 2>&1; then
+    echo "Event template metadata loss was not detected" >&2
+    exit 1
+fi
 assert_data
 {
     printf 'BEGIN; ALTER TABLE activities ADD COLUMN upgrade_ci_unexpected text;\n'

@@ -18,8 +18,12 @@ BEGIN
             END IF;
         END LOOP;
     END LOOP;
-    -- Old one-per-Stufe templates become defaults; a newer baseline already has
-    -- explicit defaults, which must remain unchanged instead.
+END $$;
+
+\if :upgraded
+DO $$
+BEGIN
+    -- Legacy baselines lack these columns; assert their defaults after upgrading.
     IF EXISTS (
         SELECT 1 FROM upgrade_test.expected
         WHERE table_name = 'event_templates' AND NOT (rows->0 ? 'is_default')
@@ -30,3 +34,4 @@ BEGIN
         RAISE EXCEPTION 'Legacy Event template did not become the preserved department default';
     END IF;
 END $$;
+\endif
