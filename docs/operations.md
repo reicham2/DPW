@@ -632,8 +632,11 @@ Anmeldeformulare bleiben unabhängig davon ohne Anmeldung erreichbar.
 
 ### Aktivitäten extern bearbeiten
 
-Bearbeiter mit regulärem Schreibzugriff auf eine Aktivität können in der
-Aktivitätsansicht einen Gastlink erstellen, konfigurieren oder widerrufen.
+Bearbeiter mit regulärem Schreibzugriff auf eine Aktivität öffnen in der
+Aktivitätsansicht **Teilen** und wählen dort standardmäßig den öffentlichen
+Leselink oder ausdrücklich den Gast-Editierlink. Nur die Gast-Auswahl bietet
+Erstellen, Laufzeitkonfiguration und Widerruf an; Leselinks bleiben davon
+unabhängig.
 Gäste öffnen `/guest-edit#<token>` ohne Anmeldung. Der Token steht im
 URL-Fragment und wird daher nicht als HTTP-Pfad oder Referrer übertragen; das
 Backend speichert nur seinen SHA-256-Hash. Pro Aktivität ist ein Gastlink
