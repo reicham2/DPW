@@ -135,7 +135,8 @@ Auswertungsansicht. Sie ist bis zum Aktivitätstag deaktiviert; am selben
 Kalenderdatum ist sie unabhängig von der Uhrzeit verfügbar. Dort sammelt die
 Aktivität einzelne kurze Punkte dazu, was gut lief, was verbessert werden kann
 und welche Massnahmen mitgenommen werden. Über **Weiteren Punkt hinzufügen**
-können pro Bereich beliebig viele Einzelfelder ergänzt werden; das allgemeine
+können pro Bereich weitere Einzelfelder ergänzt werden; pro Bereich gilt die
+bestehende Grenze von 4000 Zeichen. Das allgemeine
 optionale Rückmeldungsfeld steht am Ende. Bereits gespeicherte mehrzeilige
 Einträge werden zeilenweise in diese Punkte übernommen. Die kompakte
 Teilnehmendenzahl bleibt ein einzelner Zahlenwert; die angezeigte Zahl der
