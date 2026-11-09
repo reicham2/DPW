@@ -112,7 +112,8 @@ const guestLinkExpiresAt = ref<string | null>(null);
 const guestLinkUrl = ref<string | null>(null);
 const guestLinkCopied = ref(false);
 const guestLinkLoading = ref(false);
-const showGuestLinkManager = ref(false);
+const shareDialogOpen = ref(false);
+const shareSelection = ref<'read' | 'guest'>('read');
 const guestAccessExpiresAt = ref<string | null>(null);
 const isStatsDrawerOpen = ref(false);
 const activityActionsMenuOpen = ref(false);
@@ -145,9 +146,8 @@ const canShareActivity = computed(() => !!configuredPublicBaseUrl())
 
 const shareButtonTitle = computed(() => {
 	if (!canShareActivity.value) return 'Öffentliche Basis-URL ist nicht konfiguriert'
-	if (shareLoading.value) return 'Share-Link wird erstellt'
-	if (!shareToken.value) return 'Share-Link nicht verfügbar'
-	return 'Share-Link kopieren'
+	if (shareLoading.value) return 'Freigabelinks werden vorbereitet'
+	return 'Freigabelink auswählen'
 })
 
 async function guestEditFetch(path: string, options: RequestInit = {}): Promise<Response> {
@@ -3615,14 +3615,28 @@ async function revokeGuestEditLink() {
 	}
 }
 
-function copyShareLink() {
+async function copyShareLink() {
 	if (!canShareActivity.value || !shareToken.value) return;
 	const baseUrl = configuredPublicBaseUrl();
 	const url = shareUrl.value || (baseUrl ? `${baseUrl}/shared/${shareToken.value}` : '');
 	if (!url) return;
-	navigator.clipboard.writeText(url);
-	shareCopied.value = true;
-	setTimeout(() => { shareCopied.value = false; }, 2000);
+	try {
+		await navigator.clipboard.writeText(url);
+		shareCopied.value = true;
+		setTimeout(() => { shareCopied.value = false; }, 2000);
+	} catch (e) {
+		error.value = e instanceof Error ? e.message : 'Leselink konnte nicht kopiert werden.';
+	}
+}
+
+function openShareDialog() {
+	shareSelection.value = 'read';
+	shareDialogOpen.value = true;
+	if (canShareActivity.value && !shareToken.value && !shareLoading.value) void fetchShareLink();
+}
+
+function closeShareDialog() {
+	shareDialogOpen.value = false;
 }
 </script>
 
@@ -3715,22 +3729,11 @@ function copyShareLink() {
 					<button
 						type="button"
 						class="activity-actions-mobile-item"
-						:class="{ 'activity-actions-mobile-item--active': shareCopied }"
-						:disabled="!canShareActivity || shareLoading || !shareToken"
-						@click="closeActivityActionsMenu(); copyShareLink()"
-					>
-						<Check v-if="shareCopied" class="btn-icon" :size="16" aria-hidden="true" />
-						<Share2 v-else class="btn-icon" :size="16" aria-hidden="true" />
-						<span>{{ shareCopied ? 'Kopiert' : (shareLoading ? 'Teilen…' : 'Teilen') }}</span>
-					</button>
-					<button
-						v-if="canEdit"
-						type="button"
-						class="activity-actions-mobile-item"
-						@click="closeActivityActionsMenu(); showGuestLinkManager = !showGuestLinkManager"
+						:disabled="!canShareActivity || shareLoading"
+						@click="closeActivityActionsMenu(); openShareDialog()"
 					>
 						<Share2 class="btn-icon" :size="16" aria-hidden="true" />
-						<span>Gast-Editierlink</span>
+						<span>{{ shareLoading ? 'Teilen…' : 'Teilen' }}</span>
 					</button>
 				</div>
 			</div>
@@ -3798,27 +3801,16 @@ function copyShareLink() {
 					<FileText class="btn-icon" :size="16" aria-hidden="true" />
 					Word-Export
 				</button>
-				<div v-if="activity && mode === 'view'" class="share-link-wrap">
-					<button
-						class="btn-mail"
-						:class="{ 'btn-mail--active': shareCopied }"
-						:title="shareButtonTitle"
-						:disabled="!canShareActivity || shareLoading || !shareToken"
-						@click="copyShareLink"
-					>
-						<Check v-if="shareCopied" class="btn-icon" :size="16" aria-hidden="true" />
-						<Share2 v-else class="btn-icon" :size="16" aria-hidden="true" />
-						{{ shareCopied ? 'Kopiert' : (shareLoading ? 'Teilen…' : 'Teilen') }}
-					</button>
-				</div>
 				<button
-					v-if="activity && mode === 'view' && canEdit && !isGuestEdit"
+					v-if="activity && mode === 'view'"
 					type="button"
 					class="btn-mail"
-					:aria-expanded="showGuestLinkManager"
-					@click="showGuestLinkManager = !showGuestLinkManager"
+					:title="shareButtonTitle"
+					:disabled="!canShareActivity || shareLoading"
+					@click="openShareDialog"
 				>
-					Gast-Editierlink
+					<Share2 class="btn-icon" :size="16" aria-hidden="true" />
+					{{ shareLoading ? 'Teilen…' : 'Teilen' }}
 				</button>
 			</div>
 			<button
@@ -3871,34 +3863,78 @@ function copyShareLink() {
 		</div>
 	</header>
 
-	<section v-if="showGuestLinkManager && activity && mode === 'view' && canEdit && !isGuestEdit" class="guest-link-manager">
-		<div class="guest-link-manager__heading">
-			<strong>Externer Gast-Editierlink</strong>
-			<button type="button" class="btn-icon-only" aria-label="Schliessen" @click="showGuestLinkManager = false"><X :size="16" aria-hidden="true" /></button>
+	<div
+		v-if="shareDialogOpen && activity && mode === 'view' && !isGuestEdit"
+		class="modal-backdrop"
+		@click.self="closeShareDialog"
+	>
+		<div class="modal share-dialog" role="dialog" aria-modal="true" aria-labelledby="share-dialog-title">
+			<div class="share-dialog__heading">
+				<h2 id="share-dialog-title" class="modal-title">Aktivität teilen</h2>
+				<button type="button" class="btn-icon-only" aria-label="Schliessen" @click="closeShareDialog">
+					<X :size="16" aria-hidden="true" />
+				</button>
+			</div>
+			<fieldset class="share-dialog__options">
+				<legend class="share-dialog__legend">Art des Freigabelinks</legend>
+				<label class="share-dialog__option" :class="{ 'share-dialog__option--selected': shareSelection === 'read' }">
+					<input v-model="shareSelection" type="radio" name="activity-share-type" value="read" />
+					<span>
+						<strong>Leselink</strong>
+						<span>Öffentliche Leseansicht, ohne Bearbeitungsrechte.</span>
+					</span>
+				</label>
+				<label
+					v-if="canEdit"
+					class="share-dialog__option"
+					:class="{ 'share-dialog__option--selected': shareSelection === 'guest' }"
+				>
+					<input v-model="shareSelection" type="radio" name="activity-share-type" value="guest" />
+					<span>
+						<strong>Gast-Editierlink</strong>
+						<span>Bearbeitung ab Roter Faden, zeitlich begrenzt.</span>
+					</span>
+				</label>
+			</fieldset>
+			<div v-if="shareSelection === 'read'" class="share-dialog__panel">
+				<p class="modal-warning">Der Leselink zeigt die Aktivität, erlaubt aber keine Änderungen.</p>
+				<p v-if="!shareToken && shareLoading" class="share-dialog__status">Leselink wird erstellt…</p>
+				<p v-else-if="!shareToken" class="share-dialog__status">Leselink ist derzeit nicht verfügbar.</p>
+				<div class="modal-actions">
+					<button type="button" class="btn-primary" :disabled="!shareToken" @click="copyShareLink">
+						{{ shareCopied ? 'Kopiert' : 'Leselink kopieren' }}
+					</button>
+				</div>
+			</div>
+			<div v-else-if="canEdit" class="guest-link-manager share-dialog__panel">
+				<p class="modal-warning">Der Gast kann den Roten Faden und die folgenden Aktivitätsbereiche bearbeiten, aber keine Formulare verwalten oder veröffentlichen.</p>
+				<label class="guest-link-manager__expiry">
+					Gültigkeit
+					<select v-model.number="guestLinkDays">
+						<option v-for="days in 30" :key="days" :value="days">{{ days }} {{ days === 1 ? 'Tag' : 'Tage' }}</option>
+					</select>
+					<span>(Standard: 7 Tage, höchstens 30)</span>
+				</label>
+				<p v-if="guestLinkExpiresAt" class="guest-link-manager__status">
+					Aktueller Link läuft ab: {{ formatGuestExpiry(guestLinkExpiresAt) }}.
+					<span v-if="!guestLinkUrl">Der vorhandene Link kann hier nicht erneut angezeigt werden; ein neuer Link ersetzt ihn.</span>
+				</p>
+				<div class="guest-link-manager__actions">
+					<button type="button" class="btn-primary" :disabled="guestLinkLoading" @click="createGuestEditLink">
+						{{ guestLinkLoading ? 'Wird erstellt…' : (guestLinkExpiresAt ? 'Neuen Link erstellen' : 'Link erstellen') }}
+					</button>
+					<button v-if="guestLinkUrl" type="button" class="btn-secondary" @click="copyGuestEditLink">
+						{{ guestLinkCopied ? 'Kopiert' : 'Link kopieren' }}
+					</button>
+					<button v-if="guestLinkExpiresAt" type="button" class="btn-danger" @click="revokeGuestEditLink">Widerrufen</button>
+				</div>
+				<p v-if="guestLinkUrl" class="guest-link-manager__url" aria-live="polite">{{ guestLinkUrl }}</p>
+			</div>
+			<div class="modal-actions share-dialog__footer">
+				<button type="button" class="btn-secondary" @click="closeShareDialog">Schliessen</button>
+			</div>
 		</div>
-		<p>Der Gast kann den Roten Faden und die folgenden Aktivitätsbereiche bearbeiten, aber keine Formulare verwalten oder veröffentlichen.</p>
-		<label class="guest-link-manager__expiry">
-			Gültigkeit
-			<select v-model.number="guestLinkDays">
-				<option v-for="days in 30" :key="days" :value="days">{{ days }} {{ days === 1 ? 'Tag' : 'Tage' }}</option>
-			</select>
-			<span>(Standard: 7 Tage, höchstens 30)</span>
-		</label>
-		<p v-if="guestLinkExpiresAt" class="guest-link-manager__status">
-			Aktueller Link läuft ab: {{ formatGuestExpiry(guestLinkExpiresAt) }}.
-			<span v-if="!guestLinkUrl">Der vorhandene Link kann hier nicht erneut angezeigt werden; ein neuer Link ersetzt ihn.</span>
-		</p>
-		<div class="guest-link-manager__actions">
-			<button type="button" class="btn-primary" :disabled="guestLinkLoading" @click="createGuestEditLink">
-				{{ guestLinkLoading ? 'Wird erstellt…' : (guestLinkExpiresAt ? 'Neuen Link erstellen' : 'Link erstellen') }}
-			</button>
-			<button v-if="guestLinkUrl" type="button" class="btn-secondary" @click="copyGuestEditLink">
-				{{ guestLinkCopied ? 'Kopiert' : 'Link kopieren' }}
-			</button>
-			<button v-if="guestLinkExpiresAt" type="button" class="btn-danger" @click="revokeGuestEditLink">Widerrufen</button>
-		</div>
-		<p v-if="guestLinkUrl" class="guest-link-manager__url" aria-live="polite">{{ guestLinkUrl }}</p>
-	</section>
+	</div>
 
 	<div v-if="isGuestEdit && activity && guestAccessExpiresAt" class="guest-edit-banner" role="status">
 		Gastbearbeitung für „{{ activity.title }}“ — dieser Link ist bis {{ formatGuestExpiry(guestAccessExpiresAt) }} gültig.

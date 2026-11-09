@@ -458,16 +458,89 @@ video {
 	border-radius: 10px;
 }
 
-.guest-link-manager__heading,
+.share-dialog {
+	width: calc(100% - 24px);
+	box-sizing: border-box;
+	max-width: 520px;
+	max-height: min(90vh, 640px);
+	overflow-y: auto;
+}
+
+.share-dialog__heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.share-dialog__heading .modal-title {
+	margin: 0;
+}
+
+.share-dialog__options {
+	display: grid;
+	gap: 8px;
+	margin: 0 0 16px;
+	padding: 0;
+	border: 0;
+}
+
+.share-dialog__legend {
+	margin-bottom: 8px;
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.share-dialog__option {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	cursor: pointer;
+}
+
+.share-dialog__option--selected {
+	border-color: var(--accent);
+	background: var(--accent-bg);
+}
+
+.share-dialog__option input {
+	margin-top: 3px;
+}
+
+.share-dialog__option > span {
+	display: grid;
+	gap: 3px;
+}
+
+.share-dialog__option > span > span,
+.share-dialog__status {
+	font-size: 0.85rem;
+	color: var(--text-muted);
+}
+
+.share-dialog__panel .guest-link-manager {
+	margin: 0;
+	padding: 0;
+	max-width: none;
+	background: transparent;
+	border: 0;
+	border-radius: 0;
+}
+
+.share-dialog__footer {
+	margin-top: 16px;
+}
+
 .guest-link-manager__actions,
 .guest-link-manager__expiry {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-}
-
-.guest-link-manager__heading {
-	justify-content: space-between;
 }
 
 .guest-link-manager__expiry {
@@ -477,14 +550,15 @@ video {
 
 .guest-link-manager__expiry select {
 	padding: 6px 8px;
-	border: 1px solid #d1d5db;
+	border: 1px solid var(--border-strong);
 	border-radius: 6px;
-	background: #fff;
+	background: var(--bg-surface);
+	color: var(--text-primary);
 }
 
 .guest-link-manager__expiry span,
 .guest-link-manager__status {
-	color: #4b5563;
+	color: var(--text-muted);
 	font-size: 0.9rem;
 }
 
@@ -2911,12 +2985,6 @@ img[data-program-image-error] {
 	background: var(--success-bg);
 	color: var(--success-color);
 	border-color: var(--success-color);
-}
-
-.share-link-wrap {
-	display: inline-flex;
-	align-items: center;
-	gap: 2px;
 }
 
 .activity-actions-mobile-toggle {

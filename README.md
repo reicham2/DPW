@@ -130,10 +130,11 @@ zur freigegebenen Aktivität gehören, werden über den bestehenden Freigabelink
 geladen. Freigabelinks und öffentliche Formularantworten bleiben ohne Anmeldung
 nutzbar.
 
-Aktivitätsbearbeiter können zusätzlich einen zeitlich begrenzten Gastlink
-erstellen. Er erlaubt Gästen Änderungen ab **Roter Faden** (einschließlich
-Programmpunkten, Material, Sicherheitskonzept und Anhängen), aber keine
-Änderungen an den Aktivitätsstammdaten, Formularen oder Veröffentlichungen.
+Über **Teilen** können Aktivitätsbearbeiter zwischen dem normalen Leselink und
+einem zeitlich begrenzten Gast-Editierlink wählen. Der Gastlink erlaubt
+Änderungen ab **Roter Faden** (einschließlich Programmpunkten, Material,
+Sicherheitskonzept und Anhängen), aber keine Änderungen an den
+Aktivitätsstammdaten, Formularen oder Veröffentlichungen.
 Die Laufzeit beträgt standardmäßig **7 Tage** und kann auf höchstens **30 Tage**
 gesetzt werden; ein neuer Link ersetzt den bisherigen. Details zu Zugriff,
 Widerruf und Sicherheit stehen in der

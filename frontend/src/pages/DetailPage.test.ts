@@ -277,6 +277,95 @@ describe('DetailPage activity access', () => {
 		localStorage.removeItem('dpw:activity-edit-draft:activity-1');
 	});
 
+	it('opens one sharing dialog with the read-only link selected by default and guest editing as an explicit option', async () => {
+		allowEditing();
+		config.PUBLIC_BASE_URL = 'https://dpw.test';
+		vi.mocked(apiFetch).mockImplementation(async (url, options) => {
+			if (url.endsWith('/share')) {
+				return new Response(JSON.stringify({
+					share_token: 'read-token',
+					share_url: 'https://dpw.test/shared/read-token',
+				}), { status: 200 });
+			}
+			if (url.endsWith('/guest-edit-link') && options?.method !== 'POST') {
+				return new Response(JSON.stringify({ expires_at: null }), { status: 200 });
+			}
+			if (url.endsWith('/guest-edit-link') && options?.method === 'POST') {
+				return new Response(JSON.stringify({
+					share_url: 'https://dpw.test/guest-edit#guest-token',
+					expires_at: '2026-07-09T12:00:00Z',
+				}), { status: 200 });
+			}
+			return new Response('{}', { status: 200 });
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('.activity-actions-desktop button[title="Freigabelink auswählen"]').trigger('click');
+
+		const dialog = wrapper.get('[role="dialog"]');
+		expect((dialog.get('input[value="read"]').element as HTMLInputElement).checked).toBe(true);
+		expect(dialog.get('input[value="guest"]').exists()).toBe(true);
+		expect(dialog.text()).toContain('Leselink kopieren');
+
+		await dialog.get('input[value="guest"]').setValue();
+		expect(dialog.get('select').element).toHaveProperty('value', '7');
+		expect(dialog.text()).toContain('Standard: 7 Tage, höchstens 30');
+		expect(dialog.findAll('button').some((button) => button.text() === 'Gast-Editierlink')).toBe(false);
+		await dialog.get('button.btn-primary').trigger('click');
+		await flushPromises();
+
+		expect(apiFetch).toHaveBeenCalledWith(
+			'/api/activities/activity-1/guest-edit-link',
+			expect.objectContaining({ method: 'POST', body: JSON.stringify({ expires_in_days: 7 }) }),
+		);
+		expect(dialog.text()).toContain('Link kopieren');
+		wrapper.unmount();
+	});
+
+	it('keeps the read-only share dialog available without exposing guest-link controls to non-editors', async () => {
+		config.PUBLIC_BASE_URL = 'https://dpw.test';
+		vi.mocked(apiFetch).mockImplementation(async (url) => {
+			if (url.endsWith('/share')) {
+				return new Response(JSON.stringify({
+					share_token: 'read-token',
+					share_url: 'https://dpw.test/shared/read-token',
+				}), { status: 200 });
+			}
+			return new Response('{}', { status: 200 });
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('.activity-actions-desktop button[title="Freigabelink auswählen"]').trigger('click');
+
+		const dialog = wrapper.get('[role="dialog"]');
+		expect((dialog.get('input[value="read"]').element as HTMLInputElement).checked).toBe(true);
+		expect(dialog.find('input[value="guest"]').exists()).toBe(false);
+		expect(dialog.find('select').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('opens the same sharing dialog from the mobile actions menu', async () => {
+		config.PUBLIC_BASE_URL = 'https://dpw.test';
+		vi.mocked(apiFetch).mockImplementation(async (url) => {
+			if (url.endsWith('/share')) {
+				return new Response(JSON.stringify({
+					share_token: 'read-token',
+					share_url: 'https://dpw.test/shared/read-token',
+				}), { status: 200 });
+			}
+			return new Response('{}', { status: 200 });
+		});
+		const wrapper = shallowMount(DetailPage);
+		await flushPromises();
+		await wrapper.get('.activity-actions-mobile-toggle').trigger('click');
+		const shareAction = wrapper.get('.activity-actions-mobile-menu').findAll('button')
+			.find((button) => button.text().trim() === 'Teilen');
+		expect(shareAction).toBeDefined();
+		await shareAction?.trigger('click');
+		expect(wrapper.get('[role="dialog"]').text()).toContain('Leselink kopieren');
+		wrapper.unmount();
+	});
+
 	it('uploads inline at the caret and autosaves durable references, not blob URLs', async () => {
 		allowEditing();
 		vi.useFakeTimers();
