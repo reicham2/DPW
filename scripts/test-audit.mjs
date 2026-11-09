@@ -237,7 +237,12 @@ try {
   assert.equal(sharedActivity.status, 200)
   assert(!JSON.stringify(sharedActivity.data).includes('Wegweiser besser markieren'),
     'public activity shares must not expose evaluation feedback')
-  assert.equal((await request(`/shared/${activityShareToken}/evaluation`, 'PUT', adminFeedback, null)).status, 404,
+  const publicEvaluationWrite = await fetch(`${base}/shared/${activityShareToken}/evaluation`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(adminFeedback),
+  })
+  assert.equal(publicEvaluationWrite.status, 404,
     'public share links must not expose writable evaluation routes')
 
   const clearedMemberFeedback = { ...memberFeedback, improvements: '', action_items: '' }
