@@ -174,10 +174,11 @@ unabhängig voneinander öffnen oder mit **Alle öffnen / Alle schliessen**
 gemeinsam ein- und ausklappen. Änderungen bleiben beim Einklappen erhalten; die
 Reihenfolge kann weiterhin über den Ziehgriff angepasst werden.
 
-Die Schaltfläche **Auswertung** oben auf der Aktivität öffnet die Rückmeldungen
-und Verbesserungspunkte am Aktivitätstag (am selben Datum unabhängig von der
-Uhrzeit) und erfasst die tatsächliche Teilnehmendenzahl getrennt von der
-Planung. Details zu Zugriff und Speicherung stehen in der
+Die Schaltfläche **Auswertung** oben auf der Aktivität öffnet am Aktivitätstag
+(am selben Datum unabhängig von der Uhrzeit) eine Auswertung mit einzelnen
+Punkten zu Erfolgen, Verbesserungen und Massnahmen sowie allgemeinem Feedback.
+Sie erfasst auch die tatsächliche Teilnehmendenzahl getrennt von der Planung.
+Details zu Zugriff und Speicherung stehen in der
 [Betriebsreferenz](docs/operations.md).
 
 **Do not expose an unfinished setup publicly:** missing setup fields can be set

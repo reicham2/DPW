@@ -133,11 +133,17 @@ während der erneuten Prüfung erhalten; überlappende Markierungen werden entfe
 Die Schaltfläche **Auswertung** oben auf der Aktivität öffnet die separate
 Auswertungsansicht. Sie ist bis zum Aktivitätstag deaktiviert; am selben
 Kalenderdatum ist sie unabhängig von der Uhrzeit verfügbar. Dort sammelt die
-Aktivität strukturierte Rückmeldungen zu dem, was gut lief, zu
-Verbesserungspunkten, vereinbarten Massnahmen und optionalem weiterem Feedback.
+Aktivität einzelne kurze Punkte dazu, was gut lief, was verbessert werden kann
+und welche Massnahmen mitgenommen werden. Über **Weiteren Punkt hinzufügen**
+können pro Bereich beliebig viele Einzelfelder ergänzt werden; das allgemeine
+optionale Rückmeldungsfeld steht am Ende. Bereits gespeicherte mehrzeilige
+Einträge werden zeilenweise in diese Punkte übernommen. Die kompakte
+Teilnehmendenzahl bleibt ein einzelner Zahlenwert; die angezeigte Zahl der
+Rückmeldungen wird aus den vorhandenen Beiträgen berechnet.
+
 Pro Aktivität und angemeldeter Person gibt es
 höchstens einen Eintrag; erneutes Speichern aktualisiert den eigenen Eintrag,
-und das Leeren aller vier Textfelder entfernt nur den eigenen Eintrag. Die
+und das Leeren aller Feedbackfelder entfernt nur den eigenen Eintrag. Die
 gesammelten Beiträge zeigen den Anzeigenamen und den letzten Änderungszeitpunkt.
 
 Personen mit Leserecht für die Aktivität sehen die Auswertung und alle Beiträge.
