@@ -549,20 +549,26 @@ void handle_post_guest_edit_link(HttpRes *res, HttpReq *req, Database &db)
             send_json(res, 400, R"({"error":"Ungültiges JSON-Format"})");
             return;
         }
-        int expires_in_days = 7;
+        const int max_days = app_config::get_int_or(db, app_config::kGuestEditMaxDays, 30, 1, 30);
+        int expires_in_days = max_days < 7 ? max_days : 7;
         if (payload.contains("expires_in_days"))
         {
             if (!payload["expires_in_days"].is_number_integer())
             {
-                send_json(res, 400, R"({"error":"expires_in_days muss eine ganze Zahl zwischen 1 und 30 sein"})");
+                send_json(res, 400, nlohmann::json{
+                    {"error", "expires_in_days muss eine ganze Zahl zwischen 1 und " +
+                                  std::to_string(max_days) + " sein"}}.dump());
                 return;
             }
-            expires_in_days = payload["expires_in_days"].get<int>();
-        }
-        if (expires_in_days < 1 || expires_in_days > 30)
-        {
-            send_json(res, 400, R"({"error":"expires_in_days muss eine ganze Zahl zwischen 1 und 30 sein"})");
-            return;
+            const auto &requested_days = payload["expires_in_days"];
+            if (requested_days < 1 || requested_days > max_days)
+            {
+                send_json(res, 400, nlohmann::json{
+                    {"error", "expires_in_days muss eine ganze Zahl zwischen 1 und " +
+                                  std::to_string(max_days) + " sein"}}.dump());
+                return;
+            }
+            expires_in_days = requested_days.get<int>();
         }
         try
         {
@@ -578,7 +584,8 @@ void handle_post_guest_edit_link(HttpRes *res, HttpReq *req, Database &db)
                 {"activity_id", link->activity_id},
                 {"share_url", base_url + "/guest-edit#" + token},
                 {"expires_at", link->expires_at},
-                {"expires_in_days", expires_in_days}}.dump());
+                {"expires_in_days", expires_in_days},
+                {"max_expires_in_days", max_days}}.dump());
         }
         catch (const std::exception &error)
         {
@@ -599,7 +606,9 @@ void handle_get_guest_edit_link(HttpRes *res, HttpReq *req, Database &db)
     {
         const auto link = db.get_guest_edit_link(activity_id);
         send_json(res, 200, nlohmann::json{
-            {"expires_at", link ? nlohmann::json(link->expires_at) : nlohmann::json(nullptr)}}.dump());
+            {"expires_at", link ? nlohmann::json(link->expires_at) : nlohmann::json(nullptr)},
+            {"max_expires_in_days", app_config::get_int_or(
+                db, app_config::kGuestEditMaxDays, 30, 1, 30)}}.dump());
     }
     catch (const std::exception &error)
     {

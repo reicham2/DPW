@@ -288,7 +288,7 @@ describe('DetailPage activity access', () => {
 				}), { status: 200 });
 			}
 			if (url.endsWith('/guest-edit-link') && options?.method !== 'POST') {
-				return new Response(JSON.stringify({ expires_at: null }), { status: 200 });
+				return new Response(JSON.stringify({ expires_at: null, max_expires_in_days: 4 }), { status: 200 });
 			}
 			if (url.endsWith('/guest-edit-link') && options?.method === 'POST') {
 				return new Response(JSON.stringify({
@@ -303,20 +303,28 @@ describe('DetailPage activity access', () => {
 		await wrapper.get('.activity-actions-desktop button[title="Freigabelink auswählen"]').trigger('click');
 
 		const dialog = wrapper.get('[role="dialog"]');
+		expect(dialog.attributes('aria-modal')).toBe('true');
 		expect((dialog.get('input[value="read"]').element as HTMLInputElement).checked).toBe(true);
 		expect(dialog.get('input[value="guest"]').exists()).toBe(true);
 		expect(dialog.text()).toContain('Leselink kopieren');
+		expect(dialog.findAll('button').filter((button) => button.text() === 'Schliessen')).toHaveLength(1);
 
 		await dialog.get('input[value="guest"]').setValue();
-		expect(dialog.get('select').element).toHaveProperty('value', '7');
-		expect(dialog.text()).toContain('Standard: 7 Tage, höchstens 30');
+		const expiryInput = dialog.get('input[type="number"]');
+		expect(expiryInput.element).toHaveProperty('value', '4');
+		expect(expiryInput.attributes('max')).toBe('4');
+		expect(dialog.text()).toContain('Gültigkeit:');
+		expect(dialog.text()).toContain('Tage (höchstens 4 Tage)');
 		expect(dialog.findAll('button').some((button) => button.text() === 'Gast-Editierlink')).toBe(false);
+		await expiryInput.setValue('5');
+		expect(dialog.get('button.btn-primary').attributes('disabled')).toBeDefined();
+		await expiryInput.setValue('4');
 		await dialog.get('button.btn-primary').trigger('click');
 		await flushPromises();
 
 		expect(apiFetch).toHaveBeenCalledWith(
 			'/api/activities/activity-1/guest-edit-link',
-			expect.objectContaining({ method: 'POST', body: JSON.stringify({ expires_in_days: 7 }) }),
+			expect.objectContaining({ method: 'POST', body: JSON.stringify({ expires_in_days: 4 }) }),
 		);
 		expect(dialog.text()).toContain('Link kopieren');
 		wrapper.unmount();

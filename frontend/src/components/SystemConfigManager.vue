@@ -126,6 +126,17 @@ const settingMeta: Record<string, SettingMeta> = {
     max: 3650,
     step: 1,
   },
+  'guest_edit.max_days': {
+    title: 'Maximale Gastlink-Gültigkeit (Tage)',
+    hint: 'Standard: 30 Tage. Gilt nur für neu erstellte Gastlinks.',
+    category: 'Allgemein',
+    categoryOrder: 20,
+    fieldType: 'number',
+    order: 25,
+    min: 1,
+    max: 30,
+    step: 1,
+  },
   'midata.weather_refresh_interval_ms': {
     title: 'MiData Refresh Intervall (ms)',
     hint: 'Auto-Refresh fuer MiData/Wetter',

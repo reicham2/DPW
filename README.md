@@ -135,9 +135,12 @@ einem zeitlich begrenzten Gast-Editierlink wählen. Der Gastlink erlaubt
 Änderungen ab **Roter Faden** (einschließlich Programmpunkten, Material,
 Sicherheitskonzept und Anhängen), aber keine Änderungen an den
 Aktivitätsstammdaten, Formularen oder Veröffentlichungen.
-Die Laufzeit beträgt standardmäßig **7 Tage** und kann auf höchstens **30 Tage**
-gesetzt werden; ein neuer Link ersetzt den bisherigen. Details zu Zugriff,
-Widerruf und Sicherheit stehen in der
+Die Laufzeit beträgt standardmäßig **7 Tage** und ist auf das konfigurierbare
+Maximum begrenzt (Standard **30 Tage**, konfigurierbar auf **1 bis 30 Tage**).
+Das Maximum wird unter **System > Einstellungen** oder per
+`DPW_GUEST_EDIT_MAX_DAYS` festgelegt. Eine Änderung gilt nur für neue Links;
+bereits ausgestellte Links behalten ihr Ablaufdatum. Ein neuer Link ersetzt den
+bisherigen. Details zu Zugriff, Widerruf und Sicherheit stehen in der
 [Betriebsreferenz](docs/operations.md#aktivitäten-extern-bearbeiten).
 
 ## Bilder in Programmpunkten

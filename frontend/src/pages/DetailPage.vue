@@ -108,6 +108,10 @@ const WEATHER_EXPECTED_TIMEOUT_MS = 30000;
 const WEATHER_EXPECTED_CACHE_TTL_MS = 10 * 60 * 1000;
 const mode = ref<'view' | 'edit'>('view');
 const guestLinkDays = ref(7);
+const guestLinkMaxDays = ref(30);
+const guestLinkMetadataLoading = ref(false);
+const guestLinkDaysValid = computed(() => Number.isInteger(guestLinkDays.value)
+	&& guestLinkDays.value >= 1 && guestLinkDays.value <= guestLinkMaxDays.value);
 const guestLinkExpiresAt = ref<string | null>(null);
 const guestLinkUrl = ref<string | null>(null);
 const guestLinkCopied = ref(false);
@@ -3562,18 +3566,26 @@ async function fetchShareLink() {
 
 async function loadGuestEditLink() {
 	if (!activity.value || isGuestEdit.value || !canEdit.value) return;
+	guestLinkMetadataLoading.value = true;
 	try {
 		const res = await apiFetch(`/api/activities/${id}/guest-edit-link`);
 		if (!res.ok) throw new Error(await res.text());
-		const data = await res.json() as { expires_at?: string | null };
+		const data = await res.json() as { expires_at?: string | null; max_expires_in_days?: number };
 		guestLinkExpiresAt.value = data.expires_at ?? null;
+		const maxDays = data.max_expires_in_days;
+		if (typeof maxDays === 'number' && Number.isInteger(maxDays) && maxDays >= 1 && maxDays <= 30) {
+			guestLinkMaxDays.value = maxDays;
+			guestLinkDays.value = Math.min(guestLinkDays.value, maxDays);
+		}
 	} catch (e) {
 		error.value = e instanceof Error ? e.message : 'Gastlink konnte nicht geladen werden.';
+	} finally {
+		guestLinkMetadataLoading.value = false;
 	}
 }
 
 async function createGuestEditLink() {
-	if (!activity.value || !canEdit.value) return;
+	if (!activity.value || !canEdit.value || !guestLinkDaysValid.value) return;
 	guestLinkLoading.value = true;
 	try {
 		const res = await apiFetch(`/api/activities/${id}/guest-edit-link`, {
@@ -3871,9 +3883,6 @@ function closeShareDialog() {
 		<div class="modal share-dialog" role="dialog" aria-modal="true" aria-labelledby="share-dialog-title">
 			<div class="share-dialog__heading">
 				<h2 id="share-dialog-title" class="modal-title">Aktivität teilen</h2>
-				<button type="button" class="btn-icon-only" aria-label="Schliessen" @click="closeShareDialog">
-					<X :size="16" aria-hidden="true" />
-				</button>
 			</div>
 			<fieldset class="share-dialog__options">
 				<legend class="share-dialog__legend">Art des Freigabelinks</legend>
@@ -3909,18 +3918,29 @@ function closeShareDialog() {
 			<div v-else-if="canEdit" class="guest-link-manager share-dialog__panel">
 				<p class="modal-warning">Der Gast kann den Roten Faden und die folgenden Aktivitätsbereiche bearbeiten, aber keine Formulare verwalten oder veröffentlichen.</p>
 				<label class="guest-link-manager__expiry">
-					Gültigkeit
-					<select v-model.number="guestLinkDays">
-						<option v-for="days in 30" :key="days" :value="days">{{ days }} {{ days === 1 ? 'Tag' : 'Tage' }}</option>
-					</select>
-					<span>(Standard: 7 Tage, höchstens 30)</span>
+					Gültigkeit:
+					<input
+						v-model.number="guestLinkDays"
+						type="number"
+						min="1"
+						:max="guestLinkMaxDays"
+						step="1"
+						:disabled="guestLinkMetadataLoading"
+						inputmode="numeric"
+						aria-label="Gültigkeit in Tagen"
+					/>
+					Tage
+					<span>(höchstens {{ guestLinkMaxDays }} Tage)</span>
 				</label>
 				<p v-if="guestLinkExpiresAt" class="guest-link-manager__status">
 					Aktueller Link läuft ab: {{ formatGuestExpiry(guestLinkExpiresAt) }}.
 					<span v-if="!guestLinkUrl">Der vorhandene Link kann hier nicht erneut angezeigt werden; ein neuer Link ersetzt ihn.</span>
 				</p>
+				<p v-if="guestLinkExpiresAt" class="guest-link-manager__status">
+					Eine Änderung der Höchstlaufzeit ändert bestehende Links nicht; ihr Ablaufdatum bleibt bestehen.
+				</p>
 				<div class="guest-link-manager__actions">
-					<button type="button" class="btn-primary" :disabled="guestLinkLoading" @click="createGuestEditLink">
+					<button type="button" class="btn-primary" :disabled="guestLinkLoading || guestLinkMetadataLoading || !guestLinkDaysValid" @click="createGuestEditLink">
 						{{ guestLinkLoading ? 'Wird erstellt…' : (guestLinkExpiresAt ? 'Neuen Link erstellen' : 'Link erstellen') }}
 					</button>
 					<button v-if="guestLinkUrl" type="button" class="btn-secondary" @click="copyGuestEditLink">

@@ -642,8 +642,15 @@ URL-Fragment und wird daher nicht als HTTP-Pfad oder Referrer übertragen; das
 Backend speichert nur seinen SHA-256-Hash. Pro Aktivität ist ein Gastlink
 gleichzeitig gültig. Ein neu erstellter Link ersetzt den vorherigen.
 
-Die Laufzeit ist standardmäßig **7 Tage** und kann auf **1 bis 30 Tage**
-eingestellt werden. Das Backend prüft den Token und den Ablaufzeitpunkt bei
+Die Laufzeit ist standardmäßig **7 Tage**. Im Teilen-Dialog kann eine ganze Zahl
+zwischen **1** und der konfigurierten Höchstlaufzeit eingegeben werden.
+`DPW_GUEST_EDIT_MAX_DAYS` setzt diese Grenze per ENV; ohne ENV ist sie unter
+**System > Einstellungen > Allgemein > Maximale Gastlink-Gültigkeit (Tage)**
+pflegbar. Der Standardwert ist **30 Tage**, der erlaubte Bereich **1 bis 30**.
+Eine gesetzte ENV hat Vorrang und sperrt das Admin-Feld. Das Backend erzwingt
+die Grenze bei jeder Linkerstellung. Wird sie geändert oder gesenkt, behalten
+bereits ausgestellte Links ihr bisheriges Ablaufdatum; die neue Grenze gilt
+nur für neue Links. Das Backend prüft den Token und den Ablaufzeitpunkt bei
 jeder Gast-Lese- und Schreiboperation. Widerruf oder Ablauf sperren auch
 Datei- und Bildzugriffe. Der Gast darf den Inhalt ab **Roter Faden** bearbeiten:
 Programmpunkte samt formatierten Beschreibungen und Bildern, Material,

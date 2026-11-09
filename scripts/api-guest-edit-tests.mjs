@@ -50,6 +50,7 @@ test('guest edit links are narrowly scoped, expiring, revocable and independent 
 		let activityId = '';
 		let token = '';
 		let otherImageId = '';
+		let guestEditMaxDaysChanged = false;
 		try {
 			expectStatus(await response('GET', '/guest-edit/activity', {
 				token: null, guestToken: expiredToken,
@@ -96,6 +97,7 @@ test('guest edit links are narrowly scoped, expiring, revocable and independent 
 
 			const metadata = expectStatus(await response('GET', `/activities/${activityId}/guest-edit-link`), 200);
 			assert.equal(metadata.expires_at, link.expires_at);
+			assert.equal(metadata.max_expires_in_days, 30);
 			assert.equal('token' in metadata, false);
 			assert.equal('share_token' in metadata, false);
 			expectStatus(await response('GET', '/guest-edit/activity', { token: null }), 404);
@@ -277,11 +279,57 @@ test('guest edit links are narrowly scoped, expiring, revocable and independent 
 			const maximum = expectStatus(await response('POST', `/activities/${activityId}/guest-edit-link`, {
 				body: { expires_in_days: 30 },
 			}), 201);
+			assert.equal(maximum.max_expires_in_days, 30);
 			assert.ok(new Date(maximum.expires_at).getTime() > Date.now() + 29 * 24 * 60 * 60 * 1000);
 			expectStatus(await response('GET', '/guest-edit/activity', {
 				token: null, guestToken: token,
 			}), 404);
 			token = new URL(maximum.share_url).hash.slice(1);
+
+			const settings = expectStatus(await response('GET', '/admin/app-settings'), 200);
+			const maxDaysSetting = settings.find(setting => setting.key === 'guest_edit.max_days');
+			assert.ok(maxDaysSetting, 'guest edit maximum must be manageable in admin settings');
+			assert.equal(maxDaysSetting.locked_by_env, false, 'integration environment must not lock this setting with ENV');
+			for (const value of ['0', '31', '2days', '1.5']) {
+				expectStatus(await response('PUT', '/admin/app-settings/guest_edit.max_days', { body: { value } }), 400);
+			}
+			expectStatus(await response('PUT', '/admin/app-settings/guest_edit.max_days', {
+				body: { value: '2' },
+			}), 200);
+			guestEditMaxDaysChanged = true;
+			const currentMaximumMetadata = expectStatus(
+				await response('GET', `/activities/${activityId}/guest-edit-link`), 200,
+			);
+			assert.equal(currentMaximumMetadata.max_expires_in_days, 2);
+			assert.equal(currentMaximumMetadata.expires_at, maximum.expires_at,
+				'changing the configured maximum must not alter an already-issued expiry');
+			expectStatus(await response('POST', `/activities/${activityId}/guest-edit-link`, {
+				body: { expires_in_days: 3 },
+			}), 400);
+			const configuredMaximum = expectStatus(await response('POST', `/activities/${activityId}/guest-edit-link`, {
+				body: {},
+			}), 201);
+			assert.equal(configuredMaximum.expires_in_days, 2,
+				'the default link duration must be capped by the configured maximum');
+			token = new URL(configuredMaximum.share_url).hash.slice(1);
+
+			expectStatus(await response('PUT', '/admin/app-settings/guest_edit.max_days', {
+				body: { value: '1' },
+			}), 200);
+			const loweredMaximumMetadata = expectStatus(
+				await response('GET', `/activities/${activityId}/guest-edit-link`), 200,
+			);
+			assert.equal(loweredMaximumMetadata.max_expires_in_days, 1);
+			assert.equal(loweredMaximumMetadata.expires_at, configuredMaximum.expires_at,
+				'lowering the maximum must preserve the expiry already issued to this guest');
+			const existingLinkStillWorks = expectStatus(await response('GET', '/guest-edit/activity', {
+				token: null, guestToken: token,
+			}), 200);
+			assert.equal(existingLinkStillWorks.expires_at, configuredMaximum.expires_at);
+			expectStatus(await response('POST', `/activities/${activityId}/guest-edit-link`, {
+				body: { expires_in_days: 2 },
+			}), 400);
+
 			const minimum = expectStatus(await response('POST', `/activities/${activityId}/guest-edit-link`, {
 				body: { expires_in_days: 1 },
 			}), 201);
@@ -297,6 +345,11 @@ test('guest edit links are narrowly scoped, expiring, revocable and independent 
 			}), 404);
 			expectStatus(await response('GET', `/shared/${publicShare.share_token}`, { token: null }), 200);
 		} finally {
+			if (guestEditMaxDaysChanged) {
+				expectStatus(await response('PUT', '/admin/app-settings/guest_edit.max_days', {
+					body: { value: null },
+				}), 200);
+			}
 			for (const id of activityIds) await purgeActivity(id);
 		}
 	});
