@@ -54,4 +54,4 @@ WITH objects(kind, name, definition) AS (
     FROM pg_sequences WHERE schemaname = 'public'
 )
 SELECT jsonb_build_array(kind, name, definition)::text FROM objects
-ORDER BY kind COLLATE "C", name COLLATE "C";
+ORDER BY kind COLLATE "C", name COLLATE "C", definition COLLATE "C";
