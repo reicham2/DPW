@@ -12,6 +12,15 @@ struct ActivityShareLink
     std::string created_at;
 };
 
+struct ActivityGuestEditLink
+{
+    std::string id;
+    std::string activity_id;
+    std::string expires_at;
+    std::string created_by;
+    std::string created_at;
+};
+
 struct DeletedActivityRecord
 {
     Activity activity;

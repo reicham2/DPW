@@ -630,6 +630,34 @@ für lesbare Aktivitäten abgerufen, erstellt oder widerrufen werden; nach dem
 Widerruf ist der bisherige öffentliche Link nicht mehr gültig. Öffentliche
 Anmeldeformulare bleiben unabhängig davon ohne Anmeldung erreichbar.
 
+### Aktivitäten extern bearbeiten
+
+Bearbeiter mit regulärem Schreibzugriff auf eine Aktivität können in der
+Aktivitätsansicht einen Gastlink erstellen, konfigurieren oder widerrufen.
+Gäste öffnen `/guest-edit#<token>` ohne Anmeldung. Der Token steht im
+URL-Fragment und wird daher nicht als HTTP-Pfad oder Referrer übertragen; das
+Backend speichert nur seinen SHA-256-Hash. Pro Aktivität ist ein Gastlink
+gleichzeitig gültig. Ein neu erstellter Link ersetzt den vorherigen.
+
+Die Laufzeit ist standardmäßig **7 Tage** und kann auf **1 bis 30 Tage**
+eingestellt werden. Das Backend prüft den Token und den Ablaufzeitpunkt bei
+jeder Gast-Lese- und Schreiboperation. Widerruf oder Ablauf sperren auch
+Datei- und Bildzugriffe. Der Gast darf den Inhalt ab **Roter Faden** bearbeiten:
+Programmpunkte samt formatierten Beschreibungen und Bildern, Material,
+Teilnehmermaterial, Sicherheitskonzept, Ziel, Schlechtwetter-Information und
+Anhänge. Aktivitätstitel, Datum/Uhrzeit, Ort, Verantwortliche, Abteilung und
+Teilnehmerschätzung bleiben unverändert. Formulare und Veröffentlichungen
+stehen Gästen weder in der Oberfläche noch über die Gast-API zur Verfügung.
+Schreibvorgänge prüfen die letzte Änderungszeit; bei konkurrierenden Änderungen
+muss der Gast neu laden, statt neuere Daten zu überschreiben.
+
+Gastlinks sind getrennt von öffentlichen Lese-Freigaben unter
+`/shared/<token>` gespeichert und ändern deren Verhalten nicht. Der Gasttoken
+wird ausschließlich über den `X-Guest-Edit-Token`-Header an die eigens
+beschränkten Endpunkte gesendet; reguläre Bearbeitungs-, Formular- und
+Veröffentlichungsendpunkte akzeptieren ihn nicht. Antworten mit Gastdaten
+werden nicht zwischengespeichert.
+
 ## Redis Cache (optional)
 
 Das Backend kann API-Responses in Redis cachen, um wiederholte Lese-Anfragen zu beschleunigen.

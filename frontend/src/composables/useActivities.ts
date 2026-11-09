@@ -14,6 +14,19 @@ import { validateProgramImageFile } from '../utils/programImages';
 
 const BASE = '/api';
 
+function guestEditFetch(path: string, token: string, options: RequestInit = {}): Promise<Response> {
+	const headers = new Headers(options.headers);
+	headers.set('X-Guest-Edit-Token', token);
+	if (options.body && !(options.body instanceof FormData)) {
+		headers.set('Content-Type', 'application/json');
+	}
+	return fetch(`${BASE}/guest-edit${path}`, {
+		...options,
+		headers,
+		cache: 'no-store',
+	});
+}
+
 // ---- Shared state (module scope) -------------------------------------------
 const activities = ref<Activity[]>([]);
 const lastUpdatedActivity = ref<Activity | null>(null);
@@ -181,6 +194,28 @@ export function useActivities() {
 		}
 	}
 
+	async function updateGuestActivity(
+		input: ActivityInput,
+		token: string,
+		expectedUpdatedAt: string,
+	): Promise<Activity | null> {
+		error.value = null;
+		try {
+			const res = await guestEditFetch('/activity', token, {
+				method: 'PATCH',
+				body: JSON.stringify({ ...input, updated_at: expectedUpdatedAt }),
+			});
+			if (!res.ok) {
+				const payload = await res.json().catch(() => null) as { error?: unknown } | null;
+				throw new Error(typeof payload?.error === 'string' ? payload.error : 'Änderungen konnten nicht gespeichert werden.');
+			}
+			return await res.json() as Activity;
+		} catch (e) {
+			error.value = formatApiError(e);
+			return null;
+		}
+	}
+
 	async function deleteActivity(id: string): Promise<void> {
 		activities.value = activities.value.filter((a) => a.id !== id);
 		error.value = null;
@@ -266,11 +301,11 @@ export function useActivities() {
 
 	// ---- Attachments ---------------------------------------------------------
 
-	async function fetchAttachments(activityId: string): Promise<Attachment[]> {
+	async function fetchAttachments(activityId: string, guestToken?: string): Promise<Attachment[]> {
 		try {
-			const res = await apiFetch(
-				`${BASE}/activities/${activityId}/attachments`,
-			);
+			const res = guestToken
+				? await guestEditFetch('/attachments', guestToken)
+				: await apiFetch(`${BASE}/activities/${activityId}/attachments`);
 			if (!res.ok) return [];
 			return (await res.json()) as Attachment[];
 		} catch {
@@ -282,6 +317,7 @@ export function useActivities() {
 		activityId: string,
 		file: File,
 		programImage = false,
+		guestToken?: string,
 	): Promise<Attachment | null> {
 		try {
 			if (programImage) validateProgramImageFile(file);
@@ -291,17 +327,20 @@ export function useActivities() {
 			for (let i = 0; i < bytes.length; i++)
 				binary += String.fromCharCode(bytes[i]);
 			const data = btoa(binary);
-			const res = await apiFetch(
-				`${BASE}/activities/${activityId}/${programImage ? 'program-images' : 'attachments'}`,
-				{
+			const path = guestToken
+				? `${BASE}/guest-edit/${programImage ? 'program-images' : 'attachments'}`
+				: `${BASE}/activities/${activityId}/${programImage ? 'program-images' : 'attachments'}`;
+			const options: RequestInit = {
 					method: 'POST',
 					body: JSON.stringify({
 						filename: file.name,
 						content_type: file.type || 'application/octet-stream',
 						data,
 					}),
-				},
-			);
+				};
+			const res = guestToken
+				? await guestEditFetch(path.slice(`${BASE}/guest-edit`.length), guestToken, options)
+				: await apiFetch(path, options);
 			if (!res.ok) throw new Error(await res.text());
 			return (await res.json()) as Attachment;
 		} catch (e) {
@@ -310,11 +349,11 @@ export function useActivities() {
 		}
 	}
 
-	async function deleteAttachment(attachmentId: string): Promise<boolean> {
+	async function deleteAttachment(attachmentId: string, guestToken?: string): Promise<boolean> {
 		try {
-			const res = await apiFetch(`${BASE}/attachments/${attachmentId}`, {
-				method: 'DELETE',
-			});
+			const res = guestToken
+				? await guestEditFetch(`/attachments/${attachmentId}`, guestToken, { method: 'DELETE' })
+				: await apiFetch(`${BASE}/attachments/${attachmentId}`, { method: 'DELETE' });
 			return res.ok;
 		} catch {
 			return false;
@@ -323,11 +362,12 @@ export function useActivities() {
 
 	async function getAttachmentBlobUrl(
 		attachmentId: string,
+		guestToken?: string,
 	): Promise<string | null> {
 		try {
-			const res = await apiFetch(
-				`${BASE}/attachments/${attachmentId}/download`,
-			);
+			const res = guestToken
+				? await guestEditFetch(`/attachments/${attachmentId}/download`, guestToken)
+				: await apiFetch(`${BASE}/attachments/${attachmentId}/download`);
 			if (!res.ok) return null;
 			const blob = await res.blob();
 			return URL.createObjectURL(blob);
@@ -352,6 +392,7 @@ export function useActivities() {
 		fetchMaterials,
 		createActivity,
 		updateActivity,
+		updateGuestActivity,
 		deleteActivity,
 		fetchDeletedActivities,
 		restoreActivity,

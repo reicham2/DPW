@@ -608,20 +608,14 @@ std::optional<Activity> Database::create_activity(const ActivityInput &input)
 
 // ---- update_activity --------------------------------------------------------
 
-std::optional<std::pair<Activity, Activity>> Database::update_activity(const std::string &id, const ActivityInput &input)
+std::optional<std::pair<Activity, Activity>> Database::update_activity(
+    const std::string &id, const ActivityInput &input,
+    const std::optional<std::string> &expected_updated_at,
+    bool preserve_non_guest_fields, bool *conflict)
 {
     ensure_connected();
-
-    std::string mat_json = Database::format_material_items_param(input.material);
-    std::string tn_mat_json = Database::format_material_param(input.tn_material);
-    std::string resp_json = Database::format_material_param(input.responsible);
-    std::string dept_str = input.department ? *input.department : "";
-    std::string bwi_str = input.bad_weather_info ? *input.bad_weather_info : "";
-    std::string siko_str = input.siko_text ? *input.siko_text : "";
-    std::string ppe_str = input.planned_participants_estimate ? std::to_string(*input.planned_participants_estimate) : "";
-    const char *dept_param = input.department ? dept_str.c_str() : nullptr;
-    const char *siko_param = input.siko_text ? siko_str.c_str() : nullptr;
-    const char *ppe_param = input.planned_participants_estimate ? ppe_str.c_str() : nullptr;
+    if (conflict)
+        *conflict = false;
 
     exec_or_throw(conn_, "BEGIN", "update_activity BEGIN");
 
@@ -651,11 +645,44 @@ std::optional<std::pair<Activity, Activity>> Database::update_activity(const std
         PQclear(previous_result);
         attach_programs_single(previous);
 
-        const auto &guiding_thread = input.guiding_thread_present ? input.guiding_thread : previous.guiding_thread;
+        if (expected_updated_at && *expected_updated_at != previous.updated_at)
+        {
+            if (conflict)
+                *conflict = true;
+            PQexec(conn_, "ROLLBACK");
+            return std::nullopt;
+        }
+
+        ActivityInput effective_input = input;
+        if (preserve_non_guest_fields)
+        {
+            effective_input.title = previous.title;
+            effective_input.date = previous.date;
+            effective_input.start_time = previous.start_time;
+            effective_input.end_time = previous.end_time;
+            effective_input.location = previous.location;
+            effective_input.responsible = previous.responsible;
+            effective_input.department = previous.department;
+            effective_input.planned_participants_estimate = previous.planned_participants_estimate;
+        }
+
+        std::string mat_json = Database::format_material_items_param(effective_input.material);
+        std::string tn_mat_json = Database::format_material_param(effective_input.tn_material);
+        std::string resp_json = Database::format_material_param(effective_input.responsible);
+        std::string dept_str = effective_input.department ? *effective_input.department : "";
+        std::string bwi_str = effective_input.bad_weather_info ? *effective_input.bad_weather_info : "";
+        std::string siko_str = effective_input.siko_text ? *effective_input.siko_text : "";
+        std::string ppe_str = effective_input.planned_participants_estimate
+            ? std::to_string(*effective_input.planned_participants_estimate) : "";
+        const char *dept_param = effective_input.department ? dept_str.c_str() : nullptr;
+        const char *siko_param = effective_input.siko_text ? siko_str.c_str() : nullptr;
+        const char *ppe_param = effective_input.planned_participants_estimate ? ppe_str.c_str() : nullptr;
+        const auto &guiding_thread = effective_input.guiding_thread_present
+            ? effective_input.guiding_thread : previous.guiding_thread;
         const char *p[15] = {
-            input.title.c_str(), input.date.c_str(),
-            input.start_time.c_str(), input.end_time.c_str(),
-            input.goal.c_str(), input.location.c_str(),
+            effective_input.title.c_str(), effective_input.date.c_str(),
+            effective_input.start_time.c_str(), effective_input.end_time.c_str(),
+            effective_input.goal.c_str(), effective_input.location.c_str(),
             resp_json.c_str(),
             dept_param,
             mat_json.c_str(),
@@ -694,7 +721,7 @@ std::optional<std::pair<Activity, Activity>> Database::update_activity(const std
         PQclear(del);
 
         std::map<std::string, std::string> image_copies;
-        insert_programs(conn_, a.id, input.programs, Database::format_material_param,
+        insert_programs(conn_, a.id, effective_input.programs, Database::format_material_param,
             [&](const std::string &description) {
                 return copy_program_image_references(description, a.id, std::nullopt, image_copies);
             });

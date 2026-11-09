@@ -58,7 +58,7 @@ export class ProgramImageRenderer {
 	private pending = new Map<string, Promise<string>>();
 	private disposed = false;
 
-	constructor(private sharedToken?: string) {}
+	constructor(private sharedToken?: string, private guestToken?: string) {}
 
 	private load(id: string): Promise<string> {
 		const cached = this.urls.get(id);
@@ -66,10 +66,17 @@ export class ProgramImageRenderer {
 		const pending = this.pending.get(id);
 		if (pending) return pending;
 		const request = (async () => {
-			const path = this.sharedToken
-				? `/api/shared/${encodeURIComponent(this.sharedToken)}/program-images/${id}`
-				: `/api/program-images/${id}`;
-			const response = this.sharedToken ? await fetch(path) : await apiFetch(path);
+			const path = this.guestToken
+				? `/api/guest-edit/program-images/${id}`
+				: this.sharedToken
+					? `/api/shared/${encodeURIComponent(this.sharedToken)}/program-images/${id}`
+					: `/api/program-images/${id}`;
+			const response = this.guestToken
+				? await fetch(path, {
+						headers: { 'X-Guest-Edit-Token': this.guestToken },
+						cache: 'no-store',
+					})
+				: this.sharedToken ? await fetch(path) : await apiFetch(path);
 			if (!response.ok) throw new Error('Ein Bild konnte nicht geladen werden. Bitte Berechtigung und Verbindung prüfen.');
 			const blob = await response.blob();
 			if (!PROGRAM_IMAGE_TYPES.includes(blob.type)) throw new Error('Der Server hat kein unterstütztes Bild geliefert.');

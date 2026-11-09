@@ -43,6 +43,7 @@ export const router = createRouter({
 			component: SharedActivityPage,
 			meta: { public: true },
 		},
+		{ path: '/guest-edit', component: DetailPage, meta: { public: true } },
 	],
 });
 

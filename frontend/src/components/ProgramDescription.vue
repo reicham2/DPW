@@ -2,10 +2,10 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ProgramImageRenderer, sanitizeProgramDescription } from '../utils/programImages';
 
-const props = defineProps<{ html: string; sharedToken?: string }>();
+const props = defineProps<{ html: string; sharedToken?: string; guestToken?: string }>();
 const content = ref<HTMLElement | null>(null);
 const imageError = ref<string | null>(null);
-const renderer = new ProgramImageRenderer(props.sharedToken);
+const renderer = new ProgramImageRenderer(props.sharedToken, props.guestToken);
 
 async function render() {
 	const el = content.value;

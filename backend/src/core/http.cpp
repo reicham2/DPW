@@ -6,7 +6,7 @@ void set_cors(HttpRes *res)
 {
     res->writeHeader("Access-Control-Allow-Origin", "*");
     res->writeHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-    res->writeHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    res->writeHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Guest-Edit-Token");
 }
 
 void send_json(HttpRes *res, int status, const std::string &body)
