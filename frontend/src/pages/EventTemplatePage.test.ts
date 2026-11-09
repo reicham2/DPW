@@ -137,6 +137,23 @@ describe('EventTemplatePage template overview and editor', () => {
 		wrapper.unmount();
 	});
 
+	it('highlights only the selected default and removes the highlight when unset', async () => {
+		mocks.templates.push(template({ id: 'alternative', name: 'Alternative', is_default: false }));
+		const wrapper = shallowMount(EventTemplatePage);
+		await flushPromises();
+
+		expect(wrapper.get('button[title="Als Standard setzen"]').classes()).not.toContain('active-default');
+		const selected = wrapper.get('button[title="Standard entfernen"]');
+		expect(selected.classes()).toContain('active-default');
+
+		await selected.trigger('click');
+		await flushPromises();
+
+		expect(mocks.updateTemplate).toHaveBeenCalledWith('event-template-pfadi', { is_default: false });
+		expect(wrapper.find('button.active-default').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
 	it('opens the existing editor layout with a name, optional default and Stufe tabs', async () => {
 		const wrapper = shallowMount(EventTemplatePage);
 		await flushPromises();
