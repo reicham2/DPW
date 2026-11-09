@@ -119,6 +119,12 @@ zur freigegebenen Aktivität gehören, werden über den bestehenden Freigabelink
 geladen. Freigabelinks und öffentliche Formularantworten bleiben ohne Anmeldung
 nutzbar.
 
+Die öffentlichen Seiten `/impressum` und `/datenschutz` sind ohne Anmeldung
+erreichbar und über die Fusszeilen der öffentlichen Seiten, der Anmeldung und
+der App verlinkt. Die Datenschutzhinweise beschreiben die in DPWeb belegten
+Datenflüsse; optionale Integrationen und Laufzeit-/Backup-Einstellungen müssen
+für die jeweilige Instanz durch die Betreiberin geprüft werden.
+
 ## Bilder in Programmpunkten
 
 In der Beschreibung eines Programmpunkts lassen sich Bilder **zwischen Text**

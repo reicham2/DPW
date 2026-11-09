@@ -41,7 +41,7 @@ describe('FormPublicPage branding and submission', () => {
 	});
 
 	function mountPage() {
-		wrapper = mount(FormPublicPage);
+		wrapper = mount(FormPublicPage, { global: { stubs: ['router-link'] } });
 		return wrapper;
 	}
 

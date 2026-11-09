@@ -103,12 +103,22 @@
 
         <p v-if="loginError" class="auth-error">{{ loginError }}</p>
       </div>
+      <nav class="auth-legal-links" aria-label="Rechtliche Informationen">
+        <router-link to="/impressum">Impressum</router-link>
+        <router-link to="/datenschutz">Datenschutzerklärung</router-link>
+      </nav>
     </div>
 
     <!-- App content -->
     <div v-else class="app" :class="{ 'app--force-drawer-stats': statsDisplayMode === 'always-drawer' }">
       <MaintenanceBanner />
       <router-view />
+      <footer class="app-footer">
+        <nav aria-label="Rechtliche Informationen">
+          <router-link to="/impressum">Impressum</router-link>
+          <router-link to="/datenschutz">Datenschutzerklärung</router-link>
+        </nav>
+      </footer>
       <BugReportButton v-if="config.GITHUB_BUG_REPORT_ENABLED" />
     </div>
     </template>
@@ -336,6 +346,7 @@ watch(
 
 .auth-overlay {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: calc(100vh - 56px);
@@ -353,6 +364,31 @@ watch(
   align-items: center;
   gap: 12px;
   text-align: center;
+}
+.auth-legal-links,
+.app-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+}
+.auth-legal-links {
+  margin-top: 16px;
+}
+.auth-legal-links a,
+.app-footer a {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-underline-offset: 0.16em;
+}
+.auth-legal-links a:focus-visible,
+.app-footer a:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.app-footer {
+  padding: 18px 24px 24px;
 }
 .auth-logo {
   width: 56px;

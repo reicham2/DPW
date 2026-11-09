@@ -6,8 +6,11 @@ vi.mock('../composables/useAuth', () => ({
 	authLoading: { value: false },
 }));
 
-// We can't easily import the router (it imports all page components).
-// Instead, test the guard logic in isolation.
+vi.mock('../composables/useSetupAuthConfig', () => ({
+	ensureSetupStatus: vi.fn(),
+}));
+
+import { router } from './index';
 
 describe('Router guard logic', () => {
 	it('allows public routes even when setup is required', () => {
@@ -103,7 +106,13 @@ describe('Router guard logic', () => {
 
 describe('Route definitions', () => {
 	const setupPath = '/setup';
-	const publicPaths = ['/forms/:slug', '/shared/:token', '/maintenance'];
+	const publicPaths = [
+		'/forms/:slug',
+		'/shared/:token',
+		'/maintenance',
+		'/impressum',
+		'/datenschutz',
+	];
 	const protectedPaths = [
 		'/activities/new',
 		'/activities/:id',
@@ -123,8 +132,8 @@ describe('Route definitions', () => {
 	];
 
 	it.each(publicPaths)('%s should be marked as public', (path) => {
-		// These routes have meta.public = true in router/index.ts
-		expect(publicPaths).toContain(path);
+		const route = router.getRoutes().find((candidate) => candidate.path === path);
+		expect(route?.meta.public).toBe(true);
 	});
 
 	it('/setup exists as dedicated setup route', () => {
@@ -132,12 +141,15 @@ describe('Route definitions', () => {
 	});
 
 	it.each(protectedPaths)('%s requires authentication', (path) => {
-		expect(protectedPaths).toContain(path);
+		const route = router.getRoutes().find((candidate) => candidate.path === path);
+		expect(route).toBeDefined();
+		expect(route?.meta.public).not.toBe(true);
 		expect(publicPaths).not.toContain(path);
 	});
 
 	it.each(aliasRedirectPaths)('%s exists as legacy alias redirect', (path) => {
-		expect(aliasRedirectPaths).toContain(path);
+		const route = router.getRoutes().find((candidate) => candidate.path === path);
+		expect(route?.redirect).toBeDefined();
 		expect(publicPaths).not.toContain(path);
 	});
 });

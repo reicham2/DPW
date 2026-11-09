@@ -544,6 +544,22 @@ für lesbare Aktivitäten abgerufen, erstellt oder widerrufen werden; nach dem
 Widerruf ist der bisherige öffentliche Link nicht mehr gültig. Öffentliche
 Anmeldeformulare bleiben unabhängig davon ohne Anmeldung erreichbar.
 
+## Impressum und Datenschutzhinweise
+
+`/impressum` und `/datenschutz` sind öffentliche Routen und von den
+Anmelde-, Freigabe- und Formularseiten erreichbar. Die Hinweise beschreiben
+DPWeb-Datenflüsse aus dem Quellcode, darunter die öffentliche Anzeige von
+Freigaben, Formularantworten einschliesslich gespeicherter IP-/User-Agent-Daten,
+das Audit-Log und konfigurierbare externe Integrationen. Die Standardfrist des
+Audit-Logs beträgt 14 Tage und ist administrativ einstellbar.
+
+Die rechtlichen Angaben dieser Instanz beruhen auf den von der Betreiberin
+bestätigten Kontaktdaten und dem bestätigten Hosting in der Schweiz. Bei
+anderen Installationen müssen Betreibername, Kontakt und Hosting-Angaben sowie
+die tatsächlich aktivierten Integrationen vor einer öffentlichen Nutzung
+angepasst und durch die verantwortliche Stelle geprüft werden. Der Quellcode
+legt die Aufbewahrung von Hosting-Logs und Sicherungskopien nicht fest.
+
 ## Redis Cache (optional)
 
 Das Backend kann API-Responses in Redis cachen, um wiederholte Lese-Anfragen zu beschleunigen.
