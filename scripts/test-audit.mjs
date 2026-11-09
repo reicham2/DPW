@@ -28,6 +28,8 @@ async function request(path, method = 'GET', body, actor = admin) {
 const locationName = `audit-test-${randomUUID()}`
 const materialName = `audit-material-${randomUUID()}`
 let locationId, materialId, activityId, activityShareToken, fixtureUserId
+let previousPublicBaseUrl = null
+let publicBaseUrlChanged = false
 const count = () => Number(sql('SELECT count(*) FROM audit_events'))
 const latest = () => JSON.parse(sql("SELECT row_to_json(a) FROM audit_events a ORDER BY id DESC LIMIT 1"))
 const failTrigger = condition => sql(`
@@ -152,6 +154,18 @@ try {
   assert(jobs.some(job => job.id === 'audit-retention' && job.interval_minutes === 60))
 
   // Success for a compound activity mutation represents one whole request.
+  const publicBaseUrl = (await request('/admin/app-settings')).data.find(
+    setting => setting.key === 'frontend.public_base_url',
+  )
+  assert(publicBaseUrl, 'public base URL setting must be available')
+  if (!publicBaseUrl.locked_by_env) {
+    previousPublicBaseUrl = publicBaseUrl.source === 'db' ? publicBaseUrl.value : null
+    result = await request('/admin/app-settings/frontend.public_base_url', 'PUT', {
+      value: 'http://127.0.0.1:8000',
+    })
+    assert.equal(result.status, 200, result.text)
+    publicBaseUrlChanged = true
+  }
   result = await request('/activities', 'POST', {
     title: locationName, date: '2027-01-01', start_time: '14:00', end_time: '16:00',
     department: 'Pfadi', responsible: [admin, member], programs: [],
@@ -356,4 +370,7 @@ try {
   if (materialId) await request(`/admin/materials/${materialId}`, 'DELETE')
   if (activityId) await request(`/admin/activities/${activityId}/trash`, 'DELETE')
   if (fixtureUserId) await request(`/admin/users/${fixtureUserId}`, 'DELETE')
+  if (publicBaseUrlChanged) {
+    await request('/admin/app-settings/frontend.public_base_url', 'PUT', { value: previousPublicBaseUrl })
+  }
 }
