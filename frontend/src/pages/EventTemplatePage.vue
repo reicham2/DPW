@@ -5,7 +5,7 @@ import { useEventTemplates } from '../composables/useEventTemplates'
 import { user } from '../composables/useAuth'
 import { usePermissions } from '../composables/usePermissions'
 import { wsSend, wsJoin, wsLeave, useWebSocket } from '../composables/useWebSocket'
-import { CheckCircle2, Lock, Save, Users } from 'lucide-vue-next'
+import { Check, Lock, Save, Users, X } from 'lucide-vue-next'
 import DepartmentBadge from '../components/DepartmentBadge.vue'
 import TemplateVarsDropdown from '../components/TemplateVarsDropdown.vue'
 import ErrorAlert from '../components/ErrorAlert.vue'
@@ -666,9 +666,6 @@ onUnmounted(() => {
   </header>
 
   <main class="main">
-    <p v-if="loading" class="loading">Laden...</p>
-
-    <template v-else>
     <div class="filter-tabs template-department-tabs">
       <button
         v-for="dept in visibleDepartments"
@@ -680,13 +677,31 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <template v-if="showEditor">
+    <p v-if="loading" class="loading">Laden...</p>
+
+    <template v-else>
+    <div v-if="showEditor" class="detail-form">
       <div class="template-editor-header">
         <button type="button" class="btn-secondary template-editor-back" @click="backToOverview">← Zurück zu Vorlagen</button>
         <h2 class="template-overview-title">{{ isCreatingTemplate ? 'Neue Vorlage' : 'Vorlage bearbeiten' }}</h2>
-        <button type="button" class="btn-primary" :disabled="saving" @click="saveTemplateNow">
-          <Save :size="16" aria-hidden="true" /> {{ saving ? 'Speichern…' : 'Speichern' }}
-        </button>
+      </div>
+
+      <!-- Local-draft recovery banner -->
+      <div v-if="pendingLocalDraft" class="editors-banner" style="gap: 10px; flex-wrap: wrap;">
+        <span class="editors-banner-icon"><Save :size="16" aria-hidden="true" /></span>
+        <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
+        <button type="button" class="btn-secondary" @click="restoreLocalDraft">Wiederherstellen</button>
+        <button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
+      </div>
+      <div v-else-if="localDraftRestoredAt" class="editors-banner">
+        <span class="editors-banner-icon"><Check :size="16" aria-hidden="true" /></span>
+        <span>Lokaler Entwurf wurde wiederhergestellt.</span>
+      </div>
+
+      <!-- Active editors indicator -->
+      <div v-if="activeEditors.length" class="editors-banner">
+        <span class="editors-banner-icon"><Users :size="16" aria-hidden="true" /></span>
+        <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
       </div>
 
       <div class="default-toggle-section event-template-default lock-wrapper"
@@ -700,51 +715,30 @@ onUnmounted(() => {
         <p class="default-hint">Die Standard-Vorlage wird beim Erstellen eines Events automatisch ausgewählt.</p>
       </div>
 
-      <!-- Local-draft recovery banner -->
-      <div v-if="pendingLocalDraft" class="editors-banner" style="gap: 10px; flex-wrap: wrap;">
-        <span class="editors-banner-icon"><Save :size="14" aria-hidden="true" /></span>
-        <span>Ungespeicherter Entwurf gefunden ({{ new Date(pendingLocalDraft.savedAt).toLocaleString('de-DE') }}).</span>
-        <button type="button" class="btn-secondary" @click="restoreLocalDraft">Wiederherstellen</button>
-        <button type="button" class="btn-secondary" @click="discardLocalDraft">Verwerfen</button>
-      </div>
-      <div v-else-if="localDraftRestoredAt" class="editors-banner">
-        <span class="editors-banner-icon"><CheckCircle2 :size="14" aria-hidden="true" /></span>
-        <span>Lokaler Entwurf wurde wiederhergestellt.</span>
-      </div>
-
-      <!-- Active editors indicator -->
-      <div v-if="activeEditors.length" class="editors-banner">
-        <span class="editors-banner-icon"><Users :size="14" aria-hidden="true" /></span>
-        <span>{{ activeEditors.join(', ') }} {{ activeEditors.length === 1 ? 'bearbeitet' : 'bearbeiten' }} ebenfalls</span>
-      </div>
-
-      <div class="template-editor-card event-template-title-card">
-      <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_name') }"
+      <div class="template-editor-card lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_name') }"
         @focusin="lockSection('evt_tpl_name')" @focusout="unlockSection('evt_tpl_name', $event)">
         <div v-if="lockedBy('evt_tpl_name')" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('evt_tpl_name') }}</div>
         <label class="template-editor-field-label" for="event-template-name">Name der Vorlage</label>
-        <input id="event-template-name" v-model="templateName" class="template-editor-field-input"
-          placeholder="z. B. Standard-Event Pfadi" :disabled="isLockedByOther('evt_tpl_name')" />
+        <div class="input-save-wrap">
+          <input id="event-template-name" v-model="templateName" class="template-editor-field-input" type="text" required
+            placeholder="z. B. Standard-Event Pfadi" :disabled="isLockedByOther('evt_tpl_name')" />
+        </div>
       </div>
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_title' as EditSection) }"
         @focusin="lockSection('evt_tpl_title' as EditSection)" @focusout="unlockSection('evt_tpl_title' as EditSection, $event)">
         <div v-if="lockedBy('evt_tpl_title' as EditSection)" class="lock-badge"><Lock :size="12" aria-hidden="true" /> {{ lockedBy('evt_tpl_title' as EditSection) }}</div>
-        <label class="template-editor-field-label" for="event-template-title">Titel-Vorlage</label>
+        <label for="event-template-title">Titel-Vorlage</label>
         <div class="input-save-wrap">
           <input
             id="event-template-title"
             v-model="title"
             type="text"
             placeholder="z.B. {{abteilung}}: {{titel}}"
-            class="template-editor-field-input"
             :disabled="isLockedByOther('evt_tpl_title' as EditSection)"
           />
           <span v-if="savedFields['title']" class="field-saved-icon" :key="'wrap-' + savedFields['title']"><Save :size="12" aria-hidden="true" /></span>
         </div>
       </div>
-      </div>
-
-      <div class="detail-form">
 
       <!-- Body (rich text editor) -->
       <div class="form-group lock-wrapper" :class="{ 'is-locked': isLockedByOther('evt_tpl_body' as EditSection) }"
@@ -787,7 +781,7 @@ onUnmounted(() => {
           <button type="button" :class="{'toolbar-btn--active': curUl}" @mousedown.prevent @click="execCmd('insertUnorderedList')" title="Aufzählung">• Liste</button>
           <button type="button" :class="{'toolbar-btn--active': curOl}" @mousedown.prevent @click="execCmd('insertOrderedList')" title="Nummerierte Liste">1. Liste</button>
           <span class="toolbar-sep"></span>
-          <button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen">✕ Format</button>
+          <button type="button" @mousedown.prevent @click="execCmd('removeFormat')" title="Formatierung entfernen"><X :size="12" aria-hidden="true" /> Format</button>
           <span class="toolbar-sep"></span>
           <button type="button" @mousedown="saveEditorSelection" @click="openLinkDialog" title="Link einfügen">🔗 Link</button>
         </div>
@@ -808,9 +802,15 @@ onUnmounted(() => {
 				{ var: '{{formular_link|Anmelden}}', desc: 'Link zum Formular mit eigenem Linktext' },
 			]" />
 
-      <ErrorAlert :error="error" />
+      <div class="event-template-editor-actions">
+        <button type="button" class="btn-secondary" @click="backToOverview">Zurück</button>
+        <button type="button" class="btn-primary" :disabled="saving" @click="saveTemplateNow">
+          {{ saving ? 'Speichern…' : 'Speichern' }}
+        </button>
       </div>
-    </template>
+
+      <ErrorAlert :error="error" />
+    </div>
 
     <template v-else>
       <div class="template-overview-header">
@@ -830,20 +830,20 @@ onUnmounted(() => {
       >
         <div class="event-template-overview-main">
           <div class="event-template-overview-name">
-            <span>{{ template.name }}</span>
+            {{ template.name }}
             <span v-if="template.is_default" class="default-badge">Standard</span>
           </div>
           <div class="event-template-overview-meta">
-            {{ template.title || 'Kein Titel' }}
+            <span>{{ template.title || 'Kein Titel' }}</span>
+            <span v-if="templatePreview(template)" class="event-template-preview">{{ templatePreview(template) }}</span>
           </div>
-          <div v-if="templatePreview(template)" class="event-template-overview-meta">{{ templatePreview(template) }}</div>
         </div>
         <div class="template-overview-row-actions">
           <button type="button" :class="['btn-sm', 'template-overview-row-action', template.is_default ? 'active-default' : '']"
             :title="template.is_default ? 'Standard entfernen' : 'Als Standard setzen'"
-            @click="toggleDefault(template)">{{ template.is_default ? '★' : '☆' }} Standard</button>
+            @click="toggleDefault(template)">{{ template.is_default ? '⭐ Standard' : '☆ Standard' }}</button>
           <button type="button" class="btn-sm template-overview-row-action" @click="openEditor(template)">Bearbeiten</button>
-          <button type="button" class="btn-sm btn-sm--danger template-overview-row-action" @click="removeTemplate(template)">Löschen</button>
+          <button type="button" class="btn-sm danger template-overview-row-action" @click="removeTemplate(template)">Löschen</button>
         </div>
       </div>
     </template>
@@ -872,6 +872,36 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.empty-state {
+  text-align: center;
+  color: var(--text-subtle);
+  padding: 2rem;
+  font-size: 0.875rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
+}
+
+.btn-sm.danger {
+  color: var(--error-color);
+  border-color: var(--error-border);
+}
+
+.btn-sm.danger:hover {
+  background: var(--error-bg);
+}
+
+.default-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
 .active-default {
   background: #fef3c7 !important;
   border-color: #f59e0b !important;
@@ -892,16 +922,20 @@ onUnmounted(() => {
   font-size: 0.75rem;
 }
 
-.event-template-title-card {
-  margin-bottom: 1.25rem;
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
 }
 
-.event-template-title-card .form-group {
-  margin: 0;
-}
-
-.event-template-title-card .form-group + .form-group {
-  margin-top: 1rem;
+.checkbox-label input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #6366f1;
 }
 
 .event-template-overview-main {
@@ -910,21 +944,62 @@ onUnmounted(() => {
 }
 
 .event-template-overview-name {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
   color: var(--text-primary);
   font-size: 0.95rem;
   font-weight: 600;
 }
 
 .event-template-overview-meta {
+  display: flex;
+  gap: 0.5rem;
   margin-top: 0.25rem;
   color: var(--text-muted);
   font-size: 0.78rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.event-template-preview {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: min(34rem, 55vw);
+}
+
+.event-template-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.event-template-editor-actions .btn-secondary,
+.event-template-editor-actions .btn-primary {
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.event-template-editor-actions .btn-secondary {
+  background: var(--btn-secondary-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+}
+
+.event-template-editor-actions .btn-primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-color, #fff);
+  border: none;
+  font-weight: 600;
+}
+
+.event-template-editor-actions .btn-secondary:hover {
+  background: var(--bg-elevated);
+}
+
+.event-template-editor-actions .btn-primary:hover {
+  background: var(--btn-primary-bg-hover);
 }
 
 @media (max-width: 599px) {
@@ -938,8 +1013,26 @@ onUnmounted(() => {
   }
 
   .event-template-overview-name {
-    flex-wrap: wrap;
+    font-size: 0.9rem;
     overflow-wrap: anywhere;
+  }
+
+  .checkbox-label {
+    align-items: flex-start;
+    font-size: 0.83rem;
+  }
+
+  .event-template-preview {
+    max-width: 100%;
+  }
+
+  .event-template-editor-actions {
+    justify-content: stretch;
+  }
+
+  .event-template-editor-actions button {
+    flex: 1;
+    min-height: 42px;
   }
 }
 </style>

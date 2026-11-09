@@ -284,6 +284,11 @@ Editor mit den lokalen Aenderungen offen. Lokale Entwuerfe sind je Vorlage
 getrennt, neue Entwuerfe je Stufe; auch bisherige Stufen-Entwuerfe sind
 wiederherstellbar. Nicht verfuegbarer Browserspeicher wird als Fehler angezeigt.
 
+Listen, Standardmarkierung und Aktionsschaltflaechen folgen der Darstellung
+der Mail- und Formularvorlagen. Der Editor verwendet wie die Mailvorlagen
+eine Namenskarte, darunter Titel und Rich-Text-Inhalt sowie **Zurueck** und
+**Speichern** am Ende; die Stufenauswahl bleibt auch im Editor erreichbar.
+
 Beim Erstellen eines Events oeffnet **Als Event veroeffentlichen** die
 Vorschau mit der Standard-Vorlage der Aktivitaetsstufe. Ohne Standard bleibt
 die Auswahl **Keine Vorlage**, der Aktivitaetstitel wird uebernommen und der
