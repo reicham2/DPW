@@ -171,7 +171,7 @@ erhalten. Bestehende Feedbackeinträge bleiben bei der Schemaerweiterung
 (`activities.actual_start_time/actual_end_time`, `activity_feedback.rating`)
 unverändert, die Bewertung ist dort leer. Rückmeldungen werden beim endgültigen
 Löschen der Aktivität mitgelöscht. Das Audit Log erfasst Änderungszeitpunkt,
-Ist-Zahl, Ist-Zeiten und Bewertung, aber weder Feedbacktexte noch Massnahmen.
+Ist-Zahl und Ist-Zeiten, aber weder Bewertung noch Feedbacktexte oder Massnahmen.
 
 ## Audit Log
 

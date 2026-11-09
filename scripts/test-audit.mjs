@@ -234,7 +234,7 @@ try {
     notes: 'private feedback',
   }
   assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200)
-  assert.equal(latest().details.changes.find(change => change.field === 'rating').after, 9)
+  assert(!latest().details.changes.some(change => change.field === 'rating'))
   assert(!JSON.stringify(latest()).includes('private feedback'), 'feedback content must not enter audit details')
   assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200,
     'repeated saves update rather than duplicate one author entry')
