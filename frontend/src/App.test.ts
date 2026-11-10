@@ -131,6 +131,7 @@ describe('App authentication lifecycle', () => {
 		maintenanceActive.value = false;
 		config.MIDATA_ENABLED = false;
 		mocks.route.path = '/';
+		mocks.route.meta = {};
 		vi.clearAllMocks();
 	});
 
@@ -146,6 +147,17 @@ describe('App authentication lifecycle', () => {
 		expect(wrapper.find('.auth-box').exists()).toBe(false);
 		expect(wrapper.find('router-view-stub').exists()).toBe(true);
 		expect(mocks.route.path).toBe('/activities/activity-1');
+	});
+
+	it('renders the public guest editor inside the shared app content container', async () => {
+		mocks.route.path = '/guest-edit';
+		mocks.route.meta = { public: true };
+		wrapper = shallowMount(App, { global: { stubs: ['router-link', 'router-view'] } });
+		await flushPromises();
+
+		expect(wrapper.find('.app').exists()).toBe(true);
+		expect(wrapper.find('.app > router-view-stub').exists()).toBe(true);
+		expect(wrapper.find('.global-nav').exists()).toBe(false);
 	});
 
 	it('keeps an existing admin session in the app when maintenance starts', async () => {
