@@ -44,6 +44,7 @@ struct Activity
     std::optional<std::string> siko_text;
     std::optional<std::string> bad_weather_info;
     std::optional<int> planned_participants_estimate;
+    std::optional<double> average_feedback_rating;
     std::string created_at;
     std::string updated_at;
     std::vector<Program> programs;

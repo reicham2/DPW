@@ -184,6 +184,14 @@ try {
   assert(!JSON.stringify(latest()).includes(secret), 'activity free text must be protected')
 
   const evaluationPath = `/activities/${activityId}/evaluation`
+  const listedActivityAverage = async () => {
+    const listed = await request('/activities')
+    assert.equal(listed.status, 200, listed.text)
+    const activity = listed.data.find(item => item.id === activityId)
+    assert(activity, 'the created activity must appear in the authorized overview')
+    return activity.average_feedback_rating ?? null
+  }
+  assert.equal(await listedActivityAverage(), null, 'activities without rated feedback have no average')
   assert.equal((await request(evaluationPath, 'GET', undefined, null)).status, 401)
   const emptyFeedback = { rating: null, positive: '', improvements: '', action_items: '', notes: '' }
   const actualsPath = `${evaluationPath}/actuals`
@@ -227,7 +235,7 @@ try {
   assert.equal(latest().details.changes.find(change => change.field === 'actual_participants').after, 18)
   assert.equal(latest().details.changes.find(change => change.field === 'actual_start_time').after, '14:05')
   const adminFeedback = {
-    rating: 9,
+    rating: 0,
     positive: 'Gute Stimmung',
     improvements: 'Mehr Zeit einplanen',
     action_items: 'Material früher bereitstellen',
@@ -236,8 +244,15 @@ try {
   assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200)
   assert(!latest().details.changes.some(change => change.field === 'rating'))
   assert(!JSON.stringify(latest()).includes('private feedback'), 'feedback content must not enter audit details')
+  assert.equal(await listedActivityAverage(), 0, 'zero is a valid rating and must not be treated as missing')
+  adminFeedback.rating = 9
   assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200,
     'repeated saves update rather than duplicate one author entry')
+  assert.equal(await listedActivityAverage(), 9, 'the overview cache refreshes when ratings change')
+  const legacyUnratedAuthor = randomUUID()
+  sql(`INSERT INTO activity_feedback (activity_id, author_id, author_name, rating)
+       VALUES ('${activityId}', '${legacyUnratedAuthor}', 'Altbestand', NULL)`)
+  assert.equal(await listedActivityAverage(), 9, 'unrated legacy responses are excluded from the average')
   const memberFeedback = {
     rating: 3,
     positive: '',
@@ -246,6 +261,7 @@ try {
     notes: '',
   }
   assert.equal((await request(evaluationPath, 'PUT', memberFeedback, member)).status, 200)
+  assert.equal(await listedActivityAverage(), 6, 'the overview averages rated feedback across authors')
   let evaluation = (await request(evaluationPath, 'GET', undefined, member)).data
   assert.equal(evaluation.actual_participants, 18)
   assert.equal(evaluation.actual_start_time, '14:05')
@@ -273,6 +289,9 @@ try {
   evaluation = (await request(evaluationPath, 'GET')).data
   assert.equal(evaluation.feedback.length, 1, 'clearing a contribution removes only the current author entry')
   assert.equal(evaluation.actual_participants, 18, 'attendance remains independent from clearing feedback')
+  assert.equal(await listedActivityAverage(), 9, 'clearing one rating updates the overview average')
+  assert.equal((await request(evaluationPath, 'PUT', emptyFeedback)).status, 200)
+  assert.equal(await listedActivityAverage(), null, 'unrated legacy entries alone do not produce an average')
 
   for (const [key, value] of [['wp.url', 'http://127.0.0.1:1'], ['wp.user', 'audit-test'], ['wp.app_password', 'audit-test-only']]) {
     assert.equal((await request(`/admin/app-settings/${key}`, 'PUT', { value })).status, 200)

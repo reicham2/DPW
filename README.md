@@ -180,6 +180,8 @@ Verantwortliche erfassen tatsächliche Teilnehmendenzahl sowie Start- und Endzei
 alle anderen Personen bewerten die Aktivität von 0 bis 10 und ergänzen einzelne
 Punkte zu Erfolgen, Verbesserungen und Massnahmen sowie allgemeines Feedback.
 Die gesammelten Rückmeldungen erscheinen als Tabelle mit farbiger Bewertung.
+In der Aktivitätenübersicht zeigt der Feedback-Durchschnitt nur abgegebene
+0–10-Bewertungen; ohne bewertete Rückmeldungen wird kein Durchschnitt angezeigt.
 Details zu Zugriff und Speicherung stehen in der
 [Betriebsreferenz](docs/operations.md).
 

@@ -133,6 +133,9 @@ inline nlohmann::json to_json(const Activity &a)
     j["planned_participants_estimate"] = a.planned_participants_estimate
                                              ? nlohmann::json(*a.planned_participants_estimate)
                                              : nlohmann::json(nullptr);
+    j["average_feedback_rating"] = a.average_feedback_rating
+                                       ? nlohmann::json(*a.average_feedback_rating)
+                                       : nlohmann::json(nullptr);
 
     nlohmann::json progs = nlohmann::json::array();
     for (const auto &p : a.programs)

@@ -17,6 +17,15 @@ function formatDate(d: string): string {
     month: 'long'
   })
 }
+
+function formatAverageRating(value: number): string {
+  return value.toFixed(1).replace('.', ',')
+}
+
+function averageRatingStyle(value: number): Record<string, string> {
+  const hue = Math.round((value / 10) * 120)
+  return { '--rating-bg': `hsl(${hue} 65% 28%)` }
+}
 </script>
 
 <template>
@@ -28,6 +37,14 @@ function formatDate(d: string): string {
     <div class="card-meta">
       <span class="card-date">
         {{ formatDate(activity.date) }} &middot; {{ activity.start_time }}–{{ activity.end_time }}
+      </span>
+      <span
+        v-if="activity.average_feedback_rating !== null && activity.average_feedback_rating !== undefined"
+        class="card-rating"
+        :style="averageRatingStyle(activity.average_feedback_rating)"
+        :aria-label="`Durchschnittliche Feedbackbewertung ${formatAverageRating(activity.average_feedback_rating)} von 10`"
+      >
+        Feedback Ø {{ formatAverageRating(activity.average_feedback_rating) }} / 10
       </span>
       <ResponsibleAvatars v-if="activity.responsible.length" :names="activity.responsible" />
     </div>
