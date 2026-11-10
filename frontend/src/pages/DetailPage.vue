@@ -17,6 +17,7 @@ import type { Activity, ActivityInput, Attachment, Department, ProgramInput, Edi
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import ActivityEvaluationPanel from '../components/ActivityEvaluationPanel.vue';
+import PublicPageHeader from '../components/PublicPageHeader.vue';
 import DepartmentBadge from '../components/DepartmentBadge.vue';
 import BadgeSelect from '../components/BadgeSelect.vue';
 import ResponsibleAvatars from '../components/ResponsibleAvatars.vue';
@@ -3712,14 +3713,11 @@ function closeShareDialog() {
 </script>
 
 <template>
-	<header class="header">
-		<button v-if="!isGuestEdit" class="btn-back" @click="flushAutoSave(); router.push('/')">
+	<PublicPageHeader v-if="isGuestEdit" label="Gastbearbeitung" />
+	<header v-else class="header">
+		<button class="btn-back" @click="flushAutoSave(); router.push('/')">
 			<ArrowLeft class="btn-icon" :size="16" aria-hidden="true" />
 			Zurück
-		</button>
-		<button v-else class="btn-back" @click="closeGuestEdit">
-			<ArrowLeft class="btn-icon" :size="16" aria-hidden="true" />
-			Gastzugriff schliessen
 		</button>
 		<div class="header-right">
 			<div v-if="!isGuestEdit && activity && mode === 'view' && !showEvaluation" ref="activityActionsMenuRef" class="activity-actions-mobile">
@@ -3917,14 +3915,7 @@ function closeShareDialog() {
 				Bearbeiten
 			</button>
 			<button
-				v-if="activity && mode === 'edit' && isGuestEdit"
-				class="btn-toggle btn-mail"
-				@click="closeGuestEdit"
-			>
-				Schliessen
-			</button>
-			<button
-				v-else-if="activity && mode === 'edit'"
+				v-if="activity && mode === 'edit'"
 				class="btn-toggle btn-mail"
 				@click="leaveEdit"
 			>

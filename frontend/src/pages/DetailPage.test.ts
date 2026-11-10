@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Activity, ActivityInput, IdeenkisteItem, User, WsEvent } from '../types';
+import PublicPageHeader from '../components/PublicPageHeader.vue';
 
 const mocks = vi.hoisted(() => ({
 	replace: vi.fn(),
@@ -340,6 +341,10 @@ describe('DetailPage activity access', () => {
 		expect(wrapper.get('.guest-edit-intro').text()).toContain('Sommerlager');
 		expect(wrapper.get('.guest-edit-intro').text()).toContain('Änderungen werden automatisch gespeichert');
 		expect(wrapper.get('.guest-edit-intro').text()).toContain('Link gültig bis');
+		expect(wrapper.findComponent(PublicPageHeader).props('label')).toBe('Gastbearbeitung');
+		expect(wrapper.find('.header').exists()).toBe(false);
+		expect(wrapper.find('.btn-back').exists()).toBe(false);
+		expect(wrapper.find('.header-right').exists()).toBe(false);
 		expect(wrapper.find('#edit-title').exists()).toBe(false);
 		expect(wrapper.find('#edit-guiding-thread').exists()).toBe(true);
 		expect(wrapper.find('#edit-goal').exists()).toBe(true);
