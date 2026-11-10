@@ -32,10 +32,9 @@
 
 			<template v-else>
 				<p class="legal-draft-note">
-					Diese Datenschutzhinweise sind ein Organisationsentwurf und keine
-					Rechtsberatung. Die verantwortliche Stelle muss sie vor dem öffentlichen
-					Einsatz prüfen und mit der tatsächlichen Konfiguration dieser DPWeb-Instanz
-					abgleichen.
+					Diese Datenschutzhinweise sind ein Organisationsentwurf. Die
+					verantwortliche Stelle muss sie vor dem öffentlichen Einsatz mit der
+					tatsächlichen Konfiguration dieser DPWeb-Instanz abgleichen.
 				</p>
 
 				<section>
@@ -54,16 +53,20 @@
 						DPWeb dient der Planung und Verwaltung von Aktivitäten. Dazu gehören
 						Benutzerangaben wie Microsoft-Kennung, E-Mail-Adresse und Anzeigename,
 						sowie Aktivitäts-, Programm-, Verantwortlichkeits- und Materialangaben,
-						Notizen, Anhänge und eingefügte Bilder. Benutzerkonten enthalten
-						zusätzlich Rollen, Abteilungen und Einstellungen für die Nutzung und
-						Benachrichtigungen.
+						Notizen, Anhänge, eingefügte Bilder, Orte und Wetterangaben.
+						Benutzerkonten enthalten zusätzlich Rollen, Abteilungen und
+						Einstellungen für die Nutzung und Benachrichtigungen. DPWeb speichert
+						auch Formular- und Mailvorlagen, Mailentwürfe und Protokolle
+						gesendeter E-Mails mit Absender, Empfängern, Betreff, Inhalt und
+						Versandzeitpunkt. In-App-Benachrichtigungen enthalten Titel, Nachricht
+						und gegebenenfalls einen Link zur Aktivität.
 					</p>
 					<p>
 						Bei einer öffentlichen Formularantwort speichert DPWeb die eingegebenen
 						Antworten und den Absendezeitpunkt. Zusätzlich werden, sofern vom
-						vorgeschalteten Server mitgeliefert, die IP-Adresse sowie der
-						Browser-User-Agent erfasst. Bitte übermittle nur Angaben, die für das
-						jeweilige Formular erforderlich sind.
+						Webserver mitgeliefert, die IP-Adresse aus dem Header «X-Real-IP» und
+						der Browser-User-Agent erfasst. Bitte übermittle nur Angaben, die für
+						das jeweilige Formular erforderlich sind.
 					</p>
 					<p>
 						Bei angemeldeten Benutzern protokolliert das Audit-Log bestimmte
@@ -91,20 +94,40 @@
 					<p>
 						Auf gespeicherte Aktivitäten und Formularantworten können die
 						entsprechend berechtigten DPWeb-Benutzer zugreifen. Microsoft Entra ID
-						wird für die Anmeldung verwendet. Beim E-Mailversand mit Microsoft
-						Graph werden Absender, Empfänger, Betreff und Inhalt der E-Mail an
-						Microsoft übermittelt. Für die Kontaktsuche kann DPWeb über Microsoft
-						Graph auf Verzeichnisangaben zugreifen.
+						wird für die Anmeldung verwendet. Die Kontaktsuche fragt über Microsoft
+						Graph nach passenden Personen und liest deren Anzeigenamen und
+						E-Mail-Adressen. Beim E-Mailversand werden Absender, Empfänger,
+						Betreff und Inhalt an Microsoft Graph übermittelt und in den
+						gesendeten Elementen des Microsoft-Kontos gespeichert. DPWeb speichert
+						zusätzlich ein Protokoll mit Absender, Empfängern, Betreff, Inhalt und
+						Versandzeitpunkt.
 					</p>
 					<p>
-						Weitere Integrationen sind optional und werden nur verwendet, wenn
-						sie von der Betreiberin eingerichtet und genutzt werden: MiData für
-						Stufen- und Mitgliederabfragen, WordPress/EventON für die
-						Veröffentlichung von Veranstaltungen sowie GitHub für ausdrücklich
-						abgesendete Fehlerberichte. Ein Fehlerbericht kann die Beschreibung,
-						die aktuelle Anwendungsadresse, Browserangaben und technische
-						Debug-Informationen enthalten; bei einer Anmeldung können auch Name
-						und E-Mail-Adresse des meldenden Kontos enthalten sein.
+						Wenn MiData eingerichtet ist, ruft DPWeb für eine Gruppenabfrage die
+						MiData-Mitgliederdaten ab und wertet sie für eine Kinderzählung aus.
+						DPWeb speichert die ermittelte Zahl bei der Aktivität, nicht die
+						MiData-Mitgliederliste. Bei eingerichteter WordPress/EventON-Anbindung
+						übermittelt DPWeb für veröffentlichte Veranstaltungen Titel,
+						Beschreibung, Beginn, Ende, den Veranstaltungstyp und gegebenenfalls
+						den Ort an die konfigurierte WordPress-Instanz.
+					</p>
+					<p>
+						Wenn GitHub-Berichte eingerichtet sind, wird ein Fehlerbericht erst
+						nach dem Absenden durch die Benutzerin oder den Benutzer als Issue im
+						konfigurierten GitHub-Repository erstellt. Er enthält die Beschreibung,
+						die aktuelle Anwendungsadresse, Browserangaben und – bei angemeldeten
+						Personen – Name und E-Mail-Adresse des Kontos. Erweiterte
+						Diagnosedaten wie zuletzt besuchte Ansichten, Interaktionen,
+						API-Aufrufe und Fehlermeldungen werden nur übermittelt, wenn vor dem
+						Absenden die standardmässig deaktivierte Option aktiviert wird.
+					</p>
+					<p>
+						Für angeforderte Wetterprognosen lädt DPWeb serverseitig öffentliche
+						MeteoSwiss-Prognosedaten von <code>geo.admin.ch</code>. Der eingegebene
+						Aktivitätsort wird mit den Prognosepunkten abgeglichen; der
+						Wetter-Snapshot wird bei der Aktivität gespeichert. Die Anfragen an
+						geo.admin.ch laden öffentliche Datensätze und enthalten nicht den
+						eingegebenen Aktivitätsort.
 					</p>
 					<p>
 						Die DPWeb-Instanz wird in der Schweiz von LKlaus Hosting gehostet.
@@ -125,17 +148,29 @@
 					<p>
 						Formularantworten werden nicht automatisch nach einer festen Frist
 						gelöscht. Berechtigte Benutzer können einzelne Antworten löschen;
-						Antworten werden auch mit dem endgültigen Löschen des zugehörigen
-						Formulars oder der Aktivität entfernt. Audit-Einträge werden
-						standardmässig nach 14 Tagen bereinigt; die Frist ist durch
-						Administratoren konfigurierbar.
+						beim Löschen des zugehörigen Formulars werden sie ebenfalls entfernt.
+						Gelöschte Aktivitäten bleiben zunächst im Papierkorb und können
+						wiederhergestellt werden. Sie werden nach 90 Tagen automatisch
+						endgültig gelöscht; dabei werden auch die zugehörigen Formulare,
+						Antworten, Anhänge, Mailentwürfe und gesendeten E-Mails entfernt.
+						Berechtigte Administratoren können Aktivitäten auch vorher endgültig
+						löschen. Audit-Einträge werden standardmässig nach 14 Tagen bereinigt;
+						die Frist ist durch Administratoren konfigurierbar.
+					</p>
+					<p>
+						Aktivitätsbezogene In-App-Benachrichtigungen werden ab dem Tag nach
+						dem Aktivitätsdatum automatisch entfernt. Mail- und Formularentwürfe
+						können in DPWeb gelöscht werden; gesendete E-Mail-Protokolle bleiben
+						bis zur endgültigen Löschung der zugehörigen Aktivität gespeichert.
 					</p>
 					<p>
 						DPWeb definiert keine allgemeine Aufbewahrungsfrist für
-						Anwendungsdaten, Serverprotokolle oder Sicherungskopien. Deren
-						Aufbewahrung hängt von der Verwaltung und Konfiguration dieser
-						Instanz ab. Bei Fragen zu Auskunft, Berichtigung oder Löschung deiner
-						Daten wende dich an die oben genannte Kontaktadresse.
+						übrige Anwendungsdaten, Serverprotokolle oder Sicherungskopien. Mail-
+						und Formularentwürfe können durch berechtigte Benutzer gelöscht
+						werden. Die Aufbewahrung von Serverprotokollen und Sicherungskopien
+						hängt von der Verwaltung und Konfiguration dieser Instanz ab. Bei
+						Fragen zu Auskunft, Berichtigung oder Löschung deiner Daten wende
+						dich an die oben genannte Kontaktadresse.
 					</p>
 				</section>
 
@@ -145,14 +180,18 @@
 						Die Microsoft-Anmeldung speichert ihren Token-Cache im lokalen
 						Browser-Speicher. DPWeb verwendet den Browser-Speicher ausserdem für
 						Einstellungen und Bearbeitungsentwürfe; einzelne Ansichten verwenden
-						den Sitzungsspeicher. Im DPWeb-Frontend ist kein Analyse- oder
-						Marketing-Tracking eingebaut. Die Microsoft-Anmeldung ist nicht für
-						die Speicherung ihres Zustands in Cookies konfiguriert.
+						den Sitzungsspeicher. DPWeb bindet keine externen Analyse- oder
+						Marketingdienste ein. Technische Diagnoseinformationen zu Interaktionen,
+						API-Aufrufen und Fehlern werden während der Sitzung im Arbeitsspeicher
+						gesammelt und nur mit einem ausdrücklich abgesendeten Fehlerbericht
+						übermittelt, wenn die Option für erweiterte Diagnosedaten aktiviert
+						wurde. Die Microsoft-Anmeldung ist nicht für die Speicherung ihres
+						Zustands in Cookies konfiguriert.
 					</p>
 					<p>
-						Wenn Web-Push-Benachrichtigungen eingerichtet sind, speichert DPWeb
-						das Browser-Abonnement und sendet Mitteilungstext und Link an den
-						Push-Dienst, den der Browser vorgibt.
+						Wenn eine Benutzerin oder ein Benutzer Web-Push aktiviert, speichert
+						DPWeb das Browser-Abonnement samt Zustellungsdaten auf dem Server und
+						sendet Mitteilungstext und Link an den Push-Dienst des Browsers.
 					</p>
 				</section>
 

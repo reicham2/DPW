@@ -31,6 +31,11 @@ describe('LegalInfoPage', () => {
 		expect(wrapper.text()).toContain('14 Tage');
 		expect(wrapper.text()).toContain('LKlaus Hosting');
 		expect(wrapper.text()).toContain('in der Schweiz');
-		expect(wrapper.text()).toContain('keine Rechtsberatung');
+		expect(wrapper.text()).toContain('90 Tagen');
+		expect(wrapper.text()).toContain('gesendeter E-Mails');
+		expect(wrapper.text()).toContain('In-App-Benachrichtigungen');
+		expect(wrapper.text()).toContain('geo.admin.ch');
+		expect(wrapper.text()).toContain('erweiterte Diagnosedaten');
+		expect(wrapper.text()).not.toContain('Rechtsberatung');
 	});
 });

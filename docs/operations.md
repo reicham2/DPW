@@ -551,8 +551,9 @@ Anmelde-, Freigabe- und Formularseiten erreichbar; sie werden nicht in der
 angemeldeten App angezeigt. Die Hinweise beschreiben
 DPWeb-Datenflüsse aus dem Quellcode, darunter die öffentliche Anzeige von
 Freigaben, Formularantworten einschliesslich gespeicherter IP-/User-Agent-Daten,
-das Audit-Log und konfigurierbare externe Integrationen. Die Standardfrist des
-Audit-Logs beträgt 14 Tage und ist administrativ einstellbar.
+Mailinhalte, das Audit-Log, die automatische endgültige Löschung von Aktivitäten
+aus dem Papierkorb nach 90 Tagen und konfigurierte externe Dienste. Die
+Standardfrist des Audit-Logs beträgt 14 Tage und ist administrativ einstellbar.
 
 Die rechtlichen Angaben dieser Instanz beruhen auf den von der Betreiberin
 bestätigten Kontaktdaten und dem bestätigten Hosting in der Schweiz. Bei
