@@ -162,6 +162,15 @@ Bewertung (farbig, zusätzlich als Zahl mit Beschriftung «Bewertung N von 10»)
 kurzen Zitaten und Änderungszeitpunkt; Zeile oder Schaltfläche klappt alle Details
 auf, **Alle aufklappen** öffnet alle Zeilen.
 
+Die authentifizierte Aktivitätenübersicht zeigt zusätzlich den Durchschnitt der
+vorhandenen Bewertungen pro Aktivität. Er wird gemeinsam mit der Aktivitätenliste
+aus `activity_feedback.rating` berechnet; nicht bewertete Altbestand-Einträge
+werden ignoriert. Ohne Bewertungen erscheint kein Durchschnitt, und eine
+Bewertung von 0 zählt als gültiger Wert. Die Anzeige enthält eine zugängliche
+Beschriftung als durchschnittliche Bewertung und verwendet dieselbe Farbskala
+wie die einzelnen Bewertungen. Öffentliche Freigaben, Formulare und Gäste
+erhalten weder Bewertungen noch Durchschnittswerte.
+
 Die tatsächliche Teilnehmendenzahl ist eine nichtnegative ganze Zahl oder
 unbekannt, bis sie eingetragen wird; Start- und Endzeit sind `HH:MM` oder leer
 und unabhängig voneinander (keine Reihenfolgeprüfung, damit Übernachtungen

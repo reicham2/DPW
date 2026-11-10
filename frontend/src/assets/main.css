@@ -564,6 +564,18 @@ video {
 	font-weight: 500;
 }
 
+.card-rating {
+	display: inline-flex;
+	align-items: center;
+	padding: 3px 8px;
+	border-radius: 999px;
+	color: #fff;
+	background: var(--rating-bg);
+	font-size: 0.75rem;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
 .card-responsible {
 	font-size: 0.82rem;
 	color: var(--text-muted);
