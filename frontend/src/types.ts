@@ -91,6 +91,7 @@ export type EditSection =
 export interface SectionLock {
 	section: EditSection;
 	user: string;
+	owner_id?: string;
 }
 
 export type WsEvent =
@@ -101,7 +102,7 @@ export type WsEvent =
 	| { event: 'notification'; notification: NotificationRecord }
 	| { event: 'department_deleted'; name: string }
 	| { event: 'role_deleted'; name: string }
-	| { event: 'lock'; activity_id: string; section: EditSection; user: string }
+	| { event: 'lock'; activity_id: string; section: EditSection; user: string; owner_id?: string }
 	| { event: 'unlock'; activity_id: string; section: EditSection }
 	| { event: 'editors'; activity_id: string; users: string[] }
 	| { event: 'locks_state'; activity_id: string; locks: SectionLock[] }

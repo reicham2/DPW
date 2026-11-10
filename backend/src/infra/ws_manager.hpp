@@ -20,7 +20,11 @@ struct WsUserData
     std::string oid;
     std::string user_id;
     std::string viewing_activity; // activity_id the user is currently viewing
+    std::string guest_activity_id;
+    std::string guest_token_hash;
+    std::string guest_session_id;
     bool authenticated = false;
+    bool guest_authenticated = false;
 };
 
 using WsHandle = uWS::WebSocket<false, true, WsUserData> *;
@@ -29,6 +33,7 @@ struct LockInfo
 {
     std::string section;
     std::string user_name;
+    std::string owner_id;
     WsHandle holder;
 };
 
@@ -54,6 +59,7 @@ private:
     bool can_access_room(WsHandle ws, const std::string &room, bool write) const;
     void broadcast_activity_change(const Activity *previous, const Activity *current);
     void handle_register(WsHandle ws, const std::string &token);
+    void handle_register_guest(WsHandle ws, const std::string &token, const std::string &session_id);
     void handle_join(WsHandle ws, const std::string &activity_id);
     void handle_leave(WsHandle ws);
     void handle_lock(WsHandle ws, const std::string &activity_id, const std::string &section);

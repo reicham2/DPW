@@ -2,9 +2,12 @@
 #include "infra/auth.hpp"
 #include "db/database.hpp"
 #include "core/models/serializers.hpp"
+#include "utils/crypto.hpp"
 #include "utils/permissions.hpp"
 #include "json.hpp"
+#include <algorithm>
 #include <cstdio>
+#include <cctype>
 #include <unordered_map>
 
 #if !defined(DPW_ENABLE_DEBUG_AUTH)
@@ -13,6 +16,42 @@
 
 namespace
 {
+    bool is_guest_lock_section(const std::string &section)
+    {
+        if (section == "guiding_thread" || section == "siko" || section == "goal_weather")
+            return true;
+
+        for (const std::string prefix : {"program_", "material_", "tn_material_"})
+        {
+            if (section.rfind(prefix, 0) != 0 || section.size() == prefix.size())
+                continue;
+            const auto digits = section.substr(prefix.size());
+            if (std::all_of(digits.begin(), digits.end(), [](unsigned char ch) {
+                    return std::isdigit(ch) != 0;
+                }))
+                return true;
+        }
+        return false;
+    }
+
+    bool valid_guest_session_id(const std::string &value)
+    {
+        if (value.size() != 36)
+            return false;
+        for (size_t i = 0; i < value.size(); ++i)
+        {
+            if (i == 8 || i == 13 || i == 18 || i == 23)
+            {
+                if (value[i] != '-')
+                    return false;
+            }
+            else if (!std::isxdigit(static_cast<unsigned char>(value[i])))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 
     TokenClaims validate_ws_token(const std::string &token)
     {
@@ -146,6 +185,10 @@ void WebSocketManager::on_message(WsHandle ws, std::string_view message)
         else if (type == "unlock")
         {
             handle_unlock(ws, j.value("activity_id", ""), j.value("section", ""));
+        }
+        else if (type == "register_guest")
+        {
+            handle_register_guest(ws, j.value("token", ""), j.value("session_id", ""));
         }
     }
     catch (const std::exception &e)
@@ -296,6 +339,21 @@ void WebSocketManager::send_to_user_ids(const std::vector<std::string> &user_ids
 bool WebSocketManager::can_access_room(WsHandle ws, const std::string &room, bool write) const
 {
     auto *data = ws->getUserData();
+    if (data->guest_authenticated)
+    {
+        if (room != data->guest_activity_id || room.empty())
+            return false;
+        try
+        {
+            const auto link = db_.get_guest_edit_link_by_token_hash(data->guest_token_hash);
+            return link && link->activity_id == room;
+        }
+        catch (const std::exception &e)
+        {
+            fprintf(stderr, "[WS] guest room authorization failed: %s\n", e.what());
+            return false;
+        }
+    }
     if (!data->authenticated || data->user_id.empty())
         return false;
     try
@@ -363,12 +421,43 @@ void WebSocketManager::handle_register(WsHandle ws, const std::string &token)
     printf("[WS] registered user: %s\n", data->display_name.c_str());
 }
 
+void WebSocketManager::handle_register_guest(WsHandle ws, const std::string &token, const std::string &session_id)
+{
+    auto *data = ws->getUserData();
+    if (data->authenticated || data->guest_authenticated ||
+        !dpw::crypto::is_guest_edit_token(token) || !valid_guest_session_id(session_id))
+    {
+        ws->close();
+        return;
+    }
+    try
+    {
+        const auto token_hash = dpw::crypto::sha256_hex(token);
+        const auto link = db_.get_guest_edit_link_by_token_hash(token_hash);
+        if (!link)
+        {
+            ws->close();
+            return;
+        }
+        data->display_name = "Gast";
+        data->guest_activity_id = link->activity_id;
+        data->guest_token_hash = token_hash;
+        data->guest_session_id = session_id;
+        data->guest_authenticated = true;
+    }
+    catch (const std::exception &)
+    {
+        fprintf(stderr, "[WS] guest registration failed\n");
+        ws->close();
+    }
+}
+
 void WebSocketManager::handle_join(WsHandle ws, const std::string &activity_id)
 {
     if (activity_id.empty())
         return;
     auto *data = ws->getUserData();
-    if (!data->authenticated)
+    if (!data->authenticated && !data->guest_authenticated)
         return;
     // Leave previous activity first
     handle_leave(ws);
@@ -424,7 +513,9 @@ void WebSocketManager::handle_lock(WsHandle ws, const std::string &activity_id, 
     if (activity_id.empty() || section.empty())
         return;
     auto *data = ws->getUserData();
-    if (!data->authenticated || data->display_name.empty())
+    if ((!data->authenticated && !data->guest_authenticated) || data->display_name.empty())
+        return;
+    if (data->guest_authenticated && !is_guest_lock_section(section))
         return;
     if (data->viewing_activity != activity_id || !can_access_room(ws, activity_id, true))
         return;
@@ -439,9 +530,12 @@ void WebSocketManager::handle_lock(WsHandle ws, const std::string &activity_id, 
         json msg = {{"event", "unlock"}, {"activity_id", activity_id}, {"section", section}};
         broadcast_to_activity(activity_id, msg.dump(), ws);
     }
-    locks[section] = {section, data->display_name, ws};
+    locks[section] = {section, data->display_name,
+                      data->guest_authenticated ? data->guest_session_id : "", ws};
     printf("[WS] %s locked %s in %s\n", data->display_name.c_str(), section.c_str(), activity_id.c_str());
     json msg = {{"event", "lock"}, {"activity_id", activity_id}, {"section", section}, {"user", data->display_name}};
+    if (data->guest_authenticated)
+        msg["owner_id"] = data->guest_session_id;
     broadcast_to_activity(activity_id, msg.dump(), ws);
 }
 
@@ -471,7 +565,21 @@ void WebSocketManager::broadcast_to_activity(const std::string &activity_id, con
     std::string_view sv(message);
     for (auto *ws : it->second)
     {
-        if (ws != exclude && can_access_room(ws, activity_id, false))
+        if (ws == exclude || !can_access_room(ws, activity_id, false))
+            continue;
+        const auto *data = ws->getUserData();
+        if (data->guest_authenticated)
+        {
+            const auto payload = json::parse(message, nullptr, false);
+            if (payload.is_object())
+            {
+                const auto event = payload.value("event", std::string{});
+                if ((event == "lock" || event == "unlock") &&
+                    !is_guest_lock_section(payload.value("section", std::string{})))
+                    continue;
+            }
+        }
+        if (ws != exclude)
             ws->send(sv, uWS::OpCode::TEXT);
     }
 }
@@ -508,8 +616,14 @@ void WebSocketManager::send_locks_state(WsHandle ws, const std::string &activity
     {
         for (auto &[section, lock] : it->second)
         {
-            if (can_access_room(lock.holder, activity_id, true))
-                locks.push_back({{"section", lock.section}, {"user", lock.user_name}});
+            if (can_access_room(lock.holder, activity_id, true) &&
+                (!ws->getUserData()->guest_authenticated || is_guest_lock_section(section)))
+            {
+                json lock_json = {{"section", lock.section}, {"user", lock.user_name}};
+                if (!lock.owner_id.empty())
+                    lock_json["owner_id"] = lock.owner_id;
+                locks.push_back(std::move(lock_json));
+            }
         }
     }
     json msg = {{"event", "locks_state"}, {"activity_id", activity_id}, {"locks", locks}};

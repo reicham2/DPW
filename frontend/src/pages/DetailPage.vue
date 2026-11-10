@@ -5,7 +5,7 @@ import { useActivities } from '../composables/useActivities';
 import { useUsers } from '../composables/useUsers';
 import { usePermissions } from '../composables/usePermissions';
 import { user } from '../composables/useAuth';
-import { wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
+import { createGuestWebSocket, useWebSocket, wsSend, wsRegister, wsJoin, wsLeave } from '../composables/useWebSocket';
 import { useForms } from '../composables/useForms';
 import { useEventTemplates } from '../composables/useEventTemplates';
 import { apiFetch, formatApiError } from '../composables/useApi';
@@ -13,7 +13,7 @@ import { useIdeaBox } from '../composables/useIdeaBox';
 import { useActivityExport } from '../composables/useActivityExport';
 import { useUserResolver } from '../composables/useUserResolver';
 import { ArrowLeft, ClipboardList, Mail, Share2, Pencil, Eye, Check, Save, Users, Lock, X, TriangleAlert, Info, Globe, CheckCircle2, FileDown, Upload, ExternalLink, Trash2, Sun, CloudSun, Cloud, CloudRain, Snowflake, BookMarked, FileText, ChevronDown, ChevronRight } from 'lucide-vue-next';
-import type { Activity, ActivityInput, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication } from '../types';
+import type { Activity, ActivityInput, Attachment, Department, ProgramInput, EditSection, SectionLock, MaterialItem, FormStats, ActivityExpectedWeather, EventPublication, WsEvent } from '../types';
 import type { FormType } from '../types';
 import ErrorAlert from '../components/ErrorAlert.vue';
 import ActivityEvaluationPanel from '../components/ActivityEvaluationPanel.vue';
@@ -74,6 +74,11 @@ const {
 	predefinedMaterials,
 } = useActivities();
 const { users, fetchUsers } = useUsers();
+interface GuestEditPerson {
+	id: string;
+	display_name: string;
+}
+const guestEditPeople = ref<GuestEditPerson[]>([]);
 const { myPermissions, fetchMyPermissions, writableDepts, canReadActivity, canForms: canFormsHelper, canIdeenkiste, canIdeenkisteAdd } = usePermissions();
 
 const { fetchForm } = useForms();
@@ -174,6 +179,27 @@ async function guestEditFetch(path: string, options: RequestInit = {}): Promise<
 		headers,
 		cache: 'no-store',
 	});
+}
+
+async function fetchGuestEditPeople(): Promise<void> {
+	const response = await guestEditFetch('/people');
+	if (!response.ok) {
+		const payload = await response.json().catch(() => null) as { error?: unknown } | null;
+		throw new Error(typeof payload?.error === 'string' ? payload.error : 'Personensuche konnte nicht geladen werden.');
+	}
+	const payload = await response.json() as { people?: unknown };
+	if (!Array.isArray(payload.people) || !payload.people.every((person) =>
+		person && typeof person.id === 'string' && typeof person.display_name === 'string')) {
+		throw new Error('Personensuche konnte nicht geladen werden.');
+	}
+	guestEditPeople.value = payload.people;
+}
+
+function resolveEditPersonName(idOrText: string): string {
+	if (isGuestEdit.value) {
+		return guestEditPeople.value.find((person) => person.id === idOrText)?.display_name ?? idOrText;
+	}
+	return resolveResponsibleName(idOrText);
 }
 
 function formatGuestExpiry(value: string | null): string {
@@ -666,15 +692,23 @@ async function downloadAttachment(att: Attachment) {
 // ---- Collaborative editing state -------------------------------------------
 const activeEditors = ref<string[]>([]);
 const sectionLocks = ref<Map<EditSection, string>>(new Map());
+const sectionLockOwners = ref<Map<EditSection, string>>(new Map());
 const myLockedSection = ref<EditSection | null>(null);
 
 function isLockedByOther(section: EditSection): boolean {
 	const locker = sectionLocks.value.get(section);
+	if (isGuestEdit.value && sectionLockOwners.value.get(section) === guestSocket.sessionId) return false;
 	return !!locker && locker !== user.value?.display_name;
 }
 function lockedBy(section: EditSection): string | null {
 	const locker = sectionLocks.value.get(section);
+	if (isGuestEdit.value && sectionLockOwners.value.get(section) === guestSocket.sessionId) return null;
 	return locker && locker !== user.value?.display_name ? locker : null;
+}
+
+function sendCollaborationMessage(message: Record<string, unknown>) {
+	if (isGuestEdit.value) guestSocket.send(message);
+	else wsSend(message);
 }
 
 function lockSection(section: EditSection) {
@@ -682,10 +716,10 @@ function lockSection(section: EditSection) {
 	if (myLockedSection.value === section) return;
 	// Unlock previous section if switching
 	if (myLockedSection.value) {
-		wsSend({ type: 'unlock', activity_id: id, section: myLockedSection.value });
+		sendCollaborationMessage({ type: 'unlock', activity_id: id, section: myLockedSection.value });
 	}
 	myLockedSection.value = section;
-	wsSend({ type: 'lock', activity_id: id, section });
+	sendCollaborationMessage({ type: 'lock', activity_id: id, section });
 }
 
 let unlockTimer: ReturnType<typeof setTimeout> | null = null;
@@ -701,7 +735,7 @@ function unlockSection(section: EditSection, event?: FocusEvent) {
 	unlockTimer = setTimeout(() => {
 		if (myLockedSection.value === section) {
 			myLockedSection.value = null;
-			wsSend({ type: 'unlock', activity_id: id, section });
+			sendCollaborationMessage({ type: 'unlock', activity_id: id, section });
 		}
 	}, 100);
 }
@@ -1577,6 +1611,7 @@ onMounted(async () => {
 			activity.value = payload.activity;
 			id = payload.activity.id;
 			guestAccessExpiresAt.value = payload.expires_at;
+			await fetchGuestEditPeople();
 			document.title = `${activity.value.title} – DPWeb`;
 			syncEditFields(activity.value);
 			captureEditSnapshot();
@@ -1587,6 +1622,7 @@ onMounted(async () => {
 			await nextTick();
 			initProgEditors();
 			suppressDirtyTracking = false;
+			guestSocket.join(guestToken.value, id);
 		} catch (e) {
 			error.value = e instanceof Error ? e.message : 'Gastlink ungültig oder abgelaufen.';
 			activityMissingConfirmed.value = true;
@@ -1752,6 +1788,7 @@ onUnmounted(() => {
 	stopProgramDragAutoScroll();
 	// Leave the activity and unlock any held section
 	if (!isGuestEdit.value) wsLeave();
+	else guestSocket.disconnect();
 	document.title = 'DPWeb Aktivitäten';
 });
 
@@ -1845,28 +1882,35 @@ watch(lastUpdatedActivity, (updated) => {
 });
 
 // ---- WS lock/presence handlers -------------------------------------------
-import { useWebSocket } from '../composables/useWebSocket';
-
-useWebSocket((e) => {
+function handleWsEvent(e: WsEvent) {
 	if (e.event === 'deleted' && e.id === id) {
 		activity.value = null;
 		void router.replace('/');
 	} else if (e.event === 'lock' && e.activity_id === id) {
 		sectionLocks.value.set(e.section, e.user);
+		if (e.owner_id) sectionLockOwners.value.set(e.section, e.owner_id);
+		else sectionLockOwners.value.delete(e.section);
 		sectionLocks.value = new Map(sectionLocks.value); // trigger reactivity
 	} else if (e.event === 'unlock' && e.activity_id === id) {
 		sectionLocks.value.delete(e.section);
+		sectionLockOwners.value.delete(e.section);
 		sectionLocks.value = new Map(sectionLocks.value);
 	} else if (e.event === 'editors' && e.activity_id === id) {
 		activeEditors.value = e.users.filter((u: string) => u !== user.value?.display_name);
 	} else if (e.event === 'locks_state' && e.activity_id === id) {
 		const m = new Map<EditSection, string>();
+		const owners = new Map<EditSection, string>();
 		for (const l of e.locks) {
 			m.set(l.section, l.user);
+			if (l.owner_id) owners.set(l.section, l.owner_id);
 		}
 		sectionLocks.value = m;
+		sectionLockOwners.value = owners;
 	}
-});
+}
+
+useWebSocket(handleWsEvent);
+const guestSocket = createGuestWebSocket(handleWsEvent);
 
 // ---- Helpers ---------------------------------------------------------------
 function formatDate(d: string): string {
@@ -2041,7 +2085,7 @@ function materialRespFiltered(i: number) {
 	const predefined = predefinedMaterials.value
 		.filter(m => !current.includes(m) && (q === '' || m.toLowerCase().includes(q)))
 		.map(m => ({ label: m, value: m }));
-	const people = users.value
+	const people = (isGuestEdit.value ? guestEditPeople.value : users.value)
 		.filter(u => !current.includes(u.id) && (q === '' || u.display_name.toLowerCase().includes(q)))
 		.map(u => ({ label: u.display_name, value: u.id }));
 	return [...predefined, ...people];
@@ -2403,7 +2447,8 @@ const progRespDropdown = ref<number | null>(null);
 function progRespFiltered(i: number) {
 	const q = (progRespSearch.value[i] ?? '').toLowerCase();
 	const current = editPrograms.value[i].responsible;
-	return users.value.filter(u => !current.includes(u.id) && (q === '' || u.display_name.toLowerCase().includes(q)));
+	return (isGuestEdit.value ? guestEditPeople.value : users.value)
+		.filter(u => !current.includes(u.id) && (q === '' || u.display_name.toLowerCase().includes(q)));
 }
 function addProgResponsible(i: number, id: string) {
 	if (!editPrograms.value[i].responsible.includes(id)) {
@@ -4703,7 +4748,7 @@ function closeShareDialog() {
 								</div>
 								<div class="user-chips" v-if="prog.responsible.length">
 									<span v-for="(entry, ri) in prog.responsible" :key="entry" class="user-chip">
-										{{ resolveResponsibleName(entry) }}
+										{{ resolveEditPersonName(entry) }}
 										<button type="button" class="user-chip-remove" @click="removeProgResponsible(i, ri)" :disabled="isLockedByOther(`program_${i}`)" aria-label="Programm-Verantwortliche Person entfernen"><X :size="12" aria-hidden="true" /></button>
 									</span>
 								</div>
@@ -4910,7 +4955,7 @@ function closeShareDialog() {
 								</div>
 								<div class="user-chips" v-if="editMaterial[i].responsible?.length">
 									<span v-for="(entry, ri) in editMaterial[i].responsible" :key="entry" class="user-chip">
-										{{ resolveResponsibleName(entry) }}
+										{{ resolveEditPersonName(entry) }}
 										<button type="button" class="user-chip-remove" @click="clearMaterialResp(i, ri)" :disabled="isLockedByOther(`material_${i}`)" aria-label="Material-Verantwortliche Person entfernen"><X :size="12" aria-hidden="true" /></button>
 									</span>
 								</div>

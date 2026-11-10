@@ -45,7 +45,7 @@ function activityBody(title, department = 'Pfadi') {
 		department,
 		responsible: [],
 		material: [],
-		programs: [],
+		programs: [{ title: 'Guest lock target', duration_minutes: 10, description: '', responsible: [] }],
 	};
 }
 
@@ -54,6 +54,14 @@ function websocketUrl(token) {
 	url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
 	url.pathname = `${url.pathname.replace(/\/api$/, '').replace(/\/+$/, '')}/ws`;
 	url.search = new URLSearchParams({ token }).toString();
+	return url.toString();
+}
+
+function guestWebsocketUrl() {
+	const url = new URL(baseUrl);
+	url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+	url.pathname = `${url.pathname.replace(/\/api$/, '').replace(/\/+$/, '')}/ws`;
+	url.search = new URLSearchParams({ guest: '1' }).toString();
 	return url.toString();
 }
 
@@ -75,6 +83,29 @@ async function connectSocket(token) {
 		}, { once: true });
 	});
 	sockets.push(client);
+	return client;
+}
+
+async function connectGuestSocket(token, sessionId) {
+	const socket = new WebSocket(guestWebsocketUrl());
+	const client = { socket, messages: [] };
+	socket.addEventListener('message', (event) => {
+		client.messages.push(JSON.parse(String(event.data)));
+	});
+	await new Promise((resolve, reject) => {
+		const timeout = setTimeout(() => reject(new Error('Guest WebSocket connection timed out')), 5000);
+		socket.addEventListener('open', () => {
+			clearTimeout(timeout);
+			resolve();
+		}, { once: true });
+		socket.addEventListener('error', () => {
+			clearTimeout(timeout);
+			reject(new Error('Guest WebSocket connection failed'));
+		}, { once: true });
+	});
+	sockets.push(client);
+	sendSocket(client, { type: 'register_guest', token, session_id: sessionId });
+	sendSocket(client, { type: 'join', activity_id: activityId });
 	return client;
 }
 
@@ -199,6 +230,84 @@ test('live activity and template updates follow the same permissions', async () 
 	sendSocket(leader, { type: 'lock', activity_id: activityId, section: 'title' });
 	await waitForMessage(admin, (message) => message.event === 'lock' && message.section === 'title', adminStart);
 	sendSocket(leader, { type: 'unlock', activity_id: activityId, section: 'title' });
+
+	const guestLink = await request('POST', `/activities/${activityId}/guest-edit-link`, adminToken, {});
+	expectStatus(guestLink, 201, 'create guest edit link for lock test');
+	const guestToken = new URL(guestLink.json.share_url).hash.slice(1);
+	const guestSessionId = '11111111-1111-4111-8111-111111111111';
+	const guest = await connectGuestSocket(guestToken, guestSessionId);
+	const guestLocksStart = guest.messages.length;
+	const guestLocks = await waitForMessage(guest, (message) =>
+		message.event === 'locks_state' && message.activity_id === activityId, guestLocksStart);
+	assert.deepEqual(guestLocks.locks, [], 'guest lock state starts without locks');
+
+	const expiredGuest = await connectGuestSocket('e'.repeat(64), '33333333-3333-4333-8333-333333333333');
+	if (expiredGuest.socket.readyState !== WebSocket.CLOSED) {
+		await new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => reject(new Error('Expired guest WebSocket remained open')), 5000);
+			expiredGuest.socket.addEventListener('close', () => {
+				clearTimeout(timeout);
+				resolve(undefined);
+			}, { once: true });
+		});
+	}
+	assert.ok(!expiredGuest.messages.some((message) => message.event === 'locks_state'),
+		'expired guest links cannot join a collaboration room');
+
+	let guestStart = guest.messages.length;
+	let guestAdminStart = admin.messages.length;
+	let guestLeaderStart = leader.messages.length;
+	sendSocket(guest, { type: 'lock', activity_id: activityId, section: 'title' });
+	await settleMessages();
+	assert.ok(!admin.messages.slice(guestAdminStart).some((message) => message.event === 'lock' && message.section === 'title'),
+		'guest cannot acquire a protected metadata lock');
+	assert.ok(!leader.messages.slice(guestLeaderStart).some((message) => message.event === 'lock' && message.section === 'title'));
+
+	guestAdminStart = admin.messages.length;
+	guestLeaderStart = leader.messages.length;
+	sendSocket(guest, { type: 'lock', activity_id: activityId, section: 'program_0' });
+	const guestProgramLock = await waitForMessage(leader, (message) =>
+		message.event === 'lock' && message.section === 'program_0' && message.owner_id === guestSessionId,
+		guestLeaderStart);
+	assert.equal(guestProgramLock.user, 'Gast');
+	await waitForMessage(admin, (message) =>
+		message.event === 'lock' && message.section === 'program_0' && message.owner_id === guestSessionId,
+		guestAdminStart);
+
+	const guestPeer = await connectGuestSocket(guestToken, '22222222-2222-4222-8222-222222222222');
+	const peerLocksStart = guestPeer.messages.length;
+	const peerLocks = await waitForMessage(guestPeer, (message) =>
+		message.event === 'locks_state' && message.activity_id === activityId, peerLocksStart);
+	assert.ok(peerLocks.locks.some((lock) =>
+		lock.section === 'program_0' && lock.user === 'Gast' && lock.owner_id === guestSessionId),
+		'other guests can see the owner of an editable-field lock');
+	guestPeer.socket.close();
+
+	guestLeaderStart = leader.messages.length;
+	sendSocket(leader, { type: 'lock', activity_id: activityId, section: 'program_0' });
+	await settleMessages();
+	assert.ok(!leader.messages.slice(guestLeaderStart).some((message) => message.event === 'lock' && message.section === 'program_0'),
+		'an authenticated editor cannot take a field locked by a guest');
+	sendSocket(guest, { type: 'unlock', activity_id: activityId, section: 'program_0' });
+	await waitForMessage(leader, (message) => message.event === 'unlock' && message.section === 'program_0');
+
+	guestStart = guest.messages.length;
+	guestAdminStart = admin.messages.length;
+	sendSocket(leader, { type: 'lock', activity_id: activityId, section: 'title' });
+	await waitForMessage(admin, (message) => message.event === 'lock' && message.section === 'title', guestAdminStart);
+	await settleMessages();
+	assert.ok(!guest.messages.slice(guestStart).some((message) => message.event === 'lock' && message.section === 'title'),
+		'guests do not receive protected-section lock events');
+	sendSocket(leader, { type: 'unlock', activity_id: activityId, section: 'title' });
+
+	await settleMessages();
+	expectStatus(await request('DELETE', `/activities/${activityId}/guest-edit-link`, adminToken), 200,
+		'revoke guest edit link');
+	guestAdminStart = admin.messages.length;
+	sendSocket(guest, { type: 'lock', activity_id: activityId, section: 'program_0' });
+	await settleMessages();
+	assert.ok(!admin.messages.slice(guestAdminStart).some((message) => message.event === 'lock' && message.section === 'program_0'),
+		'revoked guest sockets cannot acquire locks');
 
 	for (const room of ['tpl_Pfadi', 'evt_tpl_Pfadi']) {
 		const adminRoomStart = admin.messages.length;

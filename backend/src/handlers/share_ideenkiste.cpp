@@ -2,15 +2,37 @@
 #include "handlers/program_images.hpp"
 #include "core/models/serializers.hpp"
 #include "infra/audit.hpp"
+#include "utils/crypto.hpp"
 #include "utils/program_images.hpp"
 
 #include <cstdio>
 #include <array>
-#include <openssl/evp.h>
+#include <algorithm>
+#include <cctype>
+#include <unordered_set>
 #include <openssl/rand.h>
 
 namespace
 {
+    bool is_user_id(const std::string &value)
+    {
+        if (value.size() != 36)
+            return false;
+        for (size_t i = 0; i < value.size(); ++i)
+        {
+            if (i == 8 || i == 13 || i == 18 || i == 23)
+            {
+                if (value[i] != '-')
+                    return false;
+            }
+            else if (!std::isxdigit(static_cast<unsigned char>(value[i])))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     std::optional<UserRecord> resolve_user_local(Database &db, const TokenClaims &claims)
     {
         if (claims.oid.rfind("debug:", 0) == 0)
@@ -137,23 +159,6 @@ namespace
         return std::move(access->user);
     }
 
-    std::string guest_token_hash(const std::string &token)
-    {
-        std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
-        unsigned int digest_size = 0;
-        if (EVP_Digest(token.data(), token.size(), digest.data(), &digest_size, EVP_sha256(), nullptr) != 1)
-            throw std::runtime_error("guest edit token hashing failed");
-        static constexpr char hex[] = "0123456789abcdef";
-        std::string hash;
-        hash.reserve(digest_size * 2);
-        for (unsigned int i = 0; i < digest_size; ++i)
-        {
-            hash.push_back(hex[digest[i] >> 4]);
-            hash.push_back(hex[digest[i] & 0x0f]);
-        }
-        return hash;
-    }
-
     std::string create_guest_token()
     {
         std::array<unsigned char, 32> bytes{};
@@ -168,13 +173,6 @@ namespace
             token.push_back(hex[byte & 0x0f]);
         }
         return token;
-    }
-
-    bool valid_guest_token(const std::string &token)
-    {
-        return token.size() == 64 && std::all_of(token.begin(), token.end(), [](unsigned char ch) {
-            return std::isxdigit(ch) != 0;
-        });
     }
 
     void guest_no_store(HttpRes *res)
@@ -311,12 +309,12 @@ namespace
     void handle_post_guest_edit_upload(HttpRes *res, HttpReq *req, Database &db, bool program_image)
     {
         const std::string token{req->getHeader("x-guest-edit-token")};
-        if (!valid_guest_token(token))
+        if (!dpw::crypto::is_guest_edit_token(token))
         {
             send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
             return;
         }
-        const std::string token_hash = guest_token_hash(token);
+        const std::string token_hash = dpw::crypto::sha256_hex(token);
         const auto link = require_guest_edit_link(res, db, token_hash);
         if (!link)
             return;
@@ -574,7 +572,7 @@ void handle_post_guest_edit_link(HttpRes *res, HttpReq *req, Database &db)
         {
             const std::string token = create_guest_token();
             const auto link = db.create_guest_edit_link(activity_id, created_by,
-                                                        guest_token_hash(token), expires_in_days);
+                                                        dpw::crypto::sha256_hex(token), expires_in_days);
             if (!link)
             {
                 send_json(res, 500, R"({"error":"Gastlink konnte nicht erstellt werden"})");
@@ -642,14 +640,14 @@ void handle_delete_guest_edit_link(HttpRes *res, HttpReq *req, Database &db)
 void handle_get_guest_edit_activity(HttpRes *res, HttpReq *req, Database &db)
 {
     const std::string token{req->getHeader("x-guest-edit-token")};
-    if (!valid_guest_token(token))
+    if (!dpw::crypto::is_guest_edit_token(token))
     {
         send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
         return;
     }
     try
     {
-        const auto link = require_guest_edit_link(res, db, guest_token_hash(token));
+        const auto link = require_guest_edit_link(res, db, dpw::crypto::sha256_hex(token));
         if (!link)
             return;
         const auto activity = db.get_activity_by_id(link->activity_id);
@@ -668,15 +666,62 @@ void handle_get_guest_edit_activity(HttpRes *res, HttpReq *req, Database &db)
     }
 }
 
-void handle_patch_guest_edit_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+void handle_get_guest_edit_people(HttpRes *res, HttpReq *req, Database &db)
 {
     const std::string token{req->getHeader("x-guest-edit-token")};
-    if (!valid_guest_token(token))
+    if (!dpw::crypto::is_guest_edit_token(token))
     {
         send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
         return;
     }
-    const std::string token_hash = guest_token_hash(token);
+    try
+    {
+        const auto link = require_guest_edit_link(res, db, dpw::crypto::sha256_hex(token));
+        if (!link)
+            return;
+        const auto activity = db.get_activity_by_id(link->activity_id);
+        if (!activity)
+        {
+            send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
+            return;
+        }
+
+        std::unordered_set<std::string> user_ids;
+        const auto add_user_id = [&user_ids](const std::string &value) {
+            if (is_user_id(value))
+                user_ids.insert(value);
+        };
+        for (const auto &responsible : activity->responsible)
+            add_user_id(responsible);
+        for (const auto &material : activity->material)
+            for (const auto &responsible : material.responsible)
+                add_user_id(responsible);
+        for (const auto &program : activity->programs)
+            for (const auto &responsible : program.responsible)
+                add_user_id(responsible);
+
+        const std::vector<std::string> ids(user_ids.begin(), user_ids.end());
+        const auto users = db.get_users_by_ids(ids);
+        nlohmann::json people = nlohmann::json::array();
+        for (const auto &user : users)
+            people.push_back({{"id", user.id}, {"display_name", user.display_name}});
+        send_guest_json(res, 200, nlohmann::json{{"people", people}}.dump());
+    }
+    catch (const std::exception &error)
+    {
+        send_guest_internal_error(res, "get_guest_edit_people", error);
+    }
+}
+
+void handle_patch_guest_edit_activity(HttpRes *res, HttpReq *req, Database &db, WebSocketManager &wm)
+{
+    const std::string token{req->getHeader("x-guest-edit-token")};
+    if (!dpw::crypto::is_guest_edit_token(token))
+    {
+        send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
+        return;
+    }
+    const std::string token_hash = dpw::crypto::sha256_hex(token);
     const auto link = require_guest_edit_link(res, db, token_hash);
     if (!link)
         return;
@@ -755,14 +800,14 @@ void handle_patch_guest_edit_activity(HttpRes *res, HttpReq *req, Database &db, 
 void handle_get_guest_edit_attachments(HttpRes *res, HttpReq *req, Database &db)
 {
     const std::string token{req->getHeader("x-guest-edit-token")};
-    if (!valid_guest_token(token))
+    if (!dpw::crypto::is_guest_edit_token(token))
     {
         send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
         return;
     }
     try
     {
-        const auto link = require_guest_edit_link(res, db, guest_token_hash(token));
+        const auto link = require_guest_edit_link(res, db, dpw::crypto::sha256_hex(token));
         if (!link)
             return;
         nlohmann::json attachments = nlohmann::json::array();
@@ -789,7 +834,7 @@ void handle_post_guest_edit_program_image(HttpRes *res, HttpReq *req, Database &
 void handle_get_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &db)
 {
     const std::string token{req->getHeader("x-guest-edit-token")};
-    if (!valid_guest_token(token))
+    if (!dpw::crypto::is_guest_edit_token(token))
     {
         send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
         return;
@@ -797,7 +842,7 @@ void handle_get_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &db)
     const std::string attachment_id{req->getParameter(0)};
     try
     {
-        const auto link = require_guest_edit_link(res, db, guest_token_hash(token));
+        const auto link = require_guest_edit_link(res, db, dpw::crypto::sha256_hex(token));
         if (!link)
             return;
         const auto attachment = db.get_attachment_data(attachment_id);
@@ -833,7 +878,7 @@ void handle_get_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &db)
 void handle_delete_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &db)
 {
     const std::string token{req->getHeader("x-guest-edit-token")};
-    if (!valid_guest_token(token))
+    if (!dpw::crypto::is_guest_edit_token(token))
     {
         send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
         return;
@@ -841,7 +886,7 @@ void handle_delete_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &d
     const std::string attachment_id{req->getParameter(0)};
     try
     {
-        const auto link = require_guest_edit_link(res, db, guest_token_hash(token));
+        const auto link = require_guest_edit_link(res, db, dpw::crypto::sha256_hex(token));
         if (!link)
             return;
         const auto attachment = db.get_attachment_data(attachment_id);
@@ -866,7 +911,7 @@ void handle_delete_guest_edit_attachment(HttpRes *res, HttpReq *req, Database &d
 void handle_get_guest_edit_program_image(HttpRes *res, HttpReq *req, Database &db)
 {
     const std::string token{req->getHeader("x-guest-edit-token")};
-    if (!valid_guest_token(token))
+    if (!dpw::crypto::is_guest_edit_token(token))
     {
         send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
         return;
@@ -879,7 +924,7 @@ void handle_get_guest_edit_program_image(HttpRes *res, HttpReq *req, Database &d
     }
     try
     {
-        const auto link = require_guest_edit_link(res, db, guest_token_hash(token));
+        const auto link = require_guest_edit_link(res, db, dpw::crypto::sha256_hex(token));
         if (!link)
             return;
         const auto image = db.get_program_image_data(image_id);
@@ -899,7 +944,7 @@ void handle_get_guest_edit_program_image(HttpRes *res, HttpReq *req, Database &d
 void handle_delete_guest_edit_program_image(HttpRes *res, HttpReq *req, Database &db)
 {
     const std::string token{req->getHeader("x-guest-edit-token")};
-    if (!valid_guest_token(token))
+    if (!dpw::crypto::is_guest_edit_token(token))
     {
         send_guest_json(res, 404, R"({"error":"Gastlink ungültig oder abgelaufen"})");
         return;
@@ -912,7 +957,7 @@ void handle_delete_guest_edit_program_image(HttpRes *res, HttpReq *req, Database
     }
     try
     {
-        const auto link = require_guest_edit_link(res, db, guest_token_hash(token));
+        const auto link = require_guest_edit_link(res, db, dpw::crypto::sha256_hex(token));
         if (!link)
             return;
         const auto image = db.get_program_image_data(image_id, false);
