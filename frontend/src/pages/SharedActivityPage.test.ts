@@ -62,7 +62,10 @@ describe('SharedActivityPage', () => {
 	});
 
 	function mountPage() {
-		wrapper = mount(SharedActivityPage, { attachTo: document.body, global: { stubs: { DepartmentBadge: true } } });
+		wrapper = mount(SharedActivityPage, {
+			attachTo: document.body,
+			global: { stubs: { DepartmentBadge: true, 'router-link': true } },
+		});
 		return wrapper;
 	}
 

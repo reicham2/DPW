@@ -13,6 +13,7 @@ import TemplatesPage from '../pages/TemplatesPage.vue';
 import IdeaBoxPage from '../pages/IdeaBoxPage.vue';
 import SetupPage from '../pages/SetupPage.vue';
 import MaintenancePage from '../pages/MaintenancePage.vue';
+import LegalInfoPage from '../pages/LegalInfoPage.vue';
 import { user, authLoading } from '../composables/useAuth';
 import { ensureSetupStatus } from '../composables/useSetupAuthConfig';
 
@@ -21,6 +22,8 @@ export const router = createRouter({
 	routes: [
 		{ path: '/setup', component: SetupPage, meta: { setup: true } },
 		{ path: '/maintenance', component: MaintenancePage, meta: { public: true } },
+		{ path: '/impressum', component: LegalInfoPage, props: { kind: 'impressum' }, meta: { public: true } },
+		{ path: '/datenschutz', component: LegalInfoPage, props: { kind: 'datenschutz' }, meta: { public: true } },
 		{ path: '/', component: IndexPage },
 		{ path: '/activities/new', component: CreatePage },
 		{ path: '/activities/:id', component: DetailPage, meta: { loginInPlace: true } },

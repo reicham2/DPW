@@ -147,6 +147,28 @@ describe('App authentication lifecycle', () => {
 		expect(mocks.route.path).toBe('/activities/activity-1');
 	});
 
+	it('links to legal pages from the public login screen only', async () => {
+		wrapper = shallowMount(App, {
+			global: {
+				stubs: {
+					'router-link': {
+						props: ['to'],
+						template: '<a :href="to"><slot /></a>',
+					},
+					'router-view': true,
+				},
+			},
+		});
+		await flushPromises();
+		expect(wrapper.findAll('.auth-legal-links a').map((link) => link.attributes('href')))
+			.toEqual(['/impressum', '/datenschutz']);
+
+		user.value = testUser;
+		await nextTick();
+		expect(wrapper.find('.app-footer').exists()).toBe(false);
+		expect(wrapper.find('.auth-legal-links').exists()).toBe(false);
+	});
+
 	it('keeps an existing admin session in the app when maintenance starts', async () => {
 		const replace = vi.spyOn(window.location, 'replace').mockImplementation(() => {});
 		user.value = testUser;

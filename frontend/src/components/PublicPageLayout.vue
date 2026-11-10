@@ -12,6 +12,12 @@
 		<main class="public-page-content">
 			<slot />
 		</main>
+		<footer class="public-page-footer">
+			<nav aria-label="Rechtliche Informationen">
+				<router-link to="/impressum">Impressum</router-link>
+				<router-link to="/datenschutz">Datenschutzerklärung</router-link>
+			</nav>
+		</footer>
 	</div>
 </template>
 
@@ -81,6 +87,32 @@ const homepageUrl = computed(() => publicUrl('/'));
 	padding: 32px 24px;
 }
 
+.public-page-footer {
+	border-top: 1px solid var(--nav-border);
+}
+
+.public-page-footer nav {
+	max-width: 860px;
+	margin: 0 auto;
+	padding: 16px 24px;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px 24px;
+}
+
+.public-page-footer a {
+	color: var(--text-secondary);
+	font-size: 0.9rem;
+	text-underline-offset: 0.16em;
+}
+
+.public-page-footer a:focus-visible {
+	outline: 2px solid var(--text-primary);
+	outline-offset: 3px;
+	border-radius: 2px;
+}
+
 .public-page-content :deep(.loading-state),
 .public-page-content :deep(.error-state),
 .public-page-content :deep(.success-state) {
@@ -108,6 +140,10 @@ const homepageUrl = computed(() => publicUrl('/'));
 
 	.public-page-content {
 		padding: 20px 16px;
+	}
+
+	.public-page-footer nav {
+		padding: 14px 16px;
 	}
 }
 </style>
