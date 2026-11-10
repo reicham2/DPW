@@ -4006,7 +4006,7 @@ function closeShareDialog() {
 		</div>
 	</div>
 
-	<div v-if="isGuestEdit && activity" class="guest-edit-intro">
+	<div v-if="isGuestEdit && activity" class="guest-edit-intro guest-edit-intro--spaced">
 		<div class="guest-edit-intro__activity">
 			<span class="guest-edit-intro__badge"><Pencil :size="14" aria-hidden="true" /> Gastbearbeitung</span>
 			<h2 class="detail-hero-title">{{ activity.title }}</h2>

@@ -341,6 +341,7 @@ describe('DetailPage activity access', () => {
 		expect(wrapper.get('.guest-edit-intro').text()).toContain('Sommerlager');
 		expect(wrapper.get('.guest-edit-intro').text()).toContain('Änderungen werden automatisch gespeichert');
 		expect(wrapper.get('.guest-edit-intro').text()).toContain('Link gültig bis');
+		expect(wrapper.get('.guest-edit-intro').classes()).toContain('guest-edit-intro--spaced');
 		expect(wrapper.findComponent(PublicPageHeader).props('label')).toBe('Gastbearbeitung');
 		expect(wrapper.find('.header').exists()).toBe(false);
 		expect(wrapper.find('.btn-back').exists()).toBe(false);
