@@ -12,7 +12,7 @@ static std::string activity_read_cache_scope(const TokenClaims &claims, const Ac
 {
     std::string scope = cache_user_scope(claims, access.user) + ":read:" + access.permission.activity_read_scope;
     // Older cache entries do not contain all fields in the current activity JSON.
-    scope += ":activity-json-v3";
+    scope += ":activity-json-v2";
     std::vector<std::string> readable_departments;
     for (const auto &entry : access.dept_access)
     {
@@ -230,7 +230,6 @@ void handle_put_activity_evaluation(HttpRes *res, HttpReq *req, Database &db)
                     send_json(res, 404, R"({"error":"Nicht gefunden"})");
                     return;
                 }
-                cache_bump_version(db, "activities");
                 auto evaluation = db.get_activity_evaluation(activity_id);
                 if (!evaluation)
                 {
