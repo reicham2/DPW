@@ -2,7 +2,10 @@
   <div>
     <!-- Public routes (e.g. /forms/:id) render without nav and without auth -->
     <template v-if="isPublicRoute || isSetupRoute">
-      <router-view />
+      <div v-if="route.path === '/guest-edit'" class="app">
+        <router-view />
+      </div>
+      <router-view v-else />
     </template>
     <template v-else>
     <nav class="global-nav">
