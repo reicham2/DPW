@@ -184,14 +184,6 @@ try {
   assert(!JSON.stringify(latest()).includes(secret), 'activity free text must be protected')
 
   const evaluationPath = `/activities/${activityId}/evaluation`
-  const listedActivityAverage = async () => {
-    const listed = await request('/activities')
-    assert.equal(listed.status, 200, listed.text)
-    const activity = listed.data.find(item => item.id === activityId)
-    assert(activity, 'the created activity must appear in the authorized overview')
-    return activity.average_feedback_rating ?? null
-  }
-  assert.equal(await listedActivityAverage(), null, 'activities without rated feedback have no average')
   assert.equal((await request(evaluationPath, 'GET', undefined, null)).status, 401)
   const emptyFeedback = { rating: null, positive: '', improvements: '', action_items: '', notes: '' }
   const actualsPath = `${evaluationPath}/actuals`
@@ -244,15 +236,12 @@ try {
   assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200)
   assert(!latest().details.changes.some(change => change.field === 'rating'))
   assert(!JSON.stringify(latest()).includes('private feedback'), 'feedback content must not enter audit details')
-  assert.equal(await listedActivityAverage(), 0, 'zero is a valid rating and must not be treated as missing')
   adminFeedback.rating = 9
   assert.equal((await request(evaluationPath, 'PUT', adminFeedback)).status, 200,
     'repeated saves update rather than duplicate one author entry')
-  assert.equal(await listedActivityAverage(), 9, 'the overview cache refreshes when ratings change')
   const legacyUnratedAuthor = randomUUID()
   sql(`INSERT INTO activity_feedback (activity_id, author_id, author_name, rating)
        VALUES ('${activityId}', '${legacyUnratedAuthor}', 'Altbestand', NULL)`)
-  assert.equal(await listedActivityAverage(), 9, 'unrated legacy responses are excluded from the average')
   const memberFeedback = {
     rating: 3,
     positive: '',
@@ -261,7 +250,6 @@ try {
     notes: '',
   }
   assert.equal((await request(evaluationPath, 'PUT', memberFeedback, member)).status, 200)
-  assert.equal(await listedActivityAverage(), 6, 'the overview averages rated feedback across authors')
   let evaluation = (await request(evaluationPath, 'GET', undefined, member)).data
   assert.equal(evaluation.actual_participants, 18)
   assert.equal(evaluation.actual_start_time, '14:05')
@@ -289,9 +277,7 @@ try {
   evaluation = (await request(evaluationPath, 'GET')).data
   assert.equal(evaluation.feedback.length, 2, 'clearing a contribution removes only the current author entry')
   assert.equal(evaluation.actual_participants, 18, 'attendance remains independent from clearing feedback')
-  assert.equal(await listedActivityAverage(), 9, 'clearing one rating updates the overview average')
   assert.equal((await request(evaluationPath, 'PUT', emptyFeedback)).status, 200)
-  assert.equal(await listedActivityAverage(), null, 'unrated legacy entries alone do not produce an average')
   evaluation = (await request(evaluationPath, 'GET')).data
   assert.equal(evaluation.feedback.length, 1, 'clearing the final rated response preserves the legacy entry')
 

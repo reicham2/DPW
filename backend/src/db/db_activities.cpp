@@ -51,10 +51,6 @@ Activity Database::row_to_activity(PGresult *res, int row)
     if (ppe)
         a.planned_participants_estimate = std::atoi(ppe);
 
-    const char *average_rating = col("average_feedback_rating");
-    if (average_rating)
-        a.average_feedback_rating = std::atof(average_rating);
-
     // siko_text
     const char *siko_t = col("siko_text");
     if (siko_t)
@@ -290,13 +286,8 @@ std::vector<Activity> Database::list_activities()
     PGresult *res = PQexec(conn_,
                            "SELECT id, title, date::text, start_time, end_time, goal, guiding_thread, location, responsible, "
                            "       department, material, tn_material, siko_text, "
-                           "       bad_weather_info, planned_participants_estimate, feedback.average_rating AS average_feedback_rating, "
-                           "       created_at, updated_at "
-                           "FROM activities "
-                           "LEFT JOIN (SELECT activity_id, AVG(rating)::double precision AS average_rating "
-                           "           FROM activity_feedback WHERE rating IS NOT NULL GROUP BY activity_id) feedback "
-                           "       ON feedback.activity_id = activities.id "
-                           "WHERE deleted_at IS NULL ORDER BY date DESC, start_time");
+                           "       bad_weather_info, planned_participants_estimate, created_at, updated_at "
+                           "FROM activities WHERE deleted_at IS NULL ORDER BY date DESC, start_time");
 
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {

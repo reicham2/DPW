@@ -38,7 +38,6 @@ export interface Activity {
 	siko_text: string | null;
 	bad_weather_info: string | null;
 	planned_participants_estimate: number | null;
-	average_feedback_rating?: number | null;
 	created_at: string;
 	updated_at: string;
 	programs: Program[];
