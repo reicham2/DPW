@@ -266,7 +266,7 @@ try {
   assert.equal(evaluation.actual_participants, 18)
   assert.equal(evaluation.actual_start_time, '14:05')
   assert.equal(evaluation.can_edit_actuals, true)
-  assert.equal(evaluation.feedback.length, 2)
+  assert.equal(evaluation.feedback.length, 3)
   assert.equal(evaluation.mine.improvements, memberFeedback.improvements)
   assert.equal(evaluation.mine.rating, 3)
 
@@ -287,11 +287,13 @@ try {
 
   assert.equal((await request(evaluationPath, 'PUT', emptyFeedback, member)).status, 200)
   evaluation = (await request(evaluationPath, 'GET')).data
-  assert.equal(evaluation.feedback.length, 1, 'clearing a contribution removes only the current author entry')
+  assert.equal(evaluation.feedback.length, 2, 'clearing a contribution removes only the current author entry')
   assert.equal(evaluation.actual_participants, 18, 'attendance remains independent from clearing feedback')
   assert.equal(await listedActivityAverage(), 9, 'clearing one rating updates the overview average')
   assert.equal((await request(evaluationPath, 'PUT', emptyFeedback)).status, 200)
   assert.equal(await listedActivityAverage(), null, 'unrated legacy entries alone do not produce an average')
+  evaluation = (await request(evaluationPath, 'GET')).data
+  assert.equal(evaluation.feedback.length, 1, 'clearing the final rated response preserves the legacy entry')
 
   for (const [key, value] of [['wp.url', 'http://127.0.0.1:1'], ['wp.user', 'audit-test'], ['wp.app_password', 'audit-test-only']]) {
     assert.equal((await request(`/admin/app-settings/${key}`, 'PUT', { value })).status, 200)
