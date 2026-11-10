@@ -17,6 +17,13 @@ const mocks = vi.hoisted(() => ({
 	setActivityError: undefined as ((message: string | null) => void) | undefined,
 	setConnected: undefined as ((connected: boolean) => void) | undefined,
 	onMessage: undefined as ((event: WsEvent) => void) | undefined,
+	guestSocketHandler: undefined as ((event: WsEvent) => void) | undefined,
+	guestSocket: null as null | {
+		sessionId: string;
+		join: (token: string, activityId: string) => void;
+		send: (message: Record<string, unknown>) => void;
+		disconnect: () => void;
+	},
 	editable: false,
 	isGuestEdit: false,
 	guestToken: '',
@@ -93,6 +100,16 @@ vi.mock('../composables/useAuth', async () => {
 });
 
 vi.mock('../composables/useWebSocket', () => ({
+	createGuestWebSocket: (handler: (event: WsEvent) => void) => {
+		mocks.guestSocketHandler = handler;
+		mocks.guestSocket = {
+			sessionId: '11111111-1111-4111-8111-111111111111',
+			join: vi.fn(),
+			send: vi.fn(),
+			disconnect: vi.fn(),
+		};
+		return mocks.guestSocket;
+	},
 	wsSend: vi.fn(),
 	wsRegister: vi.fn(),
 	wsJoin: vi.fn(),
@@ -260,6 +277,8 @@ describe('DetailPage activity access', () => {
 		vi.mocked(apiFetch).mockReset().mockResolvedValue(new Response('{}', { status: 200 }));
 		mocks.replace.mockReset().mockResolvedValue(undefined);
 		mocks.onMessage = undefined;
+		mocks.guestSocketHandler = undefined;
+		mocks.guestSocket = null;
 		mocks.fetchActivity.mockReset().mockResolvedValue(makeActivity());
 		mocks.updateActivity.mockReset().mockResolvedValue(true);
 		mocks.uploadAttachment.mockReset().mockResolvedValue(null);
@@ -295,11 +314,24 @@ describe('DetailPage activity access', () => {
 			start_time: '10:00',
 			end_time: '11:00',
 			guiding_thread: 'Gemeinsam unterwegs',
+			responsible: ['activity-person'],
+			material: [{ name: 'Seil', responsible: ['material-person'] }],
+			programs: [{
+				duration_minutes: 15,
+				title: 'Ankommen',
+				description: '<p>Gemeinsam starten</p>',
+				responsible: ['program-person'],
+			}],
 		});
-		const guestFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-			activity,
-			expires_at: '2030-07-08T12:00:00Z',
-		}), { status: 200 }));
+		const guestFetch = vi.fn().mockImplementation(async (url: string) => new Response(JSON.stringify(
+			url.endsWith('/people')
+				? { people: [
+					{ id: 'activity-person', display_name: 'Activity Person' },
+					{ id: 'program-person', display_name: 'Program Person' },
+					{ id: 'material-person', display_name: 'Material Person' },
+				] }
+				: { activity, expires_at: '2030-07-08T12:00:00Z' },
+		), { status: 200 }));
 		vi.stubGlobal('fetch', guestFetch);
 
 		const wrapper = shallowMount(DetailPage);
@@ -316,6 +348,8 @@ describe('DetailPage activity access', () => {
 		expect(wrapper.get('.detail-form').classes()).toContain('detail-form--guest');
 		expect(wrapper.find('.detail-stats-sidebar--edit').exists()).toBe(false);
 		expect(wrapper.find('.detail-stats-popout__panel').exists()).toBe(false);
+		expect(wrapper.text()).toContain('Program Person');
+		expect(wrapper.text()).toContain('Material Person');
 		expect(wrapper.text()).not.toContain('Veröffentlichen');
 		expect(wrapper.text()).not.toContain('Formular');
 		expect(wrapper.findAll('.guest-edit-sections__item').map((button) => button.text())).toEqual([
@@ -333,7 +367,45 @@ describe('DetailPage activity access', () => {
 		}));
 		const guestRequestOptions = guestFetch.mock.calls[0]?.[1] as RequestInit;
 		expect(new Headers(guestRequestOptions.headers).get('X-Guest-Edit-Token')).toBe(mocks.guestToken);
+		const peopleRequest = guestFetch.mock.calls.find(([url]) => url.endsWith('/people'));
+		expect(peopleRequest).toBeDefined();
+		expect(new Headers((peopleRequest?.[1] as RequestInit).headers).get('X-Guest-Edit-Token')).toBe(mocks.guestToken);
+		expect(mocks.guestSocket?.join).toHaveBeenCalledWith(mocks.guestToken, activity.id);
+
+		const programSearch = wrapper.find('input[placeholder="Person suchen oder eingeben…"]');
+		await programSearch.trigger('focus');
+		await programSearch.trigger('focusin');
+		await flushPromises();
+		expect(mocks.guestSocket?.send).toHaveBeenCalledWith({
+			type: 'lock',
+			activity_id: activity.id,
+			section: 'program_0',
+		});
+		const searchResults = wrapper.findAll('.user-dropdown-item').map((item) => item.text());
+		expect(searchResults).toContain('Activity Person');
+		expect(searchResults).toContain('Material Person');
+		expect(searchResults).not.toContain('Outside Person');
+
+		mocks.guestSocketHandler?.({
+			event: 'lock',
+			activity_id: activity.id,
+			section: 'program_0',
+			user: 'Gast',
+			owner_id: mocks.guestSocket?.sessionId,
+		});
+		await flushPromises();
+		expect(programSearch.attributes('disabled')).toBeUndefined();
+		mocks.guestSocketHandler?.({
+			event: 'lock',
+			activity_id: activity.id,
+			section: 'program_0',
+			user: 'Gast',
+			owner_id: '22222222-2222-4222-8222-222222222222',
+		});
+		await flushPromises();
+		expect(programSearch.attributes('disabled')).toBeDefined();
 		wrapper.unmount();
+		expect(mocks.guestSocket?.disconnect).toHaveBeenCalledOnce();
 	});
 
 	it('opens one sharing dialog with the read-only link selected by default and guest editing as an explicit option', async () => {

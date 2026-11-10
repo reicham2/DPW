@@ -111,6 +111,91 @@ export function wsLeave() {
 	pendingJoin = null;
 }
 
+export function createGuestWebSocket(onMessage: (event: WsEvent) => void) {
+	const sessionId = typeof crypto.randomUUID === 'function'
+		? crypto.randomUUID()
+		: (() => {
+			const bytes = crypto.getRandomValues(new Uint8Array(16));
+			bytes[6] = (bytes[6] & 0x0f) | 0x40;
+			bytes[8] = (bytes[8] & 0x3f) | 0x80;
+			const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+			return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+		})();
+	let socket: WebSocket | null = null;
+	let guestToken = '';
+	let activityId = '';
+	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	let stopped = false;
+
+	function connect() {
+		if (!guestToken || !activityId || socket || stopped) return;
+		const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+		const current = new WebSocket(`${protocol}://${location.host}/ws?guest=1`);
+		socket = current;
+
+		current.onopen = () => {
+			if (socket !== current) return;
+			current.send(JSON.stringify({ type: 'register_guest', token: guestToken, session_id: sessionId }));
+			current.send(JSON.stringify({ type: 'join', activity_id: activityId }));
+		};
+		current.onmessage = (event: MessageEvent) => {
+			if (socket !== current) return;
+			try {
+				onMessage(JSON.parse(event.data as string) as WsEvent);
+			} catch {
+				// Ignore malformed frames.
+			}
+		};
+		current.onclose = () => {
+			if (socket !== current) return;
+			socket = null;
+			if (guestToken && activityId && !stopped && !reconnectTimer) {
+				reconnectTimer = setTimeout(() => {
+					reconnectTimer = null;
+					connect();
+				}, 3000);
+			}
+		};
+		current.onerror = () => current.close();
+	}
+
+	function send(message: Record<string, unknown>) {
+		if (socket?.readyState === WebSocket.OPEN) {
+			socket.send(JSON.stringify(message));
+		}
+	}
+
+	return {
+		sessionId,
+		join(token: string, activity: string) {
+			guestToken = token;
+			activityId = activity;
+			stopped = false;
+			if (socket?.readyState === WebSocket.OPEN) {
+				send({ type: 'join', activity_id: activityId });
+			} else {
+				connect();
+			}
+		},
+		send,
+		disconnect() {
+			stopped = true;
+			guestToken = '';
+			activityId = '';
+			if (reconnectTimer) {
+				clearTimeout(reconnectTimer);
+				reconnectTimer = null;
+			}
+			if (socket) {
+				const current = socket;
+				socket = null;
+				current.onclose = null;
+				current.close();
+			}
+		},
+	};
+}
+
 /** Expose WS debug state for bug reports */
 export function getWsDebugState() {
 	return {

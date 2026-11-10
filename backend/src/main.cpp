@@ -333,6 +333,8 @@ int main()
          // Guest-edit access is scoped by a token in X-Guest-Edit-Token, not the URL.
          .get("/guest-edit/activity", [&](auto *res, auto *req)
               { handle_get_guest_edit_activity(res, req, db); })
+         .get("/guest-edit/people", [&](auto *res, auto *req)
+              { handle_get_guest_edit_people(res, req, db); })
          .patch("/guest-edit/activity", [&](auto *res, auto *req)
                 { handle_patch_guest_edit_activity(res, req, db, wm); })
          .get("/guest-edit/attachments", [&](auto *res, auto *req)
@@ -483,14 +485,14 @@ int main()
                                  .upgrade = [&](auto *res, auto *req, auto *context)
                                  {
                                       std::string token = url_decode(std::string{req->getQuery("token")});
-                                      if (token.empty())
+                                      WsUserData user_data;
+                                      if (token.empty() && std::string{req->getQuery("guest")} != "1")
                                       {
                                            res->writeStatus("401 Unauthorized")->end("Missing WebSocket token");
                                            return;
                                       }
 
-                                      WsUserData user_data;
-                                      if (!wm.authenticate_upgrade(token, user_data))
+                                      if (!token.empty() && !wm.authenticate_upgrade(token, user_data))
                                       {
                                            res->writeStatus("401 Unauthorized")->end("Invalid WebSocket token");
                                            return;

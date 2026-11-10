@@ -65,12 +65,17 @@ test('guest edit links are narrowly scoped, expiring, revocable and independent 
 					guiding_thread: 'Original red thread',
 					location: 'Wald',
 					department: 'Pfadi',
-					responsible: [],
-					material: [],
+					responsible: ['a0000000-0000-0000-0000-000000000002'],
+					material: [{ name: 'Rope', responsible: ['a0000000-0000-0000-0000-000000000003'] }],
 					tn_material: [],
 					siko_text: 'Original safety notes',
 					bad_weather_info: 'Original weather notes',
-					programs: [{ title: 'Opening', duration_minutes: 10, description: '<p>Original <strong>rich text</strong></p>', responsible: [] }],
+					programs: [{
+						title: 'Opening',
+						duration_minutes: 10,
+						description: '<p>Original <strong>rich text</strong></p>',
+						responsible: ['a0000000-0000-0000-0000-000000000002'],
+					}],
 				},
 			}), 201);
 			activityId = initial.id;
@@ -102,10 +107,25 @@ test('guest edit links are narrowly scoped, expiring, revocable and independent 
 			assert.equal('share_token' in metadata, false);
 			expectStatus(await response('GET', '/guest-edit/activity', { token: null }), 404);
 			expectStatus(await response('GET', '/guest-edit/activity', { token: null, guestToken: 'a'.repeat(64) }), 404);
+			expectStatus(await response('GET', '/guest-edit/people', {
+				token: null, guestToken: 'a'.repeat(64),
+			}), 404);
 			const guestRead = expectStatus(await response('GET', '/guest-edit/activity', { token: null, guestToken: token }), 200);
 			const original = guestRead.activity;
 			assert.equal(original.id, activityId);
 			assert.equal(guestRead.expires_at, link.expires_at);
+			const guestPeople = expectStatus(await response('GET', '/guest-edit/people', {
+				token: null, guestToken: token,
+			}), 200);
+			assert.deepEqual(new Set(guestPeople.people.map((person) => person.id)), new Set([
+				'a0000000-0000-0000-0000-000000000002',
+				'a0000000-0000-0000-0000-000000000003',
+			]));
+			assert.equal(guestPeople.people.find((person) => person.id === 'a0000000-0000-0000-0000-000000000002').display_name, 'Stufen Leiter');
+			assert.equal(guestPeople.people.find((person) => person.id === 'a0000000-0000-0000-0000-000000000003').display_name, 'Leiter Eins');
+			for (const person of guestPeople.people) {
+				assert.deepEqual(Object.keys(person).sort(), ['display_name', 'id']);
+			}
 
 			const otherActivity = expectStatus(await response('POST', '/activities', {
 				body: {
@@ -282,6 +302,9 @@ test('guest edit links are narrowly scoped, expiring, revocable and independent 
 			assert.equal(maximum.max_expires_in_days, 30);
 			assert.ok(new Date(maximum.expires_at).getTime() > Date.now() + 29 * 24 * 60 * 60 * 1000);
 			expectStatus(await response('GET', '/guest-edit/activity', {
+				token: null, guestToken: token,
+			}), 404);
+			expectStatus(await response('GET', '/guest-edit/people', {
 				token: null, guestToken: token,
 			}), 404);
 			token = new URL(maximum.share_url).hash.slice(1);

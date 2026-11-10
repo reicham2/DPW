@@ -666,6 +666,12 @@ Veröffentlichungen stehen Gästen weder in der Oberfläche noch über die Gast-
 zur Verfügung.
 Schreibvorgänge prüfen die letzte Änderungszeit; bei konkurrierenden Änderungen
 muss der Gast neu laden, statt neuere Daten zu überschreiben.
+Gäste nehmen außerdem am selben Feld-Locking wie angemeldete Bearbeiter und
+andere Gäste teil. Lock-Zustände und -Ereignisse sind für Gäste auf die
+freigegebenen Bereiche beschränkt; die Aktivitätsmetadaten bleiben davon
+ausgeschlossen. Die Personensuche ist auf Personen begrenzt, die der Aktivität
+oder ihren Programm-/Material-Zuweisungen bereits zugeordnet sind, und liefert
+nur ID und Anzeigename. Sie verwendet denselben Gasttoken- und Ablaufcheck.
 
 Gastlinks sind getrennt von öffentlichen Lese-Freigaben unter
 `/shared/<token>` gespeichert und ändern deren Verhalten nicht. Der Gasttoken
