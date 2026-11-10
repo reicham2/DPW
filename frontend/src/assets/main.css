@@ -587,6 +587,10 @@ video {
 	box-shadow: var(--card-shadow);
 }
 
+.guest-edit-intro--spaced {
+	margin-top: 20px;
+}
+
 .guest-edit-intro__activity {
 	display: grid;
 	justify-items: start;
