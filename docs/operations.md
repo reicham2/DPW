@@ -554,6 +554,9 @@ Freigaben, Formularantworten einschliesslich gespeicherter IP-/User-Agent-Daten,
 Mailinhalte, das Audit-Log, die automatische endgültige Löschung von Aktivitäten
 aus dem Papierkorb nach 90 Tagen und konfigurierte externe Dienste. Die
 Standardfrist des Audit-Logs beträgt 14 Tage und ist administrativ einstellbar.
+Die Datenschutzhinweise enthalten zudem die von der Betreiberin bestätigten
+Angaben zu Schweizer Servern/Datenbanken, möglichen Drittlandübermittlungen und
+den genannten Übermittlungsgarantien sowie die aufgeführten Betroffenenrechte.
 
 Die rechtlichen Angaben dieser Instanz beruhen auf den von der Betreiberin
 bestätigten Kontaktdaten und dem bestätigten Hosting in der Schweiz. Bei

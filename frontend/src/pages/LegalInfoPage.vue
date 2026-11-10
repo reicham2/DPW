@@ -8,7 +8,6 @@
 					<h2>Betreiberin</h2>
 					<p>
 						Pfadi Hünenberg (Pfadi Hü)<br />
-						Pfadiheim Hünenberg<br />
 						Rigistrasse 1<br />
 						6331 Hünenberg<br />
 						Schweiz
@@ -31,18 +30,13 @@
 			</template>
 
 			<template v-else>
-				<p class="legal-draft-note">
-					Diese Datenschutzhinweise sind ein Organisationsentwurf. Die
-					verantwortliche Stelle muss sie vor dem öffentlichen Einsatz mit der
-					tatsächlichen Konfiguration dieser DPWeb-Instanz abgleichen.
-				</p>
-
 				<section>
 					<h2>Verantwortliche Stelle</h2>
 					<p>
 						Pfadi Hünenberg (Pfadi Hü)<br />
-						Pfadiheim Hünenberg<br />
-						Rigistrasse 1, 6331 Hünenberg, Schweiz<br />
+						Rigistrasse 1<br />
+						6331 Hünenberg<br />
+						Schweiz<br />
 						<a href="mailto:al@pfadihue.ch">al@pfadihue.ch</a>
 					</p>
 				</section>
@@ -137,9 +131,14 @@
 						Konfiguration der Instanz und des Hosting-Anbieters.
 					</p>
 					<p>
-						Die Speicher- und Übermittlungsorte bei Microsoft und anderen
-						optional verwendeten Diensten richten sich nach den jeweiligen
-						Diensten und der Konfiguration. DPWeb legt diese Orte nicht fest.
+						Unsere eigenen Server und Datenbanken befinden sich ausschliesslich
+						in der Schweiz. Bei der Nutzung integrierter Dienste von
+						Drittanbietern, insbesondere Microsoft (Entra ID, Microsoft Graph)
+						und GitHub, können Personendaten in Staaten ausserhalb der Schweiz
+						und der EU/des EWR, insbesondere in die USA, übermittelt werden. Wir
+						stellen den Schutz deiner Daten durch den Abschluss von
+						Standardvertragsklauseln (SCC) oder gestützt auf das Swiss-U.S. Data
+						Privacy Framework sicher.
 					</p>
 				</section>
 
@@ -204,6 +203,33 @@
 						Konfiguration dieser Instanz ändert.
 					</p>
 				</section>
+
+				<section>
+					<h2>Rechte der betroffenen Personen</h2>
+					<p>Du hast im Rahmen des anwendbaren Datenschutzgesetzes folgende Rechte:</p>
+					<ul>
+						<li>
+							Recht auf unentgeltliche Auskunft über deine bei uns gespeicherten
+							Personendaten
+						</li>
+						<li>
+							Recht auf Berichtigung unrichtiger oder unvollständiger Daten
+						</li>
+						<li>
+							Recht auf Löschung deiner Daten, sofern keine gesetzlichen
+							Aufbewahrungspflichten oder berechtigten Interessen entgegenstehen
+						</li>
+						<li>Recht auf Einschränkung der Datenverarbeitung</li>
+						<li>
+							Recht auf Beschwerde bei der zuständigen Aufsichtsbehörde:
+							Eidgenössischer Datenschutz- und Öffentlichkeitsbeauftragter (EDÖB),
+							Feldeggweg 1, 3003 Bern,
+							<a href="https://www.edoeb.admin.ch" target="_blank" rel="noopener noreferrer">
+								www.edoeb.admin.ch
+							</a>
+						</li>
+					</ul>
+				</section>
 			</template>
 		</article>
 	</PublicPageLayout>
@@ -259,13 +285,6 @@ onMounted(() => {
 	outline: 2px solid var(--accent);
 	outline-offset: 3px;
 	border-radius: 2px;
-}
-
-.legal-draft-note {
-	padding: 12px 14px;
-	background: var(--bg-hover);
-	border-left: 3px solid var(--accent);
-	border-radius: 4px;
 }
 
 @media (max-width: 599px) {
